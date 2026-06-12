@@ -1,4 +1,5 @@
 import TrackPlayer, { isPlaying } from 'react-native-track-player';
+import type { Track } from '@/types/audio';
 import { setupPlayer } from './trackPlayer';
 import { SAMPLE_TRACKS, toRntpTrack } from './sampleTracks';
 
@@ -9,22 +10,33 @@ import { SAMPLE_TRACKS, toRntpTrack } from './sampleTracks';
  */
 
 /**
- * Set up the player and load the demo queue. Setup is deferred to here (a
- * user-initiated play) rather than app launch: RNTP starts a foreground
- * MediaSession service on setup, and Android only permits starting a foreground
- * service while the app is in the foreground.
+ * Set up the player. Setup is deferred to here (a user-initiated play) rather
+ * than app launch: RNTP starts a foreground MediaSession service on setup, and
+ * Android only permits starting a foreground service while the app is in the
+ * foreground.
  */
 async function ensurePlayerReady(): Promise<void> {
   await setupPlayer();
+}
+
+/** Replace the queue with the given tracks and start playing at startIndex. */
+export async function playTracks(tracks: Track[], startIndex = 0): Promise<void> {
+  if (tracks.length === 0) return;
+  await ensurePlayerReady();
+  await TrackPlayer.setQueue(tracks.map(toRntpTrack));
+  if (startIndex > 0) {
+    await TrackPlayer.skip(startIndex);
+  }
+  await TrackPlayer.play();
+}
+
+/** M0 demo entry point: load the streamed sample queue if nothing is queued. */
+export async function playSample(): Promise<void> {
+  await ensurePlayerReady();
   const queue = await TrackPlayer.getQueue();
   if (queue.length === 0) {
     await TrackPlayer.add(SAMPLE_TRACKS.map(toRntpTrack));
   }
-}
-
-/** M0 entry point: ensure the player is ready, then start playback. */
-export async function playSample(): Promise<void> {
-  await ensurePlayerReady();
   await TrackPlayer.play();
 }
 

@@ -6,16 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { SeekBar } from '@/components/SeekBar';
+import { colors, radius, spacing } from '@/theme';
 import { usePlayerStore } from '@/stores/playerStore';
-import { skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
-
-function formatTime(seconds: number): string {
-  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-  const m = Math.floor(safe / 60);
-  const s = Math.floor(safe % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+import { seekTo, skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
 
 export default function NowPlayingScreen() {
   const router = useRouter();
@@ -27,7 +21,6 @@ export default function NowPlayingScreen() {
 
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
-  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
 
   return (
     <View
@@ -71,17 +64,12 @@ export default function NowPlayingScreen() {
           </View>
 
           <View style={styles.progressBlock}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-            </View>
-            <View style={styles.times}>
-              <Text variant="mono" style={styles.time}>
-                {formatTime(currentTime)}
-              </Text>
-              <Text variant="mono" style={styles.time}>
-                {formatTime(duration)}
-              </Text>
-            </View>
+            <SeekBar
+              currentTime={currentTime}
+              duration={duration}
+              trackKey={track.id}
+              onSeek={(seconds) => void seekTo(seconds)}
+            />
           </View>
 
           <View style={styles.transport}>
@@ -150,26 +138,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   progressBlock: {
-    marginTop: spacing.xl,
-  },
-  progressTrack: {
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.glassBorder,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  times: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
-  },
-  time: {
-    color: colors.textTertiary,
+    marginTop: spacing.md,
   },
   transport: {
     marginTop: spacing.xl,

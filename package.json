@@ -7,10 +7,13 @@
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/ui": "~56.0.13",
     "@expo/vector-icons": "^15.0.2",
+    "@op-engineering/op-sqlite": "^16.2.1",
+    "@shopify/flash-list": "2.0.2",
     "expo": "~56.0.4",
     "expo-asset": "~56.0.14",
     "expo-constants": "~56.0.15",
     "expo-device": "~56.0.4",
+    "expo-file-system": "~56.0.8",
     "expo-font": "~56.0.5",
     "expo-glass-effect": "~56.0.4",
     "expo-image": "~56.0.9",
@@ -36,6 +39,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~56.0.4",
     "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },

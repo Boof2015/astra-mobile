@@ -16,6 +16,7 @@ import {
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +42,15 @@ export default function RootLayout() {
       void SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Eager library init: SQLite open + initial reads are tens of ms, and the
+  // Library tab + playback adapters get data immediately.
+  useEffect(() => {
+    useLibraryStore
+      .getState()
+      .initialize()
+      .catch((err) => console.error('[library] init failed', err));
+  }, []);
 
   if (!fontsLoaded) return null;
 

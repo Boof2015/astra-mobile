@@ -18,6 +18,9 @@ export const colors = {
   textSecondary: 'rgba(255, 255, 255, 0.6)',
   textTertiary: 'rgba(255, 255, 255, 0.4)',
 
+  // Warning amber (desktop .graph-meta-chip-warning)
+  warning: '#f3d27d',
+
   // Cyan accent
   accent: '#38bdf8',
   accentHover: '#7dd3fc',
