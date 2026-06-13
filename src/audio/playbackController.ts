@@ -30,6 +30,16 @@ export async function playTracks(tracks: Track[], startIndex = 0): Promise<void>
   await TrackPlayer.play();
 }
 
+/** Fisher–Yates shuffle a copy of the tracks and play from the top. */
+export async function shuffleTracks(tracks: Track[]): Promise<void> {
+  const shuffled = [...tracks];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  await playTracks(shuffled);
+}
+
 /** M0 demo entry point: load the streamed sample queue if nothing is queued. */
 export async function playSample(): Promise<void> {
   await ensurePlayerReady();

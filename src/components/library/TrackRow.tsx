@@ -8,17 +8,25 @@ import type { DbTrack } from '@/types/library';
 export function TrackRow({
   track,
   onPress,
+  onLongPress,
   showArtist = true,
   active = false,
 }: {
   track: DbTrack;
   onPress: () => void;
+  /** Opens the track actions sheet where wired. */
+  onLongPress?: () => void;
   /** Hide on album detail where every row shares the artist. */
   showArtist?: boolean;
   active?: boolean;
 }) {
   return (
-    <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={styles.row}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      accessibilityRole="button"
+    >
       {track.track_number != null && !showArtist ? (
         <Text variant="mono" style={styles.trackNumber}>
           {track.track_number}

@@ -10,12 +10,14 @@ import {
   type ScanProgress,
   type ScanResult,
 } from '@/library/scanner';
+import type { TrackSort } from '@/lib/trackSort';
+import { usePlaylistStore } from './playlistStore';
 
 /**
  * Library state — SQLite is the source of truth (no persist middleware);
  * this store mirrors it in memory for the UI plus scan/UI state.
  */
-type ViewMode = 'tracks' | 'albums' | 'artists' | 'folders';
+type ViewMode = 'tracks' | 'albums' | 'artists' | 'playlists' | 'folders';
 
 export type FolderWithCount = LibraryFolder & { track_count: number };
 
@@ -36,6 +38,7 @@ interface LibraryStore {
   folders: FolderWithCount[];
   totalTrackCount: number;
   viewMode: ViewMode;
+  trackSort: TrackSort;
   isScanning: boolean;
   scanProgress: ScanProgressState;
   scanError: string | null;
@@ -43,6 +46,7 @@ interface LibraryStore {
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   setViewMode: (mode: ViewMode) => void;
+  setTrackSort: (sort: TrackSort) => void;
   addFolder: () => Promise<void>;
   removeFolder: (folderId: number) => Promise<void>;
   rescan: () => Promise<void>;
@@ -75,6 +79,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     folders: [],
     totalTrackCount: 0,
     viewMode: 'albums',
+    trackSort: 'artist',
     isScanning: false,
     scanProgress: { ...IDLE_PROGRESS },
     scanError: null,
@@ -103,9 +108,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         getTrackCount(db),
       ]);
       set({ tracks, albums, artists, folders, totalTrackCount });
+      // Playlist counts/missing states depend on tracks — keep them in step.
+      await usePlaylistStore.getState().refresh();
     },
 
     setViewMode: (viewMode) => set({ viewMode }),
+
+    setTrackSort: (trackSort) => set({ trackSort }),
 
     addFolder: () => runScan(() => addFolderViaPicker({ onProgress })),
 

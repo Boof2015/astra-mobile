@@ -1,0 +1,219 @@
+import { useState } from 'react';
+import { View, Pressable, StyleSheet, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
+import { useRouter } from 'expo-router';
+import { Text } from '@/components/Text';
+import { ActionSheet } from '@/components/sheets/ActionSheet';
+import { TextPromptModal } from '@/components/sheets/TextPromptModal';
+import { PlaylistRow } from '@/components/library/PlaylistRow';
+import { colors, radius, spacing } from '@/theme';
+import { usePlaylistStore } from '@/stores/playlistStore';
+import type { Playlist } from '@/types/playlist';
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** "content://…/Test.m3u8" -> "Test.m3u8" for the export confirmation. */
+function fileDisplayName(fileUri: string): string {
+  const decoded = decodeURIComponent(fileUri.split('/').pop() ?? fileUri);
+  return decoded.split(/[/:]/).pop() || fileUri;
+}
+
+type Prompt = { kind: 'create' } | { kind: 'rename'; playlist: Playlist } | null;
+
+export function PlaylistsView() {
+  const router = useRouter();
+  const playlists = usePlaylistStore((s) => s.playlists);
+  const favoriteCount = usePlaylistStore((s) => s.favoriteTracks.length);
+  const createPlaylist = usePlaylistStore((s) => s.createPlaylist);
+  const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist);
+  const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist);
+  const importM3u = usePlaylistStore((s) => s.importM3u);
+  const exportM3u = usePlaylistStore((s) => s.exportM3u);
+
+  const [prompt, setPrompt] = useState<Prompt>(null);
+  const [menuFor, setMenuFor] = useState<Playlist | 'favorites' | null>(null);
+
+  const handleExport = async (target: number | 'favorites') => {
+    try {
+      const result = await exportM3u(target);
+      if (result) {
+        Alert.alert(
+          'Playlist exported',
+          `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`
+        );
+      }
+    } catch (err) {
+      Alert.alert('Export failed', errorMessage(err));
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const summary = await importM3u();
+      if (!summary) return;
+      const matched = summary.matchedByPath + summary.matchedByMetadata;
+      const parts = [`${matched} of ${summary.total} entries matched the library`];
+      if (summary.missing > 0) parts.push(`${summary.missing} kept as missing`);
+      if (summary.ambiguous > 0) parts.push(`${summary.ambiguous} ambiguous`);
+      Alert.alert(`Imported "${summary.name}"`, `${parts.join(', ')}.`);
+    } catch (err) {
+      Alert.alert('Import failed', errorMessage(err));
+    }
+  };
+
+  const confirmDelete = (playlist: Playlist) => {
+    Alert.alert('Delete playlist?', `"${playlist.name}" will be deleted. Tracks are not touched.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void deletePlaylist(playlist.id) },
+    ]);
+  };
+
+  const menuItems =
+    menuFor === 'favorites'
+      ? [
+          {
+            key: 'export',
+            label: 'Export M3U',
+            icon: 'download-outline' as const,
+            onPress: () => {
+              setMenuFor(null);
+              void handleExport('favorites');
+            },
+          },
+        ]
+      : menuFor
+        ? [
+            {
+              key: 'rename',
+              label: 'Rename…',
+              icon: 'pencil-outline' as const,
+              onPress: () => {
+                setPrompt({ kind: 'rename', playlist: menuFor });
+                setMenuFor(null);
+              },
+            },
+            {
+              key: 'export',
+              label: 'Export M3U',
+              icon: 'download-outline' as const,
+              onPress: () => {
+                const id = menuFor.id;
+                setMenuFor(null);
+                void handleExport(id);
+              },
+            },
+            {
+              key: 'delete',
+              label: 'Delete…',
+              icon: 'trash-outline' as const,
+              destructive: true,
+              onPress: () => {
+                const playlist = menuFor;
+                setMenuFor(null);
+                confirmDelete(playlist);
+              },
+            },
+          ]
+        : [];
+
+  return (
+    <View style={styles.container}>
+      <FlashList
+        data={playlists}
+        keyExtractor={(playlist) => String(playlist.id)}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <PlaylistRow
+            name="Favorites"
+            trackCount={favoriteCount}
+            coverHash={null}
+            pinned
+            onPress={() => router.push('/library/playlist/favorites')}
+            onLongPress={() => setMenuFor('favorites')}
+          />
+        }
+        renderItem={({ item }) => (
+          <PlaylistRow
+            name={item.name}
+            trackCount={item.track_count}
+            missingCount={item.missing_track_count}
+            coverHash={item.auto_cover_hash}
+            onPress={() => router.push(`/library/playlist/${item.id}`)}
+            onLongPress={() => setMenuFor(item)}
+          />
+        )}
+        ListFooterComponent={
+          <View style={styles.actions}>
+            <Pressable
+              style={styles.action}
+              onPress={() => setPrompt({ kind: 'create' })}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color={colors.accent} />
+              <Text variant="body" color={colors.accent}>
+                New playlist
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.action}
+              onPress={() => void handleImport()}
+              accessibilityRole="button"
+            >
+              <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} />
+              <Text variant="body" color={colors.textSecondary}>
+                Import M3U
+              </Text>
+            </Pressable>
+          </View>
+        }
+      />
+
+      <ActionSheet
+        visible={menuFor !== null}
+        title={menuFor === 'favorites' ? 'Favorites' : (menuFor?.name ?? '')}
+        items={menuItems}
+        onClose={() => setMenuFor(null)}
+      />
+      <TextPromptModal
+        visible={prompt !== null}
+        title={prompt?.kind === 'rename' ? 'Rename playlist' : 'New playlist'}
+        placeholder="Playlist name"
+        initialValue={prompt?.kind === 'rename' ? prompt.playlist.name : ''}
+        submitLabel={prompt?.kind === 'rename' ? 'Rename' : 'Create'}
+        onSubmit={(name) => {
+          if (prompt?.kind === 'rename') {
+            void renamePlaylist(prompt.playlist.id, name);
+          } else {
+            void createPlaylist(name);
+          }
+          setPrompt(null);
+        }}
+        onClose={() => setPrompt(null)}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+});

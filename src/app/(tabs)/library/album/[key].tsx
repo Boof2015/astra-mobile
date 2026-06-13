@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,13 +8,15 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
+import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { colors, radius, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks } from '@/audio/playbackController';
+import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
+import type { DbTrack } from '@/types/library';
 
 export default function AlbumScreen() {
   const router = useRouter();
@@ -32,6 +34,7 @@ export default function AlbumScreen() {
   );
 
   const totalDuration = tracks.reduce((sum, track) => sum + track.duration, 0);
+  const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   const playFrom = (index: number) => {
     void playTracks(tracks.map(dbTrackToTrack), index);
@@ -75,12 +78,24 @@ export default function AlbumScreen() {
               .filter(Boolean)
               .join(' · ')}
           </Text>
-          <Pressable style={styles.playButton} onPress={() => playFrom(0)} accessibilityRole="button">
-            <Ionicons name="play" size={16} color={colors.bgPrimary} />
-            <Text variant="body" style={styles.playLabel}>
-              Play
-            </Text>
-          </Pressable>
+          <View style={styles.buttons}>
+            <Pressable style={styles.playButton} onPress={() => playFrom(0)} accessibilityRole="button">
+              <Ionicons name="play" size={16} color={colors.bgPrimary} />
+              <Text variant="body" style={styles.playLabel}>
+                Play
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.shuffleButton}
+              onPress={() => void shuffleTracks(tracks.map(dbTrackToTrack))}
+              accessibilityRole="button"
+            >
+              <Ionicons name="shuffle" size={16} color={colors.accent} />
+              <Text variant="body" color={colors.accent}>
+                Shuffle
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -94,9 +109,12 @@ export default function AlbumScreen() {
             showArtist={false}
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
+            onLongPress={() => setActionTrack(item)}
           />
         )}
       />
+
+      <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }
@@ -135,6 +153,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
+  buttons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   playButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -143,8 +166,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
+  },
+  shuffleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   playLabel: {
     color: colors.bgPrimary,

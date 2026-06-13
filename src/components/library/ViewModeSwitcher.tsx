@@ -1,13 +1,14 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Text } from '@/components/Text';
 import { colors, radius, spacing } from '@/theme';
 
-export type LibraryViewMode = 'albums' | 'artists' | 'tracks' | 'folders';
+export type LibraryViewMode = 'albums' | 'artists' | 'tracks' | 'playlists' | 'folders';
 
 const MODES: { key: LibraryViewMode; label: string }[] = [
   { key: 'albums', label: 'Albums' },
   { key: 'artists', label: 'Artists' },
   { key: 'tracks', label: 'Tracks' },
+  { key: 'playlists', label: 'Playlists' },
   { key: 'folders', label: 'Folders' },
 ];
 
@@ -19,7 +20,7 @@ export function ViewModeSwitcher({
   onChange: (mode: LibraryViewMode) => void;
 }) {
   return (
-    <View style={styles.row}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
       {MODES.map((mode) => {
         const active = mode.key === value;
         return (
@@ -39,7 +40,7 @@ export function ViewModeSwitcher({
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
