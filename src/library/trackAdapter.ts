@@ -6,6 +6,7 @@ import type { DbTrack } from '@/types/library';
 import type { TrackUpsert } from '@/db/queries';
 import type { ExtractedMetadata, ScannedFile } from '../../modules/astra-library-scanner';
 import { artworkUri } from './artwork';
+import { repairMojibakeTag } from './tagEncoding';
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
 const UNKNOWN_ALBUM = 'Unknown Album';
@@ -60,7 +61,7 @@ function fileExtension(name: string): string {
 
 function cleanTag(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
+  return trimmed ? repairMojibakeTag(trimmed) : null;
 }
 
 export function metadataToUpsertRow(

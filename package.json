@@ -9,6 +9,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@op-engineering/op-sqlite": "^16.2.1",
     "@shopify/flash-list": "2.0.2",
+    "encoding-japanese": "^2.2.0",
     "expo": "~56.0.4",
     "expo-asset": "~56.0.14",
     "expo-constants": "~56.0.15",
@@ -39,6 +40,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@types/encoding-japanese": "^2.2.1",
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",

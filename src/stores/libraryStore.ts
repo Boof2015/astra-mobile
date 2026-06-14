@@ -87,9 +87,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     initialize: () => {
       if (!initPromise) {
         initPromise = (async () => {
-          await openLibraryDb();
+          const db = await openLibraryDb();
           await get().refresh();
           set({ initialized: true });
+          // One-time recovery: the v3 migration marks tracks stale (mtime = -1)
+          // whose non-ASCII tags were truncated by the pre-fix op-sqlite binding.
+          // Re-extract them now that binding is fixed. Fire-and-forget so startup
+          // isn't blocked; rescan manages its own progress + refresh.
+          const stale = await db.get<{ n: number }>('SELECT COUNT(*) AS n FROM tracks WHERE mtime = -1');
+          if ((stale?.n ?? 0) > 0) {
+            void get().rescan();
+          }
         })().catch((err) => {
           initPromise = null; // allow retry on genuine failure
           throw err;

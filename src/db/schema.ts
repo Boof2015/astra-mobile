@@ -1,10 +1,11 @@
 // Library schema — a trimmed port of the desktop schema (astra
 // src/main/services/library.ts). v1 covers M1 (local scan + browse);
-// v2 adds playlists + favorites (M2); metadata overrides / lyrics later.
+// v2 adds playlists + favorites (M2); v3 forces re-extraction of tracks whose
+// non-ASCII tags were truncated by the pre-fix op-sqlite binding (see database.ts).
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -77,6 +78,10 @@ const MIGRATIONS: readonly (readonly string[])[] = [
       added_at INTEGER NOT NULL
     )`,
   ],
+  // v2 -> v3 — pre-fix builds stored truncated non-ASCII tags (op-sqlite bind bug,
+  // see database.ts). The damage is irreversible in place, so mark every track
+  // stale; libraryStore re-extracts them on next launch now that binding is fixed.
+  [`UPDATE tracks SET mtime = -1`],
 ];
 
 export async function migrate(db: LibraryDatabase): Promise<void> {
