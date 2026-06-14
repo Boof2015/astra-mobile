@@ -1,6 +1,6 @@
 // Library queries — SQL ported/adapted from the desktop library service.
 
-import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
+import type { Album, DbTrack, LibraryFolder } from '@/types/library';
 import type { LibraryDatabase, SqlParams } from './database';
 
 /** Row shape the scanner produces for insert/update (id and timestamps are db-managed). */
@@ -112,16 +112,8 @@ export function getAlbums(db: LibraryDatabase): Promise<Album[]> {
   `);
 }
 
-export function getArtists(db: LibraryDatabase): Promise<Artist[]> {
-  return db.all<Artist>(`
-    SELECT artist,
-           COUNT(*) AS track_count,
-           MAX(artwork_hash) AS artwork_hash
-    FROM tracks
-    GROUP BY artist
-    ORDER BY artist COLLATE NOCASE
-  `);
-}
+// NOTE: the artist browse list is built in JS (src/library/artistGrouping.ts) so it
+// can honor the astra-grouping vs file-tags mode; there is no SQL getArtists anymore.
 
 export function getAllTracks(db: LibraryDatabase): Promise<DbTrack[]> {
   return db.all<DbTrack>(`
@@ -147,6 +139,21 @@ export function getTracksByArtist(db: LibraryDatabase, artist: string): Promise<
 export async function getTrackCount(db: LibraryDatabase): Promise<number> {
   const row = await db.get<{ count: number }>('SELECT COUNT(*) AS count FROM tracks');
   return row?.count ?? 0;
+}
+
+// --- Settings (key-value preferences) ----------------------------------------
+
+export async function getSetting(db: LibraryDatabase, key: string): Promise<string | null> {
+  const row = await db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key]);
+  return row?.value ?? null;
+}
+
+export async function setSetting(db: LibraryDatabase, key: string, value: string): Promise<void> {
+  await db.run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value]
+  );
 }
 
 // --- Folders -----------------------------------------------------------------

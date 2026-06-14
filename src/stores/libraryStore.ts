@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
 import { openLibraryDb } from '@/db/database';
-import { getAlbums, getAllTracks, getArtists, getTrackCount } from '@/db/queries';
+import { getAlbums, getAllTracks, getTrackCount } from '@/db/queries';
+import { buildArtistList } from '@/library/artistGrouping';
 import {
   addFolderViaPicker,
   loadFolders,
@@ -12,6 +13,7 @@ import {
 } from '@/library/scanner';
 import type { TrackSort } from '@/lib/trackSort';
 import { usePlaylistStore } from './playlistStore';
+import { useSettingsStore } from './settingsStore';
 
 /**
  * Library state — SQLite is the source of truth (no persist middleware);
@@ -45,6 +47,7 @@ interface LibraryStore {
 
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
+  recomputeArtists: () => void;
   setViewMode: (mode: ViewMode) => void;
   setTrackSort: (sort: TrackSort) => void;
   addFolder: () => Promise<void>;
@@ -88,6 +91,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       if (!initPromise) {
         initPromise = (async () => {
           const db = await openLibraryDb();
+          // Load the persisted grouping mode before the first refresh so the artist
+          // list is built correctly; recompute it whenever the mode changes later.
+          await useSettingsStore.getState().load();
+          useSettingsStore.subscribe((state, prev) => {
+            if (state.artistGroupingMode !== prev.artistGroupingMode) get().recomputeArtists();
+          });
           await get().refresh();
           set({ initialized: true });
           // One-time recovery: the v3 migration marks tracks stale (mtime = -1)
@@ -108,17 +117,25 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     refresh: async () => {
       const db = await openLibraryDb();
-      const [tracks, albums, artists, folders, totalTrackCount] = await Promise.all([
+      const [tracks, albums, folders, totalTrackCount] = await Promise.all([
         getAllTracks(db),
         getAlbums(db),
-        getArtists(db),
         loadFolders(),
         getTrackCount(db),
       ]);
+      // The artist list is derived in JS so it can honor the grouping mode.
+      const artists = buildArtistList(tracks, useSettingsStore.getState().artistGroupingMode);
       set({ tracks, albums, artists, folders, totalTrackCount });
       // Playlist counts/missing states depend on tracks — keep them in step.
       await usePlaylistStore.getState().refresh();
     },
+
+    // Rebuild the artist list from in-memory tracks (e.g. on grouping-mode change),
+    // without re-querying SQLite.
+    recomputeArtists: () =>
+      set((state) => ({
+        artists: buildArtistList(state.tracks, useSettingsStore.getState().artistGroupingMode),
+      })),
 
     setViewMode: (viewMode) => set({ viewMode }),
 

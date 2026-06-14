@@ -10,22 +10,25 @@ import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { colors, radius, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
+import { filterTracksByArtist } from '@/library/artistGrouping';
 import type { DbTrack } from '@/types/library';
 
 export default function ArtistScreen() {
   const router = useRouter();
   const { name } = useLocalSearchParams<{ name: string }>();
   const allTracks = useLibraryStore((s) => s.tracks);
+  const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
-  // Store tracks are ordered artist/album/disc/track, so the filtered slice
-  // keeps album grouping and track order.
+  // Match the artist list's grouping mode; store tracks are ordered
+  // artist/album/disc/track, so the filtered slice keeps album/track order.
   const tracks = useMemo(
-    () => allTracks.filter((track) => track.artist === name),
-    [allTracks, name]
+    () => filterTracksByArtist(allTracks, name, groupingMode),
+    [allTracks, name, groupingMode]
   );
 
   const playFrom = (index: number) => {

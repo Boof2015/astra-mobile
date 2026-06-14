@@ -29,6 +29,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="library" />
       <Tabs.Screen name="eq" />
+      <Tabs.Screen name="settings" />
     </Tabs>
   );
 }

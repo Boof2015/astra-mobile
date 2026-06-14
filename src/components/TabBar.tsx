@@ -11,6 +11,7 @@ export const TAB_META: Record<string, { label: string; icon: IconName }> = {
   index: { label: 'Home', icon: 'home' },
   library: { label: 'Library', icon: 'musical-notes' },
   eq: { label: 'EQ', icon: 'options' },
+  settings: { label: 'Settings', icon: 'settings' },
 };
 
 export interface TabItem {
