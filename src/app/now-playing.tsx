@@ -32,6 +32,8 @@ const SUB_CONTROLS: { icon: IconName; label: string }[] = [
 
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
+const COMPACT_HEIGHT = 780;
+const TIGHT_HEIGHT = 700;
 
 export default function NowPlayingScreen() {
   const router = useRouter();
@@ -44,8 +46,26 @@ export default function NowPlayingScreen() {
 
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
-  const contentWidth = windowWidth - spacing.xl * 2;
-  const artSize = Math.min(296, contentWidth);
+  const availableHeight = windowHeight - insets.top - insets.bottom;
+  const isCompact = availableHeight < COMPACT_HEIGHT;
+  const isTight = availableHeight < TIGHT_HEIGHT;
+  const contentPadding = isTight ? spacing.lg : spacing.xl;
+  const contentWidth = windowWidth - contentPadding * 2;
+  const artSize = Math.round(
+    Math.min(
+      contentWidth,
+      isTight ? 128 : isCompact ? 200 : 296,
+      Math.max(isTight ? 96 : 144, availableHeight * (isTight ? 0.18 : isCompact ? 0.24 : 0.32))
+    )
+  );
+  const visualizerHeight = isTight ? 58 : isCompact ? 76 : 96;
+  const waveformHeight = isTight ? 42 : isCompact ? 50 : 58;
+  const waveformTouchPadding = isTight ? spacing.xs : spacing.md;
+  const playButtonSize = isTight ? 58 : isCompact ? 62 : 68;
+  const skipIconSize = isTight ? 28 : 32;
+  const playIconSize = isTight ? 30 : 34;
+  const subButtonSize = isTight ? 36 : 40;
+  const subIconSize = isTight ? 18 : 20;
   const source = track?.album?.trim() ? track.album : 'Library';
 
   // Swipe down to minimize. The stack transition is disabled for this route, so
@@ -107,7 +127,11 @@ export default function NowPlayingScreen() {
           style={[
             styles.content,
             contentStyle,
-            { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.lg },
+            {
+              paddingHorizontal: contentPadding,
+              paddingTop: insets.top + (isTight ? spacing.xs : spacing.sm),
+              paddingBottom: insets.bottom + (isTight ? spacing.sm : spacing.lg),
+            },
           ]}
         >
           <View style={styles.header}>
@@ -129,7 +153,15 @@ export default function NowPlayingScreen() {
 
           {track ? (
             <>
-              <View style={styles.artWrap}>
+              <View
+                style={[
+                  styles.artWrap,
+                  {
+                    marginTop: isTight ? spacing.xs : spacing.lg,
+                    marginBottom: isTight ? spacing.xs : spacing.lg,
+                  },
+                ]}
+              >
                 <View style={[styles.art, { width: artSize, height: artSize }]}>
                   {track.artworkData ? (
                     <Image
@@ -143,57 +175,75 @@ export default function NowPlayingScreen() {
                 </View>
               </View>
 
-              <Visualizer width={contentWidth} />
+              <Visualizer width={contentWidth} height={visualizerHeight} />
 
-              <View style={styles.trackInfo}>
+              <View style={[styles.trackInfo, { marginTop: isTight ? spacing.xs : spacing.md }]}>
                 <Text variant="heading" numberOfLines={2} style={styles.centered}>
                   {track.title}
                 </Text>
                 <Text variant="body" numberOfLines={1} style={[styles.centered, styles.artist]}>
                   {track.artist}
                 </Text>
-                <View style={styles.badges}>
+                <View style={[styles.badges, { marginTop: isTight ? spacing.sm : spacing.md }]}>
                   <FormatBadges track={track} />
                 </View>
               </View>
 
-              <View style={styles.progressBlock}>
+              <View style={[styles.progressBlock, { marginTop: isTight ? spacing.sm : spacing.lg }]}>
                 <WaveformSeekBar
                   currentTime={currentTime}
                   duration={duration}
+                  height={waveformHeight}
+                  touchPadding={waveformTouchPadding}
                   trackKey={track.id}
                   trackPath={track.path}
                   onSeek={(seconds) => void seekTo(seconds)}
                 />
               </View>
 
-              <View style={styles.spacer} />
+              <View style={[styles.spacer, { minHeight: isTight ? spacing.xs : spacing.md }]} />
 
-              <View style={styles.transport}>
+              <View style={[styles.transport, { gap: isTight ? spacing.xl : spacing.xxl }]}>
                 <Pressable onPress={skipToPrevious} hitSlop={12}>
-                  <Ionicons name="play-skip-back" size={32} color={colors.textPrimary} />
+                  <Ionicons name="play-skip-back" size={skipIconSize} color={colors.textPrimary} />
                 </Pressable>
-                <Pressable onPress={togglePlay} hitSlop={12} style={styles.playButton}>
+                <Pressable
+                  onPress={togglePlay}
+                  hitSlop={12}
+                  style={[styles.playButton, { width: playButtonSize, height: playButtonSize }]}
+                >
                   <Ionicons
                     name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                    size={34}
+                    size={playIconSize}
                     color={colors.bgPrimary}
                   />
                 </Pressable>
                 <Pressable onPress={skipToNext} hitSlop={12}>
-                  <Ionicons name="play-skip-forward" size={32} color={colors.textPrimary} />
+                  <Ionicons
+                    name="play-skip-forward"
+                    size={skipIconSize}
+                    color={colors.textPrimary}
+                  />
                 </Pressable>
               </View>
 
-              <View style={styles.subRow}>
+              <View
+                style={[
+                  styles.subRow,
+                  {
+                    marginTop: isTight ? spacing.sm : spacing.lg,
+                    paddingHorizontal: isTight ? 0 : spacing.sm,
+                  },
+                ]}
+              >
                 {SUB_CONTROLS.map((c) => (
                   <Pressable
                     key={c.label}
                     hitSlop={10}
-                    style={styles.subBtn}
+                    style={[styles.subBtn, { width: subButtonSize, height: subButtonSize }]}
                     accessibilityLabel={c.label}
                   >
-                    <Ionicons name={c.icon} size={20} color={colors.textTertiary} />
+                    <Ionicons name={c.icon} size={subIconSize} color={colors.textTertiary} />
                   </Pressable>
                 ))}
               </View>
@@ -220,7 +270,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
-    paddingHorizontal: spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -249,8 +298,6 @@ const styles = StyleSheet.create({
   artWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
   },
   art: {
     borderRadius: radius.lg,
@@ -264,7 +311,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   trackInfo: {
-    marginTop: spacing.md,
     alignItems: 'center',
   },
   centered: {
@@ -275,24 +321,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   badges: {
-    marginTop: spacing.md,
   },
   progressBlock: {
-    marginTop: spacing.lg,
   },
   spacer: {
     flex: 1,
-    minHeight: spacing.md,
   },
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xxl,
   },
   playButton: {
-    width: 68,
-    height: 68,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -302,12 +342,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.sm,
   },
   subBtn: {
-    width: 40,
-    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },

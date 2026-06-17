@@ -18,6 +18,8 @@ interface WaveformSeekBarProps {
   currentTime: number;
   duration: number;
   onSeek: (seconds: number) => void;
+  height?: number;
+  touchPadding?: number;
   /** Identity of the playing track; a pending seek only applies to its own track. */
   trackKey?: string | number;
   /** Track file URI used to load/cache the offline waveform peaks. */
@@ -36,6 +38,8 @@ export function WaveformSeekBar({
   currentTime,
   duration,
   onSeek,
+  height = CANVAS_HEIGHT,
+  touchPadding = spacing.md,
   trackKey,
   trackPath,
 }: WaveformSeekBarProps) {
@@ -125,20 +129,20 @@ export function WaveformSeekBar({
     const r = BAR_WIDTH / 2;
     for (let i = 0; i < barCount; i++) {
       const amp = Math.max(MIN_BAR, display[i] ?? MIN_BAR);
-      const h = amp * CANVAS_HEIGHT;
+      const h = amp * height;
       const x = i * (BAR_WIDTH + BAR_GAP);
-      const y = (CANVAS_HEIGHT - h) / 2;
+      const y = (height - h) / 2;
       path.addRRect(Skia.RRectXY(Skia.XYWHRect(x, y, BAR_WIDTH, h), r, r));
     }
     return path;
-  }, [source, barCount, barWidth]);
+  }, [source, barCount, barWidth, height]);
 
   const splitX = fraction * barWidth;
 
   return (
     <View>
       <View
-        style={styles.touchArea}
+        style={[styles.touchArea, { height: height + touchPadding * 2 }]}
         onLayout={onLayout}
         onStartShouldSetResponder={() => duration > 0}
         onMoveShouldSetResponder={() => duration > 0}
@@ -151,11 +155,11 @@ export function WaveformSeekBar({
         accessibilityLabel="Seek"
         accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(shownTime) }}
       >
-        <Canvas style={{ width: '100%', height: CANVAS_HEIGHT }}>
-          <Group clip={rect(0, 0, splitX, CANVAS_HEIGHT)}>
+        <Canvas style={{ width: '100%', height }}>
+          <Group clip={rect(0, 0, splitX, height)}>
             <Path path={barsPath} color={colors.accent} />
           </Group>
-          <Group clip={rect(splitX, 0, Math.max(0, barWidth - splitX), CANVAS_HEIGHT)}>
+          <Group clip={rect(splitX, 0, Math.max(0, barWidth - splitX), height)}>
             <Path path={barsPath} color={colors.glassBorder} />
           </Group>
         </Canvas>
@@ -175,7 +179,6 @@ export function WaveformSeekBar({
 const styles = StyleSheet.create({
   touchArea: {
     justifyContent: 'center',
-    height: CANVAS_HEIGHT + spacing.md * 2, // generous touch target around the canvas
   },
   times: {
     flexDirection: 'row',

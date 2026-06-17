@@ -17,7 +17,7 @@ type Mode = 'spectrum' | 'scope';
  * in the layout. Tap anywhere on it to switch between the live filled-line
  * Spectrum and the Scope (oscilloscope, placeholder until its native path lands).
  */
-export function Visualizer({ width }: { width: number }) {
+export function Visualizer({ width, height = CANVAS_HEIGHT }: { width: number; height?: number }) {
   const [mode, setMode] = useState<Mode>('spectrum');
   const scopeActive = useScopeActive();
   const spectrumActive = scopeActive && mode === 'spectrum';
@@ -39,9 +39,9 @@ export function Visualizer({ width }: { width: number }) {
         <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
       </View>
 
-      <View style={{ width, height: CANVAS_HEIGHT }}>
+      <View style={{ width, height }}>
         {mode === 'spectrum' ? (
-          <SpectrumCurve values={values} width={width} height={CANVAS_HEIGHT} glow />
+          <SpectrumCurve values={values} width={width} height={height} glow />
         ) : (
           <View style={styles.placeholder}>
             <Ionicons name="pulse-outline" size={20} color={colors.textTertiary} />
