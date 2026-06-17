@@ -12,32 +12,47 @@ const POINTS = 120;
 
 type Mode = 'spectrum' | 'scope';
 
+interface VisualizerProps {
+  width: number;
+  height?: number;
+  interactive?: boolean;
+  showChrome?: boolean;
+  mode?: Mode;
+}
+
 /**
- * Inline visualizer for the now-playing screen — no card chrome, it just lives
- * in the layout. Tap anywhere on it to switch between the live filled-line
- * Spectrum and the Scope (oscilloscope, placeholder until its native path lands).
+ * Visualizer for the now-playing screen. By default it remains an inline
+ * interactive component; inside the media stage it can render chrome-free so
+ * the parent owns artwork/scope switching without moving the surrounding UI.
  */
-export function Visualizer({ width, height = CANVAS_HEIGHT }: { width: number; height?: number }) {
-  const [mode, setMode] = useState<Mode>('spectrum');
+export function Visualizer({
+  width,
+  height = CANVAS_HEIGHT,
+  interactive = true,
+  showChrome = true,
+  mode: controlledMode,
+}: VisualizerProps) {
+  const [uncontrolledMode, setUncontrolledMode] = useState<Mode>('spectrum');
+  const mode = controlledMode ?? uncontrolledMode;
   const scopeActive = useScopeActive();
   const spectrumActive = scopeActive && mode === 'spectrum';
   const values = useSpectrumCurve(POINTS, spectrumActive);
 
-  const toggle = () => setMode((m) => (m === 'spectrum' ? 'scope' : 'spectrum'));
+  const toggle = () => {
+    if (controlledMode) return;
+    setUncontrolledMode((m) => (m === 'spectrum' ? 'scope' : 'spectrum'));
+  };
 
-  return (
-    <Pressable
-      onPress={toggle}
-      style={[styles.wrap, { width }]}
-      accessibilityRole="button"
-      accessibilityLabel={`Visualizer showing ${mode}. Tap to switch.`}
-    >
-      <View style={styles.caption}>
-        <Text variant="caption" style={styles.captionText}>
-          {mode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
-        </Text>
-        <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
-      </View>
+  const content = (
+    <>
+      {showChrome && (
+        <View style={styles.caption}>
+          <Text variant="caption" style={styles.captionText}>
+            {mode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
+          </Text>
+          <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
+        </View>
+      )}
 
       <View style={{ width, height }}>
         {mode === 'spectrum' ? (
@@ -51,6 +66,25 @@ export function Visualizer({ width, height = CANVAS_HEIGHT }: { width: number; h
           </View>
         )}
       </View>
+    </>
+  );
+
+  if (!interactive) {
+    return (
+      <View pointerEvents="none" style={[styles.stageWrap, { width, height }]}>
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={toggle}
+      style={[styles.wrap, { width }]}
+      accessibilityRole="button"
+      accessibilityLabel={`Visualizer showing ${mode}. Tap to switch.`}
+    >
+      {content}
     </Pressable>
   );
 }
@@ -58,6 +92,9 @@ export function Visualizer({ width, height = CANVAS_HEIGHT }: { width: number; h
 const styles = StyleSheet.create({
   wrap: {
     paddingVertical: spacing.xs,
+  },
+  stageWrap: {
+    overflow: 'hidden',
   },
   caption: {
     flexDirection: 'row',

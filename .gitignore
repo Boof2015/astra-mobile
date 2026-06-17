@@ -46,6 +46,7 @@ example
 modules/*/android/build/
 modules/*/android/.gradle/
 modules/*/android/.cxx/
+vendor/kotlinaudio/kotlin-audio/build/
 
 HANDOFF.md
 DESIGN.md
