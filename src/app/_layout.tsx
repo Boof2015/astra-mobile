@@ -16,6 +16,7 @@ import {
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
+import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { colors } from '@/theme';
 
@@ -24,6 +25,12 @@ SplashScreen.preventAutoHideAsync();
 /** Mirrors RNTP state into the player store. Renders nothing. */
 function PlaybackSync() {
   usePlaybackSync();
+  return null;
+}
+
+/** Owns the visualizer on/off gate (foreground + playing + motion). Renders nothing. */
+function ScopeLifecycle() {
+  useScopeLifecycle();
   return null;
 }
 
@@ -59,6 +66,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <PlaybackSync />
+        <ScopeLifecycle />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -68,7 +76,12 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="now-playing"
-            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+            options={{
+              presentation: 'transparentModal',
+              animation: 'none',
+              gestureEnabled: false,
+              contentStyle: { backgroundColor: 'transparent' },
+            }}
           />
         </Stack>
       </SafeAreaProvider>

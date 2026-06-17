@@ -1,17 +1,25 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { View, Pressable, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
-import { colors, layout, radius, spacing } from '@/theme';
+import { SpectrumCurve } from './SpectrumCurve';
+import { colors, radius, spacing } from '@/theme';
 import { usePlayerStore } from '@/stores/playerStore';
-import { togglePlay } from '@/audio/playbackController';
+import { skipToNext, togglePlay } from '@/audio/playbackController';
+import { useScopeActive } from '@/scope/scopeStore';
+import { useSpectrumCurve } from '@/scope/useSpectrumCurve';
+
+const PILL_HEIGHT = 56;
+const ART = 42;
+const CURVE_POINTS = 64;
 
 /**
- * Persistent mini-player, rendered above the tab bar. Tapping the bar opens the
- * full now-playing screen. The artwork box is where the spectrum "pulse"
- * is-playing indicator will live at M3.
+ * Persistent floating mini-player (M3 redesign): a rounded pill above the tab
+ * bar with the live filled-line spectrum drifting behind the metadata. Tapping
+ * opens the full now-playing screen.
  */
 export function MiniPlayer() {
   const router = useRouter();
@@ -20,24 +28,38 @@ export function MiniPlayer() {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
 
+  const scopeActive = useScopeActive();
+  const values = useSpectrumCurve(CURVE_POINTS, scopeActive);
+  const [pillWidth, setPillWidth] = useState(0);
+
   if (!track) return null;
 
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
+  const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
 
-      <Pressable style={styles.row} onPress={() => router.push('/now-playing')}>
+  return (
+    <Pressable style={styles.pill} onPress={() => router.push('/now-playing')} onLayout={onLayout}>
+      {scopeActive && pillWidth > 0 && (
+        <View pointerEvents="none" style={styles.spectrum}>
+          <SpectrumCurve
+            values={values}
+            width={pillWidth}
+            height={PILL_HEIGHT}
+            lineWidth={1.5}
+            fillOpacity={0.5}
+          />
+        </View>
+      )}
+
+      <View style={styles.row}>
         <View style={styles.art}>
           {track.artworkData ? (
             <Image source={{ uri: track.artworkData }} style={styles.artImage} contentFit="cover" />
           ) : (
-            <AstraLogo size={22} />
+            <AstraLogo size={20} />
           )}
         </View>
 
@@ -50,45 +72,56 @@ export function MiniPlayer() {
           </Text>
         </View>
 
-        <Pressable hitSlop={12} onPress={togglePlay} style={styles.playButton}>
+        <Pressable hitSlop={10} onPress={togglePlay} style={styles.control}>
           <Ionicons
             name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-            size={26}
+            size={24}
             color={colors.accent}
           />
         </Pressable>
-      </Pressable>
-    </View>
+        <Pressable hitSlop={10} onPress={skipToNext} style={styles.control}>
+          <Ionicons name="play-skip-forward" size={22} color={colors.textPrimary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    height: layout.miniPlayerHeight,
-    backgroundColor: colors.bgSecondary,
-    borderTopColor: colors.glassBorder,
-    borderTopWidth: StyleSheet.hairlineWidth,
+  pill: {
+    height: PILL_HEIGHT,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    justifyContent: 'center',
   },
-  progressTrack: {
-    height: 2,
-    backgroundColor: colors.glassBorder,
-  },
-  progressFill: {
-    height: 2,
-    backgroundColor: colors.accent,
+  spectrum: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   row: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
   },
   art: {
-    width: 44,
-    height: 44,
+    width: ART,
+    height: ART,
     borderRadius: radius.sm,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: colors.bgSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -103,11 +136,23 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
   },
-  playButton: {
-    width: 40,
-    height: 40,
+  control: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  progressTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 2,
+    backgroundColor: colors.glassBorder,
+  },
+  progressFill: {
+    height: 2,
+    backgroundColor: colors.accent,
   },
 });
 

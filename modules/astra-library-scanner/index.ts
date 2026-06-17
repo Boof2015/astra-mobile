@@ -55,6 +55,11 @@ type AstraLibraryScannerEvents = {
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
   listAudioFiles(treeUri: string, extensions: string[]): Promise<ListResult>;
   extractMetadata(files: { uri: string; coverUri?: string | null }[]): Promise<ExtractedMetadata[]>;
+  /**
+   * Decode the file's PCM and return `bins` RMS peaks normalized to [0,1] for
+   * the waveform seek bar. Whole-file decode (heavy); returns [] on failure.
+   */
+  extractWaveform(uri: string, bins: number): Promise<number[]>;
   getArtworkDirPath(): string;
   getPersistedTreeUris(): string[];
   takePersistableUriPermission(uri: string): Promise<boolean>;

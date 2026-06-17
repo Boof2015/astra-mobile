@@ -1,32 +1,33 @@
 /**
- * Astra color tokens — ported from desktop `src/renderer/styles/globals.css`.
- * Dark-only on mobile (the desktop app is dark-only too).
+ * Astra color tokens. Dark-only. M3 redesign shifted the palette from
+ * cyan-on-black toward a softer indigo-on-navy "mobile-first" language; these
+ * tokens are the single source of truth, so a future theming pass can swap them.
  */
 export const colors = {
-  // Base backgrounds
-  bgPrimary: '#000000',
-  bgSecondary: '#050505',
-  bgTertiary: '#0a0a0a',
+  // Base backgrounds (navy)
+  bgPrimary: '#080a0f',
+  bgSecondary: '#0c0f18',
+  bgTertiary: '#11162a',
 
-  // Glass / surface overlays (white alphas)
-  glassBg: 'rgba(255, 255, 255, 0.03)',
-  glassBorder: 'rgba(255, 255, 255, 0.08)',
-  glassHighlight: 'rgba(255, 255, 255, 0.05)',
+  // Glass / surface overlays (subtle blue-tinted alphas)
+  glassBg: 'rgba(124, 146, 196, 0.05)',
+  glassBorder: 'rgba(124, 146, 196, 0.16)',
+  glassHighlight: 'rgba(140, 162, 208, 0.08)',
 
-  // Text (white alphas)
-  textPrimary: 'rgba(255, 255, 255, 0.95)',
-  textSecondary: 'rgba(255, 255, 255, 0.6)',
-  textTertiary: 'rgba(255, 255, 255, 0.4)',
+  // Text (blue-tinted neutrals)
+  textPrimary: '#e2e8f4',
+  textSecondary: '#8a98b8',
+  textTertiary: '#52607f',
 
   // Warning amber (desktop .graph-meta-chip-warning)
   warning: '#f3d27d',
 
-  // Cyan accent
-  accent: '#38bdf8',
-  accentHover: '#7dd3fc',
-  accentGlow: 'rgba(56, 189, 248, 0.3)',
-  accentText: '#bae6fd',
-  accentTextStrong: '#e0f2fe',
+  // Indigo accent
+  accent: '#5b8aff',
+  accentHover: '#82a6ff',
+  accentGlow: 'rgba(91, 138, 255, 0.3)',
+  accentText: '#a9c0ff',
+  accentTextStrong: '#d6e2ff',
 
   // Astra mark fills (hsl(198 …) from the desktop logo)
   logoMain: '#00b3ff', // hsl(198 100% 50%)

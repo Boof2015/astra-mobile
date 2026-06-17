@@ -2,11 +2,13 @@
 // src/main/services/library.ts). v1 covers M1 (local scan + browse);
 // v2 adds playlists + favorites (M2); v3 forces re-extraction of tracks whose
 // non-ASCII tags were truncated by the pre-fix op-sqlite binding (see database.ts);
-// v4 adds a key-value settings table (artist grouping mode, future prefs).
+// v4 adds a key-value settings table (artist grouping mode, future prefs);
+// v5 caches offline waveform peaks for the M3 waveform seek bar; v6 repairs DBs
+// that an abandoned earlier M3 spike left at v5 with a stale `waveform_cache`.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 6;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -89,6 +91,29 @@ const MIGRATIONS: readonly (readonly string[])[] = [
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     )`,
+  ],
+  // v4 -> v5 — cached waveform peaks (offline RMS bins) for the seek bar.
+  // Keyed by track path (SAF URI), no FK — survives folder removal/re-grant
+  // like favorites/playlists. `peaks` is a tightly-packed Float32 LE blob.
+  [
+    `CREATE TABLE IF NOT EXISTS waveform_peaks (
+      track_path TEXT PRIMARY KEY NOT NULL,
+      bins INTEGER NOT NULL,
+      peaks BLOB NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+  ],
+  // v5 -> v6 — repair: an abandoned earlier M3 spike shipped a v5 that created a
+  // different `waveform_cache` table, leaving such DBs at v5 without the
+  // `waveform_peaks` table above. Create it if missing and drop the orphan.
+  [
+    `CREATE TABLE IF NOT EXISTS waveform_peaks (
+      track_path TEXT PRIMARY KEY NOT NULL,
+      bins INTEGER NOT NULL,
+      peaks BLOB NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `DROP TABLE IF EXISTS waveform_cache`,
   ],
 ];
 

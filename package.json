@@ -9,6 +9,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@op-engineering/op-sqlite": "^16.2.1",
     "@shopify/flash-list": "2.0.2",
+    "@shopify/react-native-skia": "2.6.2",
     "encoding-japanese": "^2.2.0",
     "expo": "~56.0.4",
     "expo-asset": "~56.0.14",

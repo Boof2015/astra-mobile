@@ -1,0 +1,35 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.astrascope'
+version = '0.1.0'
+
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+}
+
+android {
+  namespace "expo.modules.astrascope"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    externalNativeBuild {
+      cmake {
+        cppFlags "-O3 -std=c++17 -fexceptions -frtti"
+        abiFilters(*reactNativeArchitectures())
+        arguments "-DANDROID_STL=c++_shared"
+      }
+    }
+  }
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+  lintOptions {
+    abortOnError false
+  }
+}

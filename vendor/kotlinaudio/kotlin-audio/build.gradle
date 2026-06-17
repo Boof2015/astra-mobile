@@ -1,0 +1,42 @@
+// Vendored fork of com.github.doublesymmetry:kotlinaudio v2.1.0 (Apache-2.0).
+// Substituted in for the Jitpack binary so we can inject a PCM-tap AudioProcessor
+// into the ExoPlayer it builds (see players/BaseAudioPlayer.kt + scope/). The
+// ONLY source change vs upstream v2.1.0 is the single .setRenderersFactory(...)
+// line in BaseAudioPlayer's init and the new scope/ package. Keep that diff
+// minimal so re-vendoring on a kotlin-audio bump stays mechanical.
+
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+}
+
+android {
+  namespace = "com.doublesymmetry.kotlinaudio"
+  compileSdk rootProject.ext.compileSdkVersion
+
+  defaultConfig {
+    minSdk rootProject.ext.minSdkVersion
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation 'io.coil-kt:coil:2.2.0'
+  implementation 'androidx.media:media:1.6.0'
+  api 'com.google.android.exoplayer:exoplayer:2.19.0'
+  api 'com.google.android.exoplayer:extension-mediasession:2.19.0'
+  api 'com.jakewharton.timber:timber:5.0.1'
+
+  // The PCM tap forwards to expo.modules.astrascope.ScopeBridge.
+  implementation project(':astra-scope')
+}
