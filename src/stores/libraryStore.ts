@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
 import { openLibraryDb } from '@/db/database';
 import { getAlbums, getAllTracks, getTrackCount } from '@/db/queries';
+import { ensureArtworkThumbnails } from '@/library/artwork';
 import { buildArtistList } from '@/library/artistGrouping';
 import {
   addFolderViaPicker,
@@ -123,6 +124,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         loadFolders(),
         getTrackCount(db),
       ]);
+      try {
+        await ensureArtworkThumbnails(tracks.map((track) => track.artwork_hash));
+      } catch {
+        // Missing thumbnails should not prevent the library itself from loading.
+      }
       // The artist list is derived in JS so it can honor the grouping mode.
       const artists = buildArtistList(tracks, useSettingsStore.getState().artistGroupingMode);
       set({ tracks, albums, artists, folders, totalTrackCount });

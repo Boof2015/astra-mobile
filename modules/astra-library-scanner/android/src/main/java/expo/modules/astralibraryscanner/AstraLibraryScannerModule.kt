@@ -2,6 +2,8 @@ package expo.modules.astralibraryscanner
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -29,6 +31,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 class FileRequest : Record {
   @Field val uri: String = ""
@@ -36,6 +39,8 @@ class FileRequest : Record {
 }
 
 class AstraLibraryScannerModule : Module() {
+  private val artworkThumbSize = 128
+
   // Cover-art hashes memoized per cover URI for the duration of one scan
   // (cleared on each listAudioFiles call) so an album folder's cover.jpg is
   // read and hashed once, not once per track.
@@ -75,6 +80,14 @@ class AstraLibraryScannerModule : Module() {
       artworkDir().absolutePath
     }
 
+    Function("getArtworkThumbDirPath") {
+      artworkThumbDir().absolutePath
+    }
+
+    AsyncFunction("ensureArtworkThumbnails") Coroutine { hashes: List<String> ->
+      withContext(Dispatchers.IO) { ensureArtworkThumbnails(hashes) }
+    }
+
     Function("getPersistedTreeUris") {
       requireContext().contentResolver.persistedUriPermissions
         .filter { it.isReadPermission }
@@ -110,6 +123,9 @@ class AstraLibraryScannerModule : Module() {
 
   private fun artworkDir(): File =
     File(requireContext().filesDir, "artwork").apply { if (!exists()) mkdirs() }
+
+  private fun artworkThumbDir(): File =
+    File(requireContext().filesDir, "artwork-thumbs").apply { if (!exists()) mkdirs() }
 
   // ---------------------------------------------------------------------------
   // Directory walk
@@ -487,13 +503,113 @@ class AstraLibraryScannerModule : Module() {
     val fileName = md5Hex(bytes) + sniffImageExtension(bytes)
     val target = File(artworkDir(), fileName)
     if (!target.exists()) {
-      val temp = File(artworkDir(), "$fileName.tmp-${Thread.currentThread().id}")
+      val temp = File(artworkDir(), "$fileName.tmp-${System.nanoTime()}")
       temp.writeBytes(bytes)
       if (!temp.renameTo(target)) {
         temp.delete()
       }
     }
+    writeArtworkThumbnailFromBytes(bytes, fileName)
     return fileName
+  }
+
+  private fun ensureArtworkThumbnails(hashes: List<String>): Int {
+    var generated = 0
+    val seen = mutableSetOf<String>()
+    for (hash in hashes) {
+      val cleanHash = hash.trim()
+      if (cleanHash.isEmpty() || !seen.add(cleanHash)) continue
+
+      val thumb = File(artworkThumbDir(), artworkThumbFileName(cleanHash))
+      if (thumb.exists()) continue
+
+      val source = File(artworkDir(), cleanHash)
+      if (!source.exists()) continue
+
+      val bitmap = decodeSampledBitmap(source) ?: continue
+      if (writeThumbnail(bitmap, thumb)) generated += 1
+    }
+    return generated
+  }
+
+  private fun writeArtworkThumbnailFromBytes(bytes: ByteArray, artworkHash: String): Boolean {
+    val thumb = File(artworkThumbDir(), artworkThumbFileName(artworkHash))
+    if (thumb.exists()) return false
+    val bitmap = decodeSampledBitmap(bytes) ?: return false
+    return writeThumbnail(bitmap, thumb)
+  }
+
+  private fun artworkThumbFileName(artworkHash: String): String {
+    val stem = artworkHash.substringBeforeLast('.', artworkHash)
+    return "$stem.jpg"
+  }
+
+  private fun decodeSampledBitmap(source: File): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(source.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val options = BitmapFactory.Options().apply {
+      inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight)
+      inPreferredConfig = Bitmap.Config.RGB_565
+    }
+    return BitmapFactory.decodeFile(source.absolutePath, options)
+  }
+
+  private fun decodeSampledBitmap(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val options = BitmapFactory.Options().apply {
+      inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight)
+      inPreferredConfig = Bitmap.Config.RGB_565
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+  }
+
+  private fun calculateInSampleSize(width: Int, height: Int): Int {
+    var sample = 1
+    val largest = max(width, height)
+    val decodeBound = artworkThumbSize * 2
+    while (largest / sample > decodeBound) {
+      sample *= 2
+    }
+    return sample
+  }
+
+  private fun writeThumbnail(bitmap: Bitmap, target: File): Boolean {
+    val thumb = scaleThumbnail(bitmap)
+    val temp = File(artworkThumbDir(), "${target.name}.tmp-${System.nanoTime()}")
+    var wrote = false
+    try {
+      temp.outputStream().use { out ->
+        wrote = thumb.compress(Bitmap.CompressFormat.JPEG, 84, out)
+      }
+      if (!wrote || target.exists()) {
+        temp.delete()
+        return false
+      }
+      if (!temp.renameTo(target)) {
+        temp.delete()
+        return false
+      }
+      return true
+    } finally {
+      if (temp.exists() && !wrote) temp.delete()
+      if (thumb !== bitmap && !bitmap.isRecycled) bitmap.recycle()
+      if (!thumb.isRecycled) thumb.recycle()
+    }
+  }
+
+  private fun scaleThumbnail(bitmap: Bitmap): Bitmap {
+    val largest = max(bitmap.width, bitmap.height)
+    if (largest <= artworkThumbSize) return bitmap
+
+    val scale = artworkThumbSize.toFloat() / largest
+    val width = max(1, (bitmap.width * scale).roundToInt())
+    val height = max(1, (bitmap.height * scale).roundToInt())
+    return Bitmap.createScaledBitmap(bitmap, width, height, true)
   }
 
   private fun md5Hex(bytes: ByteArray): String =

@@ -1,9 +1,16 @@
+import { useState } from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
+import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 import { formatDuration } from '@/lib/format';
+import { artworkThumbUri } from '@/library/artwork';
 import type { DbTrack } from '@/types/library';
+
+const ART_SIZE = 44;
+const ROW_MIN_HEIGHT = ART_SIZE + (spacing.sm + 2) * 2;
 
 export function TrackRow({
   track,
@@ -20,6 +27,12 @@ export function TrackRow({
   showArtist?: boolean;
   active?: boolean;
 }) {
+  const artworkHash = track.artwork_hash;
+  const [failedArtworkHash, setFailedArtworkHash] = useState<string | null>(null);
+
+  const thumbUri =
+    artworkHash && failedArtworkHash !== artworkHash ? artworkThumbUri(artworkHash) : null;
+
   return (
     <Pressable
       style={styles.row}
@@ -27,9 +40,26 @@ export function TrackRow({
       onLongPress={onLongPress}
       accessibilityRole="button"
     >
-      {track.track_number != null && !showArtist ? (
+      <View style={styles.art}>
+        {thumbUri ? (
+          <Image
+            source={{ uri: thumbUri }}
+            style={styles.artImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={artworkHash}
+            transition={null}
+            allowDownscaling
+            onError={() => setFailedArtworkHash(artworkHash)}
+          />
+        ) : (
+          <AstraLogo size={18} />
+        )}
+      </View>
+
+      {!showArtist ? (
         <Text variant="mono" style={styles.trackNumber}>
-          {track.track_number}
+          {track.track_number ?? ''}
         </Text>
       ) : null}
 
@@ -68,19 +98,38 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: ROW_MIN_HEIGHT,
     paddingVertical: spacing.sm + 2,
     gap: spacing.md,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  art: {
+    width: ART_SIZE,
+    height: ART_SIZE,
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  artImage: {
+    width: '100%',
+    height: '100%',
+  },
   trackNumber: {
     width: 24,
+    flexShrink: 0,
     fontSize: 12,
     color: colors.textTertiary,
     textAlign: 'right',
   },
   meta: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   title: {
@@ -93,7 +142,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   duration: {
+    minWidth: 42,
+    flexShrink: 0,
     fontSize: 12,
     color: colors.textTertiary,
+    textAlign: 'right',
   },
 });

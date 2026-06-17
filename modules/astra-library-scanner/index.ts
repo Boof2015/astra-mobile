@@ -61,6 +61,8 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    */
   extractWaveform(uri: string, bins: number): Promise<number[]>;
   getArtworkDirPath(): string;
+  getArtworkThumbDirPath(): string;
+  ensureArtworkThumbnails(hashes: string[]): Promise<number>;
   getPersistedTreeUris(): string[];
   takePersistableUriPermission(uri: string): Promise<boolean>;
   releasePersistedUriPermission(uri: string): Promise<void>;
