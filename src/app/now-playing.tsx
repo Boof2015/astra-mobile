@@ -34,10 +34,15 @@ const SUB_CONTROLS: { icon: IconName; label: string }[] = [
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
 
-const MAX_CONTENT_WIDTH = 390;
+const MAX_CONTENT_WIDTH = 408;
+const CONTENT_SIDE_PADDING = spacing.lg;
+const NARROW_CONTENT_SIDE_PADDING = spacing.md;
 const MEDIA_AREA_MIN = 220;
 const MEDIA_AREA_MAX = 360;
 const ART_SIZE_MAX = 340;
+const SCOPE_HEIGHT_MIN = 150;
+const SCOPE_HEIGHT_MAX = 220;
+const SCOPE_HEIGHT_RATIO = 9 / 16;
 const HEADER_HEIGHT = 32;
 const CONTENT_TOP_PADDING = spacing.sm;
 const CONTENT_BOTTOM_PADDING = spacing.lg;
@@ -63,6 +68,8 @@ interface NowPlayingLayout {
   contentWidth: number;
   mediaHeight: number;
   artSize: number;
+  scopeWidth: number;
+  scopeHeight: number;
   mediaTopMargin: number;
   mediaBottomGap: number;
   showSecondaryControls: boolean;
@@ -73,7 +80,8 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function getNowPlayingLayout(windowWidth: number, availableHeight: number): NowPlayingLayout {
-  const contentPadding = windowWidth < 360 ? spacing.lg : spacing.xl;
+  const contentPadding =
+    windowWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
   const contentWidth = Math.max(0, Math.min(windowWidth - contentPadding * 2, MAX_CONTENT_WIDTH));
   const mediaMax = Math.min(contentWidth, MEDIA_AREA_MAX);
   const mediaMin = Math.min(mediaMax, MEDIA_AREA_MIN);
@@ -96,12 +104,19 @@ function getNowPlayingLayout(windowWidth: number, availableHeight: number): NowP
   const heightBoundMedia = availableHeight - fixedHeight;
   const mediaHeight = Math.round(clamp(heightBoundMedia, mediaMin, mediaMax));
   const artSize = Math.min(mediaHeight, ART_SIZE_MAX);
+  const scopeWidth = contentWidth;
+  const scopeHeight = Math.min(
+    mediaHeight,
+    Math.round(clamp(scopeWidth * SCOPE_HEIGHT_RATIO, SCOPE_HEIGHT_MIN, SCOPE_HEIGHT_MAX))
+  );
 
   return {
     contentPadding,
     contentWidth,
     mediaHeight,
     artSize,
+    scopeWidth,
+    scopeHeight,
     mediaTopMargin,
     mediaBottomGap,
     showSecondaryControls,
@@ -228,17 +243,18 @@ export default function NowPlayingScreen() {
                       style={[
                         styles.scopeSurface,
                         {
-                          width: layout.contentWidth,
-                          height: layout.mediaHeight,
+                          width: layout.scopeWidth,
+                          height: layout.scopeHeight,
                         },
                       ]}
                     >
                       <Visualizer
-                        width={layout.contentWidth}
-                        height={layout.mediaHeight}
+                        width={layout.scopeWidth}
+                        height={layout.scopeHeight}
                         interactive={false}
                         showChrome={false}
                         mode="spectrum"
+                        edgeFade
                       />
                     </View>
                   ) : (

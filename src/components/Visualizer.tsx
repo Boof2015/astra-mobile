@@ -18,6 +18,7 @@ interface VisualizerProps {
   interactive?: boolean;
   showChrome?: boolean;
   mode?: Mode;
+  edgeFade?: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export function Visualizer({
   interactive = true,
   showChrome = true,
   mode: controlledMode,
+  edgeFade = false,
 }: VisualizerProps) {
   const [uncontrolledMode, setUncontrolledMode] = useState<Mode>('spectrum');
   const mode = controlledMode ?? uncontrolledMode;
@@ -56,7 +58,7 @@ export function Visualizer({
 
       <View style={{ width, height }}>
         {mode === 'spectrum' ? (
-          <SpectrumCurve values={values} width={width} height={height} glow />
+          <SpectrumCurve values={values} width={width} height={height} glow edgeFade={edgeFade} />
         ) : (
           <View style={styles.placeholder}>
             <Ionicons name="pulse-outline" size={20} color={colors.textTertiary} />

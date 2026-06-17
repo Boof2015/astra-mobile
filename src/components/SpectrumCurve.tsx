@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Canvas, Group, LinearGradient, Path, Skia, vec } from '@shopify/react-native-skia';
+import { Canvas, Group, LinearGradient, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { colors } from '@/theme';
 
 interface SpectrumCurveProps {
@@ -14,6 +14,10 @@ interface SpectrumCurveProps {
   fillOpacity?: number;
   /** Adds a soft wider stroke under the line for a glow. */
   glow?: boolean;
+  /** Fades the left/right edges into the background so stage views do not end abruptly. */
+  edgeFade?: boolean;
+  edgeFadeColor?: string;
+  edgeFadeWidth?: number;
 }
 
 /** #rrggbb -> rgba() with the given alpha. */
@@ -69,6 +73,9 @@ export function SpectrumCurve({
   lineWidth = 2,
   fillOpacity = 1,
   glow = false,
+  edgeFade = false,
+  edgeFadeColor = colors.bgPrimary,
+  edgeFadeWidth = 28,
 }: SpectrumCurveProps) {
   const pad = lineWidth;
   const { line, fill } = useMemo(
@@ -107,6 +114,24 @@ export function SpectrumCurve({
         strokeCap="round"
         color={color}
       />
+      {edgeFade && (
+        <>
+          <Rect x={0} y={0} width={edgeFadeWidth} height={height}>
+            <LinearGradient
+              start={vec(0, 0)}
+              end={vec(edgeFadeWidth, 0)}
+              colors={[edgeFadeColor, withAlpha(edgeFadeColor, 0)]}
+            />
+          </Rect>
+          <Rect x={width - edgeFadeWidth} y={0} width={edgeFadeWidth} height={height}>
+            <LinearGradient
+              start={vec(width - edgeFadeWidth, 0)}
+              end={vec(width, 0)}
+              colors={[withAlpha(edgeFadeColor, 0), edgeFadeColor]}
+            />
+          </Rect>
+        </>
+      )}
     </Canvas>
   );
 }
