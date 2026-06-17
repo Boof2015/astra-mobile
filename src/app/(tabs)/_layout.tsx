@@ -1,10 +1,14 @@
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
+import { colors } from '@/theme';
 
 export default function TabsLayout() {
   return (
     <Tabs
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: { backgroundColor: colors.bgPrimary },
+      }}
       tabBar={({ state, navigation }) => {
         const items: TabItem[] = state.routes.map((route, index) => ({
           key: route.key,
