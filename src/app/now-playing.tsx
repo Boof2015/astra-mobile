@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -11,25 +11,26 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
+import { QueueTray } from '@/components/queue/QueueTray';
 import { colors, radius, spacing } from '@/theme';
+import { motion } from '@/theme/motion';
 import { usePlayerStore } from '@/stores/playerStore';
-import { seekTo, skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
-
-type IconName = keyof typeof Ionicons.glyphMap;
-
-// Secondary controls are placeholders for now — laid out to settle the design.
-const SUB_CONTROLS: { icon: IconName; label: string }[] = [
-  { icon: 'shuffle', label: 'Shuffle' },
-  { icon: 'heart-outline', label: 'Favorite' },
-  { icon: 'list-outline', label: 'Queue' },
-  { icon: 'repeat', label: 'Repeat' },
-];
+import { usePlaylistStore } from '@/stores/playlistStore';
+import {
+  cycleRepeat,
+  seekTo,
+  skipToNext,
+  skipToPrevious,
+  togglePlay,
+  toggleShuffle,
+} from '@/audio/playbackController';
 
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
@@ -128,10 +129,15 @@ export default function NowPlayingScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [showScopeStage, setShowScopeStage] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
+  const shuffle = usePlayerStore((s) => s.shuffle);
+  const repeat = usePlayerStore((s) => s.repeat);
+  const isFavorite = usePlaylistStore((s) => (track ? s.favoritePaths.has(track.path) : false));
+  const toggleFavorite = usePlaylistStore((s) => s.toggleFavorite);
 
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
@@ -182,7 +188,7 @@ export default function NowPlayingScreen() {
           }
         );
       } else {
-        translateY.value = withSpring(0, { damping: 20, stiffness: 220 });
+        translateY.value = withTiming(0, motion.snap);
       }
     });
 
@@ -334,20 +340,65 @@ export default function NowPlayingScreen() {
 
                   {layout.showSecondaryControls && (
                     <View style={styles.subRow}>
-                      {SUB_CONTROLS.map((c) => (
-                        <Pressable
-                          key={c.label}
-                          hitSlop={10}
-                          style={styles.subBtn}
-                          accessibilityLabel={c.label}
-                        >
-                          <Ionicons
-                            name={c.icon}
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => void toggleShuffle()}
+                        accessibilityLabel="Shuffle"
+                        accessibilityState={{ selected: shuffle }}
+                      >
+                        <Ionicons
+                          name="shuffle"
+                          size={SUB_ICON_SIZE}
+                          color={shuffle ? colors.accent : colors.textTertiary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => void toggleFavorite(track)}
+                        accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        accessibilityState={{ selected: isFavorite }}
+                      >
+                        <Ionicons
+                          name={isFavorite ? 'heart' : 'heart-outline'}
+                          size={SUB_ICON_SIZE}
+                          color={isFavorite ? colors.accent : colors.textTertiary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => setQueueOpen(true)}
+                        accessibilityLabel="Queue"
+                      >
+                        <Ionicons
+                          name="list-outline"
+                          size={SUB_ICON_SIZE}
+                          color={colors.textTertiary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => void cycleRepeat()}
+                        accessibilityLabel="Repeat"
+                        accessibilityState={{ selected: repeat !== 'none' }}
+                      >
+                        {repeat === 'one' ? (
+                          <MaterialCommunityIcons
+                            name="repeat-once"
                             size={SUB_ICON_SIZE}
-                            color={colors.textTertiary}
+                            color={colors.accent}
                           />
-                        </Pressable>
-                      ))}
+                        ) : (
+                          <Ionicons
+                            name="repeat"
+                            size={SUB_ICON_SIZE}
+                            color={repeat === 'all' ? colors.accent : colors.textTertiary}
+                          />
+                        )}
+                      </Pressable>
                     </View>
                   )}
                 </View>
@@ -363,6 +414,7 @@ export default function NowPlayingScreen() {
           </View>
         </Animated.View>
       </GestureDetector>
+      {queueOpen && <QueueTray onClose={() => setQueueOpen(false)} />}
     </View>
   );
 }

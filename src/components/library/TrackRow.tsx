@@ -4,9 +4,12 @@ import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
+import { SwipeableRow } from '@/components/SwipeableRow';
 import { colors, radius, spacing } from '@/theme';
 import { formatDuration } from '@/lib/format';
 import { artworkThumbUri } from '@/library/artwork';
+import { dbTrackToTrack } from '@/library/trackAdapter';
+import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
 import type { DbTrack } from '@/types/library';
 
 const ART_SIZE = 44;
@@ -18,6 +21,7 @@ export function TrackRow({
   onLongPress,
   showArtist = true,
   active = false,
+  swipeToQueue = true,
 }: {
   track: DbTrack;
   onPress: () => void;
@@ -26,6 +30,8 @@ export function TrackRow({
   /** Hide on album detail where every row shares the artist. */
   showArtist?: boolean;
   active?: boolean;
+  /** Swipe right → play next, swipe left → add to queue. Off in queue-like lists. */
+  swipeToQueue?: boolean;
 }) {
   const artworkHash = track.artwork_hash;
   const [failedArtworkHash, setFailedArtworkHash] = useState<string | null>(null);
@@ -33,7 +39,7 @@ export function TrackRow({
   const thumbUri =
     artworkHash && failedArtworkHash !== artworkHash ? artworkThumbUri(artworkHash) : null;
 
-  return (
+  const row = (
     <Pressable
       style={styles.row}
       onPress={onPress}
@@ -92,6 +98,26 @@ export function TrackRow({
       </Text>
     </Pressable>
   );
+
+  if (!swipeToQueue) return row;
+
+  return (
+    <SwipeableRow
+      swipeRight={{
+        icon: 'play',
+        color: colors.accent,
+        onCommit: () => void enqueueTop(dbTrackToTrack(track)),
+      }}
+      swipeLeft={{
+        icon: 'list',
+        color: colors.bgTertiary,
+        iconColor: colors.accentText,
+        onCommit: () => void enqueueEnd(dbTrackToTrack(track)),
+      }}
+    >
+      {row}
+    </SwipeableRow>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -101,6 +127,8 @@ const styles = StyleSheet.create({
     minHeight: ROW_MIN_HEIGHT,
     paddingVertical: spacing.sm + 2,
     gap: spacing.md,
+    // Opaque so the swipe action lane only shows where the row has slid away.
+    backgroundColor: colors.bgPrimary,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

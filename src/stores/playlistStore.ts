@@ -46,7 +46,8 @@ interface PlaylistStore {
   addTracksToPlaylist: (id: number, tracks: DbTrack[]) => Promise<number>;
   removeFromPlaylist: (id: number, trackPath: string) => Promise<void>;
   moveTrack: (id: number, trackPath: string, direction: -1 | 1) => Promise<void>;
-  toggleFavorite: (track: DbTrack) => Promise<void>;
+  // Only the path is read; accepts a library DbTrack or the now-playing Track.
+  toggleFavorite: (track: { path: string }) => Promise<void>;
   markPlayed: (id: number) => Promise<void>;
   importM3u: () => Promise<M3uImportSummary | null>;
   exportM3u: (target: number | 'favorites') => Promise<M3uExportResult | null>;
