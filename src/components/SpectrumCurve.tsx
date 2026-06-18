@@ -29,8 +29,10 @@ interface SpectrumCurveProps {
   tiltDbPerOctave?: number;
   color?: string;
   lineWidth?: number;
+  lineOpacity?: number;
   fillOpacity?: number;
   glow?: boolean;
+  glowOpacity?: number;
   edgeFade?: boolean;
   edgeFadeColor?: string;
   edgeFadeWidth?: number;
@@ -145,8 +147,10 @@ function buildPicture(
   height: number,
   color: string,
   lineWidth: number,
+  lineOpacity: number,
   fillOpacity: number,
   glow: boolean,
+  glowOpacity: number,
   edgeFade: boolean,
   edgeFadeColor: string,
   edgeFadeWidth: number
@@ -158,9 +162,9 @@ function buildPicture(
   if (values.length >= 2 && width > 0 && height > 0) {
     canvas.drawPath(fill, makeFillPaint(color, height, fillOpacity));
     if (glow) {
-      canvas.drawPath(line, makeStrokePaint(color, lineWidth * 3, 0.18));
+      canvas.drawPath(line, makeStrokePaint(color, lineWidth * 3, glowOpacity));
     }
-    canvas.drawPath(line, makeStrokePaint(color, lineWidth));
+    canvas.drawPath(line, makeStrokePaint(color, lineWidth, lineOpacity));
   }
 
   if (edgeFade && width > 0 && height > 0 && edgeFadeWidth > 0) {
@@ -296,8 +300,10 @@ export function SpectrumCurve({
   tiltDbPerOctave = TILT_DB_PER_OCT,
   color = colors.accent,
   lineWidth = 2,
+  lineOpacity = 1,
   fillOpacity = 1,
   glow = false,
+  glowOpacity = 0.18,
   edgeFade = false,
   edgeFadeColor = colors.bgPrimary,
   edgeFadeWidth = 28,
@@ -317,13 +323,28 @@ export function SpectrumCurve({
         Math.max(1, height),
         color,
         lineWidth,
+        lineOpacity,
         fillOpacity,
         glow,
+        glowOpacity,
         edgeFade,
         edgeFadeColor,
         edgeFadeWidth
       ),
-    [color, edgeFade, edgeFadeColor, edgeFadeWidth, fillOpacity, glow, height, lineWidth, staticValues, width]
+    [
+      color,
+      edgeFade,
+      edgeFadeColor,
+      edgeFadeWidth,
+      fillOpacity,
+      glow,
+      glowOpacity,
+      height,
+      lineOpacity,
+      lineWidth,
+      staticValues,
+      width,
+    ]
   );
 
   useEffect(() => {
@@ -350,8 +371,10 @@ export function SpectrumCurve({
         height,
         color,
         lineWidth,
+        lineOpacity,
         fillOpacity,
         glow,
+        glowOpacity,
         edgeFade,
         edgeFadeColor,
         edgeFadeWidth
@@ -397,7 +420,9 @@ export function SpectrumCurve({
     fillOpacity,
     frameMs,
     glow,
+    glowOpacity,
     height,
+    lineOpacity,
     lineWidth,
     resolvedPointCount,
     tiltDbPerOctave,

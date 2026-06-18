@@ -50,12 +50,15 @@ export function MiniPlayer() {
             dbMax={-20}
             width={pillWidth}
             height={PILL_HEIGHT}
-            lineWidth={1.5}
-            fillOpacity={0.75}
+            lineWidth={1.25}
+            lineOpacity={0.38}
+            fillOpacity={0.3}
             glow
+            glowOpacity={0.06}
           />
         </View>
       )}
+      {scopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
 
       <View style={styles.row}>
         <View style={styles.art}>
@@ -113,6 +116,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  spectrumVeil: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(8, 10, 15, 0.24)',
   },
   row: {
     flexDirection: 'row',
