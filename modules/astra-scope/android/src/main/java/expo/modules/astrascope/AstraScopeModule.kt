@@ -24,5 +24,10 @@ class AstraScopeModule : Module() {
     Function("getSpectrumFrame") { out: Float32Array ->
       ScopeBridge.nativeFillSpectrum(out.toDirectBuffer(), out.length)
     }
+
+    // Fill `out` with render-ready oscilloscope points (~[-1,1]).
+    Function("getOscilloscopeFrame") { out: Float32Array ->
+      ScopeBridge.nativeFillOscilloscope(out.toDirectBuffer(), out.length)
+    }
   }
 }

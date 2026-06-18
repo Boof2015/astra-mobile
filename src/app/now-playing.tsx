@@ -23,6 +23,7 @@ import { colors, radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   cycleRepeat,
   seekTo,
@@ -130,6 +131,7 @@ export default function NowPlayingScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [showScopeStage, setShowScopeStage] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const scopeMode = useSettingsStore((s) => s.scopeMode);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -259,9 +261,30 @@ export default function NowPlayingScreen() {
                         height={layout.scopeHeight}
                         interactive={false}
                         showChrome={false}
-                        mode="spectrum"
+                        mode={scopeMode}
                         edgeFade
                       />
+                      {/* Nested Pressable: RN grants the responder to this
+                          button, so a swap tap does not also collapse the
+                          stage (the outer Pressable's onPress won't fire). */}
+                      <Pressable
+                        onPress={() =>
+                          useSettingsStore
+                            .getState()
+                            .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum')
+                        }
+                        hitSlop={12}
+                        style={styles.scopeSwap}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Showing ${
+                          scopeMode === 'spectrum' ? 'spectrum' : 'oscilloscope'
+                        }. Tap to switch.`}
+                      >
+                        <Text variant="caption" style={styles.scopeSwapLabel}>
+                          {scopeMode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
+                        </Text>
+                        <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
+                      </Pressable>
                     </View>
                   ) : (
                     <View
@@ -475,6 +498,19 @@ const styles = StyleSheet.create({
   scopeSurface: {
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  scopeSwap: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  scopeSwapLabel: {
+    color: colors.textTertiary,
+    letterSpacing: 1.5,
+    fontSize: 10,
   },
   artImage: {
     width: '100%',

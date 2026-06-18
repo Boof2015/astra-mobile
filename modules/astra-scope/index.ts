@@ -7,6 +7,9 @@ export const SPECTRUM_BINS = 1024;
 export const SPECTRUM_DB_MIN = -100;
 export const SPECTRUM_DB_MAX = 0;
 
+/** Render-ready oscilloscope point count requested by the mobile UI. */
+export const OSCILLOSCOPE_POINTS = 256;
+
 declare class AstraScopeModuleType extends NativeModule {
   /** Gate the audio-thread PCM tap. Off when backgrounded/paused/reduced-motion. */
   setActive(active: boolean): void;
@@ -16,6 +19,12 @@ declare class AstraScopeModuleType extends NativeModule {
    * per render frame from the JS thread.
    */
   getSpectrumFrame(out: Float32Array): number;
+  /**
+   * Fill `out` with render-ready, evenly spaced points from the latest
+   * pitch-locked oscilloscope window. Values are interpolated visual samples in
+   * ~[-1, 1]. Returns the number of points written (0 before warmup).
+   */
+  getOscilloscopeFrame(out: Float32Array): number;
 }
 
 export const AstraScope = requireNativeModule<AstraScopeModuleType>('AstraScope');

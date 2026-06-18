@@ -10,7 +10,6 @@ import { colors, radius, spacing } from '@/theme';
 import { usePlayerStore } from '@/stores/playerStore';
 import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
-import { useSpectrumCurve } from '@/scope/useSpectrumCurve';
 
 const PILL_HEIGHT = 56;
 const ART = 42;
@@ -29,7 +28,6 @@ export function MiniPlayer() {
   const duration = usePlayerStore((s) => s.duration);
 
   const scopeActive = useScopeActive();
-  const values = useSpectrumCurve(CURVE_POINTS, scopeActive);
   const [pillWidth, setPillWidth] = useState(0);
 
   if (!track) return null;
@@ -45,11 +43,16 @@ export function MiniPlayer() {
       {scopeActive && pillWidth > 0 && (
         <View pointerEvents="none" style={styles.spectrum}>
           <SpectrumCurve
-            values={values}
+            active={scopeActive}
+            pointCount={CURVE_POINTS}
+            analysisFrameMs={0}
+            dbMin={-84}
+            dbMax={-20}
             width={pillWidth}
             height={PILL_HEIGHT}
             lineWidth={1.5}
-            fillOpacity={0.5}
+            fillOpacity={0.75}
+            glow
           />
         </View>
       )}

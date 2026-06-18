@@ -57,4 +57,20 @@ Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrum(
   return static_cast<jint>(n);
 }
 
+// Fills a direct ByteBuffer (over the JS Float32Array's memory) with render-ready
+// points from the latest triggered oscilloscope window. Zero-copy.
+JNIEXPORT jint JNICALL
+Java_expo_modules_astrascope_ScopeBridge_nativeFillOscilloscope(
+    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats) {
+  if (buffer == nullptr || capacityFloats <= 0) {
+    return 0;
+  }
+  auto* dst = static_cast<float*>(env->GetDirectBufferAddress(buffer));
+  if (dst == nullptr) {
+    return 0;
+  }
+  const size_t n = driver().fillOscilloscope(dst, static_cast<size_t>(capacityFloats));
+  return static_cast<jint>(n);
+}
+
 }  // extern "C"

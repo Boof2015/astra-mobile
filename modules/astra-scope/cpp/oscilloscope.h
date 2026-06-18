@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dsp_utils.h"
+#include <memory>
 #include <vector>
 #include <cstdint>
 
@@ -41,6 +42,7 @@ public:
 
     // Get samples with sub-sample interpolation (preserves trigger precision)
     void getSamplesInterpolated(float* output, float startPos, size_t count) const;
+    void getSamplesInterpolated(float* output, float startPos, size_t count, float step) const;
 
     // Reset state
     void reset();
@@ -76,10 +78,16 @@ private:
     float lastTrigger_;
     float smoothedPitch_;
     int pitchSamplesProcessed_;  // Track samples for adaptive smoothing
+    std::vector<float> pitchAnalysisBuffer_;
+    std::vector<float> pitchWindowedBuffer_;
+    std::vector<float> pitchMagnitudes_;
+    std::unique_ptr<DSP::FFT> pitchFft_;
 
     // Internal helpers
     void updateFiltered();
     float findTriggerBackwards(size_t target, size_t range);
+    float sampleInterpolated(float pos) const;
+    float detectPitchFFTReused(const float* data, size_t length, float minFreq, float maxFreq);
 };
 
 } // namespace Visualizer

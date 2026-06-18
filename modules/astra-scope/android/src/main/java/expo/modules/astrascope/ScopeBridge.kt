@@ -33,4 +33,12 @@ object ScopeBridge {
    * Returns the number of bins written. Zero-copy: writes straight into JS memory.
    */
   external fun nativeFillSpectrum(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
+
+  /**
+   * Render thread. Fill `buffer` (a direct ByteBuffer over the JS Float32Array's
+   * memory) with render-ready, evenly spaced points from the latest triggered
+   * oscilloscope window. Returns the number of points written. Zero-copy:
+   * writes straight into JS memory.
+   */
+  external fun nativeFillOscilloscope(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
 }

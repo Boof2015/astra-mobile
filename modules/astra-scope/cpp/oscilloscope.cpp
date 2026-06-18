@@ -3,6 +3,14 @@
 #include <cmath>
 
 namespace Visualizer {
+namespace {
+
+float safeFilterFrequency(float frequency, float sampleRate) {
+    const float nyquistSafe = std::max(20.0f, sampleRate * 0.45f);
+    return std::clamp(frequency, 20.0f, nyquistSafe);
+}
+
+}  // namespace
 
 Oscilloscope::Oscilloscope()
     : sampleRate_(48000.0f)
@@ -29,6 +37,10 @@ Oscilloscope::Oscilloscope()
     // Initialize analysis and render buffers
     displayBuffer_.resize(OSCILLOSCOPE_BUFFER_SIZE, 0.0f);
     visualBuffer_.resize(OSCILLOSCOPE_BUFFER_SIZE, 0.0f);
+    pitchAnalysisBuffer_.resize(2048, 0.0f);
+    pitchWindowedBuffer_.resize(2048, 0.0f);
+    pitchMagnitudes_.resize(1024, 0.0f);
+    pitchFft_ = std::make_unique<DSP::FFT>(2048);
 
     // Initialize display filters (high shelf + cascaded lowpass for steep rolloff)
     displayShelf_.setHighShelf(400.0f, sampleRate_, -3.0f, 0.71f);
@@ -42,20 +54,23 @@ Oscilloscope::Oscilloscope()
 
 void Oscilloscope::setSampleRate(float sampleRate) {
     sampleRate_ = sampleRate;
+    const float shelfFrequency = safeFilterFrequency(400.0f, sampleRate_);
+    const float lowpassFrequency = safeFilterFrequency(18000.0f, sampleRate_);
+
     // Redesign filter with new sample rate (10% bandwidth)
     float bandwidth = lastFilterPitch_ * 0.1f;
     bandpassFilter_.designBandpass(lastFilterPitch_, bandwidth, sampleRate_, 60.0f);
     // Update high shelf for new sample rate
-    pitchAnalysisShelf_.setHighShelf(400.0f, sampleRate_, -3.0f, 0.71f);
+    pitchAnalysisShelf_.setHighShelf(shelfFrequency, sampleRate_, -3.0f, 0.71f);
 
     // Update display filters
-    displayShelf_.setHighShelf(400.0f, sampleRate_, -3.0f, 0.71f);
-    displayLowpass1_.setLowpass(18000.0f, sampleRate_, 0.707f);
-    displayLowpass2_.setLowpass(18000.0f, sampleRate_, 0.707f);
+    displayShelf_.setHighShelf(shelfFrequency, sampleRate_, -3.0f, 0.71f);
+    displayLowpass1_.setLowpass(lowpassFrequency, sampleRate_, 0.707f);
+    displayLowpass2_.setLowpass(lowpassFrequency, sampleRate_, 0.707f);
 
     // Update pitch detection lowpass
-    pitchLowpass1_.setLowpass(18000.0f, sampleRate_, 0.707f);
-    pitchLowpass2_.setLowpass(18000.0f, sampleRate_, 0.707f);
+    pitchLowpass1_.setLowpass(lowpassFrequency, sampleRate_, 0.707f);
+    pitchLowpass2_.setLowpass(lowpassFrequency, sampleRate_, 0.707f);
 }
 
 void Oscilloscope::setPitchLock(bool enabled) {
@@ -150,27 +165,26 @@ OscilloscopeResult Oscilloscope::process() {
     // Detect pitch from recent samples in circular buffer
     // Use RAW buffer for pitch detection (filtered buffer may attenuate the fundamental)
     // Use last 2048 samples for pitch detection
-    std::vector<float> recentSamples(2048);
     for (size_t i = 0; i < 2048; i++) {
         size_t idx = (writePos_ + OSCILLOSCOPE_BUFFER_SIZE - 2048 + i) % OSCILLOSCOPE_BUFFER_SIZE;
-        recentSamples[i] = displayBuffer_[idx];  // Use RAW samples, not filtered
+        pitchAnalysisBuffer_[i] = displayBuffer_[idx];  // Use RAW samples, not filtered
     }
 
     // Apply high shelf filter to reduce HF interference with pitch detection
     pitchAnalysisShelf_.reset();
     for (size_t i = 0; i < 2048; i++) {
-        recentSamples[i] = pitchAnalysisShelf_.process(recentSamples[i]);
+        pitchAnalysisBuffer_[i] = pitchAnalysisShelf_.process(pitchAnalysisBuffer_[i]);
     }
 
     // Apply cascaded lowpass for steep HF rejection
     pitchLowpass1_.reset();
     pitchLowpass2_.reset();
     for (size_t i = 0; i < 2048; i++) {
-        recentSamples[i] = pitchLowpass1_.process(recentSamples[i]);
-        recentSamples[i] = pitchLowpass2_.process(recentSamples[i]);
+        pitchAnalysisBuffer_[i] = pitchLowpass1_.process(pitchAnalysisBuffer_[i]);
+        pitchAnalysisBuffer_[i] = pitchLowpass2_.process(pitchAnalysisBuffer_[i]);
     }
 
-    float newPitch = DSP::detectPitchFFT(recentSamples.data(), 2048, sampleRate_, 40.0f, 1000.0f);
+    float newPitch = detectPitchFFTReused(pitchAnalysisBuffer_.data(), 2048, 40.0f, 1000.0f);
     if (newPitch > 0.0f) {
         pitchSamplesProcessed_++;
 
@@ -263,44 +277,97 @@ void Oscilloscope::getSamples(float* output, size_t startPos, size_t count) cons
 // This preserves the high-precision trigger position from zero-crossing detection
 void Oscilloscope::getSamplesInterpolated(float* output, float startPos, size_t count) const {
     for (size_t i = 0; i < count; i++) {
-        float pos = startPos + static_cast<float>(i);
+        output[i] = sampleInterpolated(startPos + static_cast<float>(i));
+    }
+}
 
-        // Wrap position to buffer bounds
-        while (pos < 0) pos += OSCILLOSCOPE_BUFFER_SIZE;
-        while (pos >= OSCILLOSCOPE_BUFFER_SIZE) pos -= OSCILLOSCOPE_BUFFER_SIZE;
+void Oscilloscope::getSamplesInterpolated(float* output, float startPos, size_t count, float step) const {
+    for (size_t i = 0; i < count; i++) {
+        output[i] = sampleInterpolated(startPos + static_cast<float>(i) * step);
+    }
+}
 
-        size_t idx = static_cast<size_t>(pos) % OSCILLOSCOPE_BUFFER_SIZE;
-        float frac = pos - std::floor(pos);
+float Oscilloscope::sampleInterpolated(float pos) const {
+    // Wrap position to buffer bounds
+    while (pos < 0) pos += OSCILLOSCOPE_BUFFER_SIZE;
+    while (pos >= OSCILLOSCOPE_BUFFER_SIZE) pos -= OSCILLOSCOPE_BUFFER_SIZE;
 
-        if (frac < 0.0001f) {
-            // No interpolation needed - exact sample position
-            output[i] = visualBuffer_[idx];
-        } else {
-            // Cubic (Catmull-Rom) interpolation for smooth sub-sample rendering
-            // This eliminates pixel-level ghosting/jitter from truncated trigger positions
-            size_t i0 = (idx + OSCILLOSCOPE_BUFFER_SIZE - 1) % OSCILLOSCOPE_BUFFER_SIZE;
-            size_t i1 = idx;
-            size_t i2 = (idx + 1) % OSCILLOSCOPE_BUFFER_SIZE;
-            size_t i3 = (idx + 2) % OSCILLOSCOPE_BUFFER_SIZE;
+    size_t idx = static_cast<size_t>(pos) % OSCILLOSCOPE_BUFFER_SIZE;
+    float frac = pos - std::floor(pos);
 
-            float y0 = visualBuffer_[i0];
-            float y1 = visualBuffer_[i1];
-            float y2 = visualBuffer_[i2];
-            float y3 = visualBuffer_[i3];
+    if (frac < 0.0001f) {
+        // No interpolation needed - exact sample position
+        return visualBuffer_[idx];
+    }
 
-            // Catmull-Rom spline coefficients
-            float t = frac;
-            float t2 = t * t;
-            float t3 = t2 * t;
+    // Cubic (Catmull-Rom) interpolation for smooth sub-sample rendering.
+    size_t i0 = (idx + OSCILLOSCOPE_BUFFER_SIZE - 1) % OSCILLOSCOPE_BUFFER_SIZE;
+    size_t i1 = idx;
+    size_t i2 = (idx + 1) % OSCILLOSCOPE_BUFFER_SIZE;
+    size_t i3 = (idx + 2) % OSCILLOSCOPE_BUFFER_SIZE;
 
-            output[i] = 0.5f * (
-                (2.0f * y1) +
-                (-y0 + y2) * t +
-                (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t2 +
-                (-y0 + 3.0f * y1 - 3.0f * y2 + y3) * t3
-            );
+    float y0 = visualBuffer_[i0];
+    float y1 = visualBuffer_[i1];
+    float y2 = visualBuffer_[i2];
+    float y3 = visualBuffer_[i3];
+
+    float t = frac;
+    float t2 = t * t;
+    float t3 = t2 * t;
+
+    return 0.5f * (
+        (2.0f * y1) +
+        (-y0 + y2) * t +
+        (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t2 +
+        (-y0 + 3.0f * y1 - 3.0f * y2 + y3) * t3
+    );
+}
+
+float Oscilloscope::detectPitchFFTReused(const float* data, size_t length, float minFreq, float maxFreq) {
+    const size_t fftSize = 2048;
+    if (length < fftSize || !pitchFft_) {
+        return 0.0f;
+    }
+
+    for (size_t i = 0; i < fftSize; i++) {
+        float win = 0.5f * (1.0f - cosf(2.0f * static_cast<float>(M_PI) * i / fftSize));
+        pitchWindowedBuffer_[i] = data[i] * win;
+    }
+
+    pitchFft_->forward(pitchWindowedBuffer_.data(), pitchMagnitudes_.data());
+
+    int minBin = std::max(1, static_cast<int>(minFreq * fftSize / sampleRate_));
+    int maxBin = std::min(static_cast<int>(fftSize / 2 - 1), static_cast<int>(maxFreq * fftSize / sampleRate_));
+    if (minBin >= maxBin) {
+        return 0.0f;
+    }
+
+    float peakMag = 0.0f;
+    int peakBin = minBin;
+    for (int i = minBin; i <= maxBin; i++) {
+        if (pitchMagnitudes_[i] > peakMag) {
+            peakMag = pitchMagnitudes_[i];
+            peakBin = i;
         }
     }
+
+    if (peakMag < 1e-6f) {
+        return 0.0f;
+    }
+
+    if (peakBin > 0 && peakBin < static_cast<int>(fftSize / 2) - 1) {
+        float y1 = pitchMagnitudes_[peakBin - 1];
+        float y2 = pitchMagnitudes_[peakBin];
+        float y3 = pitchMagnitudes_[peakBin + 1];
+        float denom = y1 - 2.0f * y2 + y3;
+        if (std::abs(denom) > 1e-9f) {
+            float offset = 0.5f * (y1 - y3) / denom;
+            offset = std::clamp(offset, -0.5f, 0.5f);
+            return (static_cast<float>(peakBin) + offset) * sampleRate_ / static_cast<float>(fftSize);
+        }
+    }
+
+    return static_cast<float>(peakBin) * sampleRate_ / static_cast<float>(fftSize);
 }
 
 void Oscilloscope::reset() {

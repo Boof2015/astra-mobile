@@ -3,12 +3,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
 import { SpectrumCurve } from './SpectrumCurve';
+import { OscilloscopeWave } from './OscilloscopeWave';
 import { colors, spacing } from '@/theme';
 import { useScopeActive } from '@/scope/scopeStore';
-import { useSpectrumCurve } from '@/scope/useSpectrumCurve';
 
 const CANVAS_HEIGHT = 96;
-const POINTS = 120;
+const STAGE_FRAME_MS = 0; // display-sync
 
 type Mode = 'spectrum' | 'scope';
 
@@ -38,7 +38,7 @@ export function Visualizer({
   const mode = controlledMode ?? uncontrolledMode;
   const scopeActive = useScopeActive();
   const spectrumActive = scopeActive && mode === 'spectrum';
-  const values = useSpectrumCurve(POINTS, spectrumActive);
+  const scopeWaveActive = scopeActive && mode === 'scope';
 
   const toggle = () => {
     if (controlledMode) return;
@@ -58,14 +58,22 @@ export function Visualizer({
 
       <View style={{ width, height }}>
         {mode === 'spectrum' ? (
-          <SpectrumCurve values={values} width={width} height={height} glow edgeFade={edgeFade} />
+          <SpectrumCurve
+            active={spectrumActive}
+            frameMs={STAGE_FRAME_MS}
+            width={width}
+            height={height}
+            glow
+            edgeFade={edgeFade}
+          />
         ) : (
-          <View style={styles.placeholder}>
-            <Ionicons name="pulse-outline" size={20} color={colors.textTertiary} />
-            <Text variant="caption" style={styles.placeholderText}>
-              OSCILLOSCOPE · COMING SOON
-            </Text>
-          </View>
+          <OscilloscopeWave
+            active={scopeWaveActive}
+            width={width}
+            height={height}
+            glow
+            edgeFade={edgeFade}
+          />
         )}
       </View>
     </>
@@ -105,17 +113,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   captionText: {
-    color: colors.textTertiary,
-    letterSpacing: 1.5,
-    fontSize: 10,
-  },
-  placeholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  placeholderText: {
     color: colors.textTertiary,
     letterSpacing: 1.5,
     fontSize: 10,

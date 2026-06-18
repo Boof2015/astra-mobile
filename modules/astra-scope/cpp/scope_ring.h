@@ -18,9 +18,13 @@
 // read only the most recent fftSize samples, so a slow consumer simply sees the
 // latest window (correct for a rolling spectrum).
 
+#include "oscilloscope.h"
 #include "spectrum.h"
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <vector>
@@ -77,11 +81,14 @@ class ScopeDriver {
 
     const size_t fftSize = spectrum_.getFFTSize();
     const size_t w = writePos_.load(std::memory_order_acquire);
+    const size_t sampleRate = sr > 0 ? static_cast<size_t>(sr) : static_cast<size_t>(48000);
+    const size_t delaySamples = scopeOutputDelaySamples(sampleRate);
+    const size_t readHead = w > delaySamples ? w - delaySamples : 0;
 
     const std::vector<float>* mags;
-    if (w >= fftSize) {
+    if (readHead >= fftSize) {
       scratch_.resize(fftSize);
-      const size_t start = w - fftSize;
+      const size_t start = readHead - fftSize;
       for (size_t i = 0; i < fftSize; ++i) {
         scratch_[i] = ring_[(start + i) & kMask];
       }
@@ -96,19 +103,169 @@ class ScopeDriver {
     return n;
   }
 
+  // Render thread (single consumer). Unlike the spectrum (which snapshots the
+  // latest window), the oscilloscope needs CONTINUOUS samples for a stable
+  // pitch-locked trigger. We drain a bounded recent slice into its internal
+  // circular buffer, then return render-ready points from the triggered window.
+  size_t fillOscilloscope(float* out, size_t cap) {
+    if (out == nullptr || cap == 0) {
+      return 0;
+    }
+
+    const int sr = pendingSampleRate_.load(std::memory_order_acquire);
+    if (sr != oscAppliedSampleRate_) {
+      osc_.setSampleRate(static_cast<float>(sr));
+      oscDisplaySamples_ = normalizedDisplaySamples(sr);
+      osc_.setDisplaySamples(static_cast<int>(oscDisplaySamples_));
+      oscAppliedSampleRate_ = sr;
+      oscLastDrainTime_ = {};
+      oscDrainCarrySamples_ = 0.0;
+    }
+
+    const size_t w = writePos_.load(std::memory_order_acquire);
+
+    if (w < kOscWarmupSamples) {
+      return 0;
+    }
+
+    const size_t sampleRate = sr > 0 ? static_cast<size_t>(sr) : static_cast<size_t>(48000);
+    const size_t outputDelaySamples = scopeOutputDelaySamples(sampleRate);
+    size_t available = w - oscReadPos_;
+    const size_t staleResetSamples = std::max(kSize, sampleRate / 4);
+    const auto now = std::chrono::steady_clock::now();
+
+    if (available > kSize || available >= staleResetSamples) {
+      osc_.reset();
+      oscSamplesSeen_ = 0;
+      oscLastDrainTime_ = now;
+      oscDrainCarrySamples_ = 0.0;
+      const size_t retained = std::min({w, kSize, kOscRetainedBacklogSamples});
+      oscReadPos_ = w - retained;
+      available = retained;
+    } else if (available > kOscRetainedBacklogSamples) {
+      oscReadPos_ = w - kOscRetainedBacklogSamples;
+      available = kOscRetainedBacklogSamples;
+      oscDrainCarrySamples_ = 0.0;
+    }
+
+    const size_t drainable = available > outputDelaySamples ? available - outputDelaySamples : 0;
+    size_t drainBudget = oscDrainBudget(now, sampleRate, drainable);
+    const size_t warmup = std::max(kOscWarmupSamples, oscDisplaySamples_);
+    if (oscSamplesSeen_ < warmup) {
+      drainBudget = std::max(drainBudget, std::min(drainable, warmup - oscSamplesSeen_));
+    }
+
+    const size_t drainEnd = oscReadPos_ + std::min(drainable, drainBudget);
+    while (oscReadPos_ < drainEnd) {
+      const size_t idx = oscReadPos_ & kMask;
+      const size_t chunk = std::min(drainEnd - oscReadPos_, kSize - idx);
+      osc_.pushSamples(&ring_[idx], chunk);
+      oscReadPos_ += chunk;
+      oscSamplesSeen_ += chunk;
+    }
+
+    if (oscSamplesSeen_ < warmup) {
+      return 0;
+    }
+
+    const Visualizer::OscilloscopeResult r = osc_.process();
+    if (r.samplesToShow <= 1) {
+      return 0;
+    }
+
+    const size_t count = std::min(cap, static_cast<size_t>(r.samplesToShow));
+    if (count < 2) {
+      return 0;
+    }
+
+    const float step = static_cast<float>(r.samplesToShow - 1) /
+                       static_cast<float>(count - 1);
+    osc_.getSamplesInterpolated(out, r.triggerIndex, count, step);
+    return count;
+  }
+
   size_t binCount() const { return spectrum_.getFFTSize() / 2; }
 
-  void reset() { spectrum_.reset(); }
+  void reset() {
+    spectrum_.reset();
+    osc_.reset();
+    oscReadPos_ = writePos_.load(std::memory_order_acquire);
+    oscSamplesSeen_ = 0;
+    oscLastDrainTime_ = {};
+    oscDrainCarrySamples_ = 0.0;
+  }
 
  private:
   ScopeDriver() : spectrum_(kFftSize) {
-    spectrum_.setSmoothing(0.9f);
+    spectrum_.setSmoothing(0.92f);
     ring_.assign(kSize, 0.0f);
   }
 
   static constexpr size_t kFftSize = 2048;  // -> 1024 dB bins
-  static constexpr size_t kSize = 8192;     // ring capacity (power of two)
+  static constexpr size_t kSize = 16384;    // ring capacity (power of two)
   static constexpr size_t kMask = kSize - 1;
+  static constexpr size_t kOscWarmupSamples = 4096;
+  static constexpr size_t kOscRetainedBacklogSamples = kSize;
+  static constexpr size_t kOscMinFrameDrainSamples = 128;
+  static constexpr size_t kOscMaxFrameDrainSamples = 2048;
+  static constexpr double kScopeOutputDelaySeconds = 0.12;
+
+  static size_t normalizedDisplaySamples(int sampleRate) {
+    constexpr double base = 2048.0;
+    constexpr double rateMin = 44100.0;
+    constexpr double rateMax = 48000.0;
+    const double safeRate = sampleRate > 0 ? static_cast<double>(sampleRate) : rateMax;
+
+    double samples = base;
+    if (safeRate < rateMin) {
+      samples = base * (safeRate / rateMin);
+    } else if (safeRate > rateMax) {
+      samples = base * (safeRate / rateMax);
+    }
+
+    return static_cast<size_t>(std::clamp(std::round(samples), 64.0, 32767.0));
+  }
+
+  static size_t scopeOutputDelaySamples(size_t sampleRate) {
+    const double samples = static_cast<double>(sampleRate) * kScopeOutputDelaySeconds;
+    return static_cast<size_t>(std::clamp(
+        std::round(samples),
+        0.0,
+        static_cast<double>(kOscRetainedBacklogSamples / 2)));
+  }
+
+  size_t oscDrainBudget(
+      std::chrono::steady_clock::time_point now,
+      size_t sampleRate,
+      size_t available) {
+    if (available == 0) {
+      oscLastDrainTime_ = now;
+      oscDrainCarrySamples_ = 0.0;
+      return 0;
+    }
+
+    double elapsedSeconds = 1.0 / 60.0;
+    if (oscLastDrainTime_.time_since_epoch().count() != 0) {
+      elapsedSeconds = std::chrono::duration<double>(now - oscLastDrainTime_).count();
+      elapsedSeconds = std::clamp(elapsedSeconds, 0.0, 0.1);
+    }
+    oscLastDrainTime_ = now;
+
+    double desired = elapsedSeconds * static_cast<double>(sampleRate) + oscDrainCarrySamples_;
+    size_t budget = static_cast<size_t>(std::floor(desired));
+    oscDrainCarrySamples_ = desired - static_cast<double>(budget);
+
+    if (budget < kOscMinFrameDrainSamples) {
+      budget = std::min(kOscMinFrameDrainSamples, available);
+      oscDrainCarrySamples_ = 0.0;
+    }
+
+    const size_t drain = std::min({available, budget, kOscMaxFrameDrainSamples});
+    if (drain >= available) {
+      oscDrainCarrySamples_ = 0.0;
+    }
+    return drain;
+  }
 
   // Shared SPSC state.
   std::vector<float> ring_;
@@ -119,6 +276,15 @@ class ScopeDriver {
   std::vector<float> scratch_;
   Visualizer::Spectrum spectrum_;
   int appliedSampleRate_{0};
+
+  Visualizer::Oscilloscope osc_;
+  size_t oscReadPos_{0};
+  size_t oscSamplesSeen_{0};
+  size_t oscDisplaySamples_{2048};
+  std::chrono::steady_clock::time_point oscLastDrainTime_{};
+  double oscDrainCarrySamples_{0.0};
+  int oscAppliedSampleRate_{0};
+
 };
 
 }  // namespace astra
