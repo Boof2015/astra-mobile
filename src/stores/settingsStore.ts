@@ -10,6 +10,7 @@ import type { ArtistGroupingMode } from '@/library/artistGrouping';
  */
 const ARTIST_GROUPING_KEY = 'artist_grouping_mode';
 const SCOPE_MODE_KEY = 'scope_mode';
+const SCOPE_STAGE_VISIBLE_KEY = 'scope_stage_visible';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -22,30 +23,39 @@ function parseScopeMode(value: string | null): ScopeMode {
   return value === 'scope' ? 'scope' : 'spectrum';
 }
 
+function parseBoolean(value: string | null): boolean {
+  return value === 'true';
+}
+
 interface SettingsStore {
   artistGroupingMode: ArtistGroupingMode;
   scopeMode: ScopeMode;
+  scopeStageVisible: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
   setScopeMode: (mode: ScopeMode) => Promise<void>;
+  setScopeStageVisible: (visible: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   artistGroupingMode: 'astra',
   scopeMode: 'spectrum',
+  scopeStageVisible: false,
   loaded: false,
 
   load: async () => {
     if (get().loaded) return;
     const db = await openLibraryDb();
-    const [grouping, scope] = await Promise.all([
+    const [grouping, scope, scopeStageVisible] = await Promise.all([
       getSetting(db, ARTIST_GROUPING_KEY),
       getSetting(db, SCOPE_MODE_KEY),
+      getSetting(db, SCOPE_STAGE_VISIBLE_KEY),
     ]);
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       scopeMode: parseScopeMode(scope),
+      scopeStageVisible: parseBoolean(scopeStageVisible),
       loaded: true,
     });
   },
@@ -62,5 +72,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ scopeMode: mode });
     const db = await openLibraryDb();
     await setSetting(db, SCOPE_MODE_KEY, mode);
+  },
+
+  setScopeStageVisible: async (visible) => {
+    if (get().scopeStageVisible === visible) return;
+    set({ scopeStageVisible: visible });
+    const db = await openLibraryDb();
+    await setSetting(db, SCOPE_STAGE_VISIBLE_KEY, visible ? 'true' : 'false');
   },
 }));
