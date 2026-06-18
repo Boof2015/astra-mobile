@@ -8,6 +8,8 @@ interface TrackActionsSheetProps {
   /** null = hidden. */
   track: DbTrack | null;
   onClose: () => void;
+  /** Allows callers with their own menu to jump straight to playlist picking. */
+  initialStep?: 'menu' | 'pickPlaylist';
   /** Screen-specific extras (e.g. playlist detail: remove / move). Handlers should close. */
   extraItems?: ActionSheetItem[];
 }
@@ -22,9 +24,10 @@ export function TrackActionsSheet(props: TrackActionsSheetProps) {
 function TrackActionsSheetInner({
   track,
   onClose,
+  initialStep = 'menu',
   extraItems = [],
 }: TrackActionsSheetProps & { track: DbTrack }) {
-  const [step, setStep] = useState<'menu' | 'pickPlaylist' | 'newPlaylist'>('menu');
+  const [step, setStep] = useState<'menu' | 'pickPlaylist' | 'newPlaylist'>(initialStep);
   const playlists = usePlaylistStore((s) => s.playlists);
   const isFavorite = usePlaylistStore((s) => s.favoritePaths.has(track.path));
   const toggleFavorite = usePlaylistStore((s) => s.toggleFavorite);

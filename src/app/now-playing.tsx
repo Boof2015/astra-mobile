@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,12 +18,15 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
+import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { colors, radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
   seekTo,
@@ -69,6 +72,9 @@ const SUB_BUTTON_SIZE = 40;
 const SUB_ICON_SIZE = 20;
 const SUB_TOP_MARGIN = spacing.lg;
 const MIN_FLOATING_SPACE = spacing.sm;
+const MENU_ANIMATION_IN_MS = 130;
+const MENU_ANIMATION_OUT_MS = 100;
+const MENU_ENTER_OFFSET_Y = -8;
 
 interface NowPlayingLayout {
   contentPadding: number;
@@ -80,6 +86,13 @@ interface NowPlayingLayout {
   visualizerBottomGap: number;
   mediaTopMargin: number;
   mediaBottomGap: number;
+}
+
+interface NowPlayingMenuItem {
+  key: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -159,9 +172,12 @@ export default function NowPlayingScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [queueOpen, setQueueOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
+  const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -176,12 +192,86 @@ export default function NowPlayingScreen() {
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const layout = getNowPlayingLayout(windowWidth, availableHeight, scopeStageVisible);
   const source = track?.album?.trim() ? track.album : 'Library';
+  const shellRight = Math.max(layout.contentPadding, (windowWidth - layout.contentWidth) / 2);
+  const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
+  const artistName = track?.artist.trim() ?? '';
+  const libraryTrack = useMemo(
+    () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
+    [libraryTracks, track]
+  );
+  const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
+
+  const navigateToArtist = () => {
+    if (!artistName) return;
+    router.dismissTo({
+      pathname: '/library/artist/[name]',
+      params: { name: artistName },
+    });
+  };
+
+  const navigateToAlbum = () => {
+    if (!albumKey) return;
+    router.dismissTo({
+      pathname: '/library/album/[key]',
+      params: { key: albumKey },
+    });
+  };
+
+  const menuItems: NowPlayingMenuItem[] = [];
+  if (artistName) {
+    menuItems.push({
+      key: 'artist',
+      label: 'View artist',
+      icon: 'person-outline',
+      onPress: () => {
+        closeMenu();
+        navigateToArtist();
+      },
+    });
+  }
+  if (albumKey) {
+    menuItems.push({
+      key: 'album',
+      label: 'View album',
+      icon: 'albums-outline',
+      onPress: () => {
+        closeMenu();
+        navigateToAlbum();
+      },
+    });
+  }
+  if (libraryTrack) {
+    menuItems.push({
+      key: 'add-to-playlist',
+      label: 'Add to playlist...',
+      icon: 'add-circle-outline',
+      onPress: () => {
+        closeMenu();
+        setPlaylistActionTrack(libraryTrack);
+      },
+    });
+  }
 
   // Swipe down to minimize. The stack transition is disabled for this route, so
   // the sheet owns one continuous enter/exit animation instead of handing off to
   // a second native modal animation after release.
   const translateY = useSharedValue(0);
+  const menuProgress = useSharedValue(0);
   const dismiss = () => router.back();
+  const finishCloseMenu = () => setMenuOpen(false);
+
+  function openMenu() {
+    if (menuItems.length === 0) return;
+    menuProgress.value = 0;
+    setMenuOpen(true);
+    menuProgress.value = withTiming(1, { duration: MENU_ANIMATION_IN_MS });
+  }
+
+  function closeMenu() {
+    menuProgress.value = withTiming(0, { duration: MENU_ANIMATION_OUT_MS }, (finished) => {
+      if (finished) runOnJS(finishCloseMenu)();
+    });
+  }
 
   const dismissSheet = (velocity = 0) => {
     translateY.value = withSpring(
@@ -228,6 +318,14 @@ export default function NowPlayingScreen() {
     transform: [{ translateY: translateY.value }],
   }));
 
+  const menuLayerStyle = useAnimatedStyle(() => ({
+    opacity: menuProgress.value,
+  }));
+
+  const menuCardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: MENU_ENTER_OFFSET_Y * (1 - menuProgress.value) }],
+  }));
+
   return (
     <View style={styles.backdrop}>
       <GestureDetector gesture={pan}>
@@ -256,7 +354,13 @@ export default function NowPlayingScreen() {
                   {source}
                 </Text>
               </View>
-              <Pressable style={styles.headerBtn} hitSlop={12} accessibilityLabel="More options">
+              <Pressable
+                style={styles.headerBtn}
+                onPress={openMenu}
+                disabled={menuItems.length === 0}
+                hitSlop={12}
+                accessibilityLabel="More options"
+              >
                 <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
@@ -354,9 +458,17 @@ export default function NowPlayingScreen() {
                         {track.title}
                       </Text>
                       <View style={styles.trackMetaRow}>
-                        <Text variant="body" numberOfLines={1} style={styles.artist}>
-                          {track.artist}
-                        </Text>
+                        <Pressable
+                          onPress={navigateToArtist}
+                          hitSlop={6}
+                          style={styles.artistButton}
+                          accessibilityRole="link"
+                          accessibilityLabel={`View artist ${track.artist}`}
+                        >
+                          <Text variant="body" numberOfLines={1} style={styles.artist}>
+                            {track.artist}
+                          </Text>
+                        </Pressable>
                         <View style={styles.badges}>
                           <FormatBadges track={track} />
                         </View>
@@ -493,6 +605,41 @@ export default function NowPlayingScreen() {
           </View>
         </Animated.View>
       </GestureDetector>
+      {menuOpen && menuItems.length > 0 && (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.menuLayer, menuLayerStyle]}
+        >
+          <Pressable
+            style={styles.menuDismiss}
+            onPress={closeMenu}
+            accessibilityRole="button"
+            accessibilityLabel="Close menu"
+          />
+          <Animated.View
+            style={[styles.menuCard, { top: menuTop, right: shellRight }, menuCardStyle]}
+          >
+            {menuItems.map((item) => (
+              <Pressable
+                key={item.key}
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={item.onPress}
+                accessibilityRole="button"
+              >
+                <Ionicons name={item.icon} size={19} color={colors.textSecondary} />
+                <Text variant="body" numberOfLines={1} style={styles.menuItemLabel}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </Animated.View>
+        </Animated.View>
+      )}
+      <TrackActionsSheet
+        track={playlistActionTrack}
+        initialStep="pickPlaylist"
+        onClose={() => setPlaylistActionTrack(null)}
+      />
       {queueOpen && <QueueTray onClose={() => setQueueOpen(false)} />}
     </View>
   );
@@ -535,6 +682,47 @@ const styles = StyleSheet.create({
   source: {
     color: colors.textSecondary,
     marginTop: 1,
+  },
+  menuLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  menuDismiss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  menuCard: {
+    position: 'absolute',
+    width: 212,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.bgSecondary,
+    paddingVertical: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  menuItem: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  menuItemPressed: {
+    opacity: 0.6,
+  },
+  menuItemLabel: {
+    flex: 1,
   },
   player: {
     flex: 1,
@@ -606,13 +794,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
+  artistButton: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   centered: {
     textAlign: 'center',
   },
   artist: {
     color: colors.accentText,
-    flexShrink: 1,
-    minWidth: 0,
   },
   badges: {
     flexShrink: 0,
