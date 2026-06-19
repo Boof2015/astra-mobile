@@ -1,0 +1,71 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/astra_widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/astra_widget_background"
+  android:gravity="center"
+  android:orientation="vertical"
+  android:padding="8dp">
+
+  <ImageView
+    android:id="@+id/astra_widget_art"
+    android:layout_width="76dp"
+    android:layout_height="76dp"
+    android:contentDescription="Current artwork"
+    android:scaleType="centerCrop"
+    android:src="@drawable/astra_widget_art_placeholder" />
+
+  <TextView
+    android:id="@+id/astra_widget_title"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:ellipsize="end"
+    android:gravity="center"
+    android:maxLines="1"
+    android:text="Astra"
+    android:textColor="#e2e8f4"
+    android:textSize="14sp"
+    android:textStyle="bold" />
+
+  <TextView
+    android:id="@+id/astra_widget_artist"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="1dp"
+    android:ellipsize="end"
+    android:gravity="center"
+    android:maxLines="1"
+    android:text="Tap to open"
+    android:textColor="#8a98b8"
+    android:textSize="11sp" />
+
+  <LinearLayout
+    android:layout_width="wrap_content"
+    android:layout_height="34dp"
+    android:layout_marginTop="6dp"
+    android:gravity="center"
+    android:orientation="horizontal">
+
+    <ImageButton
+      android:id="@+id/astra_widget_play_pause"
+      android:layout_width="40dp"
+      android:layout_height="34dp"
+      android:background="@drawable/astra_widget_control_background"
+      android:contentDescription="Play"
+      android:padding="7dp"
+      android:scaleType="center"
+      android:src="@drawable/astra_widget_ic_play" />
+
+    <ImageButton
+      android:id="@+id/astra_widget_next"
+      android:layout_width="40dp"
+      android:layout_height="34dp"
+      android:layout_marginStart="8dp"
+      android:background="@drawable/astra_widget_control_background"
+      android:contentDescription="Next"
+      android:padding="7dp"
+      android:scaleType="center"
+      android:src="@drawable/astra_widget_ic_next" />
+  </LinearLayout>
+</LinearLayout>

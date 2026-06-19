@@ -9,6 +9,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import type { PlaybackState } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
+import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
 
 const RECENT_PLAY_THRESHOLD_MS = 15_000;
 
@@ -54,6 +55,7 @@ export function usePlaybackSync(): void {
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
   const recordTrackPlayed = useLibraryStore((s) => s.recordTrackPlayed);
+  const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
 
   useEffect(() => {
     setCurrentTrack(activeTrack ? rntpToTrack(activeTrack) : null);
@@ -66,6 +68,15 @@ export function usePlaybackSync(): void {
   useEffect(() => {
     setPlaybackState(mappedPlaybackState);
   }, [mappedPlaybackState, setPlaybackState]);
+
+  useEffect(() => {
+    const track = activeTrack ? rntpToTrack(activeTrack) : null;
+    setWidgetNowPlaying(
+      track,
+      mappedPlaybackState,
+      buildWidgetRecentItems(recentlyPlayedTracks, track?.path),
+    );
+  }, [activeTrack, mappedPlaybackState, recentlyPlayedTracks]);
 
   useEffect(() => {
     const path = activeTrack?.url ? String(activeTrack.url) : null;

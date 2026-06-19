@@ -1,0 +1,73 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/astra_widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/astra_widget_background"
+  android:gravity="center_vertical"
+  android:orientation="horizontal"
+  android:paddingStart="8dp"
+  android:paddingTop="7dp"
+  android:paddingEnd="8dp"
+  android:paddingBottom="7dp">
+
+  <ImageView
+    android:id="@+id/astra_widget_art"
+    android:layout_width="52dp"
+    android:layout_height="52dp"
+    android:contentDescription="Current artwork"
+    android:scaleType="centerCrop"
+    android:src="@drawable/astra_widget_art_placeholder" />
+
+  <LinearLayout
+    android:layout_width="0dp"
+    android:layout_height="match_parent"
+    android:layout_marginStart="10dp"
+    android:layout_marginEnd="8dp"
+    android:layout_weight="1"
+    android:gravity="center_vertical"
+    android:orientation="vertical">
+
+    <TextView
+      android:id="@+id/astra_widget_title"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:ellipsize="end"
+      android:maxLines="1"
+      android:text="Astra"
+      android:textColor="#e2e8f4"
+      android:textSize="14sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/astra_widget_artist"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="2dp"
+      android:ellipsize="end"
+      android:maxLines="1"
+      android:text="Tap to open"
+      android:textColor="#8a98b8"
+      android:textSize="12sp" />
+  </LinearLayout>
+
+  <ImageButton
+    android:id="@+id/astra_widget_play_pause"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:background="@drawable/astra_widget_control_background"
+    android:contentDescription="Play"
+    android:padding="9dp"
+    android:scaleType="center"
+    android:src="@drawable/astra_widget_ic_play" />
+
+  <ImageButton
+    android:id="@+id/astra_widget_next"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:layout_marginStart="8dp"
+    android:background="@drawable/astra_widget_control_background"
+    android:contentDescription="Next"
+    android:padding="9dp"
+    android:scaleType="center"
+    android:src="@drawable/astra_widget_ic_next" />
+</LinearLayout>

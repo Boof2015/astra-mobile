@@ -1,4 +1,5 @@
 import TrackPlayer, { Event } from 'react-native-track-player';
+import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -6,15 +7,31 @@ import TrackPlayer, { Event } from 'react-native-track-player';
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
-  TrackPlayer.addEventListener(Event.RemotePlay, () => TrackPlayer.play());
-  TrackPlayer.addEventListener(Event.RemotePause, () => TrackPlayer.pause());
-  TrackPlayer.addEventListener(Event.RemoteStop, () => TrackPlayer.stop());
-  TrackPlayer.addEventListener(Event.RemoteNext, () =>
-    TrackPlayer.skipToNext().catch(() => {}),
-  );
-  TrackPlayer.addEventListener(Event.RemotePrevious, () =>
-    TrackPlayer.skipToPrevious().catch(() => {}),
-  );
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, () => {
+    void syncWidgetNowPlayingFromTrackPlayer();
+  });
+  TrackPlayer.addEventListener(Event.PlaybackState, () => {
+    void syncWidgetNowPlayingFromTrackPlayer();
+  });
+  TrackPlayer.addEventListener(Event.RemotePlay, () => {
+    void TrackPlayer.play().finally(() => syncWidgetNowPlayingFromTrackPlayer());
+  });
+  TrackPlayer.addEventListener(Event.RemotePause, () => {
+    void TrackPlayer.pause().finally(() => syncWidgetNowPlayingFromTrackPlayer());
+  });
+  TrackPlayer.addEventListener(Event.RemoteStop, () => {
+    void TrackPlayer.stop().finally(() => syncWidgetNowPlayingFromTrackPlayer());
+  });
+  TrackPlayer.addEventListener(Event.RemoteNext, () => {
+    void TrackPlayer.skipToNext()
+      .catch(() => {})
+      .finally(() => syncWidgetNowPlayingFromTrackPlayer());
+  });
+  TrackPlayer.addEventListener(Event.RemotePrevious, () => {
+    void TrackPlayer.skipToPrevious()
+      .catch(() => {})
+      .finally(() => syncWidgetNowPlayingFromTrackPlayer());
+  });
   TrackPlayer.addEventListener(Event.RemoteSeek, ({ position }) =>
     TrackPlayer.seekTo(position),
   );
