@@ -11,14 +11,16 @@ export function ScanProgress() {
   if (!isScanning) return null;
 
   const label =
-    progress.phase === 'extracting'
-      ? `Scanning ${progress.folderName ?? ''}… ${progress.processed}/${progress.total}`
-      : progress.total > 0
-        ? `Found ${progress.total} files in ${progress.folderName ?? ''}…`
-        : `Looking for music${progress.folderName ? ` in ${progress.folderName}` : ''}…`;
+    progress.phase === 'analyzing'
+      ? `Analyzing audio… ${progress.processed}/${progress.total}`
+      : progress.phase === 'extracting'
+        ? `Scanning ${progress.folderName ?? ''}… ${progress.processed}/${progress.total}`
+        : progress.total > 0
+          ? `Found ${progress.total} files in ${progress.folderName ?? ''}…`
+          : `Looking for music${progress.folderName ? ` in ${progress.folderName}` : ''}…`;
 
   const fraction =
-    progress.phase === 'extracting' && progress.total > 0
+    (progress.phase === 'extracting' || progress.phase === 'analyzing') && progress.total > 0
       ? progress.processed / progress.total
       : 0;
 

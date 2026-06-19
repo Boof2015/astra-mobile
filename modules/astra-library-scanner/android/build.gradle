@@ -16,3 +16,10 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // ExoPlayer 2.19.0 (same version the vendored kotlin-audio fork pulls in) for
+  // MetadataRetriever — parses ID3/Vorbis/MP4 container tags (ReplayGain) without
+  // decoding audio. Transitively brings exoplayer-extractor (the frame classes).
+  implementation 'com.google.android.exoplayer:exoplayer-core:2.19.0'
+}

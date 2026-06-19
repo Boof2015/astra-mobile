@@ -1,9 +1,12 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { EQSlider } from '@/components/eq/EQSlider';
 import { colors, radius, spacing } from '@/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
+import type { ReplayGainMode } from '@/audio/normalization';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
@@ -19,59 +22,159 @@ const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; descri
   },
 ];
 
+const REPLAYGAIN_MODES: { mode: ReplayGainMode; label: string }[] = [
+  { mode: 'auto', label: 'Auto' },
+  { mode: 'track', label: 'Track' },
+  { mode: 'album', label: 'Album' },
+];
+
+function ToggleRow({
+  title,
+  description,
+  value,
+  onValueChange,
+}: {
+  title: string;
+  description: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+}) {
+  return (
+    <View style={styles.toggleRow}>
+      <View style={styles.toggleText}>
+        <Text variant="body">{title}</Text>
+        <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
+          {description}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: colors.glassBorder, true: colors.accent }}
+        thumbColor={colors.textPrimary}
+      />
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
 
+  const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
+  const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
+  const replayGainEnabled = useAudioSettingsStore((s) => s.replayGainEnabled);
+  const replayGainMode = useAudioSettingsStore((s) => s.replayGainMode);
+  const setNormalizationEnabled = useAudioSettingsStore((s) => s.setNormalizationEnabled);
+  const setNormalizationTargetLufs = useAudioSettingsStore((s) => s.setNormalizationTargetLufs);
+  const setReplayGainEnabled = useAudioSettingsStore((s) => s.setReplayGainEnabled);
+  const setReplayGainMode = useAudioSettingsStore((s) => s.setReplayGainMode);
+
   return (
     <Screen>
-      <Text variant="title" style={styles.heading}>
-        Settings
-      </Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <Text variant="title" style={styles.heading}>
+          Settings
+        </Text>
 
-      <Text variant="label" color={colors.textTertiary} style={styles.sectionLabel}>
-        LIBRARY
-      </Text>
-      <Text variant="body" style={styles.settingTitle}>
-        Artist grouping
-      </Text>
-      <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
-        How tracks are organized into artists in the library.
-      </Text>
+        <Text variant="label" color={colors.textTertiary} style={styles.sectionLabel}>
+          AUDIO
+        </Text>
+        <View style={styles.card}>
+          <ToggleRow
+            title="Loudness normalization"
+            description="Level every track to a target loudness — easier on your ears and keeps the scopes consistent."
+            value={normalizationEnabled}
+            onValueChange={(v) => void setNormalizationEnabled(v)}
+          />
+          {normalizationEnabled ? (
+            <View style={styles.indent}>
+              <EQSlider
+                label="Target"
+                value={normalizationTargetLufs}
+                min={-30}
+                max={-5}
+                format={(v) => `${Math.round(v)} LUFS`}
+                onChange={(v) => void setNormalizationTargetLufs(Math.round(v))}
+              />
+            </View>
+          ) : null}
+        </View>
 
-      <View style={styles.options}>
-        {ARTIST_GROUPING_OPTIONS.map((option) => {
-          const selected = option.mode === groupingMode;
-          return (
-            <Pressable
-              key={option.mode}
-              style={[styles.option, selected && styles.optionSelected]}
-              onPress={() => void setArtistGroupingMode(option.mode)}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-            >
-              <View style={styles.optionText}>
-                <Text variant="body" color={selected ? colors.accentTextStrong : colors.textPrimary}>
-                  {option.title}
-                </Text>
-                <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
-                  {option.description}
-                </Text>
-              </View>
-              {selected ? (
-                <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
-              ) : (
-                <Ionicons name="ellipse-outline" size={20} color={colors.textTertiary} />
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
+        <View style={[styles.card, styles.cardSpacing]}>
+          <ToggleRow
+            title="ReplayGain"
+            description="Use ReplayGain tags when present; falls back to the measured loudness above."
+            value={replayGainEnabled}
+            onValueChange={(v) => void setReplayGainEnabled(v)}
+          />
+          {replayGainEnabled ? (
+            <View style={styles.modeRow}>
+              {REPLAYGAIN_MODES.map((m) => {
+                const selected = m.mode === replayGainMode;
+                return (
+                  <Pressable
+                    key={m.mode}
+                    style={[styles.modePill, selected && styles.modePillSelected]}
+                    onPress={() => void setReplayGainMode(m.mode)}
+                  >
+                    <Text variant="label" color={selected ? colors.accentTextStrong : colors.textSecondary}>
+                      {m.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+
+        <Text variant="label" color={colors.textTertiary} style={[styles.sectionLabel, styles.sectionSpacing]}>
+          LIBRARY
+        </Text>
+        <Text variant="body" style={styles.settingTitle}>
+          Artist grouping
+        </Text>
+        <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+          How tracks are organized into artists in the library.
+        </Text>
+
+        <View style={styles.options}>
+          {ARTIST_GROUPING_OPTIONS.map((option) => {
+            const selected = option.mode === groupingMode;
+            return (
+              <Pressable
+                key={option.mode}
+                style={[styles.option, selected && styles.optionSelected]}
+                onPress={() => void setArtistGroupingMode(option.mode)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+              >
+                <View style={styles.optionText}>
+                  <Text variant="body" color={selected ? colors.accentTextStrong : colors.textPrimary}>
+                    {option.title}
+                  </Text>
+                  <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
+                    {option.description}
+                  </Text>
+                </View>
+                {selected ? (
+                  <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+                ) : (
+                  <Ionicons name="ellipse-outline" size={20} color={colors.textTertiary} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingBottom: spacing.xxl,
+  },
   heading: {
     marginTop: spacing.xl,
     marginBottom: spacing.xxl,
@@ -79,6 +182,47 @@ const styles = StyleSheet.create({
   sectionLabel: {
     letterSpacing: 1,
     marginBottom: spacing.sm,
+  },
+  sectionSpacing: {
+    marginTop: spacing.xxl,
+  },
+  card: {
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassBg,
+    padding: spacing.lg,
+  },
+  cardSpacing: {
+    marginTop: spacing.sm,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  toggleText: {
+    flex: 1,
+    gap: 2,
+  },
+  indent: {
+    marginTop: spacing.sm,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  modePill: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  modePillSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentGlow,
   },
   settingTitle: {
     marginBottom: spacing.xs,

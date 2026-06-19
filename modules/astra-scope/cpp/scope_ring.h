@@ -184,10 +184,70 @@ class ScopeDriver {
     return count;
   }
 
+  // ---- POST-EQ source (M4) -------------------------------------------------
+  // A second, spectrum-only SPSC source fed by the post-EQ tap. Mirrors the
+  // pre-EQ spectrum path exactly; used only by the EQ screen's response-curve
+  // overlay, so there is no post-EQ oscilloscope.
+
+  // Audio thread. Downmix interleaved float frames to mono into the post-EQ ring.
+  void pushInterleavedPostEq(const float* data, size_t frames, int channels) {
+    if (data == nullptr || frames == 0 || channels <= 0) {
+      return;
+    }
+    size_t w = postEqWritePos_.load(std::memory_order_relaxed);
+    const float inv = 1.0f / static_cast<float>(channels);
+    for (size_t f = 0; f < frames; ++f) {
+      float sum = 0.0f;
+      const float* frame = data + f * channels;
+      for (int c = 0; c < channels; ++c) {
+        sum += frame[c];
+      }
+      postEqRing_[w & kMask] = sum * inv;
+      ++w;
+    }
+    postEqWritePos_.store(w, std::memory_order_release);
+  }
+
+  // Render thread. Latest post-EQ spectrum window -> `out` (dB magnitudes).
+  size_t fillSpectrumPostEq(float* out, size_t cap) {
+    if (out == nullptr || cap == 0) {
+      return 0;
+    }
+
+    const int sr = pendingSampleRate_.load(std::memory_order_acquire);
+    if (sr != postEqAppliedSampleRate_) {
+      postEqSpectrum_.setSampleRate(static_cast<float>(sr));
+      postEqAppliedSampleRate_ = sr;
+    }
+
+    const size_t fftSize = postEqSpectrum_.getFFTSize();
+    const size_t w = postEqWritePos_.load(std::memory_order_acquire);
+    const size_t sampleRate = sr > 0 ? static_cast<size_t>(sr) : static_cast<size_t>(48000);
+    const size_t delaySamples = scopeOutputDelaySamples(sampleRate);
+    const size_t readHead = w > delaySamples ? w - delaySamples : 0;
+
+    const std::vector<float>* mags;
+    if (readHead >= fftSize) {
+      postEqScratch_.resize(fftSize);
+      const size_t start = readHead - fftSize;
+      for (size_t i = 0; i < fftSize; ++i) {
+        postEqScratch_[i] = postEqRing_[(start + i) & kMask];
+      }
+      mags = &postEqSpectrum_.process(postEqScratch_.data(), fftSize);
+    } else {
+      mags = &postEqSpectrum_.process(nullptr, 0);
+    }
+
+    const size_t n = std::min(cap, mags->size());
+    std::memcpy(out, mags->data(), n * sizeof(float));
+    return n;
+  }
+
   size_t binCount() const { return spectrum_.getFFTSize() / 2; }
 
   void reset() {
     spectrum_.reset();
+    postEqSpectrum_.reset();
     osc_.reset();
     oscReadPos_ = writePos_.load(std::memory_order_acquire);
     oscSamplesSeen_ = 0;
@@ -196,9 +256,11 @@ class ScopeDriver {
   }
 
  private:
-  ScopeDriver() : spectrum_(kFftSize) {
+  ScopeDriver() : spectrum_(kFftSize), postEqSpectrum_(kFftSize) {
     spectrum_.setSmoothing(0.92f);
+    postEqSpectrum_.setSmoothing(0.92f);
     ring_.assign(kSize, 0.0f);
+    postEqRing_.assign(kSize, 0.0f);
   }
 
   static constexpr size_t kFftSize = 2048;  // -> 1024 dB bins
@@ -276,6 +338,13 @@ class ScopeDriver {
   std::vector<float> scratch_;
   Visualizer::Spectrum spectrum_;
   int appliedSampleRate_{0};
+
+  // Post-EQ source (M4) — second SPSC ring + spectrum-only analyzer.
+  std::vector<float> postEqRing_;
+  std::atomic<size_t> postEqWritePos_{0};
+  std::vector<float> postEqScratch_;
+  Visualizer::Spectrum postEqSpectrum_;
+  int postEqAppliedSampleRate_{0};
 
   Visualizer::Oscilloscope osc_;
   size_t oscReadPos_{0};

@@ -52,12 +52,17 @@ export interface PlayerState {
 }
 
 // EQ Band
+export type EQBandType = 'lowshelf' | 'peaking' | 'highshelf' | 'highpass' | 'lowpass';
+
 export interface EQBand {
   id: string;
-  type: 'lowshelf' | 'peaking' | 'highshelf' | 'highpass' | 'lowpass';
+  type: EQBandType;
   frequency: number;
   gain: number;
   Q: number;
+  // Per-band bypass (mobile addition vs desktop — the EQ screen's per-band On toggle).
+  // A disabled band is passthrough and is skipped in the response curve.
+  enabled: boolean;
 }
 
 // EQ Preset

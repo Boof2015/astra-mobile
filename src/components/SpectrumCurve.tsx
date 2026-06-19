@@ -18,6 +18,8 @@ interface SpectrumCurveProps {
   height: number;
   /** Pull native spectrum frames while active, bypassing React per-frame state. */
   active?: boolean;
+  /** Which native tap to pull from. 'post' is the post-EQ ring (EQ screen). */
+  source?: 'pre' | 'post';
   /** Number of render points when active. Defaults to one point per rendered pixel. */
   pointCount?: number;
   /** Active render cadence. 0 means display-sync; 32 keeps the mini-player battery-friendly. */
@@ -292,6 +294,7 @@ export function SpectrumCurve({
   width,
   height,
   active = false,
+  source = 'pre',
   pointCount,
   frameMs = MINI_FRAME_MS,
   analysisFrameMs,
@@ -391,7 +394,11 @@ export function SpectrumCurve({
       raf = requestAnimationFrame(tick);
       if (analysisThreshold <= 0 || t - lastAnalysis >= analysisThreshold) {
         lastAnalysis = t;
-        if (AstraScope.getSpectrumFrame(spectrumBins) > 0) {
+        const got =
+          source === 'post'
+            ? AstraScope.getSpectrumFramePostEq(spectrumBins)
+            : AstraScope.getSpectrumFrame(spectrumBins);
+        if (got > 0) {
           writeSpectrumPoints(spectrumBins, renderValues, pointOptions);
           hasNewFrame = true;
         }
@@ -425,6 +432,7 @@ export function SpectrumCurve({
     lineOpacity,
     lineWidth,
     resolvedPointCount,
+    source,
     tiltDbPerOctave,
     width,
   ]);

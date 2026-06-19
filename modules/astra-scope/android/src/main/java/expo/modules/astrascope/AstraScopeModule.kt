@@ -29,5 +29,52 @@ class AstraScopeModule : Module() {
     Function("getOscilloscopeFrame") { out: Float32Array ->
       ScopeBridge.nativeFillOscilloscope(out.toDirectBuffer(), out.length)
     }
+
+    // --- M4: post-EQ spectrum (EQ screen overlay) ---
+    // Gate the post-EQ tap (true only while the EQ screen is open).
+    Function("setActivePostEq") { active: Boolean ->
+      ScopeBridge.postEqActive = active
+    }
+
+    Function("getSpectrumFramePostEq") { out: Float32Array ->
+      ScopeBridge.nativeFillSpectrumPostEq(out.toDirectBuffer(), out.length)
+    }
+
+    // --- M4: EQ params + per-track gain (consumed by the kotlin-audio processors) ---
+    Function("setEqEnabled") { enabled: Boolean ->
+      EqBridge.enabled = enabled
+      EqBridge.revision += 1
+    }
+
+    Function("setEqPreamp") { linear: Double ->
+      EqBridge.preampLinear = linear.toFloat()
+      EqBridge.revision += 1
+    }
+
+    // Flat band params: 5 floats per band [typeOrdinal, frequency, gain, Q, enabled?1:0].
+    Function("setEqBands") { params: FloatArray ->
+      EqBridge.bands = params
+      EqBridge.revision += 1
+    }
+
+    Function("setNormalizationGain") { linear: Double ->
+      GainBridge.linearGain = linear.toFloat()
+    }
+
+    // Register a queued track's gain by URL so the player can switch to it natively at
+    // the exact media-item transition (no JS round-trip on track change).
+    Function("setTrackGain") { url: String, linear: Double ->
+      GainBridge.putGain(url, linear.toFloat())
+    }
+
+    // Make the registered gain for this URL active now (used for the current track on
+    // mount / settings change, where no transition fires).
+    Function("activateTrackGain") { url: String ->
+      GainBridge.activateFor(url)
+    }
+
+    Function("clearTrackGains") {
+      GainBridge.clearGains()
+    }
   }
 }

@@ -30,6 +30,12 @@ export interface DbTrack {
   mtime: number;
   added_at: number;
   modified_at: number;
+  // M4 loudness facts (NULL until analyzed). loudness_lufs: integrated LUFS (dB,
+  // negative); sample_peak: linear [0,1]; replay_gain_*: tag dB when present.
+  loudness_lufs: number | null;
+  sample_peak: number | null;
+  replay_gain_track_db: number | null;
+  replay_gain_album_db: number | null;
 }
 
 export interface LibraryFolder {

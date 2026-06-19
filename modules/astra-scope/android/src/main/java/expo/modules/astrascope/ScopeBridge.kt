@@ -21,6 +21,14 @@ object ScopeBridge {
   @Volatile
   var active: Boolean = false
 
+  /**
+   * Gates the POST-EQ tap specifically (true only while the EQ screen is open).
+   * The post-EQ tap runs when [active] && [postEqActive], so the second downmix
+   * costs nothing unless the EQ overlay is actually being viewed.
+   */
+  @Volatile
+  var postEqActive: Boolean = false
+
   /** Audio thread. Tell the analyzer the stream's sample rate / channels. */
   external fun nativeConfigure(sampleRate: Int, channelCount: Int)
 
@@ -41,4 +49,13 @@ object ScopeBridge {
    * writes straight into JS memory.
    */
   external fun nativeFillOscilloscope(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
+
+  /** Audio thread. Push POST-EQ interleaved float PCM (the M4 second tap). */
+  external fun nativePushFramesPostEq(frames: FloatArray, frameCount: Int, channelCount: Int)
+
+  /**
+   * Render thread. Fill `buffer` with the latest POST-EQ dB spectrum (feeds the
+   * EQ screen's response-curve overlay). Returns bins written. Zero-copy.
+   */
+  external fun nativeFillSpectrumPostEq(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
 }

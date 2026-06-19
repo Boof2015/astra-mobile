@@ -25,7 +25,7 @@ type ViewMode = 'tracks' | 'albums' | 'artists' | 'playlists' | 'folders';
 export type FolderWithCount = LibraryFolder & { track_count: number };
 
 interface ScanProgressState {
-  phase: 'idle' | 'discovering' | 'extracting';
+  phase: 'idle' | 'discovering' | 'extracting' | 'analyzing';
   processed: number;
   total: number;
   folderName?: string;

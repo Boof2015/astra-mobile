@@ -12,9 +12,19 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
+import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.MetadataRetriever
+import com.google.android.exoplayer2.metadata.id3.InternalFrame
+import com.google.android.exoplayer2.metadata.id3.TextInformationFrame
+import com.google.android.exoplayer2.metadata.flac.VorbisComment
 import java.nio.ByteOrder
+import java.util.concurrent.TimeUnit
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.sqrt
+import kotlin.math.tan
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -36,6 +46,21 @@ import kotlin.math.roundToInt
 class FileRequest : Record {
   @Field val uri: String = ""
   @Field val coverUri: String? = null
+}
+
+/** Result of one scan-time decode: waveform peaks + integrated loudness + sample peak. */
+class AudioAnalysis : Record {
+  @Field var peaks: FloatArray = FloatArray(0)
+  @Field var lufs: Double? = null // integrated LUFS (negative dB); null if unmeasured
+  @Field var peak: Double? = null // absolute sample peak, linear [0,1]; null if unmeasured
+}
+
+/** ReplayGain tags read from the container (no audio decode). Null = tag absent. */
+class ReplayGainTags : Record {
+  @Field var trackGainDb: Double? = null // REPLAYGAIN_TRACK_GAIN (dB)
+  @Field var albumGainDb: Double? = null // REPLAYGAIN_ALBUM_GAIN (dB)
+  @Field var trackPeak: Double? = null // REPLAYGAIN_TRACK_PEAK (linear, ~[0,1+])
+  @Field var albumPeak: Double? = null // REPLAYGAIN_ALBUM_PEAK (linear, ~[0,1+])
 }
 
 class AstraLibraryScannerModule : Module() {
@@ -72,8 +97,23 @@ class AstraLibraryScannerModule : Module() {
     // run lazily per track on the JS side; results are cached in SQLite there.
     AsyncFunction("extractWaveform") Coroutine { uri: String, bins: Int ->
       waveformSemaphore.withPermit {
-        withContext(Dispatchers.IO) { extractWaveform(uri, if (bins > 0) bins else 512) }
+        withContext(Dispatchers.IO) { decodeAndAnalyze(uri, if (bins > 0) bins else 512).peaks }
       }
+    }
+
+    // Fast loudness (M4): decodes only a few short windows spread across the track
+    // (not the whole file) + gated K-weighting -> integrated LUFS + sample peak.
+    // Waveform peaks stay lazy/full-decode (extractWaveform), decoupled from this.
+    AsyncFunction("measureLoudness") Coroutine { uri: String ->
+      waveformSemaphore.withPermit {
+        withContext(Dispatchers.IO) { measureLoudness(uri) }
+      }
+    }
+
+    // ReplayGain tags (M4): reads container metadata only (no PCM decode), so it is
+    // cheap and lets us normalize a tagged library without the slow loudness decode.
+    AsyncFunction("readReplayGain") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { readReplayGain(uri) }
     }
 
     Function("getArtworkDirPath") {
@@ -126,6 +166,100 @@ class AstraLibraryScannerModule : Module() {
 
   private fun artworkThumbDir(): File =
     File(requireContext().filesDir, "artwork-thumbs").apply { if (!exists()) mkdirs() }
+
+  // ---------------------------------------------------------------------------
+  // ReplayGain tags (container metadata only — no audio decode)
+  // ---------------------------------------------------------------------------
+
+  // Cap MetadataRetriever per file so a malformed/huge container can't hang a worker.
+  private val metadataTimeoutMs = 12_000L
+
+  /**
+   * Read ReplayGain track/album gain (dB) + peak (linear) from container tags via
+   * ExoPlayer's MetadataRetriever (parses ID3 TXXX, Vorbis comments, MP4 freeform
+   * atoms without decoding PCM). Mirrors the desktop's extractReplayGainDb fuzzy
+   * matching. Returns all-null on any failure (unsupported container, IO, timeout).
+   */
+  private fun readReplayGain(uriStr: String): ReplayGainTags {
+    val result = ReplayGainTags()
+    try {
+      val mediaItem = MediaItem.fromUri(Uri.parse(uriStr))
+      val trackGroups = MetadataRetriever.retrieveMetadata(requireContext(), mediaItem)
+        .get(metadataTimeoutMs, TimeUnit.MILLISECONDS)
+
+      // R128 (Opus / EBU) is a fallback used only when no REPLAYGAIN_* tag is present.
+      var r128Track: Double? = null
+      var r128Album: Double? = null
+
+      fun consider(rawKey: String?, rawValue: String?) {
+        if (rawKey == null || rawValue == null) return
+        val key = normalizeRgKey(rawKey)
+        when {
+          result.trackGainDb == null && (key.contains("replaygain_track_gain") || key.contains("rg_track_gain")) ->
+            result.trackGainDb = parseRgDb(rawValue)
+          result.albumGainDb == null && (key.contains("replaygain_album_gain") || key.contains("rg_album_gain")) ->
+            result.albumGainDb = parseRgDb(rawValue)
+          result.trackPeak == null && (key.contains("replaygain_track_peak") || key.contains("rg_track_peak")) ->
+            result.trackPeak = parsePeak(rawValue)
+          result.albumPeak == null && (key.contains("replaygain_album_peak") || key.contains("rg_album_peak")) ->
+            result.albumPeak = parsePeak(rawValue)
+          r128Track == null && key.contains("r128_track_gain") -> r128Track = parseR128(rawValue)
+          r128Album == null && key.contains("r128_album_gain") -> r128Album = parseR128(rawValue)
+        }
+      }
+
+      for (g in 0 until trackGroups.length) {
+        val group = trackGroups.get(g)
+        for (f in 0 until group.length) {
+          val metadata = group.getFormat(f).metadata ?: continue
+          for (i in 0 until metadata.length()) {
+            when (val entry = metadata.get(i)) {
+              // ID3 user-defined text frame: description is the key, value the text.
+              is TextInformationFrame -> if (entry.id == "TXXX") consider(entry.description, entry.value)
+              // FLAC/Ogg/Opus Vorbis comments (vorbis.VorbisComment extends this).
+              is VorbisComment -> consider(entry.key, entry.value)
+              // MP4 iTunes freeform "----:com.apple.iTunes:replaygain_*" atoms.
+              is InternalFrame -> consider(entry.description, entry.text)
+            }
+          }
+        }
+      }
+
+      if (result.trackGainDb == null) result.trackGainDb = r128Track
+      if (result.albumGainDb == null) result.albumGainDb = r128Album
+    } catch (_: Throwable) {
+      // Unsupported container, IO error, or timeout -> no tags.
+    }
+    return result
+  }
+
+  private fun normalizeRgKey(id: String): String =
+    id.trim().lowercase().replace(Regex("[\\s-]+"), "_")
+
+  /** Parse a ReplayGain dB value like "-6.54 dB", "-6,54", or "+3.2". */
+  private fun parseRgDb(raw: String): Double? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    trimmed.toDoubleOrNull()?.let { return it }
+    trimmed.replace(Regex("(?i)\\s*dB\\s*$"), "").trim().toDoubleOrNull()?.let { return it }
+    val m = Regex("[+-]?\\d+(?:[.,]\\d+)?").find(trimmed) ?: return null
+    return m.value.replace(',', '.').toDoubleOrNull()
+  }
+
+  /** Parse a ReplayGain peak (linear amplitude, > 0). */
+  private fun parsePeak(raw: String): Double? {
+    val trimmed = raw.trim()
+    trimmed.toDoubleOrNull()?.let { return if (it > 0.0) it else null }
+    val m = Regex("[+-]?\\d+(?:[.,]\\d+)?").find(trimmed) ?: return null
+    val v = m.value.replace(',', '.').toDoubleOrNull() ?: return null
+    return if (v > 0.0) v else null
+  }
+
+  /** R128_*_GAIN is Q7.8 dB relative to -23 LUFS; +5 dB realigns to the RG reference. */
+  private fun parseR128(raw: String): Double? {
+    val v = raw.trim().toIntOrNull() ?: return null
+    return v / 256.0 + 5.0
+  }
 
   // ---------------------------------------------------------------------------
   // Directory walk
@@ -303,11 +437,12 @@ class AstraLibraryScannerModule : Module() {
   // Waveform peaks (offline RMS bins)
   // ---------------------------------------------------------------------------
 
-  // Decodes the whole file to PCM and accumulates RMS energy per bin (mirrors
-  // desktop waveformExtractor.extractWaveformPeaks), normalized to [0,1]. Returns
-  // an empty array on any failure (caller falls back to a flat seek bar).
-  private fun extractWaveform(uriStr: String, bins: Int): FloatArray {
+  // One whole-file PCM decode -> per-bin RMS waveform peaks (normalized [0,1]) for the
+  // seek bar. Returns empty peaks on any failure (caller falls back to a flat seek
+  // bar). Loudness is measured separately by measureLoudness.
+  private fun decodeAndAnalyze(uriStr: String, bins: Int): AudioAnalysis {
     val context = requireContext()
+    val result = AudioAnalysis()
     val uri = Uri.parse(uriStr)
     val extractor = MediaExtractor()
     var codec: MediaCodec? = null
@@ -322,7 +457,7 @@ class AstraLibraryScannerModule : Module() {
           trackFormat = f; trackIndex = i; break
         }
       }
-      val format = trackFormat ?: return FloatArray(0)
+      val format = trackFormat ?: return result
       extractor.selectTrack(trackIndex)
 
       val sampleRate =
@@ -370,7 +505,7 @@ class AstraLibraryScannerModule : Module() {
             out.position(info.offset)
             out.limit(info.offset + info.size)
             out.order(ByteOrder.nativeOrder())
-            frame = accumulate(out, pcmFloat, channelCount, bins, totalFrames, frame, sumSquares, counts)
+            frame = accumulateAnalyze(out, pcmFloat, channelCount, bins, totalFrames, frame, sumSquares, counts)
           }
           codec.releaseOutputBuffer(outIndex, false)
         } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -394,9 +529,10 @@ class AstraLibraryScannerModule : Module() {
       if (globalMax > 0) {
         for (i in 0 until bins) peaks[i] = (peaks[i] / globalMax).toFloat()
       }
-      return peaks
+      result.peaks = peaks
+      return result
     } catch (_: Throwable) {
-      return FloatArray(0)
+      return result
     } finally {
       try { codec?.stop() } catch (_: Throwable) {}
       try { codec?.release() } catch (_: Throwable) {}
@@ -404,9 +540,128 @@ class AstraLibraryScannerModule : Module() {
     }
   }
 
-  // Folds one decoded PCM buffer into the per-bin RMS accumulators. Handles
+  // Integrated gated loudness over the WHOLE file (accurate — subset sampling caused
+  // too much loudness inconsistency). Decodes the full track and feeds the gated
+  // K-weighting meter. Measured on the fly per track (current + queue lookahead) and
+  // cached, so the cost is paid once per track, never in a bulk background pass.
+  private fun measureLoudness(uriStr: String): AudioAnalysis {
+    val context = requireContext()
+    val result = AudioAnalysis()
+    val uri = Uri.parse(uriStr)
+    val extractor = MediaExtractor()
+    var codec: MediaCodec? = null
+    try {
+      extractor.setDataSource(context, uri, null)
+
+      var trackFormat: MediaFormat? = null
+      var trackIndex = -1
+      for (i in 0 until extractor.trackCount) {
+        val f = extractor.getTrackFormat(i)
+        if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+          trackFormat = f; trackIndex = i; break
+        }
+      }
+      val format = trackFormat ?: return result
+      extractor.selectTrack(trackIndex)
+
+      val sampleRate =
+        if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+      var channelCount =
+        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+      var pcmFloat = false
+
+      codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+      codec.configure(format, null, null, 0)
+      codec.start()
+      val info = MediaCodec.BufferInfo()
+
+      var meter: LoudnessMeter? = null
+      var sawInputEOS = false
+      var sawOutputEOS = false
+      while (!sawOutputEOS) {
+        if (!sawInputEOS) {
+          val inIndex = codec.dequeueInputBuffer(10_000)
+          if (inIndex >= 0) {
+            val inBuf = codec.getInputBuffer(inIndex)!!
+            val size = extractor.readSampleData(inBuf, 0)
+            if (size < 0) {
+              codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+              sawInputEOS = true
+            } else {
+              codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
+              extractor.advance()
+            }
+          }
+        }
+        val outIndex = codec.dequeueOutputBuffer(info, 10_000)
+        if (outIndex >= 0) {
+          if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
+          if (info.size > 0) {
+            val out = codec.getOutputBuffer(outIndex)!!
+            out.position(info.offset)
+            out.limit(info.offset + info.size)
+            out.order(ByteOrder.nativeOrder())
+            val m = meter ?: LoudnessMeter(channelCount, sampleRate).also { meter = it }
+            feedMeter(out, pcmFloat, channelCount, m)
+          }
+          codec.releaseOutputBuffer(outIndex, false)
+        } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+          val nf = codec.outputFormat
+          if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channelCount = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+          if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+            pcmFloat = nf.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+          }
+        }
+      }
+
+      meter?.let {
+        result.lufs = it.lufs()
+        result.peak = it.peak
+      }
+      return result
+    } catch (_: Throwable) {
+      return result
+    } finally {
+      try { codec?.stop() } catch (_: Throwable) {}
+      try { codec?.release() } catch (_: Throwable) {}
+      try { extractor.release() } catch (_: Throwable) {}
+    }
+  }
+
+  // Feeds one decoded PCM buffer (16-bit or float) to the loudness meter.
+  private fun feedMeter(
+    out: java.nio.ByteBuffer,
+    pcmFloat: Boolean,
+    channelCount: Int,
+    meter: LoudnessMeter
+  ) {
+    if (pcmFloat) {
+      val fb = out.asFloatBuffer()
+      val n = fb.remaining()
+      var k = 0
+      while (k < n) {
+        var c = 0
+        while (c < channelCount && k < n) {
+          meter.process(fb.get(k).toDouble(), c); k++; c++
+        }
+      }
+    } else {
+      val sb = out.asShortBuffer()
+      val n = sb.remaining()
+      var k = 0
+      while (k < n) {
+        var c = 0
+        while (c < channelCount && k < n) {
+          meter.process(sb.get(k) / 32768.0, c); k++; c++
+        }
+      }
+    }
+  }
+
+  // Folds one decoded PCM buffer into the per-bin RMS accumulators and, when a
+  // loudness meter is provided, the K-weighted loudness + sample peak. Handles
   // 16-bit (default) and float PCM. Returns the updated running frame index.
-  private fun accumulate(
+  private fun accumulateAnalyze(
     out: java.nio.ByteBuffer,
     pcmFloat: Boolean,
     channelCount: Int,
@@ -449,6 +704,111 @@ class AstraLibraryScannerModule : Module() {
       }
     }
     return frame
+  }
+
+  // Gated integrated K-weighted loudness per ITU-R BS.1770 + absolute sample peak.
+  // Two cascaded biquads (high-shelf pre-filter + RLB high-pass) per channel with
+  // pyloudnorm-reference coefficients (so the -0.691 offset holds), accumulated into
+  // 400 ms blocks, then a two-stage gate (-70 LUFS absolute, -10 LU relative). Unity
+  // channel weights (fine for mono/stereo). Non-overlapping blocks (vs the spec's 75%
+  // overlap) — within ~0.1 LU and much cheaper.
+  private class LoudnessMeter(private val channels: Int, sampleRate: Int) {
+    private val b0a: Double; private val b1a: Double; private val b2a: Double
+    private val a1a: Double; private val a2a: Double
+    private val a1b: Double; private val a2b: Double
+
+    private val s1a = DoubleArray(channels)
+    private val s2a = DoubleArray(channels)
+    private val s1b = DoubleArray(channels)
+    private val s2b = DoubleArray(channels)
+
+    private val blockSumSq = DoubleArray(channels)
+    private val blockFrames: Int
+    private var framesInBlock = 0
+    // Per-block summed-channel mean-square energy (z), for gating.
+    private val blockEnergies = ArrayList<Double>()
+
+    var peak: Double = 0.0
+      private set
+
+    init {
+      val fs = sampleRate.coerceAtLeast(1).toDouble()
+      // Stage 1: high-shelf pre-filter.
+      val f0a = 1681.974450955533
+      val ga = 3.999843853973347
+      val qa = 0.7071752369554196
+      val ka = tan(PI * f0a / fs)
+      val vh = Math.pow(10.0, ga / 20.0)
+      val vb = Math.pow(vh, 0.4996667741545416)
+      val a0a = 1.0 + ka / qa + ka * ka
+      b0a = (vh + vb * ka / qa + ka * ka) / a0a
+      b1a = 2.0 * (ka * ka - vh) / a0a
+      b2a = (vh - vb * ka / qa + ka * ka) / a0a
+      a1a = 2.0 * (ka * ka - 1.0) / a0a
+      a2a = (1.0 - ka / qa + ka * ka) / a0a
+      // Stage 2: RLB high-pass (b = [1, -2, 1]).
+      val f0b = 38.13547087602444
+      val qb = 0.5003270373238773
+      val kb = tan(PI * f0b / fs)
+      val a0b = 1.0 + kb / qb + kb * kb
+      a1b = 2.0 * (kb * kb - 1.0) / a0b
+      a2b = (1.0 - kb / qb + kb * kb) / a0b
+
+      blockFrames = max(1L, (0.4 * fs).toLong()).toInt() // 400 ms gating block
+    }
+
+    fun process(sample: Double, ch: Int) {
+      if (ch >= channels) return
+      val a = abs(sample)
+      if (a > peak) peak = a
+      // Stage 1 (transposed direct form II).
+      val y1 = b0a * sample + s1a[ch]
+      s1a[ch] = b1a * sample - a1a * y1 + s2a[ch]
+      s2a[ch] = b2a * sample - a2a * y1
+      // Stage 2: b0=1, b1=-2, b2=1.
+      val y2 = y1 + s1b[ch]
+      s1b[ch] = -2.0 * y1 - a1b * y2 + s2b[ch]
+      s2b[ch] = y1 - a2b * y2
+      blockSumSq[ch] += y2 * y2
+      // One frame completes when the last channel of the frame is processed.
+      if (ch == channels - 1) {
+        framesInBlock++
+        if (framesInBlock >= blockFrames) finalizeBlock()
+      }
+    }
+
+    private fun finalizeBlock() {
+      if (framesInBlock <= 0) return
+      var energy = 0.0
+      for (c in 0 until channels) {
+        energy += blockSumSq[c] / framesInBlock
+        blockSumSq[c] = 0.0
+      }
+      framesInBlock = 0
+      if (energy > 0.0) blockEnergies.add(energy)
+    }
+
+    fun lufs(): Double {
+      finalizeBlock() // flush the trailing partial block
+      if (blockEnergies.isEmpty()) return -70.0
+
+      // Absolute gate at -70 LUFS (energy terms).
+      val absThresh = Math.pow(10.0, (-70.0 + 0.691) / 10.0)
+      var sum = 0.0
+      var cnt = 0
+      for (e in blockEnergies) if (e >= absThresh) { sum += e; cnt++ }
+      if (cnt == 0) return -70.0
+
+      // Relative gate: -10 LU below the abs-gated mean.
+      val relLoudness = -0.691 + 10.0 * log10(sum / cnt)
+      val relThresh = Math.pow(10.0, (relLoudness - 10.0 + 0.691) / 10.0)
+      sum = 0.0
+      cnt = 0
+      for (e in blockEnergies) if (e >= absThresh && e >= relThresh) { sum += e; cnt++ }
+      if (cnt == 0) return -70.0
+
+      return -0.691 + 10.0 * log10(sum / cnt)
+    }
   }
 
   private fun readBitsPerSample(format: MediaFormat): Int? {

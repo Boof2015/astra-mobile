@@ -8,6 +8,8 @@ import {
   type SkPicture,
 } from '@shopify/react-native-skia';
 import { AstraScope, OSCILLOSCOPE_POINTS } from '../../modules/astra-scope';
+import { useScopeStore } from '@/scope/scopeStore';
+import { DEFAULT_OSC_GAIN } from '@/scope/oscilloscopeGain';
 import { colors } from '@/theme';
 
 interface OscilloscopeWaveProps {
@@ -25,7 +27,6 @@ type SkiaViewApiShape = {
   requestRedraw: (nativeId: number) => void;
 };
 
-const VISUAL_GAIN = 1.8;
 const values = new Float32Array(OSCILLOSCOPE_POINTS);
 
 function skiaViewApi(): SkiaViewApiShape | null {
@@ -58,7 +59,8 @@ function buildPicture(
   height: number,
   color: string,
   lineWidth: number,
-  glow: boolean
+  glow: boolean,
+  gain: number
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
@@ -70,7 +72,9 @@ function buildPicture(
     const amp = mid - lineWidth;
     const xAt = (i: number) => (i / (n - 1)) * width;
     const yAt = (i: number) => {
-      let v = samples[i] * VISUAL_GAIN;
+      let v = samples[i] * gain;
+      // Per-track gain targets ~85% of full scale, so this only catches the rare
+      // intra-track peak that runs a touch hotter than the analyzed sample peak.
       if (v < -1) v = -1;
       else if (v > 1) v = 1;
       return mid - v * amp;
@@ -94,6 +98,10 @@ function buildPicture(
  * Imperative oscilloscope renderer. This mirrors desktop/prism's hot path:
  * a frame loop pulls native scope data and draws directly into a canvas-like
  * surface instead of routing each frame through React reconciliation.
+ *
+ * Amplitude uses a per-track display gain (scopeStore.oscGain, set once per track by
+ * useNormalizationSync) — read fresh each frame so it tracks song changes, but held
+ * constant within a track so the music's own dynamics are preserved.
  */
 export function OscilloscopeWave({
   active,
@@ -106,7 +114,17 @@ export function OscilloscopeWave({
 }: OscilloscopeWaveProps) {
   const viewRef = useRef<SkiaPictureView | null>(null);
   const initialPicture = useMemo(
-    () => buildPicture(values, values.length, Math.max(1, width), Math.max(1, height), color, lineWidth, glow),
+    () =>
+      buildPicture(
+        values,
+        values.length,
+        Math.max(1, width),
+        Math.max(1, height),
+        color,
+        lineWidth,
+        glow,
+        DEFAULT_OSC_GAIN
+      ),
     [color, glow, height, lineWidth, width]
   );
 
@@ -119,7 +137,8 @@ export function OscilloscopeWave({
     let raf = 0;
 
     const draw = (sampleCount: number) => {
-      const picture = buildPicture(values, sampleCount, width, height, color, lineWidth, glow);
+      const gain = useScopeStore.getState().oscGain;
+      const picture = buildPicture(values, sampleCount, width, height, color, lineWidth, glow, gain);
       api.setJsiProperty(view.nativeId, 'picture', picture);
       api.requestRedraw(view.nativeId);
     };

@@ -20,8 +20,10 @@ export function Badge({ label }: { label: string }) {
  */
 export function FormatBadges({
   track,
+  wrap = true,
 }: {
   track: Pick<Track, 'format' | 'bitDepth' | 'sampleRate'>;
+  wrap?: boolean;
 }) {
   const labels: string[] = [];
   if (track.format) labels.push(track.format.toUpperCase());
@@ -31,7 +33,7 @@ export function FormatBadges({
   if (labels.length === 0) return null;
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, !wrap && styles.rowNoWrap]}>
       {labels.map((label) => (
         <Badge key={label} label={label} />
       ))}
@@ -44,6 +46,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
+  },
+  rowNoWrap: {
+    flexWrap: 'nowrap',
   },
   badge: {
     backgroundColor: colors.glassBg,

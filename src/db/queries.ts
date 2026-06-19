@@ -141,6 +141,74 @@ export async function getTrackCount(db: LibraryDatabase): Promise<number> {
   return row?.count ?? 0;
 }
 
+// --- Loudness (M4 normalization facts) ---------------------------------------
+
+export interface TrackLoudness {
+  loudness_lufs: number | null;
+  sample_peak: number | null;
+  replay_gain_track_db: number | null;
+  replay_gain_album_db: number | null;
+  replay_gain_track_peak: number | null;
+  replay_gain_album_peak: number | null;
+  /** 1 once ReplayGain tags have been read (whether or not any were present). */
+  rg_scanned: number | null;
+}
+
+/** Loudness facts for one track path (NULL fields = not yet analyzed). */
+export async function getTrackLoudness(
+  db: LibraryDatabase,
+  path: string
+): Promise<TrackLoudness | null> {
+  return (
+    (await db.get<TrackLoudness>(
+      `SELECT loudness_lufs, sample_peak,
+              replay_gain_track_db, replay_gain_album_db,
+              replay_gain_track_peak, replay_gain_album_peak, rg_scanned
+       FROM tracks WHERE path = ?`,
+      [path]
+    )) ?? null
+  );
+}
+
+/** Persist measured loudness + sample peak for a track (scan analyze pass). */
+export async function setTrackLoudness(
+  db: LibraryDatabase,
+  path: string,
+  lufs: number | null,
+  samplePeak: number | null
+): Promise<void> {
+  await db.run('UPDATE tracks SET loudness_lufs = ?, sample_peak = ? WHERE path = ?', [
+    lufs,
+    samplePeak,
+    path,
+  ]);
+}
+
+export interface ReplayGainColumns {
+  trackGainDb: number | null;
+  albumGainDb: number | null;
+  trackPeak: number | null;
+  albumPeak: number | null;
+}
+
+/**
+ * Persist ReplayGain tags read from the container + mark the track as scanned, so
+ * we read tags once per track (independent of loudness, which may re-measure).
+ */
+export async function setTrackReplayGain(
+  db: LibraryDatabase,
+  path: string,
+  rg: ReplayGainColumns
+): Promise<void> {
+  await db.run(
+    `UPDATE tracks SET
+       replay_gain_track_db = ?, replay_gain_album_db = ?,
+       replay_gain_track_peak = ?, replay_gain_album_peak = ?, rg_scanned = 1
+     WHERE path = ?`,
+    [rg.trackGainDb, rg.albumGainDb, rg.trackPeak, rg.albumPeak, path]
+  );
+}
+
 // --- Settings (key-value preferences) ----------------------------------------
 
 export async function getSetting(db: LibraryDatabase, key: string): Promise<string | null> {

@@ -24,6 +24,7 @@ import com.doublesymmetry.kotlinaudio.models.AudioItem
 import com.doublesymmetry.kotlinaudio.models.AudioItemHolder
 import com.doublesymmetry.kotlinaudio.models.AudioItemTransitionReason
 import com.doublesymmetry.kotlinaudio.models.AudioPlayerState
+import expo.modules.astrascope.GainBridge
 import com.doublesymmetry.kotlinaudio.models.BufferConfig
 import com.doublesymmetry.kotlinaudio.models.CacheConfig
 import com.doublesymmetry.kotlinaudio.models.DefaultPlayerOptions
@@ -666,6 +667,12 @@ abstract class BaseAudioPlayer internal constructor(
          * playlist becomes non-empty or empty as a consequence of a playlist change.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // Apply the per-track normalization gain natively, exactly at the audio
+            // transition — the gain map is pre-seeded from JS by URL, so this is just a
+            // lock-free lookup (no JS round-trip on track change).
+            val url = runCatching { mediaItem?.getAudioItemHolder()?.audioItem?.audioUrl }.getOrNull()
+            GainBridge.activateFor(url)
+
             when (reason) {
                 Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> playerEventHolder.updateAudioItemTransition(
                     AudioItemTransitionReason.AUTO(oldPosition)

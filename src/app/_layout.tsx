@@ -18,6 +18,9 @@ import {
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { useEQStore } from '@/stores/eqStore';
+import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
+import { useNormalizationSync } from '@/audio/useNormalizationSync';
 import { colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -31,6 +34,12 @@ function PlaybackSync() {
 /** Owns the visualizer on/off gate (foreground + playing + motion). Renders nothing. */
 function ScopeLifecycle() {
   useScopeLifecycle();
+  return null;
+}
+
+/** Pushes per-track normalization gain to native on track/settings change. */
+function NormalizationSync() {
+  useNormalizationSync();
   return null;
 }
 
@@ -51,12 +60,21 @@ export default function RootLayout() {
   }, [fontsLoaded]);
 
   // Eager library init: SQLite open + initial reads are tens of ms, and the
-  // Library tab + playback adapters get data immediately.
+  // Library tab + playback adapters get data immediately. EQ + audio settings load
+  // alongside so the native EQ/gain reflect persisted prefs from the first play.
   useEffect(() => {
     useLibraryStore
       .getState()
       .initialize()
       .catch((err) => console.error('[library] init failed', err));
+    useEQStore
+      .getState()
+      .load()
+      .catch((err) => console.error('[eq] load failed', err));
+    useAudioSettingsStore
+      .getState()
+      .load()
+      .catch((err) => console.error('[audioSettings] load failed', err));
   }, []);
 
   if (!fontsLoaded) return null;
@@ -67,6 +85,7 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <PlaybackSync />
         <ScopeLifecycle />
+        <NormalizationSync />
         <Stack
           screenOptions={{
             headerShown: false,

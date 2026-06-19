@@ -7,10 +7,14 @@ import com.google.android.exoplayer2.audio.AudioSink
 import com.google.android.exoplayer2.audio.DefaultAudioSink
 
 /**
- * A DefaultRenderersFactory whose audio sink runs our pre-EQ PCM tap as the
- * first (and, for M3, only) AudioProcessor. Float-output / playback-param
- * capabilities are preserved by forwarding the flags. M4 will prepend the EQ
- * AudioProcessor (and add a second post-EQ tap) to this same chain.
+ * A DefaultRenderersFactory whose audio sink runs the M4 processing chain.
+ * Order matters:
+ *   1. NormalizationGainProcessor — per-track gain (before the taps, so the
+ *      scopes see normalized levels).
+ *   2. ScopeTapAudioProcessor — the pre-EQ tap (post-normalization) → scope ring #1.
+ *   3. EqAudioProcessor — preamp + parametric biquad chain.
+ *   4. PostEqTapAudioProcessor — post-EQ tap → scope ring #2 (EQ screen overlay).
+ * Float-output / playback-param capabilities are preserved by forwarding the flags.
  */
 fun buildScopeRenderersFactory(context: Context): DefaultRenderersFactory =
   object : DefaultRenderersFactory(context) {
@@ -23,6 +27,13 @@ fun buildScopeRenderersFactory(context: Context): DefaultRenderersFactory =
       DefaultAudioSink.Builder(context)
         .setEnableFloatOutput(enableFloatOutput)
         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-        .setAudioProcessors(arrayOf<AudioProcessor>(ScopeTapAudioProcessor()))
+        .setAudioProcessors(
+          arrayOf<AudioProcessor>(
+            NormalizationGainProcessor(),
+            ScopeTapAudioProcessor(),
+            EqAudioProcessor(),
+            PostEqTapAudioProcessor()
+          )
+        )
         .build()
   }

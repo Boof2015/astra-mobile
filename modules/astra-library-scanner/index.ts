@@ -43,6 +43,14 @@ export interface ExtractedMetadata {
   artworkHash?: string | null;
 }
 
+/** ReplayGain tags read from a file's container (null = tag absent). */
+export interface ReplayGainTags {
+  trackGainDb: number | null;
+  albumGainDb: number | null;
+  trackPeak: number | null;
+  albumPeak: number | null;
+}
+
 export interface ScanProgressEvent {
   phase: 'discovering';
   found: number;
@@ -60,6 +68,18 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    * the waveform seek bar. Whole-file decode (heavy); returns [] on failure.
    */
   extractWaveform(uri: string, bins: number): Promise<number[]>;
+  /**
+   * Fast integrated loudness (M4): decodes only a few short windows across the
+   * track + gated K-weighting -> integrated LUFS + absolute sample peak. Null on
+   * failure / unmeasurable audio. Waveform peaks are separate (extractWaveform).
+   */
+  measureLoudness(uri: string): Promise<{ lufs: number | null; peak: number | null }>;
+  /**
+   * Read ReplayGain track/album gain (dB) + peak (linear) from container tags
+   * (ID3 TXXX / Vorbis comments / MP4 freeform) without decoding audio. All fields
+   * are null when the tag is absent; the whole call is cheap (metadata only).
+   */
+  readReplayGain(uri: string): Promise<ReplayGainTags>;
   getArtworkDirPath(): string;
   getArtworkThumbDirPath(): string;
   ensureArtworkThumbnails(hashes: string[]): Promise<number>;

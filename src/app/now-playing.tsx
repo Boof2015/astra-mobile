@@ -16,12 +16,14 @@ import Animated, {
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
+import { MarqueeText } from '@/components/MarqueeText';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { colors, radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
+import { resolveCanonicalBrowseArtist, resolveStrictBrowseArtist } from '@/library/artistGrouping';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -177,6 +179,7 @@ export default function NowPlayingScreen() {
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
+  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
@@ -194,11 +197,15 @@ export default function NowPlayingScreen() {
   const source = track?.album?.trim() ? track.album : 'Library';
   const shellRight = Math.max(layout.contentPadding, (windowWidth - layout.contentWidth) / 2);
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
-  const artistName = track?.artist.trim() ?? '';
   const libraryTrack = useMemo(
     () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
     [libraryTracks, track]
   );
+  const artistName = track
+    ? artistGroupingMode === 'fileTags'
+      ? resolveStrictBrowseArtist(libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null })
+      : resolveCanonicalBrowseArtist(libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null })
+    : '';
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 
   const navigateToArtist = () => {
@@ -454,9 +461,13 @@ export default function NowPlayingScreen() {
                 <View style={styles.playerControls}>
                   <View style={styles.trackInfo}>
                     <View style={styles.trackTextStack}>
-                      <Text variant="heading" numberOfLines={1} style={styles.trackTitle}>
+                      <MarqueeText
+                        variant="heading"
+                        containerStyle={styles.trackTitle}
+                        style={styles.trackTitleText}
+                      >
                         {track.title}
-                      </Text>
+                      </MarqueeText>
                       <View style={styles.trackMetaRow}>
                         <Pressable
                           onPress={navigateToArtist}
@@ -465,13 +476,10 @@ export default function NowPlayingScreen() {
                           accessibilityRole="link"
                           accessibilityLabel={`View artist ${track.artist}`}
                         >
-                          <Text variant="body" numberOfLines={1} style={styles.artist}>
+                          <MarqueeText variant="body" style={styles.artist}>
                             {track.artist}
-                          </Text>
+                          </MarqueeText>
                         </Pressable>
-                        <View style={styles.badges}>
-                          <FormatBadges track={track} />
-                        </View>
                       </View>
                     </View>
                     <Pressable
@@ -566,31 +574,36 @@ export default function NowPlayingScreen() {
                   </View>
 
                   <View style={styles.subRow}>
-                    <Pressable
-                      hitSlop={10}
-                      style={styles.subBtn}
-                      onPress={() => void setScopeStageVisible(!scopeStageVisible)}
-                      accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
-                      accessibilityState={{ selected: scopeStageVisible }}
-                    >
-                      <MaterialCommunityIcons
-                        name="sine-wave"
-                        size={SUB_ICON_SIZE + 2}
-                        color={scopeStageVisible ? colors.accent : colors.textTertiary}
-                      />
-                    </Pressable>
-                    <Pressable
-                      hitSlop={10}
-                      style={styles.subBtn}
-                      onPress={() => setQueueOpen(true)}
-                      accessibilityLabel="Queue"
-                    >
-                      <Ionicons
-                        name="list-outline"
-                        size={SUB_ICON_SIZE + 2}
-                        color={colors.textTertiary}
-                      />
-                    </Pressable>
+                    <View style={styles.subBadges}>
+                      <FormatBadges track={track} wrap={false} />
+                    </View>
+                    <View style={styles.subActions}>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => void setScopeStageVisible(!scopeStageVisible)}
+                        accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
+                        accessibilityState={{ selected: scopeStageVisible }}
+                      >
+                        <MaterialCommunityIcons
+                          name="sine-wave"
+                          size={SUB_ICON_SIZE + 2}
+                          color={scopeStageVisible ? colors.accent : colors.textTertiary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.subBtn}
+                        onPress={() => setQueueOpen(true)}
+                        accessibilityLabel="Queue"
+                      >
+                        <Ionicons
+                          name="list-outline"
+                          size={SUB_ICON_SIZE + 2}
+                          color={colors.textTertiary}
+                        />
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -778,6 +791,8 @@ const styles = StyleSheet.create({
   },
   trackTitle: {
     alignSelf: 'stretch',
+  },
+  trackTitleText: {
     textAlign: 'left',
   },
   inlineActionBtn: {
@@ -789,13 +804,13 @@ const styles = StyleSheet.create({
   trackMetaRow: {
     alignSelf: 'stretch',
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
   artistButton: {
-    flexShrink: 1,
+    flex: 1,
     minWidth: 0,
   },
   centered: {
@@ -803,9 +818,6 @@ const styles = StyleSheet.create({
   },
   artist: {
     color: colors.accentText,
-  },
-  badges: {
-    flexShrink: 0,
   },
   spacer: {
     flex: 1,
@@ -843,10 +855,21 @@ const styles = StyleSheet.create({
   subRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.lg,
+    justifyContent: 'space-between',
+    gap: spacing.md,
     marginTop: SUB_TOP_MARGIN,
     paddingHorizontal: spacing.sm,
+  },
+  subBadges: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+  },
+  subActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: spacing.lg,
   },
   subBtn: {
     width: SUB_BUTTON_SIZE,

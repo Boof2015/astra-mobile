@@ -23,7 +23,7 @@ import { metadataToUpsertRow } from './trackAdapter';
 const EXTRACT_BATCH_SIZE = 24;
 
 export interface ScanProgress {
-  phase: 'discovering' | 'extracting';
+  phase: 'discovering' | 'extracting' | 'analyzing';
   processed: number;
   total: number;
   folderName: string;
@@ -157,6 +157,10 @@ export async function scanFolder(
   }
 
   await markFolderScanned(db, folder.id);
+
+  // Loudness + waveform are measured on the fly: the first time a track is played,
+  // useNormalizationSync (loudness) and the seek bar (waveform) decode + cache it.
+  // No bulk background decoding — gentle on low-end devices.
   return result;
 }
 

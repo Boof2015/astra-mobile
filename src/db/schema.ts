@@ -4,11 +4,16 @@
 // non-ASCII tags were truncated by the pre-fix op-sqlite binding (see database.ts);
 // v4 adds a key-value settings table (artist grouping mode, future prefs);
 // v5 caches offline waveform peaks for the M3 waveform seek bar; v6 repairs DBs
-// that an abandoned earlier M3 spike left at v5 with a stale `waveform_cache`.
+// that an abandoned earlier M3 spike left at v5 with a stale `waveform_cache`;
+// v7 (M4) adds per-track loudness facts (integrated LUFS + sample peak + ReplayGain
+// tags) measured for normalization; v8 clears any loudness measured by the earlier
+// ungated whole-file method so it re-measures with the fast gated subset method;
+// v9 adds ReplayGain peak columns + an `rg_scanned` sentinel so tag reading runs
+// once per track (and is retried if it ever failed), independent of loudness.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 9;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -114,6 +119,27 @@ const MIGRATIONS: readonly (readonly string[])[] = [
       created_at INTEGER NOT NULL
     )`,
     `DROP TABLE IF EXISTS waveform_cache`,
+  ],
+  // v6 -> v7 — per-track loudness facts for normalization (M4). NULL = not yet
+  // analyzed (the scan analyze pass / lazy fallback backfills them). loudness_lufs
+  // is integrated LUFS (negative dB); sample_peak is linear [0,1]; replay_gain_*
+  // are tag dB values when present.
+  [
+    `ALTER TABLE tracks ADD COLUMN loudness_lufs REAL`,
+    `ALTER TABLE tracks ADD COLUMN sample_peak REAL`,
+    `ALTER TABLE tracks ADD COLUMN replay_gain_track_db REAL`,
+    `ALTER TABLE tracks ADD COLUMN replay_gain_album_db REAL`,
+  ],
+  // v7 -> v8 — re-measure loudness with the gated subset method (the earlier values
+  // were ungated whole-file). NULL forces the background pass to recompute them.
+  [`UPDATE tracks SET loudness_lufs = NULL, sample_peak = NULL`],
+  // v8 -> v9 — ReplayGain peaks (linear, for clip-limiting in RG mode) + an
+  // `rg_scanned` flag (0 = tags not yet read). Tag reading is decoupled from the
+  // loudness decode so it runs once per track and survives loudness re-measures.
+  [
+    `ALTER TABLE tracks ADD COLUMN replay_gain_track_peak REAL`,
+    `ALTER TABLE tracks ADD COLUMN replay_gain_album_peak REAL`,
+    `ALTER TABLE tracks ADD COLUMN rg_scanned INTEGER NOT NULL DEFAULT 0`,
   ],
 ];
 

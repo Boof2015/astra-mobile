@@ -73,4 +73,38 @@ Java_expo_modules_astrascope_ScopeBridge_nativeFillOscilloscope(
   return static_cast<jint>(n);
 }
 
+// --- POST-EQ source (M4) ----------------------------------------------------
+// The post-EQ tap pushes here; the EQ screen pulls the post-EQ spectrum.
+
+JNIEXPORT void JNICALL
+Java_expo_modules_astrascope_ScopeBridge_nativePushFramesPostEq(
+    JNIEnv* env, jobject /*thiz*/, jfloatArray frames, jint frameCount,
+    jint channelCount) {
+  if (frames == nullptr || frameCount <= 0 || channelCount <= 0) {
+    return;
+  }
+  auto* data = static_cast<float*>(
+      env->GetPrimitiveArrayCritical(frames, nullptr));
+  if (data == nullptr) {
+    return;
+  }
+  driver().pushInterleavedPostEq(data, static_cast<size_t>(frameCount),
+                                 static_cast<int>(channelCount));
+  env->ReleasePrimitiveArrayCritical(frames, data, JNI_ABORT);
+}
+
+JNIEXPORT jint JNICALL
+Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrumPostEq(
+    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats) {
+  if (buffer == nullptr || capacityFloats <= 0) {
+    return 0;
+  }
+  auto* dst = static_cast<float*>(env->GetDirectBufferAddress(buffer));
+  if (dst == nullptr) {
+    return 0;
+  }
+  const size_t n = driver().fillSpectrumPostEq(dst, static_cast<size_t>(capacityFloats));
+  return static_cast<jint>(n);
+}
+
 }  // extern "C"

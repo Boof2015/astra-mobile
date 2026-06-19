@@ -46,7 +46,11 @@ example
 modules/*/android/build/
 modules/*/android/.gradle/
 modules/*/android/.cxx/
+
+# vendored kotlin-audio fork — built from source by the root Gradle build
 vendor/kotlinaudio/kotlin-audio/build/
+vendor/kotlinaudio/kotlin-audio/.gradle/
+vendor/kotlinaudio/kotlin-audio/.cxx/
 
 HANDOFF.md
 DESIGN.md
