@@ -32,9 +32,11 @@ interface TabBarProps {
  */
 export function TabBar({ items, onPress }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const homeFocused = items.some((item) => item.name === 'index' && item.focused);
+
   return (
     <View style={styles.wrap}>
-      <MiniPlayer />
+      {!homeFocused ? <MiniPlayer /> : null}
       <View
         style={[
           styles.bar,

@@ -55,6 +55,8 @@ export interface Album {
   year: number | null;
   artwork_hash: string | null;
   track_count: number;
+  /** Newest track import timestamp in this album, used by Home recently-added. */
+  latest_added_at: number;
 }
 
 export interface Artist {

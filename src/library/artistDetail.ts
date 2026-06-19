@@ -14,6 +14,7 @@ export interface ArtistAlbum {
   year: number | null;
   artwork_hash: string | null;
   track_count: number;
+  latest_added_at: number;
   duration: number;
 }
 
@@ -77,6 +78,7 @@ function buildArtistAlbums(tracks: readonly DbTrack[]): ArtistAlbum[] {
     if (existing) {
       existing.track_count += 1;
       existing.duration += track.duration;
+      existing.latest_added_at = Math.max(existing.latest_added_at, track.added_at);
       if (existing.year == null && track.year != null) existing.year = track.year;
       if (!existing.artwork_hash && track.artwork_hash) existing.artwork_hash = track.artwork_hash;
       continue;
@@ -89,6 +91,7 @@ function buildArtistAlbums(tracks: readonly DbTrack[]): ArtistAlbum[] {
       year: track.year,
       artwork_hash: track.artwork_hash,
       track_count: 1,
+      latest_added_at: track.added_at,
       duration: track.duration,
     });
   }

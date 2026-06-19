@@ -1,50 +1,561 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { FormatBadges } from '@/components/FormatBadge';
+import { SpectrumCurve } from '@/components/SpectrumCurve';
+import { TrackRow } from '@/components/library/TrackRow';
+import { PlaylistRow } from '@/components/library/PlaylistRow';
+import { ScanProgress } from '@/components/library/ScanProgress';
 import { colors, fonts, radius, spacing } from '@/theme';
-import { playSample } from '@/audio/playbackController';
-import { SAMPLE_TRACKS } from '@/audio/sampleTracks';
+import { useLibraryStore } from '@/stores/libraryStore';
+import { usePlaylistStore } from '@/stores/playlistStore';
+import { usePlayerStore } from '@/stores/playerStore';
+import {
+  playTracks,
+  shuffleTracks,
+  skipToNext,
+  skipToPrevious,
+  togglePlay,
+} from '@/audio/playbackController';
+import { dbTrackToTrack } from '@/library/trackAdapter';
+import { artworkUri } from '@/library/artwork';
+import { formatDuration } from '@/lib/format';
+import { useScopeActive } from '@/scope/scopeStore';
+import type { PlaybackState, Track } from '@/types/audio';
+import type { Album, DbTrack } from '@/types/library';
 
-export default function HomeScreen() {
+const RECENT_ALBUM_LIMIT = 8;
+const RECENT_TRACK_LIMIT = 3;
+const PLAYLIST_LIMIT = 4;
+const PLAYER_CARD_MIN_HEIGHT = 174;
+const CURVE_POINTS = 64;
+
+function chooseRandomAlbum(albums: Album[], currentKey?: string | null): string | null {
+  if (albums.length === 0) return null;
+  if (albums.length === 1) return albums[0].identity_key;
+
+  let next: string | null = currentKey ?? null;
+  while (next === currentKey) {
+    next = albums[Math.floor(Math.random() * albums.length)].identity_key;
+  }
+  return next;
+}
+
+function albumMeta(album: Album, tracks: DbTrack[]): string {
+  const duration = tracks.reduce((sum, track) => sum + track.duration, 0);
+  return [
+    album.year ? String(album.year) : null,
+    `${album.track_count} ${album.track_count === 1 ? 'track' : 'tracks'}`,
+    formatDuration(duration),
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
+function formatCount(count: number, noun: string): string {
+  return `${count} ${count === 1 ? noun : `${noun}s`}`;
+}
+
+function SectionHeader({
+  title,
+  trailing,
+  actionLabel,
+  onActionPress,
+}: {
+  title: string;
+  trailing?: string;
+  actionLabel?: string;
+  onActionPress?: () => void;
+}) {
   return (
-    <Screen>
-      <View style={styles.header}>
-        <AstraLogo size={36} />
-        <Text style={styles.wordmark}>ASTRA</Text>
-      </View>
-      <Text variant="label" style={styles.tagline}>
-        Audiophile player
-      </Text>
-
-      <View style={styles.card}>
-        <Text variant="heading">Quick start</Text>
-        <Text variant="body" color={colors.textSecondary} style={styles.cardBody}>
-          On-device library scanning lands next. For now, stream a test track to
-          verify playback, background audio, and lock-screen controls.
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleGroup}>
+        <Text variant="heading" style={styles.sectionTitle}>
+          {title}
         </Text>
+        {trailing ? (
+          <Text variant="label" numberOfLines={1}>
+            {trailing}
+          </Text>
+        ) : null}
+      </View>
+      {onActionPress && actionLabel ? (
+        <Pressable style={styles.seeAllButton} onPress={onActionPress} accessibilityRole="button">
+          <Text variant="label" color={colors.accentText}>
+            {actionLabel}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.accentText} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
 
-        <View style={styles.badges}>
-          <FormatBadges track={SAMPLE_TRACKS[0]} />
+function AlbumCover({ album, size }: { album: Album; size: number }) {
+  return (
+    <View style={[styles.albumArt, { width: size, height: size }]}>
+      {album.artwork_hash ? (
+        <Image
+          source={{ uri: artworkUri(album.artwork_hash) }}
+          style={styles.image}
+          contentFit="cover"
+          transition={120}
+        />
+      ) : (
+        <AstraLogo size={Math.round(size * 0.36)} />
+      )}
+    </View>
+  );
+}
+
+function NowPlayingCard({
+  track,
+  playbackState,
+  currentTime,
+  duration,
+  onOpen,
+}: {
+  track: Track;
+  playbackState: PlaybackState;
+  currentTime: number;
+  duration: number;
+  onOpen: () => void;
+}) {
+  const isPlaying = playbackState === 'playing';
+  const isLoading = playbackState === 'loading';
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const scopeActive = useScopeActive();
+  const [cardSize, setCardSize] = useState({ width: 0, height: PLAYER_CARD_MIN_HEIGHT });
+
+  const onCardLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setCardSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  };
+
+  return (
+    <View style={styles.playerCard} onLayout={onCardLayout}>
+      {scopeActive && cardSize.width > 0 ? (
+        <View pointerEvents="none" style={styles.playerSpectrum}>
+          <SpectrumCurve
+            active={scopeActive}
+            pointCount={CURVE_POINTS}
+            analysisFrameMs={0}
+            dbMin={-84}
+            dbMax={-20}
+            width={cardSize.width}
+            height={cardSize.height}
+            lineWidth={1.4}
+            lineOpacity={0.38}
+            fillOpacity={0.28}
+            glow
+            glowOpacity={0.07}
+          />
         </View>
+      ) : null}
+      {scopeActive && cardSize.width > 0 ? (
+        <View pointerEvents="none" style={styles.playerSpectrumVeil} />
+      ) : null}
+      <Pressable style={styles.playerArt} onPress={onOpen} accessibilityRole="button">
+        {track.artworkData ? (
+          <Image source={{ uri: track.artworkData }} style={styles.image} contentFit="cover" />
+        ) : (
+          <AstraLogo size={42} />
+        )}
+      </Pressable>
+      <View style={styles.playerMeta}>
+        <Text variant="label" color={colors.textTertiary}>
+          NOW PLAYING
+        </Text>
+        <Text variant="heading" numberOfLines={1}>
+          {track.title}
+        </Text>
+        <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
+          {track.album ? `${track.artist} / ${track.album}` : track.artist}
+        </Text>
+        <View style={styles.seekTrack}>
+          <View style={[styles.seekFill, { width: `${progress * 100}%` }]} />
+        </View>
+        <View style={styles.placeholderControls}>
+          <Pressable hitSlop={10} onPress={() => void skipToPrevious()}>
+            <Ionicons name="play-skip-back" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable hitSlop={10} onPress={() => void togglePlay()} style={styles.playCircle}>
+            <Ionicons
+              name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+              size={18}
+              color={colors.bgPrimary}
+            />
+          </Pressable>
+          <Pressable hitSlop={10} onPress={() => void skipToNext()}>
+            <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable hitSlop={10} onPress={onOpen}>
+            <Ionicons name="expand-outline" size={21} color={colors.textTertiary} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
 
+function RecentlyAddedAlbum({
+  album,
+  onPress,
+}: {
+  album: Album;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.recentAlbum} onPress={onPress} accessibilityRole="button">
+      <AlbumCover album={album} size={112} />
+      <Text variant="body" numberOfLines={1} style={styles.recentAlbumTitle}>
+        {album.album}
+      </Text>
+      <Text variant="label" numberOfLines={1}>
+        {album.artist}
+      </Text>
+    </Pressable>
+  );
+}
+
+function RandomAlbumCard({
+  album,
+  tracks,
+  onPlay,
+  onShuffle,
+  onReroll,
+  onOpen,
+}: {
+  album: Album;
+  tracks: DbTrack[];
+  onPlay: () => void;
+  onShuffle: () => void;
+  onReroll: () => void;
+  onOpen: () => void;
+}) {
+  const disabled = tracks.length === 0;
+
+  return (
+    <View style={styles.randomCard}>
+      <Pressable style={styles.randomMain} onPress={onOpen} accessibilityRole="button">
+        <AlbumCover album={album} size={96} />
+        <View style={styles.randomMeta}>
+          <Text variant="label" color={colors.textTertiary}>
+            RANDOM ALBUM
+          </Text>
+          <Text variant="heading" numberOfLines={2}>
+            {album.album}
+          </Text>
+          <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
+            {album.artist}
+          </Text>
+          <Text variant="label" numberOfLines={1}>
+            {albumMeta(album, tracks)}
+          </Text>
+        </View>
         <Pressable
-          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-          onPress={() => {
-            void playSample();
-          }}
+          style={styles.reroll}
+          onPress={onReroll}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Pick another random album"
         >
-          <Ionicons name="play" size={20} color={colors.bgPrimary} />
-          <Text style={styles.ctaText}>Play sample track</Text>
+          <Ionicons name="shuffle" size={19} color={colors.textSecondary} />
+        </Pressable>
+      </Pressable>
+
+      <View style={styles.randomActions}>
+        <Pressable
+          style={[styles.primaryButton, disabled && styles.buttonDisabled]}
+          disabled={disabled}
+          onPress={onPlay}
+          accessibilityRole="button"
+        >
+          <Ionicons name="play" size={16} color={colors.bgPrimary} />
+          <Text variant="body" style={styles.primaryButtonText}>
+            Play
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.secondaryButton, disabled && styles.buttonDisabled]}
+          disabled={disabled}
+          onPress={onShuffle}
+          accessibilityRole="button"
+        >
+          <Ionicons name="shuffle" size={16} color={colors.accent} />
+          <Text variant="body" color={colors.accent}>
+            Shuffle
+          </Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function EmptyHomeCard({
+  isScanning,
+  scanError,
+  onAddFolder,
+}: {
+  isScanning: boolean;
+  scanError: string | null;
+  onAddFolder: () => void;
+}) {
+  return (
+    <View style={styles.emptyCard}>
+      <Ionicons name="folder-open-outline" size={34} color={colors.textTertiary} />
+      <View style={styles.emptyCopy}>
+        <Text variant="heading">No music yet</Text>
+        <Text variant="body" color={colors.textSecondary}>
+          Add a local folder to fill Home with albums, history, favorites, and playlists.
+        </Text>
+        {scanError ? (
+          <Text variant="caption" color={colors.warning} numberOfLines={2}>
+            Scan problem: {scanError}
+          </Text>
+        ) : null}
+      </View>
+      <Pressable
+        style={[styles.primaryButton, isScanning && styles.buttonDisabled]}
+        disabled={isScanning}
+        onPress={onAddFolder}
+        accessibilityRole="button"
+      >
+        <Ionicons name="add" size={18} color={colors.bgPrimary} />
+        <Text variant="body" style={styles.primaryButtonText}>
+          Add folder
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const tracks = useLibraryStore((s) => s.tracks);
+  const albums = useLibraryStore((s) => s.albums);
+  const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
+  const isScanning = useLibraryStore((s) => s.isScanning);
+  const scanError = useLibraryStore((s) => s.scanError);
+  const addFolder = useLibraryStore((s) => s.addFolder);
+  const playlists = usePlaylistStore((s) => s.playlists);
+  const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const currentPath = currentTrack?.path;
+  const playbackState = usePlayerStore((s) => s.playbackState);
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+
+  const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
+  const [randomSeed] = useState(() => Math.random());
+
+  const tracksByAlbum = useMemo(() => {
+    const map = new Map<string, DbTrack[]>();
+    for (const track of tracks) {
+      const list = map.get(track.album_identity_key) ?? [];
+      list.push(track);
+      map.set(track.album_identity_key, list);
+    }
+    return map;
+  }, [tracks]);
+
+  const recentlyAddedAlbums = useMemo(
+    () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
+    [albums]
+  );
+
+  const homePlaylists = useMemo(
+    () =>
+      [...playlists]
+        .sort(
+          (a, b) =>
+            (b.last_played_at ?? b.updated_at ?? b.created_at) -
+            (a.last_played_at ?? a.updated_at ?? a.created_at)
+        )
+        .slice(0, PLAYLIST_LIMIT),
+    [playlists]
+  );
+
+  const randomAlbum = useMemo(() => {
+    if (!albums.length) return null;
+    const selected = randomAlbumKey
+      ? albums.find((album) => album.identity_key === randomAlbumKey)
+      : null;
+    if (selected) return selected;
+    return albums[Math.floor(randomSeed * albums.length) % albums.length];
+  }, [albums, randomAlbumKey, randomSeed]);
+  const randomTracks = randomAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
+  const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
+  const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
+  const hasLibrary = tracks.length > 0;
+
+  const openAlbum = (album: Album) => {
+    router.push({
+      pathname: '/library/album/[key]',
+      params: { key: album.identity_key },
+    });
+  };
+
+  const playTrackList = (list: DbTrack[], index = 0) => {
+    if (list.length === 0) return;
+    void playTracks(list.map(dbTrackToTrack), index);
+  };
+
+  const playAlbum = (album: Album, shuffled = false) => {
+    const albumTracks = tracksByAlbum.get(album.identity_key) ?? [];
+    if (albumTracks.length === 0) return;
+    if (shuffled) {
+      void shuffleTracks(albumTracks.map(dbTrackToTrack));
+    } else {
+      void playTracks(albumTracks.map(dbTrackToTrack), 0);
+    }
+  };
+
+  return (
+    <Screen>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <AstraLogo size={36} />
+          <Text style={styles.wordmark}>ASTRA</Text>
+        </View>
+        <Text variant="label" style={styles.tagline}>
+          Audiophile player
+        </Text>
+
+        <ScanProgress />
+
+        {!hasLibrary ? (
+          <>
+            {currentTrack ? (
+              <View style={styles.topFeature}>
+                <NowPlayingCard
+                  track={currentTrack}
+                  playbackState={playbackState}
+                  currentTime={currentTime}
+                  duration={duration}
+                  onOpen={() => router.push('/now-playing')}
+                />
+              </View>
+            ) : null}
+            <EmptyHomeCard
+              isScanning={isScanning}
+              scanError={scanError}
+              onAddFolder={() => void addFolder()}
+            />
+          </>
+        ) : (
+          <>
+            <View style={styles.topFeature}>
+              {currentTrack ? (
+                <NowPlayingCard
+                  track={currentTrack}
+                  playbackState={playbackState}
+                  currentTime={currentTime}
+                  duration={duration}
+                  onOpen={() => router.push('/now-playing')}
+                />
+              ) : randomAlbum ? (
+                <RandomAlbumCard
+                  album={randomAlbum}
+                  tracks={randomTracks}
+                  onOpen={() => openAlbum(randomAlbum)}
+                  onPlay={() => playAlbum(randomAlbum)}
+                  onShuffle={() => playAlbum(randomAlbum, true)}
+                  onReroll={() => setRandomAlbumKey(chooseRandomAlbum(albums, randomAlbum.identity_key))}
+                />
+              ) : null}
+            </View>
+
+            <View style={styles.section}>
+              <SectionHeader
+                title="Recently Played"
+                trailing={
+                  recentlyPlayedTracks.length > 0
+                    ? formatCount(recentlyPlayedTracks.length, 'track')
+                    : undefined
+                }
+                actionLabel={
+                  canExpandRecentTracks ? 'See all' : undefined
+                }
+                onActionPress={
+                  canExpandRecentTracks ? () => router.push('/recently-played') : undefined
+                }
+              />
+              {recentTracks.length > 0 ? (
+                <View style={styles.listBlock}>
+                  {recentTracks.map((track, index) => (
+                    <TrackRow
+                      key={track.path}
+                      track={track}
+                      active={track.path === currentPath}
+                      swipeToQueue={false}
+                      onPress={() => playTrackList(recentTracks, index)}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text variant="body" color={colors.textSecondary} style={styles.emptyLine}>
+                  No recent plays yet.
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <SectionHeader title="Recently Added" />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.albumRail}
+              >
+                {recentlyAddedAlbums.map((album) => (
+                  <RecentlyAddedAlbum
+                    key={album.identity_key}
+                    album={album}
+                    onPress={() => openAlbum(album)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.section}>
+              <SectionHeader title="Favorites & Playlists" />
+              <View style={styles.listBlock}>
+                <PlaylistRow
+                  name="Favorites"
+                  trackCount={favoriteTracks.length}
+                  coverHash={favoriteTracks[0]?.artwork_hash ?? null}
+                  pinned
+                  onPress={() => router.push('/library/playlist/favorites')}
+                />
+                {homePlaylists.map((playlist) => (
+                  <PlaylistRow
+                    key={playlist.id}
+                    name={playlist.name}
+                    trackCount={playlist.track_count}
+                    missingCount={playlist.missing_track_count}
+                    coverHash={playlist.auto_cover_hash}
+                    onPress={() => router.push(`/library/playlist/${playlist.id}`)}
+                  />
+                ))}
+              </View>
+            </View>
+          </>
+        )}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingBottom: spacing.xxl,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -61,37 +572,209 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     letterSpacing: 1,
   },
-  card: {
+  topFeature: {
     marginTop: spacing.xxl,
+  },
+  playerCard: {
+    minHeight: PLAYER_CARD_MIN_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.lg,
     padding: spacing.lg,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     backgroundColor: colors.glassBg,
     borderColor: colors.glassBorder,
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  cardBody: {
+  playerSpectrum: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  playerSpectrumVeil: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(8, 10, 15, 0.28)',
+  },
+  playerArt: {
+    width: 112,
+    aspectRatio: 1,
+    alignSelf: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  playerMeta: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  seekTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.glassBorder,
+    overflow: 'hidden',
     marginTop: spacing.sm,
-    lineHeight: 20,
   },
-  badges: {
-    marginTop: spacing.md,
+  seekFill: {
+    width: '38%',
+    height: 3,
+    backgroundColor: colors.accent,
   },
-  cta: {
-    marginTop: spacing.lg,
+  placeholderControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    maxWidth: 220,
+  },
+  playCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  section: {
+    marginTop: spacing.xl,
+  },
+  sectionHeader: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionTitleGroup: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  sectionTitle: {
+    flex: 1,
+  },
+  seeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.sm,
+  },
+  albumRail: {
+    gap: spacing.md,
+    paddingRight: spacing.lg,
+  },
+  recentAlbum: {
+    width: 112,
+  },
+  recentAlbumTitle: {
+    marginTop: spacing.sm,
+    fontSize: 14,
+  },
+  albumArt: {
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  randomCard: {
+    borderRadius: radius.md,
+    backgroundColor: colors.glassBg,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  randomMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  randomMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  reroll: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glassHighlight,
+  },
+  randomActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  primaryButton: {
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  ctaPressed: {
-    backgroundColor: colors.accentHover,
-  },
-  ctaText: {
-    fontFamily: fonts.sans.semibold,
-    fontSize: 15,
+  primaryButtonText: {
     color: colors.bgPrimary,
+    fontFamily: fonts.sans.semibold,
+  },
+  secondaryButton: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+  listBlock: {
+    backgroundColor: colors.bgPrimary,
+  },
+  emptyLine: {
+    paddingVertical: spacing.md,
+  },
+  emptyCard: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.glassBg,
+    borderColor: colors.glassBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.md,
+  },
+  emptyCopy: {
+    gap: spacing.xs,
   },
 });

@@ -105,7 +105,8 @@ export function getAlbums(db: LibraryDatabase): Promise<Album[]> {
            MAX(COALESCE(album_artist, artist)) AS artist,
            MAX(year) AS year,
            MAX(artwork_hash) AS artwork_hash,
-           COUNT(*) AS track_count
+           COUNT(*) AS track_count,
+           MAX(added_at) AS latest_added_at
     FROM tracks
     GROUP BY album_identity_key
     ORDER BY 3 COLLATE NOCASE, 2 COLLATE NOCASE
@@ -139,6 +140,37 @@ export function getTracksByArtist(db: LibraryDatabase, artist: string): Promise<
 export async function getTrackCount(db: LibraryDatabase): Promise<number> {
   const row = await db.get<{ count: number }>('SELECT COUNT(*) AS count FROM tracks');
   return row?.count ?? 0;
+}
+
+// --- Playback history --------------------------------------------------------
+
+/**
+ * Record a local library play. The INSERT is sourced from `tracks`, so streamed
+ * samples / external paths are ignored unless they are actually in the library.
+ */
+export async function markTrackPlayed(db: LibraryDatabase, path: string): Promise<boolean> {
+  const result = await db.run(
+    `INSERT INTO playback_history (track_path, last_played_at, play_count)
+       SELECT path, ?, 1 FROM tracks WHERE path = ?
+     ON CONFLICT(track_path) DO UPDATE SET
+       last_played_at = excluded.last_played_at,
+       play_count = playback_history.play_count + 1`,
+    [Date.now(), path]
+  );
+  return result.changes > 0;
+}
+
+export function getRecentlyPlayedTracks(
+  db: LibraryDatabase,
+  limit = 24
+): Promise<DbTrack[]> {
+  return db.all<DbTrack>(
+    `SELECT t.* FROM playback_history h
+     JOIN tracks t ON t.path = h.track_path
+     ORDER BY h.last_played_at DESC
+     LIMIT ?`,
+    [limit]
+  );
 }
 
 // --- Loudness (M4 normalization facts) ---------------------------------------

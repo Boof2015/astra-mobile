@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   State,
   useActiveTrack,
@@ -6,8 +6,18 @@ import {
   useProgress,
 } from 'react-native-track-player';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useLibraryStore } from '@/stores/libraryStore';
 import type { PlaybackState } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
+
+const RECENT_PLAY_THRESHOLD_MS = 15_000;
+
+interface RecentPlayCandidate {
+  path: string | null;
+  accumulatedMs: number;
+  playingSinceMs: number | null;
+  recorded: boolean;
+}
 
 function mapState(state?: State): PlaybackState {
   switch (state) {
@@ -32,10 +42,18 @@ export function usePlaybackSync(): void {
   const activeTrack = useActiveTrack();
   const progress = useProgress(500);
   const playbackState = usePlaybackState();
+  const mappedPlaybackState = mapState(playbackState.state);
+  const recentPlayCandidate = useRef<RecentPlayCandidate>({
+    path: null,
+    accumulatedMs: 0,
+    playingSinceMs: null,
+    recorded: false,
+  });
 
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
+  const recordTrackPlayed = useLibraryStore((s) => s.recordTrackPlayed);
 
   useEffect(() => {
     setCurrentTrack(activeTrack ? rntpToTrack(activeTrack) : null);
@@ -46,6 +64,49 @@ export function usePlaybackSync(): void {
   }, [progress.position, progress.duration, setProgress]);
 
   useEffect(() => {
-    setPlaybackState(mapState(playbackState.state));
-  }, [playbackState.state, setPlaybackState]);
+    setPlaybackState(mappedPlaybackState);
+  }, [mappedPlaybackState, setPlaybackState]);
+
+  useEffect(() => {
+    const path = activeTrack?.url ? String(activeTrack.url) : null;
+    const now = Date.now();
+    const candidate = recentPlayCandidate.current;
+
+    if (!path || mappedPlaybackState === 'stopped') {
+      recentPlayCandidate.current = {
+        path: null,
+        accumulatedMs: 0,
+        playingSinceMs: null,
+        recorded: false,
+      };
+      return;
+    }
+
+    if (candidate.path !== path) {
+      candidate.path = path;
+      candidate.accumulatedMs = 0;
+      candidate.playingSinceMs = null;
+      candidate.recorded = false;
+    }
+
+    if (mappedPlaybackState !== 'playing') {
+      if (candidate.playingSinceMs != null) {
+        candidate.accumulatedMs += now - candidate.playingSinceMs;
+        candidate.playingSinceMs = null;
+      }
+      return;
+    }
+
+    if (candidate.playingSinceMs == null) {
+      candidate.playingSinceMs = now;
+    }
+
+    const elapsedMs = candidate.accumulatedMs + (now - candidate.playingSinceMs);
+    if (candidate.recorded || elapsedMs < RECENT_PLAY_THRESHOLD_MS) return;
+
+    candidate.recorded = true;
+    void recordTrackPlayed(path).catch((err) => {
+      console.warn('[library] playback history update failed', err);
+    });
+  }, [activeTrack?.url, mappedPlaybackState, progress.position, recordTrackPlayed]);
 }

@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
 import { openLibraryDb } from '@/db/database';
-import { getAlbums, getAllTracks, getTrackCount } from '@/db/queries';
+import {
+  getAlbums,
+  getAllTracks,
+  getRecentlyPlayedTracks,
+  getTrackCount,
+  markTrackPlayed,
+} from '@/db/queries';
 import { ensureArtworkThumbnails } from '@/library/artwork';
 import { buildArtistList } from '@/library/artistGrouping';
 import {
@@ -36,6 +42,7 @@ const IDLE_PROGRESS: ScanProgressState = { phase: 'idle', processed: 0, total: 0
 interface LibraryStore {
   initialized: boolean;
   tracks: DbTrack[];
+  recentlyPlayedTracks: DbTrack[];
   albums: Album[];
   artists: Artist[];
   folders: FolderWithCount[];
@@ -48,6 +55,7 @@ interface LibraryStore {
 
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
+  recordTrackPlayed: (path: string) => Promise<void>;
   recomputeArtists: () => void;
   setViewMode: (mode: ViewMode) => void;
   setTrackSort: (sort: TrackSort) => void;
@@ -78,6 +86,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   return {
     initialized: false,
     tracks: [],
+    recentlyPlayedTracks: [],
     albums: [],
     artists: [],
     folders: [],
@@ -118,11 +127,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     refresh: async () => {
       const db = await openLibraryDb();
-      const [tracks, albums, folders, totalTrackCount] = await Promise.all([
+      const [tracks, albums, folders, totalTrackCount, recentlyPlayedTracks] = await Promise.all([
         getAllTracks(db),
         getAlbums(db),
         loadFolders(),
         getTrackCount(db),
+        getRecentlyPlayedTracks(db),
       ]);
       try {
         await ensureArtworkThumbnails(tracks.map((track) => track.artwork_hash));
@@ -131,9 +141,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       }
       // The artist list is derived in JS so it can honor the grouping mode.
       const artists = buildArtistList(tracks, useSettingsStore.getState().artistGroupingMode);
-      set({ tracks, albums, artists, folders, totalTrackCount });
+      set({ tracks, recentlyPlayedTracks, albums, artists, folders, totalTrackCount });
       // Playlist counts/missing states depend on tracks — keep them in step.
       await usePlaylistStore.getState().refresh();
+    },
+
+    recordTrackPlayed: async (path) => {
+      const db = await openLibraryDb();
+      const recorded = await markTrackPlayed(db, path);
+      if (!recorded) return;
+      const recentlyPlayedTracks = await getRecentlyPlayedTracks(db);
+      set({ recentlyPlayedTracks });
     },
 
     // Rebuild the artist list from in-memory tracks (e.g. on grouping-mode change),

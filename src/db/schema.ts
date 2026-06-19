@@ -9,11 +9,12 @@
 // tags) measured for normalization; v8 clears any loudness measured by the earlier
 // ungated whole-file method so it re-measures with the fast gated subset method;
 // v9 adds ReplayGain peak columns + an `rg_scanned` sentinel so tag reading runs
-// once per track (and is retried if it ever failed), independent of loudness.
+// once per track (and is retried if it ever failed), independent of loudness;
+// v10 adds lightweight local playback history for Home.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -140,6 +141,16 @@ const MIGRATIONS: readonly (readonly string[])[] = [
     `ALTER TABLE tracks ADD COLUMN replay_gain_track_peak REAL`,
     `ALTER TABLE tracks ADD COLUMN replay_gain_album_peak REAL`,
     `ALTER TABLE tracks ADD COLUMN rg_scanned INTEGER NOT NULL DEFAULT 0`,
+  ],
+  // v9 -> v10 — recently played facts. No FK so rows can survive temporary
+  // folder removal; Home joins against tracks so missing files stay hidden.
+  [
+    `CREATE TABLE IF NOT EXISTS playback_history (
+      track_path TEXT PRIMARY KEY NOT NULL,
+      last_played_at INTEGER NOT NULL,
+      play_count INTEGER NOT NULL DEFAULT 1
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_playback_history_last_played ON playback_history(last_played_at DESC)',
   ],
 ];
 
