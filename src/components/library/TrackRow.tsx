@@ -20,6 +20,7 @@ export function TrackRow({
   onPress,
   onLongPress,
   showArtist = true,
+  subtitle,
   active = false,
   swipeToQueue = true,
 }: {
@@ -29,6 +30,8 @@ export function TrackRow({
   onLongPress?: () => void;
   /** Hide on album detail where every row shares the artist. */
   showArtist?: boolean;
+  /** Overrides the secondary line; useful for artist pages that need album context. */
+  subtitle?: string;
   active?: boolean;
   /** Swipe right → play next, swipe left → add to queue. Off in queue-like lists. */
   swipeToQueue?: boolean;
@@ -38,6 +41,7 @@ export function TrackRow({
 
   const thumbUri =
     artworkHash && failedArtworkHash !== artworkHash ? artworkThumbUri(artworkHash) : null;
+  const secondaryText = subtitle ?? (showArtist ? track.artist : null);
 
   const row = (
     <Pressable
@@ -77,9 +81,9 @@ export function TrackRow({
         >
           {track.title}
         </Text>
-        {showArtist ? (
+        {secondaryText ? (
           <Text variant="label" numberOfLines={1}>
-            {track.artist}
+            {secondaryText}
           </Text>
         ) : null}
         <View style={styles.badges}>
