@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { View, Pressable, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Alert,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
@@ -7,6 +14,7 @@ import { Text } from '@/components/Text';
 import { ActionSheet } from '@/components/sheets/ActionSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
+import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import { colors, radius, spacing } from '@/theme';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
@@ -23,7 +31,13 @@ function fileDisplayName(fileUri: string): string {
 
 type Prompt = { kind: 'create' } | { kind: 'rename'; playlist: Playlist } | null;
 
-export function PlaylistsView() {
+export function PlaylistsView({
+  onScroll,
+  scrollEventThrottle,
+}: {
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
+}) {
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteCount = usePlaylistStore((s) => s.favoriteTracks.length);
@@ -125,6 +139,10 @@ export function PlaylistsView() {
         data={playlists}
         keyExtractor={(playlist) => String(playlist.id)}
         showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        renderScrollComponent={PullSearchScrollView}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
         ListHeaderComponent={
           <PlaylistRow
             name="Favorites"

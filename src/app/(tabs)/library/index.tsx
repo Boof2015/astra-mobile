@@ -15,6 +15,11 @@ import { ScanProgress } from '@/components/library/ScanProgress';
 import { EmptyLibrary } from '@/components/library/EmptyLibrary';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { ActionSheet } from '@/components/sheets/ActionSheet';
+import {
+  PullSearchGesture,
+  PullSearchScrollView,
+  useScrollTopGate,
+} from '@/components/search/PullSearchGesture';
 import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -43,6 +48,7 @@ export default function LibraryScreen() {
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const scrollTop = useScrollTopGate();
 
   const isEmpty = tracks.length === 0 && folders.length === 0 && !isScanning;
 
@@ -52,111 +58,137 @@ export default function LibraryScreen() {
   const playAllFrom = (index: number) => {
     void playTracks(sortedTracks.map(dbTrackToTrack), index);
   };
+  const openSearch = () => openQuickSearch();
 
   return (
     <Screen>
-      <View style={styles.headingRow}>
-        <Text variant="title" style={styles.heading}>
-          Library
-        </Text>
-        {!isEmpty ? (
-          <Pressable
-            hitSlop={8}
-            onPress={() => openQuickSearch()}
-            accessibilityRole="button"
-            accessibilityLabel="Search library"
-          >
-            <Ionicons name="search" size={22} color={colors.textSecondary} />
-          </Pressable>
-        ) : null}
-      </View>
-
-      {isEmpty ? (
-        <EmptyLibrary />
-      ) : (
-        <>
-          <View style={styles.switcher}>
-            <ViewModeSwitcher value={viewMode} onChange={setViewMode} />
-          </View>
-          <ScanProgress />
-          {scanError ? (
-            <Text variant="caption" color={colors.warning} style={styles.error} numberOfLines={2}>
-              Scan problem: {scanError}
-            </Text>
+      <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
+        <View style={styles.headingRow}>
+          <Text variant="title" style={styles.heading}>
+            Library
+          </Text>
+          {!isEmpty ? (
+            <Pressable
+              hitSlop={8}
+              onPress={() => openQuickSearch()}
+              accessibilityRole="button"
+              accessibilityLabel="Search library"
+            >
+              <Ionicons name="search" size={22} color={colors.textSecondary} />
+            </Pressable>
           ) : null}
+        </View>
 
-          {viewMode === 'albums' ? (
-            <FlashList
-              data={albums}
-              numColumns={2}
-              keyExtractor={(album) => album.identity_key}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <View style={styles.gridCell}>
-                  <AlbumGridItem
-                    album={item}
+        {isEmpty ? (
+          <EmptyLibrary />
+        ) : (
+          <>
+            <View style={styles.switcher}>
+              <ViewModeSwitcher
+                value={viewMode}
+                onChange={(mode) => {
+                  scrollTop.setScrollAtTop(true);
+                  setViewMode(mode);
+                }}
+              />
+            </View>
+            <ScanProgress />
+            {scanError ? (
+              <Text variant="caption" color={colors.warning} style={styles.error} numberOfLines={2}>
+                Scan problem: {scanError}
+              </Text>
+            ) : null}
+
+            {viewMode === 'albums' ? (
+              <FlashList
+                data={albums}
+                numColumns={2}
+                keyExtractor={(album) => album.identity_key}
+                showsVerticalScrollIndicator={false}
+                overScrollMode="never"
+                renderScrollComponent={PullSearchScrollView}
+                onScroll={scrollTop.onScroll}
+                scrollEventThrottle={scrollTop.scrollEventThrottle}
+                renderItem={({ item }) => (
+                  <View style={styles.gridCell}>
+                    <AlbumGridItem
+                      album={item}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/library/album/[key]',
+                          params: { key: item.identity_key },
+                        })
+                      }
+                    />
+                  </View>
+                )}
+              />
+            ) : null}
+
+            {viewMode === 'artists' ? (
+              <FlashList
+                data={artists}
+                keyExtractor={(artist) => artist.artist}
+                showsVerticalScrollIndicator={false}
+                overScrollMode="never"
+                renderScrollComponent={PullSearchScrollView}
+                onScroll={scrollTop.onScroll}
+                scrollEventThrottle={scrollTop.scrollEventThrottle}
+                renderItem={({ item }) => (
+                  <ArtistRow
+                    artist={item}
                     onPress={() =>
                       router.push({
-                        pathname: '/library/album/[key]',
-                        params: { key: item.identity_key },
+                        pathname: '/library/artist/[name]',
+                        params: { name: item.artist },
                       })
                     }
                   />
-                </View>
-              )}
-            />
-          ) : null}
-
-          {viewMode === 'artists' ? (
-            <FlashList
-              data={artists}
-              keyExtractor={(artist) => artist.artist}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <ArtistRow
-                  artist={item}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/library/artist/[name]',
-                      params: { name: item.artist },
-                    })
-                  }
-                />
-              )}
-            />
-          ) : null}
-
-          {viewMode === 'tracks' ? (
-            <>
-              <Pressable
-                style={styles.sortTrigger}
-                onPress={() => setSortSheetOpen(true)}
-                accessibilityRole="button"
-              >
-                <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
-                <Text variant="label">{TRACK_SORT_LABELS[trackSort]}</Text>
-              </Pressable>
-              <FlashList
-                data={sortedTracks}
-                keyExtractor={(track) => String(track.id)}
-                showsVerticalScrollIndicator={false}
-                renderItem={({ item, index }) => (
-                  <TrackRow
-                    track={item}
-                    active={item.path === currentPath}
-                    onPress={() => playAllFrom(index)}
-                    onLongPress={() => setActionTrack(item)}
-                  />
                 )}
               />
-            </>
-          ) : null}
+            ) : null}
 
-          {viewMode === 'playlists' ? <PlaylistsView /> : null}
+            {viewMode === 'tracks' ? (
+              <>
+                <Pressable
+                  style={styles.sortTrigger}
+                  onPress={() => setSortSheetOpen(true)}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
+                  <Text variant="label">{TRACK_SORT_LABELS[trackSort]}</Text>
+                </Pressable>
+                <FlashList
+                  data={sortedTracks}
+                  keyExtractor={(track) => String(track.id)}
+                  showsVerticalScrollIndicator={false}
+                  overScrollMode="never"
+                  renderScrollComponent={PullSearchScrollView}
+                  onScroll={scrollTop.onScroll}
+                  scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  renderItem={({ item, index }) => (
+                    <TrackRow
+                      track={item}
+                      active={item.path === currentPath}
+                      onPress={() => playAllFrom(index)}
+                      onLongPress={() => setActionTrack(item)}
+                    />
+                  )}
+                />
+              </>
+            ) : null}
 
-          {viewMode === 'folders' ? <FoldersView /> : null}
-        </>
-      )}
+            {viewMode === 'playlists' ? (
+              <PlaylistsView
+                onScroll={scrollTop.onScroll}
+                scrollEventThrottle={scrollTop.scrollEventThrottle}
+              />
+            ) : null}
+
+            {viewMode === 'folders' ? <FoldersView /> : null}
+          </>
+        )}
+      </PullSearchGesture>
 
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
       <ActionSheet

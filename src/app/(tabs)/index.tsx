@@ -10,10 +10,16 @@ import { SpectrumCurve } from '@/components/SpectrumCurve';
 import { TrackRow } from '@/components/library/TrackRow';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { ScanProgress } from '@/components/library/ScanProgress';
+import {
+  PullSearchGesture,
+  PullSearchScrollView,
+  useScrollTopGate,
+} from '@/components/search/PullSearchGesture';
 import { colors, fonts, radius, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useSearchStore } from '@/stores/searchStore';
 import {
   playTracks,
   shuffleTracks,
@@ -352,9 +358,11 @@ export default function HomeScreen() {
   const playbackState = usePlayerStore((s) => s.playbackState);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
+  const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
 
   const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
   const [randomSeed] = useState(() => Math.random());
+  const scrollTop = useScrollTopGate();
 
   const tracksByAlbum = useMemo(() => {
     const map = new Map<string, DbTrack[]>();
@@ -418,9 +426,18 @@ export default function HomeScreen() {
     }
   };
 
+  const openSearch = () => openQuickSearch();
+
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
+        <PullSearchScrollView
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          contentContainerStyle={styles.content}
+          onScroll={scrollTop.onScroll}
+          scrollEventThrottle={scrollTop.scrollEventThrottle}
+        >
         <View style={styles.header}>
           <AstraLogo size={36} />
           <Text style={styles.wordmark}>ASTRA</Text>
@@ -548,7 +565,8 @@ export default function HomeScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+        </PullSearchScrollView>
+      </PullSearchGesture>
     </Screen>
   );
 }
