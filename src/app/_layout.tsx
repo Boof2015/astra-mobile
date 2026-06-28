@@ -16,12 +16,15 @@ import {
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
+import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useEQStore } from '@/stores/eqStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useNormalizationSync } from '@/audio/useNormalizationSync';
+import { useLastFmScrobbler } from '@/audio/useLastFmScrobbler';
 import { colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +44,12 @@ function ScopeLifecycle() {
 /** Pushes per-track normalization gain to native on track/settings change. */
 function NormalizationSync() {
   useNormalizationSync();
+  return null;
+}
+
+/** Feeds playback snapshots to the Last.fm scrobble service. Renders nothing. */
+function LastFmScrobbler() {
+  useLastFmScrobbler();
   return null;
 }
 
@@ -82,6 +91,12 @@ export default function RootLayout() {
       .getState()
       .init()
       .catch((err) => console.error('[remoteSources] init failed', err));
+    // Last.fm: construct the scrobble service + drain any persisted offline queue,
+    // even if the user never opens the settings screen this session.
+    useLastFmSettingsStore
+      .getState()
+      .init()
+      .catch((err) => console.error('[lastfm] init failed', err));
   }, []);
 
   if (!fontsLoaded) return null;
@@ -93,6 +108,7 @@ export default function RootLayout() {
         <PlaybackSync />
         <ScopeLifecycle />
         <NormalizationSync />
+        <LastFmScrobbler />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -110,6 +126,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        <QuickSearchOverlay />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

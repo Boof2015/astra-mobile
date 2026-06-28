@@ -18,6 +18,7 @@ import { ActionSheet } from '@/components/sheets/ActionSheet';
 import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useSearchStore } from '@/stores/searchStore';
 import { playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { sortTracks, TRACK_SORT_LABELS, type TrackSort } from '@/lib/trackSort';
@@ -38,6 +39,7 @@ export default function LibraryScreen() {
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
+  const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -60,7 +62,7 @@ export default function LibraryScreen() {
         {!isEmpty ? (
           <Pressable
             hitSlop={8}
-            onPress={() => router.push('/library/search')}
+            onPress={() => openQuickSearch()}
             accessibilityRole="button"
             accessibilityLabel="Search library"
           >

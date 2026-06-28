@@ -8,8 +8,17 @@ import { colors, radius, spacing } from '@/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import type { ReplayGainMode } from '@/audio/normalization';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
+import type { LastFmStatus } from '@/types/lastFm';
+
+function lastFmScrobbleSubtitle(status: LastFmStatus | null): string {
+  const connected = status?.profiles.filter((p) => p.connected).length ?? 0;
+  if (connected === 0) return 'Scrobble plays to Last.fm, ListenBrainz, and more.';
+  const base = `${connected} destination${connected === 1 ? '' : 's'} connected`;
+  return status?.enabled ? `${base}.` : `${base} · paused.`;
+}
 
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
   {
@@ -62,6 +71,7 @@ function ToggleRow({
 export default function SettingsScreen() {
   const router = useRouter();
   const remoteSources = useRemoteSourcesStore((s) => s.sources);
+  const lastFmStatus = useLastFmSettingsStore((s) => s.status);
 
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
@@ -187,6 +197,28 @@ export default function SettingsScreen() {
               {remoteSources.length === 0
                 ? 'Stream and browse your self-hosted library.'
                 : `${remoteSources.length} server${remoteSources.length === 1 ? '' : 's'} connected.`}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </Pressable>
+
+        <Text
+          variant="label"
+          color={colors.textTertiary}
+          style={[styles.sectionLabel, styles.sectionSpacing]}
+        >
+          SCROBBLING
+        </Text>
+        <Pressable
+          style={styles.option}
+          onPress={() => router.push('/lastfm')}
+          accessibilityRole="button"
+        >
+          <Ionicons name="radio-outline" size={20} color={colors.textSecondary} />
+          <View style={styles.optionText}>
+            <Text variant="body">Last.fm &amp; scrobbling</Text>
+            <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
+              {lastFmScrobbleSubtitle(lastFmStatus)}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
