@@ -15,6 +15,8 @@ export interface Playlist {
   track_count: number;
   /** Entries whose track is gone (folder removed / file deleted). */
   missing_track_count: number;
+  /** Set when this playlist mirrors a remote server playlist (-> remote_sources.id). */
+  remote_source_id: number | null;
 }
 
 export interface PlaylistTrackEntry {

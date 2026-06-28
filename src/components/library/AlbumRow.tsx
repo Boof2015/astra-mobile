@@ -3,17 +3,18 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { colors, radius, spacing } from '@/theme';
-import { artworkUri } from '@/library/artwork';
+import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 /** Compact album list row (search results) — the grid uses AlbumGridItem. */
 export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void }) {
+  const artUri = albumArtworkSource(album);
   return (
     <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
-        {album.artwork_hash ? (
+        {artUri ? (
           <Image
-            source={{ uri: artworkUri(album.artwork_hash) }}
+            source={{ uri: artUri }}
             style={styles.artImage}
             contentFit="cover"
           />

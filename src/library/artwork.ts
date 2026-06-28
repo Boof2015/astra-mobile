@@ -2,6 +2,8 @@
 // md5-named files (desktop convention) and tracks store the file name.
 
 import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
+import { artworkUrlForTrack } from '@/services/remoteUrls';
+import type { Album, DbTrack } from '@/types/library';
 
 let artworkDir: string | null = null;
 let artworkThumbDir: string | null = null;
@@ -43,6 +45,40 @@ export function artworkUri(hash: string): string {
 
 export function artworkThumbUri(hash: string): string {
   return `file://${getArtworkThumbDir()}/${artworkThumbFileName(hash)}`;
+}
+
+type TrackArtworkFields = Pick<
+  DbTrack,
+  'source_type' | 'source_id' | 'artwork_source_id' | 'artwork_hash'
+>;
+
+/** Thumbnail source for a track row: a cached file for local, a server URL for remote. */
+export function trackArtworkThumbSource(track: TrackArtworkFields): string | null {
+  if (track.source_type !== 'local') {
+    return artworkUrlForTrack({
+      sourceType: track.source_type,
+      sourceId: track.source_id ?? undefined,
+      artworkSourceId: track.artwork_source_id ?? undefined,
+    });
+  }
+  return track.artwork_hash ? artworkThumbUri(track.artwork_hash) : null;
+}
+
+type AlbumArtworkFields = Pick<
+  Album,
+  'source_type' | 'source_id' | 'artwork_source_id' | 'artwork_hash'
+>;
+
+/** Full-size album-art source: a cached file for local, a server URL for remote. */
+export function albumArtworkSource(album: AlbumArtworkFields): string | null {
+  if (album.source_type && album.source_type !== 'local') {
+    return artworkUrlForTrack({
+      sourceType: album.source_type,
+      sourceId: album.source_id ?? undefined,
+      artworkSourceId: album.artwork_source_id ?? undefined,
+    });
+  }
+  return album.artwork_hash ? artworkUri(album.artwork_hash) : null;
 }
 
 export async function ensureArtworkThumbnails(

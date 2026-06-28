@@ -22,7 +22,7 @@ import {
   togglePlay,
 } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { artworkUri } from '@/library/artwork';
+import { albumArtworkSource } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useScopeActive } from '@/scope/scopeStore';
 import type { PlaybackState, Track } from '@/types/audio';
@@ -96,11 +96,12 @@ function SectionHeader({
 }
 
 function AlbumCover({ album, size }: { album: Album; size: number }) {
+  const artUri = albumArtworkSource(album);
   return (
     <View style={[styles.albumArt, { width: size, height: size }]}>
-      {album.artwork_hash ? (
+      {artUri ? (
         <Image
-          source={{ uri: artworkUri(album.artwork_hash) }}
+          source={{ uri: artUri }}
           style={styles.image}
           contentFit="cover"
           transition={120}

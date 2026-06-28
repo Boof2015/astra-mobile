@@ -79,7 +79,9 @@ export function usePlaybackSync(): void {
   }, [activeTrack, mappedPlaybackState, recentlyPlayedTracks]);
 
   useEffect(() => {
-    const path = activeTrack?.url ? String(activeTrack.url) : null;
+    // Use the identity path (subsonic://|jellyfin:// for remote; the file URI for
+    // local) so history matches `tracks.path` — activeTrack.url is the stream URL.
+    const path = activeTrack ? rntpToTrack(activeTrack).path : null;
     const now = Date.now();
     const candidate = recentPlayCandidate.current;
 
@@ -119,5 +121,5 @@ export function usePlaybackSync(): void {
     void recordTrackPlayed(path).catch((err) => {
       console.warn('[library] playback history update failed', err);
     });
-  }, [activeTrack?.url, mappedPlaybackState, progress.position, recordTrackPlayed]);
+  }, [activeTrack, mappedPlaybackState, progress.position, recordTrackPlayed]);
 }

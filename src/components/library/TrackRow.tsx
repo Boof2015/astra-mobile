@@ -4,10 +4,11 @@ import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
+import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { SwipeableRow } from '@/components/SwipeableRow';
 import { colors, radius, spacing } from '@/theme';
 import { formatDuration } from '@/lib/format';
-import { artworkThumbUri } from '@/library/artwork';
+import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
 import type { DbTrack } from '@/types/library';
@@ -36,11 +37,12 @@ export function TrackRow({
   /** Swipe right → play next, swipe left → add to queue. Off in queue-like lists. */
   swipeToQueue?: boolean;
 }) {
-  const artworkHash = track.artwork_hash;
-  const [failedArtworkHash, setFailedArtworkHash] = useState<string | null>(null);
+  // Key the artwork by hash (local) or identity path (remote) so the error fallback
+  // and FlashList recycling work for both.
+  const artKey = track.source_type !== 'local' ? track.path : track.artwork_hash;
+  const [failedArtKey, setFailedArtKey] = useState<string | null>(null);
 
-  const thumbUri =
-    artworkHash && failedArtworkHash !== artworkHash ? artworkThumbUri(artworkHash) : null;
+  const thumbUri = failedArtKey !== artKey ? trackArtworkThumbSource(track) : null;
   const secondaryText = subtitle ?? (showArtist ? track.artist : null);
 
   const row = (
@@ -57,10 +59,10 @@ export function TrackRow({
             style={styles.artImage}
             contentFit="cover"
             cachePolicy="memory-disk"
-            recyclingKey={artworkHash}
+            recyclingKey={artKey ?? undefined}
             transition={null}
             allowDownscaling
-            onError={() => setFailedArtworkHash(artworkHash)}
+            onError={() => setFailedArtKey(artKey)}
           />
         ) : (
           <AstraLogo size={18} />
@@ -87,6 +89,7 @@ export function TrackRow({
           </Text>
         ) : null}
         <View style={styles.badges}>
+          <RemoteSourceBadge sourceType={track.source_type} />
           <FormatBadges
             track={{
               format: track.format,
@@ -171,6 +174,9 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   badges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginTop: 2,
   },
   duration: {

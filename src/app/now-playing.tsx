@@ -16,6 +16,7 @@ import Animated, {
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
+import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { MarqueeText } from '@/components/MarqueeText';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
@@ -575,6 +576,7 @@ export default function NowPlayingScreen() {
 
                   <View style={styles.subRow}>
                     <View style={styles.subBadges}>
+                      <RemoteSourceBadge sourceType={track.sourceType} />
                       <FormatBadges track={track} wrap={false} />
                     </View>
                     <View style={styles.subActions}>
@@ -864,6 +866,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   subActions: {
     flexDirection: 'row',

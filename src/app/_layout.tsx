@@ -20,6 +20,7 @@ import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useEQStore } from '@/stores/eqStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
+import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useNormalizationSync } from '@/audio/useNormalizationSync';
 import { colors } from '@/theme';
 
@@ -75,6 +76,12 @@ export default function RootLayout() {
       .getState()
       .load()
       .catch((err) => console.error('[audioSettings] load failed', err));
+    // Remote sources: load server rows + hydrate the URL registry from cached
+    // config/token (no network on launch). Runs after library init reads first.
+    useRemoteSourcesStore
+      .getState()
+      .init()
+      .catch((err) => console.error('[remoteSources] init failed', err));
   }, []);
 
   if (!fontsLoaded) return null;

@@ -6,6 +6,7 @@ import type { DbTrack } from '@/types/library';
 import type { TrackUpsert } from '@/db/queries';
 import type { ExtractedMetadata, ScannedFile } from '../../modules/astra-library-scanner';
 import { artworkUri } from './artwork';
+import { artworkUrlForTrack } from '@/services/remoteUrls';
 import { repairMojibakeTag } from './tagEncoding';
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -102,6 +103,19 @@ export function metadataToUpsertRow(
 }
 
 export function dbTrackToTrack(track: DbTrack): Track {
+  const isRemote = track.source_type !== 'local';
+  // Local artwork is a cached file (artworkUri); remote artwork is a server URL
+  // resolved on the fly from the source config + the stored cover-art id.
+  const artworkData = isRemote
+    ? (artworkUrlForTrack({
+        sourceType: track.source_type,
+        sourceId: track.source_id ?? undefined,
+        artworkSourceId: track.artwork_source_id ?? undefined,
+      }) ?? undefined)
+    : track.artwork_hash
+      ? artworkUri(track.artwork_hash)
+      : undefined;
+
   return {
     id: String(track.id),
     path: track.path,
@@ -116,7 +130,7 @@ export function dbTrackToTrack(track: DbTrack): Track {
     discNumber: track.disc_number ?? undefined,
     year: track.year ?? undefined,
     genre: track.genre ?? undefined,
-    artworkData: track.artwork_hash ? artworkUri(track.artwork_hash) : undefined,
+    artworkData,
     artworkHash: track.artwork_hash ?? undefined,
     format: track.format,
     sampleRate: track.sample_rate ?? undefined,
@@ -125,5 +139,9 @@ export function dbTrackToTrack(track: DbTrack): Track {
     channels: track.channels ?? undefined,
     codec: track.codec ?? undefined,
     sourceType: track.source_type,
+    sourceId: track.source_id ?? undefined,
+    sourceTrackId: track.source_track_id ?? undefined,
+    sourcePath: track.source_path ?? undefined,
+    artworkSourceId: track.artwork_source_id ?? undefined,
   };
 }

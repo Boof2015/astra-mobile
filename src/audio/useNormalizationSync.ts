@@ -37,9 +37,18 @@ export function useNormalizationSync(): void {
     let cancelled = false;
 
     async function recompute(): Promise<void> {
-      const path = usePlayerStore.getState().currentTrack?.path ?? null;
+      const current = usePlayerStore.getState().currentTrack;
+      const path = current?.path ?? null;
       const settings = useAudioSettingsStore.getState().asNormalizationSettings();
       if (!path) {
+        setNormalizationGainNative(1);
+        useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
+        return;
+      }
+
+      // Remote tracks have no local file to decode and no synced loudness/RG facts,
+      // so normalization is unity. Skip analysis (it would try to download the stream).
+      if (current?.sourceType && current.sourceType !== 'local') {
         setNormalizationGainNative(1);
         useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
         return;
@@ -83,8 +92,11 @@ export function useNormalizationSync(): void {
       if (activeIndex < 0) return;
       const settings = useAudioSettingsStore.getState().asNormalizationSettings();
       for (let i = 1; i <= PREFETCH_AHEAD; i++) {
-        const url = tracks[activeIndex + i]?.url;
+        const queued = tracks[activeIndex + i];
+        const url = queued?.url;
         if (typeof url !== 'string' || url.length === 0) continue;
+        // Remote tracks: unity gain, and decoding the stream URL would download it.
+        if (queued?.sourceType && queued.sourceType !== 'local') continue;
         void ensureTrackLoudness(url)
           .then((facts) => {
             if (cancelled) return;

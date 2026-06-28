@@ -3,16 +3,17 @@ import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { colors, radius, spacing } from '@/theme';
-import { artworkUri } from '@/library/artwork';
+import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () => void }) {
+  const artUri = albumArtworkSource(album);
   return (
     <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
-        {album.artwork_hash ? (
+        {artUri ? (
           <Image
-            source={{ uri: artworkUri(album.artwork_hash) }}
+            source={{ uri: artUri }}
             style={styles.artImage}
             contentFit="cover"
             transition={120}

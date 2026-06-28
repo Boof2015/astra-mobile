@@ -5,8 +5,8 @@ export type TrackSourceType = 'local' | 'subsonic' | 'jellyfin';
 
 export interface DbTrack {
   id: number;
-  path: string; // SAF document content:// URI for local tracks
-  folder_id: number;
+  path: string; // SAF content:// URI (local), or subsonic://|jellyfin:// identity URI (remote)
+  folder_id: number | null; // NULL for remote tracks (no SAF folder)
   title: string;
   artist: string;
   album: string;
@@ -25,6 +25,12 @@ export interface DbTrack {
   channels: number | null;
   codec: string | null;
   source_type: TrackSourceType;
+  // Remote-source linkage (NULL for local tracks). source_id -> remote_sources.id;
+  // source_track_id is the server's track id; artwork_source_id is its cover-art id.
+  source_id: number | null;
+  source_track_id: string | null;
+  source_path: string | null;
+  artwork_source_id: string | null;
   file_name: string;
   size: number | null;
   mtime: number;
@@ -57,6 +63,12 @@ export interface Album {
   track_count: number;
   /** Newest track import timestamp in this album, used by Home recently-added. */
   latest_added_at: number;
+  // Representative remote-source linkage (absent/NULL for local albums) so the album
+  // grid / detail can resolve a server cover-art URL when there's no cached artwork_hash.
+  // Optional so locally-derived album shapes (e.g. artist-detail aggregates) still fit.
+  source_type?: TrackSourceType;
+  source_id?: number | null;
+  artwork_source_id?: string | null;
 }
 
 export interface Artist {

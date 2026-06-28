@@ -1,5 +1,6 @@
 import type { Track as RntpTrack } from 'react-native-track-player';
 import type { Track } from '@/types/audio';
+import { streamUrlForTrack } from '@/services/remoteUrls';
 
 /**
  * M0 verification tracks. Streamed from a public royalty-free source so playback
@@ -37,9 +38,14 @@ export const SAMPLE_TRACKS: Track[] = [
 
 /** Map an Astra Track to an RNTP track, carrying audiophile metadata as custom fields. */
 export function toRntpTrack(track: Track): RntpTrack {
+  // Remote tracks play from a resolved HTTP stream URL; the stable identity path
+  // (subsonic://|jellyfin://) rides along as `astraPath` so history/favorites/now-
+  // playing match the `tracks` row. Local tracks already play from their path.
+  const isRemote = !!track.sourceType && track.sourceType !== 'local';
+  const url = isRemote ? (streamUrlForTrack(track) ?? track.path) : track.path;
   return {
     id: track.id,
-    url: track.path,
+    url,
     title: track.title,
     artist: track.artist,
     album: track.album,
@@ -50,14 +56,20 @@ export function toRntpTrack(track: Track): RntpTrack {
     sampleRate: track.sampleRate,
     bitDepth: track.bitDepth,
     bitrate: track.bitrate,
+    astraPath: track.path,
+    sourceType: track.sourceType,
+    sourceId: track.sourceId,
+    sourceTrackId: track.sourceTrackId,
+    artworkSourceId: track.artworkSourceId,
   };
 }
 
 /** Reconstruct an Astra Track from the active RNTP track (for the player store). */
 export function rntpToTrack(rt: RntpTrack): Track {
+  const astraPath = typeof rt.astraPath === 'string' ? rt.astraPath : null;
   return {
     id: String(rt.id ?? rt.url),
-    path: String(rt.url),
+    path: astraPath ?? String(rt.url),
     title: rt.title ?? 'Unknown title',
     artist: rt.artist ?? 'Unknown artist',
     album: rt.album ?? '',
@@ -67,5 +79,9 @@ export function rntpToTrack(rt: RntpTrack): Track {
     sampleRate: rt.sampleRate as number | undefined,
     bitDepth: rt.bitDepth as number | undefined,
     bitrate: rt.bitrate as number | undefined,
+    sourceType: (rt.sourceType as Track['sourceType']) ?? undefined,
+    sourceId: rt.sourceId as number | undefined,
+    sourceTrackId: rt.sourceTrackId as string | undefined,
+    artworkSourceId: rt.artworkSourceId as string | undefined,
   };
 }

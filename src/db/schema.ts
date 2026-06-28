@@ -10,11 +10,15 @@
 // ungated whole-file method so it re-measures with the fast gated subset method;
 // v9 adds ReplayGain peak columns + an `rg_scanned` sentinel so tag reading runs
 // once per track (and is retried if it ever failed), independent of loudness;
-// v10 adds lightweight local playback history for Home.
+// v10 adds lightweight local playback history for Home; v11 (M5) adds remote
+// sources (Subsonic/Jellyfin): a `remote_sources` table + remote-linkage columns on
+// `tracks`, and makes `folder_id` nullable (remote tracks have no SAF folder); v12
+// marks playlists that mirror a server playlist (remote_source_id/remote_playlist_id)
+// so remote playlist sync can upsert + reconcile them.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 12;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -151,6 +155,102 @@ const MIGRATIONS: readonly (readonly string[])[] = [
       play_count INTEGER NOT NULL DEFAULT 1
     )`,
     'CREATE INDEX IF NOT EXISTS idx_playback_history_last_played ON playback_history(last_played_at DESC)',
+  ],
+  // v10 -> v11 — remote sources (M5: Subsonic/Jellyfin). One `remote_sources` table
+  // (type-discriminated) holds server config + cached Jellyfin auth (the password
+  // lives in expo-secure-store, never here). The `tracks` table gains remote-linkage
+  // columns and `folder_id` becomes nullable — SQLite can't drop NOT NULL in place,
+  // so we rebuild `tracks` (the only FK into it is its own folder_id; favorites /
+  // playlists / waveform_peaks / playback_history key on `path` with no FK, so the
+  // rebuild is safe). Existing (local) rows copy across; the 4 new columns default NULL.
+  [
+    `CREATE TABLE IF NOT EXISTS remote_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      username TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_status TEXT NOT NULL DEFAULT 'unknown',
+      last_error TEXT,
+      last_sync_at INTEGER,
+      last_checked_at INTEGER,
+      access_token TEXT,
+      user_id TEXT,
+      device_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE tracks_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT UNIQUE NOT NULL,
+      folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      album TEXT NOT NULL,
+      album_artist TEXT,
+      album_identity_key TEXT NOT NULL,
+      duration REAL NOT NULL DEFAULT 0,
+      track_number INTEGER,
+      disc_number INTEGER,
+      year INTEGER,
+      genre TEXT,
+      artwork_hash TEXT,
+      format TEXT NOT NULL,
+      sample_rate INTEGER,
+      bit_depth INTEGER,
+      bitrate INTEGER,
+      channels INTEGER,
+      codec TEXT,
+      source_type TEXT NOT NULL DEFAULT 'local',
+      file_name TEXT NOT NULL,
+      size INTEGER,
+      mtime INTEGER NOT NULL DEFAULT 0,
+      added_at INTEGER NOT NULL,
+      modified_at INTEGER NOT NULL,
+      loudness_lufs REAL,
+      sample_peak REAL,
+      replay_gain_track_db REAL,
+      replay_gain_album_db REAL,
+      replay_gain_track_peak REAL,
+      replay_gain_album_peak REAL,
+      rg_scanned INTEGER NOT NULL DEFAULT 0,
+      source_id INTEGER,
+      source_track_id TEXT,
+      source_path TEXT,
+      artwork_source_id TEXT
+    )`,
+    `INSERT INTO tracks_new (
+      id, path, folder_id, title, artist, album, album_artist, album_identity_key,
+      duration, track_number, disc_number, year, genre, artwork_hash, format,
+      sample_rate, bit_depth, bitrate, channels, codec, source_type, file_name, size,
+      mtime, added_at, modified_at, loudness_lufs, sample_peak, replay_gain_track_db,
+      replay_gain_album_db, replay_gain_track_peak, replay_gain_album_peak, rg_scanned
+    )
+    SELECT
+      id, path, folder_id, title, artist, album, album_artist, album_identity_key,
+      duration, track_number, disc_number, year, genre, artwork_hash, format,
+      sample_rate, bit_depth, bitrate, channels, codec, source_type, file_name, size,
+      mtime, added_at, modified_at, loudness_lufs, sample_peak, replay_gain_track_db,
+      replay_gain_album_db, replay_gain_track_peak, replay_gain_album_peak, rg_scanned
+    FROM tracks`,
+    `DROP TABLE tracks`,
+    `ALTER TABLE tracks_new RENAME TO tracks`,
+    'CREATE INDEX IF NOT EXISTS idx_tracks_album_identity ON tracks(album_identity_key)',
+    'CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist)',
+    'CREATE INDEX IF NOT EXISTS idx_tracks_folder ON tracks(folder_id)',
+    'CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_type, source_id)',
+  ],
+  // v11 -> v12 — mark playlists that mirror a remote server playlist. A non-null
+  // remote_source_id (-> remote_sources.id) + remote_playlist_id make the row a synced
+  // remote playlist; the unique index lets sync upsert by that pair. Local playlists
+  // leave both NULL and are untouched.
+  [
+    `ALTER TABLE playlists ADD COLUMN remote_source_id INTEGER`,
+    `ALTER TABLE playlists ADD COLUMN remote_playlist_id TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_playlists_remote
+       ON playlists(remote_source_id, remote_playlist_id)
+       WHERE remote_source_id IS NOT NULL AND remote_playlist_id IS NOT NULL`,
   ],
 ];
 

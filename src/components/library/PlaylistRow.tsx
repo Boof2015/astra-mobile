@@ -11,6 +11,7 @@ export function PlaylistRow({
   missingCount = 0,
   coverHash,
   pinned = false,
+  remote = false,
   onPress,
   onLongPress,
 }: {
@@ -20,6 +21,8 @@ export function PlaylistRow({
   coverHash: string | null;
   /** Favorites pseudo-playlist: heart cover instead of artwork/logo. */
   pinned?: boolean;
+  /** Synced from a remote server — shows a cloud marker. */
+  remote?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
 }) {
@@ -47,9 +50,12 @@ export function PlaylistRow({
         )}
       </View>
       <View style={styles.meta}>
-        <Text variant="body" numberOfLines={1}>
-          {name}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text variant="body" numberOfLines={1} style={styles.title}>
+            {name}
+          </Text>
+          {remote ? <Ionicons name="cloud" size={12} color={colors.accent} /> : null}
+        </View>
         <Text variant="label" numberOfLines={1}>
           {`${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
           {missingCount > 0 ? (
@@ -91,5 +97,13 @@ const styles = StyleSheet.create({
   meta: {
     flex: 1,
     gap: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  title: {
+    flexShrink: 1,
   },
 });

@@ -3,10 +3,11 @@
 
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+import type { RemotePlaylist } from '@/types/remote';
 import type { LibraryDatabase } from './database';
 
 const PLAYLIST_SELECT = `
-  SELECT p.id, p.name, p.created_at, p.updated_at, p.last_played_at,
+  SELECT p.id, p.name, p.created_at, p.updated_at, p.last_played_at, p.remote_source_id,
          (SELECT t.artwork_hash
             FROM playlist_tracks pt JOIN tracks t ON t.path = pt.track_path
            WHERE pt.playlist_id = p.id AND t.artwork_hash IS NOT NULL
@@ -244,4 +245,103 @@ export async function addFavorite(db: LibraryDatabase, trackPath: string): Promi
 
 export async function removeFavorite(db: LibraryDatabase, trackPath: string): Promise<void> {
   await db.run('DELETE FROM favorites WHERE track_path = ?', [trackPath]);
+}
+
+/** Add many favorites at once (insert-or-ignore). Used by remote starred sync. */
+export async function addFavoritePaths(db: LibraryDatabase, paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const now = Date.now();
+  await db.transaction(async (tx) => {
+    for (const path of paths) {
+      await tx.run('INSERT OR IGNORE INTO favorites (track_path, added_at) VALUES (?, ?)', [
+        path,
+        now,
+      ]);
+    }
+  });
+}
+
+// --- Remote sync (Subsonic playlists/favorites) ------------------------------
+
+/** Remove favorites whose path belongs to a given remote source (on source delete). */
+export async function deleteFavoritesByPathPrefix(
+  db: LibraryDatabase,
+  prefix: string
+): Promise<void> {
+  await db.run('DELETE FROM favorites WHERE track_path LIKE ?', [`${prefix}%`]);
+}
+
+/** Remove all synced playlists (and their entries via CASCADE) for a remote source. */
+export async function deleteRemotePlaylistsBySource(
+  db: LibraryDatabase,
+  sourceId: number
+): Promise<void> {
+  await db.run('DELETE FROM playlists WHERE remote_source_id = ?', [sourceId]);
+}
+
+/**
+ * Upsert a source's server playlists by (remote_source_id, remote_playlist_id):
+ * create/update each + replace its entries, then delete remote playlists for this
+ * source that vanished upstream. Ports desktop `syncSubsonicRemotePlaylists`.
+ */
+export async function syncRemotePlaylists(
+  db: LibraryDatabase,
+  sourceId: number,
+  playlists: RemotePlaylist[]
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const existing = await tx.all<{ id: number; remote_playlist_id: string }>(
+      'SELECT id, remote_playlist_id FROM playlists WHERE remote_source_id = ?',
+      [sourceId]
+    );
+    const existingByRemoteId = new Map<string, number>();
+    for (const row of existing) {
+      if (row.remote_playlist_id) existingByRemoteId.set(row.remote_playlist_id, row.id);
+    }
+
+    const seen = new Set<string>();
+    const now = Date.now();
+    for (const playlist of playlists) {
+      const remotePlaylistId = playlist.source_playlist_id.trim();
+      if (!remotePlaylistId) continue;
+      seen.add(remotePlaylistId);
+      const name = playlist.name.trim() || `Playlist ${remotePlaylistId}`;
+
+      let playlistId = existingByRemoteId.get(remotePlaylistId);
+      if (playlistId == null) {
+        const result = await tx.run(
+          `INSERT INTO playlists (name, created_at, updated_at, remote_source_id, remote_playlist_id)
+           VALUES (?, ?, ?, ?, ?)`,
+          [name, now, now, sourceId, remotePlaylistId]
+        );
+        playlistId = result.lastInsertRowid;
+      } else {
+        await tx.run('UPDATE playlists SET name = ?, updated_at = ? WHERE id = ?', [
+          name,
+          now,
+          playlistId,
+        ]);
+        await tx.run('DELETE FROM playlist_tracks WHERE playlist_id = ?', [playlistId]);
+      }
+
+      let position = 0;
+      const seenPaths = new Set<string>();
+      for (const track of playlist.tracks) {
+        if (seenPaths.has(track.path)) continue;
+        seenPaths.add(track.path);
+        await tx.run(
+          `INSERT OR IGNORE INTO playlist_tracks
+             (playlist_id, track_path, position, added_at, fallback_title, fallback_artist, fallback_album)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [playlistId, track.path, position++, now, track.title, track.artist, track.album]
+        );
+      }
+    }
+
+    // Reconcile: drop synced playlists that no longer exist upstream.
+    for (const [remoteId, playlistId] of existingByRemoteId) {
+      if (seen.has(remoteId)) continue;
+      await tx.run('DELETE FROM playlists WHERE id = ?', [playlistId]);
+    }
+  });
 }

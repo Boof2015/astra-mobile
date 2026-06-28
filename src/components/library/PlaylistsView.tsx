@@ -141,6 +141,7 @@ export function PlaylistsView() {
             trackCount={item.track_count}
             missingCount={item.missing_track_count}
             coverHash={item.auto_cover_hash}
+            remote={item.remote_source_id != null}
             onPress={() => router.push(`/library/playlist/${item.id}`)}
             onLongPress={() => setMenuFor(item)}
           />

@@ -14,7 +14,7 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { artworkUri } from '@/library/artwork';
+import { albumArtworkSource } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import type { DbTrack } from '@/types/library';
 
@@ -51,9 +51,9 @@ export default function AlbumScreen() {
 
       <View style={styles.header}>
         <View style={styles.art}>
-          {album?.artwork_hash ? (
+          {album && albumArtworkSource(album) ? (
             <Image
-              source={{ uri: artworkUri(album.artwork_hash) }}
+              source={{ uri: albumArtworkSource(album)! }}
               style={styles.artImage}
               contentFit="cover"
               transition={120}

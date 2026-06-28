@@ -34,6 +34,8 @@ export interface Track {
   sourceId?: number;
   sourceTrackId?: string;
   sourcePath?: string;
+  /** Server cover-art id for remote tracks (resolved to a URL via remoteUrls). */
+  artworkSourceId?: string;
   isAvailable?: boolean;
   availabilityReason?: string;
 }

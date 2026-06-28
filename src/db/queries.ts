@@ -96,6 +96,127 @@ export async function upsertTracks(db: LibraryDatabase, rows: TrackUpsert[]): Pr
   });
 }
 
+// --- Remote tracks (Subsonic / Jellyfin) -------------------------------------
+
+/** Row shape for a synced remote track. folder_id is NULL; file_name/size/mtime unused. */
+export interface RemoteTrackUpsert {
+  path: string; // subsonic://|jellyfin:// identity URI
+  source_type: 'subsonic' | 'jellyfin';
+  source_id: number;
+  source_track_id: string;
+  source_path: string | null;
+  artwork_source_id: string | null;
+  title: string;
+  artist: string;
+  album: string;
+  album_artist: string | null;
+  album_identity_key: string;
+  duration: number;
+  track_number: number | null;
+  disc_number: number | null;
+  year: number | null;
+  genre: string | null;
+  format: string;
+  sample_rate: number | null;
+  bit_depth: number | null;
+  bitrate: number | null;
+  channels: number | null;
+  codec: string | null;
+}
+
+const UPSERT_REMOTE_TRACK_SQL = `
+  INSERT INTO tracks (
+    path, folder_id, title, artist, album, album_artist, album_identity_key,
+    duration, track_number, disc_number, year, genre, artwork_hash, format,
+    sample_rate, bit_depth, bitrate, channels, codec, source_type, source_id,
+    source_track_id, source_path, artwork_source_id, file_name, size, mtime,
+    added_at, modified_at
+  ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 0, ?, ?)
+  ON CONFLICT(path) DO UPDATE SET
+    title = excluded.title,
+    artist = excluded.artist,
+    album = excluded.album,
+    album_artist = excluded.album_artist,
+    album_identity_key = excluded.album_identity_key,
+    duration = excluded.duration,
+    track_number = excluded.track_number,
+    disc_number = excluded.disc_number,
+    year = excluded.year,
+    genre = excluded.genre,
+    format = excluded.format,
+    sample_rate = excluded.sample_rate,
+    bit_depth = excluded.bit_depth,
+    bitrate = excluded.bitrate,
+    channels = excluded.channels,
+    codec = excluded.codec,
+    source_track_id = excluded.source_track_id,
+    source_path = excluded.source_path,
+    artwork_source_id = excluded.artwork_source_id,
+    modified_at = excluded.modified_at
+`;
+
+export async function upsertRemoteTracks(
+  db: LibraryDatabase,
+  rows: RemoteTrackUpsert[]
+): Promise<void> {
+  if (rows.length === 0) return;
+  const now = Date.now();
+  await db.transaction(async (tx) => {
+    for (const row of rows) {
+      await tx.run(UPSERT_REMOTE_TRACK_SQL, [
+        row.path,
+        row.title,
+        row.artist,
+        row.album,
+        row.album_artist,
+        row.album_identity_key,
+        row.duration,
+        row.track_number,
+        row.disc_number,
+        row.year,
+        row.genre,
+        row.format,
+        row.sample_rate,
+        row.bit_depth,
+        row.bitrate,
+        row.channels,
+        row.codec,
+        row.source_type,
+        row.source_id,
+        row.source_track_id,
+        row.source_path,
+        row.artwork_source_id,
+        now,
+        now,
+      ]);
+    }
+  });
+}
+
+/** Existing remote-track paths for a source, used to diff/prune removed tracks. */
+export function getRemoteSourcePaths(
+  db: LibraryDatabase,
+  sourceType: string,
+  sourceId: number
+): Promise<{ path: string }[]> {
+  return db.all<{ path: string }>(
+    'SELECT path FROM tracks WHERE source_type = ? AND source_id = ?',
+    [sourceType, sourceId]
+  );
+}
+
+export async function deleteRemoteTracksBySource(
+  db: LibraryDatabase,
+  sourceType: string,
+  sourceId: number
+): Promise<number> {
+  const result = await db.run('DELETE FROM tracks WHERE source_type = ? AND source_id = ?', [
+    sourceType,
+    sourceId,
+  ]);
+  return result.changes;
+}
+
 const TRACK_ORDER = 'COALESCE(disc_number, 9999), COALESCE(track_number, 9999), title COLLATE NOCASE';
 
 export function getAlbums(db: LibraryDatabase): Promise<Album[]> {
@@ -106,7 +227,10 @@ export function getAlbums(db: LibraryDatabase): Promise<Album[]> {
            MAX(year) AS year,
            MAX(artwork_hash) AS artwork_hash,
            COUNT(*) AS track_count,
-           MAX(added_at) AS latest_added_at
+           MAX(added_at) AS latest_added_at,
+           MAX(source_type) AS source_type,
+           MAX(source_id) AS source_id,
+           MAX(artwork_source_id) AS artwork_source_id
     FROM tracks
     GROUP BY album_identity_key
     ORDER BY 3 COLLATE NOCASE, 2 COLLATE NOCASE
