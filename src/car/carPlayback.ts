@@ -15,9 +15,11 @@ import { buildArtistList, filterTracksByArtist } from '@/library/artistGrouping'
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playForCar, playTracksForCar, pause, seekTo, skipToNext, skipToPrevious } from '@/audio/playbackController';
 import { syncCarNowPlayingFromTrackPlayer } from '@/audio/carSync';
+import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useEQStore } from '@/stores/eqStore';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { DbTrack } from '@/types/library';
@@ -53,6 +55,7 @@ async function initializeForCar(): Promise<void> {
     initPromise = (async () => {
       await useSettingsStore.getState().load();
       await useLibraryStore.getState().initialize();
+      await usePlaylistStore.getState().refresh();
       await useRemoteSourcesStore.getState().init();
       await Promise.all([
         useEQStore.getState().load(),
@@ -92,6 +95,9 @@ export async function handleAstraCarCommand(payload: CarCommandPayload): Promise
       case 'seek':
         if (typeof payload.position === 'number') await seekTo(payload.position);
         break;
+      case 'toggleFavorite':
+        await handleFavoriteCommand();
+        break;
       default:
         break;
     }
@@ -100,6 +106,19 @@ export async function handleAstraCarCommand(payload: CarCommandPayload): Promise
   } finally {
     await syncCarNowPlayingFromTrackPlayer();
   }
+}
+
+async function handleFavoriteCommand(): Promise<void> {
+  const activeTrack = await TrackPlayer.getActiveTrack();
+  const path = rntpTrackPath(activeTrack);
+  if (!path) return;
+  await usePlaylistStore.getState().toggleFavorite({ path });
+}
+
+function rntpTrackPath(track: RntpTrack | null | undefined): string | null {
+  if (!track) return null;
+  if (typeof track.astraPath === 'string' && track.astraPath.length > 0) return track.astraPath;
+  return typeof track.url === 'string' && track.url.length > 0 ? track.url : null;
 }
 
 async function playMedia(media: CarMediaPayload): Promise<void> {

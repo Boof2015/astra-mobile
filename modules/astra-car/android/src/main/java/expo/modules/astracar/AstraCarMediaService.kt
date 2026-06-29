@@ -51,6 +51,14 @@ class AstraCarMediaService : MediaBrowserServiceCompat() {
           override fun onPlayFromSearch(query: String?, extras: Bundle?) {
             AstraCarCommandService.startPlayFromSearch(this@AstraCarMediaService, query, extras)
           }
+
+          override fun onCustomAction(action: String?, extras: Bundle?) {
+            if (action == AstraCarFavoriteAction.TOGGLE) {
+              AstraCarCommandService.startFavoriteAction(this@AstraCarMediaService)
+            } else {
+              super.onCustomAction(action, extras)
+            }
+          }
         },
       )
       applyAstraState(AstraCarNowPlayingStore.load(this@AstraCarMediaService))

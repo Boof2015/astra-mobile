@@ -116,6 +116,10 @@ class AstraCarCommandService : HeadlessJsTaskService() {
       )
     }
 
+    fun startFavoriteAction(context: Context) {
+      start(context, Intent(context, AstraCarCommandService::class.java).putExtra(EXTRA_COMMAND, AstraCarFavoriteAction.COMMAND))
+    }
+
     fun startPlayFromMediaId(context: Context, mediaId: String?) {
       val media = AstraCarMediaIds.decode(mediaId) ?: return
       start(

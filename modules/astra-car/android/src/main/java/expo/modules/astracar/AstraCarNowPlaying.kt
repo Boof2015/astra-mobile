@@ -16,6 +16,8 @@ data class AstraCarNowPlayingState(
   val hasTrack: Boolean,
   val durationSeconds: Double?,
   val positionSeconds: Double?,
+  val trackPath: String?,
+  val isFavorite: Boolean,
 )
 
 object AstraCarNowPlayingStore {
@@ -94,7 +96,17 @@ object AstraCarNowPlayingStore {
         ((state.positionSeconds ?: 0.0) * 1000).toLong(),
         if (playbackState == PlaybackStateCompat.STATE_PLAYING) 1f else 0f,
       )
+      .apply {
+        favoriteAction(state)?.let(::addCustomAction)
+      }
       .build()
+  }
+
+  private fun favoriteAction(state: AstraCarNowPlayingState): PlaybackStateCompat.CustomAction? {
+    if (!state.hasTrack || state.trackPath.isNullOrBlank()) return null
+    val label = if (state.isFavorite) "Unfavorite" else "Favorite"
+    val icon = if (state.isFavorite) R.drawable.ic_astra_favorite else R.drawable.ic_astra_favorite_border
+    return PlaybackStateCompat.CustomAction.Builder(AstraCarFavoriteAction.TOGGLE, label, icon).build()
   }
 
   private fun encode(state: AstraCarNowPlayingState): String =
@@ -107,6 +119,8 @@ object AstraCarNowPlayingStore {
       .put("hasTrack", state.hasTrack)
       .put("durationSeconds", state.durationSeconds)
       .put("positionSeconds", state.positionSeconds)
+      .put("trackPath", state.trackPath)
+      .put("isFavorite", state.isFavorite)
       .toString()
 
   private fun decode(value: String?): AstraCarNowPlayingState {
@@ -122,6 +136,8 @@ object AstraCarNowPlayingStore {
         hasTrack = json.optBoolean("hasTrack", false),
         durationSeconds = json.optDoubleOrNull("durationSeconds"),
         positionSeconds = json.optDoubleOrNull("positionSeconds"),
+        trackPath = json.optNullableString("trackPath"),
+        isFavorite = json.optBoolean("isFavorite", false),
       )
     }.getOrDefault(emptyState())
   }
@@ -136,6 +152,8 @@ object AstraCarNowPlayingStore {
       hasTrack = false,
       durationSeconds = null,
       positionSeconds = null,
+      trackPath = null,
+      isFavorite = false,
     )
 
   private fun JSONObject.optNullableString(key: String): String? {

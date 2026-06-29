@@ -16,6 +16,8 @@ export interface AstraCarNowPlayingState {
   hasTrack: boolean;
   duration?: number | null;
   position?: number | null;
+  trackPath?: string | null;
+  isFavorite?: boolean;
 }
 
 declare class AstraCarModuleType extends NativeModule {

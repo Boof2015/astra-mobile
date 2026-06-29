@@ -37,6 +37,12 @@ class AstraCarNowPlayingRecord : Record {
 
   @Field
   val position: Double? = null
+
+  @Field
+  val trackPath: String? = null
+
+  @Field
+  val isFavorite: Boolean = false
 }
 
 class AstraCarModule : Module() {
@@ -56,6 +62,8 @@ class AstraCarModule : Module() {
           hasTrack = state.hasTrack,
           durationSeconds = state.duration,
           positionSeconds = state.position,
+          trackPath = state.trackPath,
+          isFavorite = state.isFavorite,
         ),
       )
     }

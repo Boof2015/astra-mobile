@@ -2,6 +2,7 @@ import TrackPlayer, { State, type Track as RntpTrack } from 'react-native-track-
 
 import type { PlaybackState, Track } from '@/types/audio';
 import { AstraCar } from '../../modules/astra-car';
+import { usePlaylistStore } from '@/stores/playlistStore';
 
 function mapRntpState(state?: State): PlaybackState {
   switch (state) {
@@ -20,7 +21,7 @@ function mapRntpState(state?: State): PlaybackState {
 
 type CarNowPlayingTrack = Pick<
   Track,
-  'title' | 'artist' | 'album' | 'artworkData' | 'duration' | 'sourceType' | 'sourceId' | 'artworkSourceId'
+  'path' | 'title' | 'artist' | 'album' | 'artworkData' | 'duration' | 'sourceType' | 'sourceId' | 'artworkSourceId'
 >;
 
 /** True when the track should use its remote server cover (no local cache to serve). */
@@ -51,6 +52,7 @@ export function setCarNowPlaying(
   // Android Auto loads art only from content:// URIs, so we pass structured identity
   // (local hash or remote source+id) and let the native module build the content URI.
   const remote = isRemoteArt(track);
+  const trackPath = track?.path ?? null;
   AstraCar.setNowPlaying({
     title: track?.title ?? null,
     artist: track?.artist ?? null,
@@ -62,6 +64,8 @@ export function setCarNowPlaying(
     hasTrack: Boolean(track),
     duration: duration ?? track?.duration ?? null,
     position: position ?? null,
+    trackPath,
+    isFavorite: trackPath ? usePlaylistStore.getState().favoritePaths.has(trackPath) : false,
   });
 }
 
@@ -74,6 +78,7 @@ export function setCarNowPlayingFromRntpTrack(
   setCarNowPlaying(
     track
       ? {
+          path: typeof track.astraPath === 'string' ? track.astraPath : String(track.url ?? track.id),
           title: track.title ?? 'Unknown title',
           artist: track.artist ?? 'Unknown artist',
           album: track.album ?? '',
