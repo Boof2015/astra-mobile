@@ -1,0 +1,30 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+  <application>
+    <meta-data
+      android:name="com.google.android.gms.car.application"
+      android:resource="@xml/automotive_app_desc" />
+
+    <service
+      android:name="expo.modules.astracar.AstraCarMediaService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.media.browse.MediaBrowserService" />
+      </intent-filter>
+    </service>
+
+    <service
+      android:name="expo.modules.astracar.AstraCarCommandService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
+
+    <provider
+      android:name="expo.modules.astracar.AstraCarArtworkProvider"
+      android:authorities="${applicationId}.astracar.artwork"
+      android:exported="false"
+      android:grantUriPermissions="true" />
+  </application>
+</manifest>

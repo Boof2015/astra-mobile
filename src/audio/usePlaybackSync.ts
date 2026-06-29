@@ -69,6 +69,13 @@ export function usePlaybackSync(): void {
     setPlaybackState(mappedPlaybackState);
   }, [mappedPlaybackState, setPlaybackState]);
 
+  // Push the widget now-playing (incl. the recents list) on track/state/recents change only
+  // — NOT on every 500ms progress tick. The widget shows no position, so per-tick updates
+  // were pure waste; with Android Auto connected the sibling car push fanned out to a full
+  // MediaSession setMetadata + host IPC at 2 Hz, whose spikes janked the Skia scopes +
+  // now-playing timeline. The car now-playing is owned by the headless PlaybackService,
+  // which re-syncs it (with a fresh position) on RNTP track/state events — so it isn't
+  // pushed from here at all (the MediaSession extrapolates position between those events).
   useEffect(() => {
     const track = activeTrack ? rntpToTrack(activeTrack) : null;
     setWidgetNowPlaying(

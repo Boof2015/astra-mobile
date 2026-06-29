@@ -1,8 +1,30 @@
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
-index b2409a0..fb5d5a5 100644
+index b2409a0..ea4b393 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
-@@ -251,7 +251,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -169,8 +169,12 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+             return
+         }
+ 
++        val bundledData = Arguments.toBundle(data)
++        val androidOptions = bundledData?.getBundle(MusicService.ANDROID_OPTIONS_KEY)
++        val allowBackgroundSetup = androidOptions?.getBoolean("allowBackgroundSetup") ?: false
++
+         // prevent crash Fatal Exception: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && AppForegroundTracker.backgrounded) {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && AppForegroundTracker.backgrounded && !allowBackgroundSetup) {
+             promise.reject(
+                 "android_cannot_setup_player_in_background",
+                 "On Android the app must be in the foreground when setting up the player."
+@@ -179,7 +183,6 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         }
+ 
+         // Validate buffer keys.
+-        val bundledData = Arguments.toBundle(data)
+         val minBuffer =
+             bundledData?.getDouble(MusicService.MIN_BUFFER_KEY)?.toMilliseconds()?.toInt()
+                 ?: DEFAULT_MIN_BUFFER_MS
+@@ -251,7 +254,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -11,7 +33,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          val options = Arguments.toBundle(data)
-@@ -262,9 +262,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -262,9 +265,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -23,7 +45,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          try {
-@@ -283,9 +284,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -283,9 +287,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
              rejectWithException(callback, exception)
          }
      }
@@ -35,7 +57,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
          if (data == null) {
              callback.resolve(null)
-@@ -299,16 +301,18 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -299,16 +304,18 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
              callback.reject("invalid_track_object", "Track was not a dictionary type")
          }
      }
@@ -56,7 +78,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
          val inputIndexes = Arguments.toList(data)
          if (inputIndexes != null) {
-@@ -329,9 +333,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -329,9 +336,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
          }
          callback.resolve(null)
      }
@@ -68,7 +90,7 @@ index b2409a0..fb5d5a5 100644
          scope.launch {
              if (verifyServiceBoundOrReject(callback)) return@launch
  
-@@ -346,9 +351,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -346,9 +354,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                  callback.resolve(null)
              }
          }
@@ -80,7 +102,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          if (musicService.tracks.isEmpty())
-@@ -362,9 +368,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -362,9 +371,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -92,7 +114,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          if (musicService.tracks.isEmpty())
-@@ -373,17 +380,19 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -373,17 +383,19 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
          musicService.clearNotificationMetadata()
          callback.resolve(null)
      }
@@ -114,7 +136,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          musicService.skip(index)
-@@ -394,9 +403,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -394,9 +406,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -126,7 +148,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          musicService.skipToNext()
-@@ -407,9 +417,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -407,9 +420,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -138,7 +160,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          musicService.skipToPrevious()
-@@ -420,9 +431,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -420,9 +434,10 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -150,7 +172,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          musicService.stop()
-@@ -431,135 +443,152 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -431,135 +446,152 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -321,7 +343,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          try {
-@@ -570,49 +599,54 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -570,49 +602,54 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
              rejectWithException(callback, exception)
          }
      }
@@ -385,7 +407,7 @@ index b2409a0..fb5d5a5 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
          var bundle = Bundle()
          bundle.putDouble("duration", musicService.getDurationInSeconds());
-@@ -620,10 +654,12 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -620,10 +657,12 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
          bundle.putDouble("buffered", musicService.getBufferedPositionInSeconds());
          callback.resolve(Arguments.fromBundle(bundle))
      }

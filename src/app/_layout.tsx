@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -26,6 +26,14 @@ import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useNormalizationSync } from '@/audio/useNormalizationSync';
 import { useLastFmScrobbler } from '@/audio/useLastFmScrobbler';
 import { colors } from '@/theme';
+
+// Anchor the root stack at the tabs so a deep link straight to a top-level route (the
+// widget/notification opening `now-playing`, or `recently-played`) builds `[(tabs), route]`
+// instead of just `[route]`. Without this, dismissing the now-playing modal pops to an empty
+// stack → blank screen. Only affects deep-link/launch ordering; normal nav is unchanged.
+export const unstable_settings = {
+  initialRouteName: '(tabs)',
+};
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,11 +71,23 @@ export default function RootLayout() {
     JetBrainsMono_500Medium,
   });
 
+  // Failsafe so the splash can never hang the UI blank. `preventAutoHideAsync` runs at
+  // module scope — including in the headless JS context Android Auto spins up — so when
+  // the process is started from the car first and the app is opened later, the normal
+  // "hide once fonts load" path can get stuck. Render (and hide the splash) anyway after
+  // a short timeout even if fonts haven't reported in.
+  const [splashTimedOut, setSplashTimedOut] = useState(false);
   useEffect(() => {
-    if (fontsLoaded) {
-      void SplashScreen.hideAsync();
+    const timer = setTimeout(() => setSplashTimedOut(true), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+  const ready = fontsLoaded || splashTimedOut;
+
+  useEffect(() => {
+    if (ready) {
+      void SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
   // Eager library init: SQLite open + initial reads are tens of ms, and the
   // Library tab + playback adapters get data immediately. EQ + audio settings load
@@ -99,7 +119,7 @@ export default function RootLayout() {
       .catch((err) => console.error('[lastfm] init failed', err));
   }, []);
 
-  if (!fontsLoaded) return null;
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={styles.root}>

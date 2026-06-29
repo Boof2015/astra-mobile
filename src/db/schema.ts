@@ -14,11 +14,13 @@
 // sources (Subsonic/Jellyfin): a `remote_sources` table + remote-linkage columns on
 // `tracks`, and makes `folder_id` nullable (remote tracks have no SAF folder); v12
 // marks playlists that mirror a server playlist (remote_source_id/remote_playlist_id)
-// so remote playlist sync can upsert + reconcile them.
+// so remote playlist sync can upsert + reconcile them; v13 adds `remote_sources.art_auth`
+// — a self-contained cover-art URL template the native Android Auto artwork provider uses
+// to fetch server art without a JS round-trip.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -252,6 +254,11 @@ const MIGRATIONS: readonly (readonly string[])[] = [
        ON playlists(remote_source_id, remote_playlist_id)
        WHERE remote_source_id IS NOT NULL AND remote_playlist_id IS NOT NULL`,
   ],
+  // v12 -> v13 — cover-art URL template per remote source, read by the native Android
+  // Auto artwork provider (which has no JS/secret access) to fetch + cache server art.
+  // It embeds a fixed Subsonic salt+token / Jellyfin api_key with an `__ASTRA_ART_ID__`
+  // placeholder for the cover id; the password itself never leaves expo-secure-store.
+  [`ALTER TABLE remote_sources ADD COLUMN art_auth TEXT`],
 ];
 
 export async function migrate(db: LibraryDatabase): Promise<void> {

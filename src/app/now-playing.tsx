@@ -265,7 +265,14 @@ export default function NowPlayingScreen() {
   // a second native modal animation after release.
   const translateY = useSharedValue(0);
   const menuProgress = useSharedValue(0);
-  const dismiss = () => router.back();
+  // Belt-and-suspenders for deep-link entry (widget/notification → now-playing with no
+  // history): `(tabs)` is the stack anchor (see root _layout unstable_settings), so back()
+  // returns there; if somehow there's nothing to go back to, replace to the tabs home so
+  // dismissing can never land on a blank screen.
+  const dismiss = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
   const finishCloseMenu = () => setMenuOpen(false);
 
   function openMenu() {

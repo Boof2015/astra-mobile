@@ -33,6 +33,29 @@ export function streamUrlForTrack(track: Track): string | null {
   return null;
 }
 
+/** Placeholder the native Android Auto artwork provider substitutes with the cover id. */
+const ART_ID_PLACEHOLDER = '__ASTRA_ART_ID__';
+
+/**
+ * Build a self-contained cover-art URL with an `__ASTRA_ART_ID__` placeholder in place of
+ * the cover id, for the given remote source. Persisted to `remote_sources.art_auth` so the
+ * native Android Auto artwork provider (no JS/secret access) can url-encode a real id into
+ * it and download. Returns null when the source isn't loaded/authenticated yet.
+ */
+export function buildCoverArtUrlTemplate(sourceId: number): string | null {
+  const cfg = getResolvedRemoteConfig(sourceId);
+  if (!cfg) return null;
+
+  if (cfg.type === 'subsonic') {
+    return buildSubsonicCoverArtUrl(connection(cfg), ART_ID_PLACEHOLDER);
+  }
+  if (cfg.type === 'jellyfin') {
+    if (!cfg.accessToken) return null;
+    return buildJellyfinCoverArtUrl(connection(cfg), ART_ID_PLACEHOLDER, cfg.accessToken);
+  }
+  return null;
+}
+
 /** Build the cover-art URL for a remote track, or null if unavailable. */
 export function artworkUrlForTrack(
   track: Pick<Track, 'sourceType' | 'sourceId' | 'artworkSourceId'>

@@ -17,11 +17,13 @@ import {
   getRemoteSource,
   getRemoteSources,
   insertRemoteSource,
+  setRemoteSourceArtAuth,
   setRemoteSourceAuth,
   setRemoteSourceStatus,
   setRemoteSourceSynced,
   updateRemoteSource,
 } from '@/db/remoteSourceQueries';
+import { buildCoverArtUrlTemplate } from '@/services/remoteUrls';
 import {
   deleteRemoteSecret,
   getRemoteSecret,
@@ -68,7 +70,22 @@ async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectio
     accessToken: source.access_token ?? undefined,
     userId: source.user_id ?? undefined,
   });
+  await persistArtAuthIfNeeded(source);
   return { baseUrl: source.base_url, username: source.username, password };
+}
+
+/**
+ * Generate + persist the cover-art URL template the native Android Auto artwork provider
+ * reads. Done once per source (stable Subsonic salt; Jellyfin token); regenerated when
+ * credentials change (updateSource clears it) or a Jellyfin token is refreshed.
+ * Requires the source's config to already be in the registry.
+ */
+async function persistArtAuthIfNeeded(source: RemoteSourceRow): Promise<void> {
+  if (source.art_auth) return;
+  const template = buildCoverArtUrlTemplate(source.id);
+  if (!template) return;
+  const db = await openLibraryDb();
+  await setRemoteSourceArtAuth(db, source.id, template);
 }
 
 /** Ensure a usable Jellyfin token, authenticating + persisting it if missing. */
@@ -87,6 +104,9 @@ async function ensureJellyfinAuth(
     deviceId: buildJellyfinDeviceId(config),
   });
   updateResolvedRemoteAuth(source.id, auth);
+  // Token (re)issued — refresh the native Auto cover-art template so it isn't stale.
+  const artTemplate = buildCoverArtUrlTemplate(source.id);
+  if (artTemplate) await setRemoteSourceArtAuth(db, source.id, artTemplate);
   return auth;
 }
 
@@ -190,6 +210,7 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
       accessToken: auth?.accessToken,
       userId: auth?.userId,
     });
+    await persistArtAuthIfNeeded(row);
 
     await get().refresh();
     // Kick off the first sync in the background (don't block the add flow).
@@ -214,9 +235,11 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
 
     const updated = await getRemoteSource(db, id);
     if (updated) {
-      // Connection details may have changed → drop cached token, re-hydrate registry.
+      // Connection details may have changed → drop cached token + cover-art template,
+      // re-hydrate registry (which regenerates the template from the new credentials).
       if (input.baseUrl || input.username || input.password) {
         await setRemoteSourceAuth(db, id, { accessToken: null, userId: null, deviceId: null });
+        await setRemoteSourceArtAuth(db, id, null);
       }
       const fresh = (await getRemoteSource(db, id)) ?? updated;
       await hydrateRegistry(fresh);

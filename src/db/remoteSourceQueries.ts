@@ -107,6 +107,22 @@ export async function setRemoteSourceSynced(db: LibraryDatabase, id: number): Pr
   );
 }
 
+/**
+ * Persist the cover-art URL template (with an `__ASTRA_ART_ID__` placeholder) that the
+ * native Android Auto artwork provider uses to fetch server art without JS/secret access.
+ */
+export async function setRemoteSourceArtAuth(
+  db: LibraryDatabase,
+  id: number,
+  artAuth: string | null
+): Promise<void> {
+  await db.run('UPDATE remote_sources SET art_auth = ?, updated_at = ? WHERE id = ?', [
+    artAuth,
+    Date.now(),
+    id,
+  ]);
+}
+
 /** Cache Jellyfin auth (Subsonic derives a salted token per request, so it stays NULL). */
 export async function setRemoteSourceAuth(
   db: LibraryDatabase,

@@ -11,9 +11,9 @@ import TrackPlayer, {
  */
 let setupPromise: Promise<void> | null = null;
 
-export function setupPlayer(): Promise<void> {
+export function setupPlayer(options: { allowBackgroundSetup?: boolean } = {}): Promise<void> {
   if (!setupPromise) {
-    setupPromise = doSetup().catch((err) => {
+    setupPromise = doSetup(options).catch((err) => {
       setupPromise = null; // allow a retry on a genuine failure
       throw err;
     });
@@ -21,9 +21,16 @@ export function setupPlayer(): Promise<void> {
   return setupPromise;
 }
 
-async function doSetup(): Promise<void> {
+async function doSetup(options: { allowBackgroundSetup?: boolean }): Promise<void> {
   try {
-    await TrackPlayer.setupPlayer({ autoHandleInterruptions: true });
+    await TrackPlayer.setupPlayer({
+      autoHandleInterruptions: true,
+      ...(options.allowBackgroundSetup
+        ? { android: { allowBackgroundSetup: true } }
+        : {}),
+    } as Parameters<typeof TrackPlayer.setupPlayer>[0] & {
+      android?: { allowBackgroundSetup?: boolean };
+    });
   } catch (err) {
     // setupPlayer rejects if the player was already initialized (e.g. across a
     // Fast Refresh). That case is safe to ignore; anything else should surface.

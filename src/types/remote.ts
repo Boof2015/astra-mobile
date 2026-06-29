@@ -90,6 +90,11 @@ export interface RemoteSourceRow {
   access_token: string | null;
   user_id: string | null;
   device_id: string | null;
+  /**
+   * A self-contained cover-art URL template with an `__ASTRA_ART_ID__` id placeholder,
+   * read by the native Android Auto artwork provider to fetch server art without JS.
+   */
+  art_auth: string | null;
   created_at: number;
   updated_at: number;
 }

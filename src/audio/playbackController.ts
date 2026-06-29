@@ -82,15 +82,28 @@ function shuffleArray<T>(items: readonly T[]): T[] {
  * foreground. The stored repeat mode is re-applied after a (re)setup so a
  * deferred init keeps the user's choice.
  */
-async function ensurePlayerReady(): Promise<void> {
-  await setupPlayer();
+async function ensurePlayerReady(options: { allowBackgroundSetup?: boolean } = {}): Promise<void> {
+  await setupPlayer(options);
   await TrackPlayer.setRepeatMode(toRntpRepeat(usePlayerStore.getState().repeat));
 }
 
 /** Replace the queue with the given tracks and start playing at startIndex. */
 export async function playTracks(tracks: Track[], startIndex = 0): Promise<void> {
+  return playTracksInternal(tracks, startIndex, { allowBackgroundSetup: false });
+}
+
+/** Android Auto can request playback while the React UI is not foregrounded. */
+export async function playTracksForCar(tracks: Track[], startIndex = 0): Promise<void> {
+  return playTracksInternal(tracks, startIndex, { allowBackgroundSetup: true });
+}
+
+async function playTracksInternal(
+  tracks: Track[],
+  startIndex: number,
+  options: { allowBackgroundSetup: boolean },
+): Promise<void> {
   if (tracks.length === 0) return;
-  await ensurePlayerReady();
+  await ensurePlayerReady(options);
   const queueTracks = tracks.map(toRntpTrack);
   await TrackPlayer.setQueue(queueTracks);
   originalOrder = tracks.map((t) => t.id);
@@ -141,6 +154,10 @@ export async function playSample(): Promise<void> {
 }
 
 export const play = (): Promise<void> => TrackPlayer.play();
+export async function playForCar(): Promise<void> {
+  await ensurePlayerReady({ allowBackgroundSetup: true });
+  await TrackPlayer.play();
+}
 export const pause = (): Promise<void> => TrackPlayer.pause();
 export const seekTo = (seconds: number): Promise<void> => TrackPlayer.seekTo(seconds);
 
