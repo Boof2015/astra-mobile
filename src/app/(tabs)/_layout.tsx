@@ -1,4 +1,7 @@
 import { Tabs } from 'expo-router';
+// RN's Easing (not reanimated): the bottom-tabs scene transition runs on legacy
+// Animated.timing and may use the native driver, so the easing must be serializable.
+import { Easing } from 'react-native';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { colors } from '@/theme';
 
@@ -8,6 +11,12 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.bgPrimary },
+        // Directional slide + cross-fade between tabs, following tab order.
+        animation: 'shift',
+        transitionSpec: {
+          animation: 'timing',
+          config: { duration: 200, easing: Easing.out(Easing.cubic) },
+        },
       }}
       tabBar={({ state, navigation }) => {
         const items: TabItem[] = state.routes.map((route, index) => ({
