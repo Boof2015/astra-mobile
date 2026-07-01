@@ -185,7 +185,12 @@ export default function LibraryScreen() {
               />
             ) : null}
 
-            {viewMode === 'folders' ? <FoldersView /> : null}
+            {viewMode === 'folders' ? (
+              <FoldersView
+                onScroll={scrollTop.onScroll}
+                scrollEventThrottle={scrollTop.scrollEventThrottle}
+              />
+            ) : null}
           </>
         )}
       </PullSearchGesture>

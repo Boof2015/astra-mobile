@@ -306,13 +306,11 @@ function RandomAlbumCard({
 }
 
 function EmptyHomeCard({
-  isScanning,
   scanError,
-  onAddFolder,
+  onManageFolders,
 }: {
-  isScanning: boolean;
   scanError: string | null;
-  onAddFolder: () => void;
+  onManageFolders: () => void;
 }) {
   return (
     <View style={styles.emptyCard}>
@@ -329,14 +327,13 @@ function EmptyHomeCard({
         ) : null}
       </View>
       <Pressable
-        style={[styles.primaryButton, isScanning && styles.buttonDisabled]}
-        disabled={isScanning}
-        onPress={onAddFolder}
+        style={styles.primaryButton}
+        onPress={onManageFolders}
         accessibilityRole="button"
       >
-        <Ionicons name="add" size={18} color={colors.bgPrimary} />
+        <Ionicons name="folder-open-outline" size={18} color={colors.bgPrimary} />
         <Text variant="body" style={styles.primaryButtonText}>
-          Add folder
+          Folder settings
         </Text>
       </Pressable>
     </View>
@@ -348,9 +345,7 @@ export default function HomeScreen() {
   const tracks = useLibraryStore((s) => s.tracks);
   const albums = useLibraryStore((s) => s.albums);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
-  const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
-  const addFolder = useLibraryStore((s) => s.addFolder);
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -462,9 +457,8 @@ export default function HomeScreen() {
               </View>
             ) : null}
             <EmptyHomeCard
-              isScanning={isScanning}
               scanError={scanError}
-              onAddFolder={() => void addFolder()}
+              onManageFolders={() => router.push('/settings')}
             />
           </>
         ) : (

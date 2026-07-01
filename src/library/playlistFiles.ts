@@ -10,22 +10,10 @@ import {
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
 import type { DbTrack } from '@/types/library';
+import { decodedSafDocumentPath } from './folderTree';
 import { parseM3u, serializeM3u, type M3uEntry, type M3uExportEntry } from '@/lib/m3u';
 
-/** "content://…/document/primary%3AMusic%2FA%2Ff.flac" -> "Music/A/f.flac" */
-export function decodedDocPath(contentUri: string): string | null {
-  const marker = '/document/';
-  const idx = contentUri.indexOf(marker);
-  if (idx < 0) return null;
-  let docId: string;
-  try {
-    docId = decodeURIComponent(contentUri.slice(idx + marker.length));
-  } catch {
-    return null;
-  }
-  const colon = docId.indexOf(':');
-  return colon >= 0 ? docId.slice(colon + 1) : docId;
-}
+export const decodedDocPath = decodedSafDocumentPath;
 
 // --- Import matching ---------------------------------------------------------
 

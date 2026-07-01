@@ -67,6 +67,14 @@ const NAV_ENTRIES: {
     keywords: ['library', 'tracks', 'songs', 'browse', 'collection'],
   },
   {
+    id: 'nav:library-folders',
+    label: 'Browse folders',
+    href: '/library',
+    icon: 'folder-open-outline',
+    keywords: ['folders', 'folder explorer', 'browse folders', 'library folders'],
+    libraryViewMode: 'folders',
+  },
+  {
     id: 'nav:eq',
     label: 'Equalizer',
     href: '/eq',
@@ -109,12 +117,11 @@ const SETTING_ENTRIES: {
   },
   {
     id: 'setting:folders',
-    label: 'Library folders',
-    subtitle: 'Scanned music folders',
-    href: '/library',
+    label: 'Manage folders',
+    subtitle: 'Add / rescan / remove folders',
+    href: '/settings',
     icon: 'folder-open-outline',
-    keywords: ['folders', 'scan', 'rescan', 'local files', 'storage'],
-    libraryViewMode: 'folders',
+    keywords: ['folders', 'scan', 'rescan', 'add folder', 'remove folder', 'local files', 'storage'],
   },
   {
     id: 'setting:sources',

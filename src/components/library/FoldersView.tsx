@@ -1,121 +1,231 @@
-import { View, Pressable, StyleSheet, Alert } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
+import { playTracks } from '@/audio/playbackController';
+import { dbTrackToTrack } from '@/library/trackAdapter';
+import {
+  buildFolderTree,
+  flattenFolderTree,
+  type FlattenedFolderTreeRow,
+} from '@/library/folderTree';
+import { formatDuration } from '@/lib/format';
+import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
-import type { FolderWithCount } from '@/stores/libraryStore';
+import { usePlayerStore } from '@/stores/playerStore';
 
-function FolderRow({ folder }: { folder: FolderWithCount }) {
-  const removeFolder = useLibraryStore((s) => s.removeFolder);
+interface FoldersViewProps {
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
+}
 
-  const confirmRemove = () => {
-    Alert.alert(
-      'Remove folder?',
-      `"${folder.display_name}" and its ${folder.track_count} tracks will be removed from the library. Files on disk are not touched.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => void removeFolder(folder.id) },
-      ]
-    );
-  };
+function FolderRow({
+  row,
+  onToggle,
+}: {
+  row: Extract<FlattenedFolderTreeRow, { type: 'folder' }>;
+  onToggle: (nodeId: string) => void;
+}) {
+  const { node, depth, isExpanded } = row;
 
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={styles.folderRow}
+      onPress={() => onToggle(node.id)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: isExpanded }}
+    >
+      <View style={[styles.indent, { width: depth * 18 }]} />
       <Ionicons
-        name={folder.available ? 'folder-outline' : 'alert-circle-outline'}
-        size={22}
-        color={folder.available ? colors.textSecondary : colors.warning}
+        name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+        size={16}
+        color={colors.textTertiary}
       />
-      <View style={styles.meta}>
+      <Ionicons
+        name={node.available ? 'folder-outline' : 'alert-circle-outline'}
+        size={19}
+        color={node.available ? colors.textSecondary : colors.warning}
+      />
+      <View style={styles.folderMeta}>
         <Text variant="body" numberOfLines={1}>
-          {folder.display_name}
+          {node.name}
         </Text>
-        <Text variant="label" numberOfLines={1}>
-          {folder.available
-            ? `${folder.track_count} ${folder.track_count === 1 ? 'track' : 'tracks'}`
-            : 'Access lost — remove and add the folder again'}
-        </Text>
+        {!node.available ? (
+          <Text variant="caption" color={colors.warning} numberOfLines={1}>
+            Access lost
+          </Text>
+        ) : null}
       </View>
-      <Pressable hitSlop={8} onPress={confirmRemove} accessibilityRole="button">
-        <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
-      </Pressable>
-    </View>
+      <Text variant="mono" style={styles.count}>
+        {node.totalTrackCount}
+      </Text>
+    </Pressable>
   );
 }
 
-export function FoldersView() {
-  const folders = useLibraryStore((s) => s.folders);
-  const isScanning = useLibraryStore((s) => s.isScanning);
-  const addFolder = useLibraryStore((s) => s.addFolder);
-  const rescan = useLibraryStore((s) => s.rescan);
+function FolderTrackRow({
+  row,
+  active,
+}: {
+  row: Extract<FlattenedFolderTreeRow, { type: 'track' }>;
+  active: boolean;
+}) {
+  const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
+
+  const playFolderTrack = () => {
+    void playTracks(row.folderTracks.map(dbTrackToTrack), Math.max(0, index));
+  };
 
   return (
-    <View style={styles.container}>
-      {folders.map((folder) => (
-        <FolderRow key={folder.id} folder={folder} />
-      ))}
-
-      <View style={styles.actions}>
-        <Pressable
-          style={[styles.action, isScanning && styles.actionDisabled]}
-          disabled={isScanning}
-          onPress={() => void addFolder()}
-          accessibilityRole="button"
-        >
-          <Ionicons name="add" size={18} color={colors.accent} />
-          <Text variant="body" color={colors.accent}>
-            Add folder
-          </Text>
-        </Pressable>
-        {folders.length > 0 ? (
-          <Pressable
-            style={[styles.action, isScanning && styles.actionDisabled]}
-            disabled={isScanning}
-            onPress={() => void rescan()}
-            accessibilityRole="button"
-          >
-            <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-            <Text variant="body" color={colors.textSecondary}>
-              Rescan all
-            </Text>
-          </Pressable>
-        ) : null}
+    <Pressable
+      style={[styles.trackRow, active && styles.trackRowActive]}
+      onPress={playFolderTrack}
+      accessibilityRole="button"
+    >
+      <View style={[styles.indent, { width: row.depth * 18 + 16 }]} />
+      <Ionicons name={active ? 'volume-high' : 'musical-note'} size={15} color={active ? colors.accent : colors.textTertiary} />
+      <View style={styles.trackMeta}>
+        <Text variant="body" style={[styles.trackTitle, active && styles.trackTitleActive]} numberOfLines={1}>
+          {row.track.title}
+        </Text>
+        <Text variant="label" numberOfLines={1}>
+          {row.track.artist}
+        </Text>
       </View>
-    </View>
+      <Text variant="mono" style={styles.duration}>
+        {formatDuration(row.track.duration)}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps) {
+  const folders = useLibraryStore((s) => s.folders);
+  const tracks = useLibraryStore((s) => s.tracks);
+  const currentPath = usePlayerStore((s) => s.currentTrack?.path);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
+
+  const tree = useMemo(() => buildFolderTree(folders, tracks), [folders, tracks]);
+  const rows = useMemo(() => flattenFolderTree(tree, expandedNodeIds), [expandedNodeIds, tree]);
+
+  const toggleFolder = (nodeId: string) => {
+    setExpandedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  if (tree.length === 0) {
+    return (
+      <View style={styles.empty}>
+        <Ionicons name="folder-open-outline" size={36} color={colors.textTertiary} />
+        <Text variant="heading">No folders with tracks</Text>
+        <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
+          Add or rescan local folders in Settings.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlashList
+      data={rows}
+      keyExtractor={(row) => row.id}
+      showsVerticalScrollIndicator={false}
+      overScrollMode="never"
+      renderScrollComponent={PullSearchScrollView}
+      onScroll={onScroll}
+      scrollEventThrottle={scrollEventThrottle}
+      contentContainerStyle={styles.listContent}
+      renderItem={({ item }) =>
+        item.type === 'folder' ? (
+          <FolderRow row={item} onToggle={toggleFolder} />
+        ) : (
+          <FolderTrackRow row={item} active={item.track.path === currentPath} />
+        )
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: spacing.xs,
+  listContent: {
+    paddingBottom: spacing.xxl,
   },
-  row: {
+  indent: {
+    flexShrink: 0,
+  },
+  folderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
+    minHeight: 48,
+    gap: spacing.sm,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  meta: {
-    flex: 1,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
-  actionDisabled: {
-    opacity: 0.4,
+  folderMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  count: {
+    minWidth: 34,
+    textAlign: 'right',
+    color: colors.textTertiary,
+    fontSize: 12,
+  },
+  trackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 46,
+    gap: spacing.sm,
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.sm,
+  },
+  trackRowActive: {
+    backgroundColor: colors.accentGlow,
+  },
+  trackMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  trackTitle: {
+    fontSize: 15,
+  },
+  trackTitleActive: {
+    color: colors.accent,
+  },
+  duration: {
+    minWidth: 42,
+    textAlign: 'right',
+    color: colors.textTertiary,
+    fontSize: 12,
+  },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.xxl,
+  },
+  emptyText: {
+    textAlign: 'center',
+    maxWidth: 260,
   },
 });

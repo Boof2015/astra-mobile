@@ -1,11 +1,11 @@
 import { View, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
 import { colors, radius, spacing } from '@/theme';
-import { useLibraryStore } from '@/stores/libraryStore';
 
 export function EmptyLibrary() {
-  const addFolder = useLibraryStore((s) => s.addFolder);
+  const router = useRouter();
 
   return (
     <View style={styles.empty}>
@@ -16,10 +16,10 @@ export function EmptyLibrary() {
       <Text variant="body" color={colors.textSecondary} style={styles.body}>
         Pick a folder on this device and Astra will scan it into your library.
       </Text>
-      <Pressable style={styles.cta} onPress={() => void addFolder()} accessibilityRole="button">
+      <Pressable style={styles.cta} onPress={() => router.push('/settings')} accessibilityRole="button">
         <Ionicons name="folder-open-outline" size={18} color={colors.bgPrimary} />
         <Text variant="body" style={styles.ctaLabel}>
-          Add music folder
+          Folder settings
         </Text>
       </Pressable>
     </View>

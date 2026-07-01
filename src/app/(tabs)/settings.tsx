@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
-import { View, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
+import { Alert, View, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQSlider } from '@/components/eq/EQSlider';
+import { ScanProgress } from '@/components/library/ScanProgress';
 import { colors, radius, spacing } from '@/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useLibraryStore, type FolderWithCount } from '@/stores/libraryStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
@@ -70,6 +72,150 @@ function ToggleRow({
   );
 }
 
+function formatFolderCount(count: number): string {
+  return `${count} ${count === 1 ? 'folder' : 'folders'}`;
+}
+
+function formatTrackCount(count: number): string {
+  return `${count} ${count === 1 ? 'track' : 'tracks'}`;
+}
+
+function LibraryFolderSettingsRow({
+  folder,
+  disabled,
+  onRemove,
+}: {
+  folder: FolderWithCount;
+  disabled: boolean;
+  onRemove: (folder: FolderWithCount) => void;
+}) {
+  return (
+    <View style={styles.folderSettingsRow}>
+      <Ionicons
+        name={folder.available ? 'folder-outline' : 'alert-circle-outline'}
+        size={20}
+        color={folder.available ? colors.textSecondary : colors.warning}
+      />
+      <View style={styles.folderSettingsMeta}>
+        <Text variant="body" numberOfLines={1}>
+          {folder.display_name}
+        </Text>
+        <Text
+          variant="caption"
+          color={folder.available ? colors.textSecondary : colors.warning}
+          numberOfLines={1}
+        >
+          {folder.available
+            ? formatTrackCount(folder.track_count)
+            : 'Access lost. Remove and add again.'}
+        </Text>
+      </View>
+      <Pressable
+        hitSlop={8}
+        disabled={disabled}
+        onPress={() => onRemove(folder)}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${folder.display_name}`}
+        style={disabled && styles.actionDisabled}
+      >
+        <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
+      </Pressable>
+    </View>
+  );
+}
+
+function LibraryFoldersSettings() {
+  const folders = useLibraryStore((s) => s.folders);
+  const isScanning = useLibraryStore((s) => s.isScanning);
+  const scanError = useLibraryStore((s) => s.scanError);
+  const addFolder = useLibraryStore((s) => s.addFolder);
+  const removeFolder = useLibraryStore((s) => s.removeFolder);
+  const rescan = useLibraryStore((s) => s.rescan);
+
+  const unavailableCount = folders.filter((folder) => !folder.available).length;
+  const totalTracks = folders.reduce((sum, folder) => sum + folder.track_count, 0);
+
+  const confirmRemove = (folder: FolderWithCount) => {
+    Alert.alert(
+      'Remove folder?',
+      `"${folder.display_name}" and its ${formatTrackCount(folder.track_count)} will be removed from the library. Files on disk are not touched.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => void removeFolder(folder.id) },
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.folderSettingsHeader}>
+        <View style={styles.folderSettingsTitleBlock}>
+          <Text variant="body">Local music folders</Text>
+          <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
+            {folders.length === 0
+              ? 'Choose folders to scan into Astra.'
+              : `${formatFolderCount(folders.length)} / ${formatTrackCount(totalTracks)}`}
+          </Text>
+        </View>
+        <Pressable
+          style={[styles.folderPrimaryAction, isScanning && styles.actionDisabled]}
+          disabled={isScanning}
+          onPress={() => void addFolder()}
+          accessibilityRole="button"
+        >
+          <Ionicons name="add" size={17} color={colors.bgPrimary} />
+          <Text variant="label" style={styles.folderPrimaryActionText}>
+            Add
+          </Text>
+        </Pressable>
+      </View>
+
+      {folders.length > 0 ? (
+        <View style={styles.folderSettingsActions}>
+          <Pressable
+            style={[styles.folderSecondaryAction, isScanning && styles.actionDisabled]}
+            disabled={isScanning}
+            onPress={() => void rescan()}
+            accessibilityRole="button"
+          >
+            <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+            <Text variant="label" color={colors.textSecondary}>
+              Rescan all
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <ScanProgress />
+
+      {scanError ? (
+        <Text variant="caption" color={colors.warning} style={styles.folderSettingsNotice} numberOfLines={2}>
+          Scan problem: {scanError}
+        </Text>
+      ) : null}
+
+      {unavailableCount > 0 ? (
+        <Text variant="caption" color={colors.warning} style={styles.folderSettingsNotice} numberOfLines={2}>
+          {formatFolderCount(unavailableCount)} need access again.
+        </Text>
+      ) : null}
+
+      {folders.length > 0 ? (
+        <View style={styles.folderSettingsList}>
+          {folders.map((folder) => (
+            <LibraryFolderSettingsRow
+              key={folder.id}
+              folder={folder}
+              disabled={isScanning}
+              onRemove={confirmRemove}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const remoteSources = useRemoteSourcesStore((s) => s.sources);
@@ -106,6 +252,11 @@ export default function SettingsScreen() {
         </Text>
 
         <Text variant="label" color={colors.textTertiary} style={styles.sectionLabel}>
+          LIBRARY FOLDERS
+        </Text>
+        <LibraryFoldersSettings />
+
+        <Text variant="label" color={colors.textTertiary} style={[styles.sectionLabel, styles.sectionSpacing]}>
           AUDIO
         </Text>
         <View style={styles.card}>
@@ -283,6 +434,68 @@ const styles = StyleSheet.create({
   },
   cardSpacing: {
     marginTop: spacing.sm,
+  },
+  folderSettingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  folderSettingsTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  folderPrimaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  folderPrimaryActionText: {
+    color: colors.bgPrimary,
+    fontWeight: '600',
+  },
+  folderSettingsActions: {
+    flexDirection: 'row',
+    marginTop: spacing.md,
+  },
+  folderSecondaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  folderSettingsNotice: {
+    marginTop: spacing.sm,
+  },
+  folderSettingsList: {
+    marginTop: spacing.md,
+    borderTopColor: colors.glassBorder,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  folderSettingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 52,
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.sm,
+  },
+  folderSettingsMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  actionDisabled: {
+    opacity: 0.4,
   },
   toggleRow: {
     flexDirection: 'row',
