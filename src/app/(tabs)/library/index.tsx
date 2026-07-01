@@ -52,7 +52,10 @@ export default function LibraryScreen() {
 
   const isEmpty = tracks.length === 0 && folders.length === 0 && !isScanning;
 
-  const sortedTracks = useMemo(() => sortTracks(tracks, trackSort), [tracks, trackSort]);
+  const sortedTracks = useMemo(
+    () => (viewMode === 'tracks' ? sortTracks(tracks, trackSort) : []),
+    [trackSort, tracks, viewMode]
+  );
 
   // Tap index is within sortedTracks so the tapped row is the track that plays.
   const playAllFrom = (index: number) => {

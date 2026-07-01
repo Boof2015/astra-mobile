@@ -1,5 +1,13 @@
 import { useEffect } from 'react';
-import { Alert, View, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
+import {
+  Alert,
+  InteractionManager,
+  View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -237,7 +245,10 @@ export default function SettingsScreen() {
   const setReplayGainMode = useAudioSettingsStore((s) => s.setReplayGainMode);
 
   useEffect(() => {
-    void initDesktopRemote();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void initDesktopRemote();
+    });
+    return () => task.cancel();
   }, [initDesktopRemote]);
 
   const desktopRemoteSubtitle = desktopRemoteConnection

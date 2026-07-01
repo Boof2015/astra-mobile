@@ -5,17 +5,21 @@ import { Easing } from 'react-native';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { colors } from '@/theme';
 
+const TAB_TRANSITION_MS = 160;
+
 export default function TabsLayout() {
   return (
     <Tabs
+      detachInactiveScreens
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
         sceneStyle: { backgroundColor: colors.bgPrimary },
         // Directional slide + cross-fade between tabs, following tab order.
         animation: 'shift',
         transitionSpec: {
           animation: 'timing',
-          config: { duration: 200, easing: Easing.out(Easing.cubic) },
+          config: { duration: TAB_TRANSITION_MS, easing: Easing.out(Easing.cubic) },
         },
       }}
       tabBar={({ state, navigation }) => {

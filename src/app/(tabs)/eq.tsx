@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,9 +56,12 @@ export default function EQScreen() {
   // Gate the post-EQ tap to while this screen is visible.
   useFocusEffect(
     useCallback(() => {
-      setFocused(true);
-      setActivePostEqNative(true);
+      const task = InteractionManager.runAfterInteractions(() => {
+        setFocused(true);
+        setActivePostEqNative(true);
+      });
       return () => {
+        task.cancel();
         setFocused(false);
         setActivePostEqNative(false);
       };

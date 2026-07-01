@@ -15,12 +15,16 @@ const PILL_HEIGHT = 56;
 const ART = 42;
 const CURVE_POINTS = 64;
 
+interface MiniPlayerProps {
+  visible?: boolean;
+}
+
 /**
  * Persistent floating mini-player (M3 redesign): a rounded pill above the tab
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
  * opens the full now-playing screen.
  */
-export function MiniPlayer() {
+export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const router = useRouter();
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
@@ -35,15 +39,21 @@ export function MiniPlayer() {
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const liveScopeActive = visible && scopeActive;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
 
   return (
-    <Pressable style={styles.pill} onPress={() => router.push('/now-playing')} onLayout={onLayout}>
-      {scopeActive && pillWidth > 0 && (
+    <Pressable
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={[styles.pill, !visible && styles.hidden]}
+      onPress={() => router.push('/now-playing')}
+      onLayout={onLayout}
+    >
+      {liveScopeActive && pillWidth > 0 && (
         <View pointerEvents="none" style={styles.spectrum}>
           <SpectrumCurve
-            active={scopeActive}
+            active={liveScopeActive}
             pointCount={CURVE_POINTS}
             analysisFrameMs={0}
             dbMin={-84}
@@ -58,7 +68,7 @@ export function MiniPlayer() {
           />
         </View>
       )}
-      {scopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
+      {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
 
       <View style={styles.row}>
         <View style={styles.art}>
@@ -109,6 +119,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     justifyContent: 'center',
+  },
+  hidden: {
+    opacity: 0,
   },
   spectrum: {
     position: 'absolute',

@@ -358,16 +358,7 @@ export default function HomeScreen() {
   const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
   const [randomSeed] = useState(() => Math.random());
   const scrollTop = useScrollTopGate();
-
-  const tracksByAlbum = useMemo(() => {
-    const map = new Map<string, DbTrack[]>();
-    for (const track of tracks) {
-      const list = map.get(track.album_identity_key) ?? [];
-      list.push(track);
-      map.set(track.album_identity_key, list);
-    }
-    return map;
-  }, [tracks]);
+  const hasLibrary = tracks.length > 0;
 
   const recentlyAddedAlbums = useMemo(
     () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
@@ -394,10 +385,21 @@ export default function HomeScreen() {
     if (selected) return selected;
     return albums[Math.floor(randomSeed * albums.length) % albums.length];
   }, [albums, randomAlbumKey, randomSeed]);
-  const randomTracks = randomAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
+  const randomAlbumNeedsTracks = hasLibrary && !currentTrack && randomAlbum != null;
+  const tracksByAlbum = useMemo(() => {
+    if (!randomAlbumNeedsTracks) return null;
+    const map = new Map<string, DbTrack[]>();
+    for (const track of tracks) {
+      const list = map.get(track.album_identity_key) ?? [];
+      list.push(track);
+      map.set(track.album_identity_key, list);
+    }
+    return map;
+  }, [randomAlbumNeedsTracks, tracks]);
+  const randomTracks =
+    randomAlbum && tracksByAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
   const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
   const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
-  const hasLibrary = tracks.length > 0;
 
   const openAlbum = (album: Album) => {
     router.push({
@@ -412,6 +414,7 @@ export default function HomeScreen() {
   };
 
   const playAlbum = (album: Album, shuffled = false) => {
+    if (!tracksByAlbum) return;
     const albumTracks = tracksByAlbum.get(album.identity_key) ?? [];
     if (albumTracks.length === 0) return;
     if (shuffled) {
