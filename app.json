@@ -30,6 +30,12 @@
       "expo-router",
       "expo-asset",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Astra to scan desktop pairing QR codes."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#000000",

@@ -23,8 +23,14 @@ import { useEQStore } from '@/stores/eqStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
+import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { useNormalizationSync } from '@/audio/useNormalizationSync';
 import { useLastFmScrobbler } from '@/audio/useLastFmScrobbler';
+import {
+  clearDesktopRemoteMediaSession,
+  setDesktopRemoteMediaSession,
+  subscribeDesktopRemoteMediaSessionCommands,
+} from '@/services/desktopRemoteMediaSession';
 import { colors } from '@/theme';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route (the
@@ -58,6 +64,46 @@ function NormalizationSync() {
 /** Feeds playback snapshots to the Last.fm scrobble service. Renders nothing. */
 function LastFmScrobbler() {
   useLastFmScrobbler();
+  return null;
+}
+
+/** Mirrors Desktop Remote now-playing into a separate Android MediaSession. */
+function DesktopRemoteMediaSessionSync() {
+  const connection = useDesktopRemoteStore((s) => s.connection);
+  const connectionState = useDesktopRemoteStore((s) => s.connectionState);
+  const snapshot = useDesktopRemoteStore((s) => s.snapshot);
+  const sendControl = useDesktopRemoteStore((s) => s.sendControl);
+
+  useEffect(() => {
+    const subscription = subscribeDesktopRemoteMediaSessionCommands((event) => {
+      if (event.command === 'toggle-play') {
+        const playing = useDesktopRemoteStore.getState().snapshot?.playbackState === 'playing';
+        void useDesktopRemoteStore.getState().sendControl(playing ? 'pause' : 'play');
+        return;
+      }
+      if (event.command === 'stop') {
+        void useDesktopRemoteStore.getState().sendControl('pause');
+        return;
+      }
+      if (event.command === 'seek') {
+        void useDesktopRemoteStore.getState().sendControl('seek', event.position);
+        return;
+      }
+      void useDesktopRemoteStore.getState().sendControl(event.command);
+    });
+    return () => subscription.remove();
+  }, [sendControl]);
+
+  useEffect(() => {
+    if (!connection || connectionState === 'unpaired') {
+      clearDesktopRemoteMediaSession();
+      return;
+    }
+    setDesktopRemoteMediaSession(snapshot, connection);
+  }, [connection, connectionState, snapshot]);
+
+  useEffect(() => clearDesktopRemoteMediaSession, []);
+
   return null;
 }
 
@@ -129,6 +175,7 @@ export default function RootLayout() {
         <ScopeLifecycle />
         <NormalizationSync />
         <LastFmScrobbler />
+        <DesktopRemoteMediaSessionSync />
         <Stack
           screenOptions={{
             headerShown: false,
