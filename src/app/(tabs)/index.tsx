@@ -407,7 +407,7 @@ export default function HomeScreen() {
   const openAlbum = (album: Album) => {
     router.push({
       pathname: '/library/album/[key]',
-      params: { key: album.identity_key },
+      params: { key: album.identity_key, from: 'home' },
     });
   };
 

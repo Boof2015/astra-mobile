@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { BackHandler, View, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -20,10 +20,11 @@ import type { DbTrack } from '@/types/library';
 
 export default function AlbumScreen() {
   const router = useRouter();
-  const { key } = useLocalSearchParams<{ key: string }>();
+  const { key, from } = useLocalSearchParams<{ key: string; from?: string }>();
   const albums = useLibraryStore((s) => s.albums);
   const allTracks = useLibraryStore((s) => s.tracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
+  const openedFromHome = from === 'home';
 
   const album = albums.find((entry) => entry.identity_key === key);
   // Store tracks are ordered artist/album/disc/track, so the filtered slice
@@ -40,9 +41,30 @@ export default function AlbumScreen() {
     void playTracks(tracks.map(dbTrackToTrack), index);
   };
 
+  const handleBack = useCallback(() => {
+    if (openedFromHome) {
+      router.replace('/library');
+      return;
+    }
+    router.back();
+  }, [openedFromHome, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!openedFromHome) return;
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack, openedFromHome])
+  );
+
   return (
     <Screen>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+      <Pressable style={styles.back} onPress={handleBack} hitSlop={8}>
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         <Text variant="body" color={colors.textSecondary}>
           Library
