@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
+import { nativeIndexToAbsolute, queueLoadSettled } from '@/audio/queueLoader';
 
 /**
  * Live mirror of RNTP's native queue for the queue tray. Playback actions keep
@@ -35,6 +36,8 @@ export const useQueueStore = create<QueueStore>((set) => ({
   activeIndex: -1,
   hasSnapshot: false,
   refreshFromNative: async () => {
+    // Mid chunked-load the native queue is partial and index-shifted — wait it out.
+    await queueLoadSettled();
     const [tracks, activeIndex] = await Promise.all([
       TrackPlayer.getQueue(),
       TrackPlayer.getActiveTrackIndex(),
@@ -47,7 +50,12 @@ export const useQueueStore = create<QueueStore>((set) => ({
   },
   refreshActiveIndex: async () => {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();
-    set((s) => ({ activeIndex: normalizeActiveIndex(activeIndex, s.tracks.length) }));
+    set((s) => ({
+      activeIndex: normalizeActiveIndex(
+        activeIndex == null ? activeIndex : nativeIndexToAbsolute(activeIndex),
+        s.tracks.length,
+      ),
+    }));
   },
   setSnapshot: (tracks, activeIndex = 0) =>
     set({

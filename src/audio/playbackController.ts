@@ -8,6 +8,19 @@ import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playe
 import { useQueueStore } from '@/stores/queueStore';
 import { setupPlayer } from './trackPlayer';
 import { SAMPLE_TRACKS, toRntpTrack } from './sampleTracks';
+import {
+  absoluteIndexToNative,
+  appendUpcomingChunked,
+  loadQueueChunked,
+  queueLoadSettled,
+  setQueueLoadErrorHandler,
+} from './queueLoader';
+
+// If a background queue fill dies partway, the mirror no longer matches the
+// native queue — re-read the truth.
+setQueueLoadErrorHandler(() => {
+  void useQueueStore.getState().refreshFromNative();
+});
 
 /**
  * Transport actions screens call. Thin wrappers over RNTP so the UI never
@@ -43,16 +56,16 @@ function rntpTrackId(track: RntpTrack): string {
 
 async function getQueueSnapshot(): Promise<{ queue: RntpTrack[]; activeIndex: number }> {
   const store = useQueueStore.getState();
-  const activeIndex = (await TrackPlayer.getActiveTrackIndex()) ?? -1;
 
   if (store.hasSnapshot) {
-    store.setActiveIndex(activeIndex);
-    return { queue: useQueueStore.getState().tracks, activeIndex };
+    await store.refreshActiveIndex();
+    const { tracks, activeIndex } = useQueueStore.getState();
+    return { queue: tracks, activeIndex };
   }
 
-  const queue = await TrackPlayer.getQueue();
-  store.setSnapshot(queue, activeIndex);
-  return { queue, activeIndex };
+  await store.refreshFromNative();
+  const { tracks, activeIndex } = useQueueStore.getState();
+  return { queue: tracks, activeIndex };
 }
 
 async function refreshActiveIndexFromNative(): Promise<void> {
@@ -104,24 +117,16 @@ async function playTracksInternal(
 ): Promise<void> {
   if (tracks.length === 0) return;
   await ensurePlayerReady(options);
-  const queueTracks = tracks.map(toRntpTrack);
-  await TrackPlayer.setQueue(queueTracks);
   originalOrder = tracks.map((t) => t.id);
-  if (startIndex > 0) {
-    await TrackPlayer.skip(startIndex);
+  // Honor an already-on shuffle by scrambling the upcoming tail of the new
+  // context up front, so the whole queue is loaded natively in a single pass.
+  let ordered = tracks;
+  if (usePlayerStore.getState().shuffle && tracks.length - startIndex - 1 > 1) {
+    ordered = [...tracks.slice(0, startIndex + 1), ...shuffleArray(tracks.slice(startIndex + 1))];
   }
-  let mirroredQueue = queueTracks;
-  // Honor an already-on shuffle by scrambling the upcoming tail of the new context.
-  if (usePlayerStore.getState().shuffle) {
-    const upcoming = tracks.slice(startIndex + 1);
-    if (upcoming.length > 1) {
-      const shuffledUpcoming = shuffleArray(upcoming).map(toRntpTrack);
-      await TrackPlayer.removeUpcomingTracks();
-      await TrackPlayer.add(shuffledUpcoming);
-      mirroredQueue = [...queueTracks.slice(0, startIndex + 1), ...shuffledUpcoming];
-    }
-  }
-  useQueueStore.getState().setSnapshot(mirroredQueue, startIndex);
+  const queueTracks = ordered.map(toRntpTrack);
+  useQueueStore.getState().setSnapshot(queueTracks, startIndex);
+  await loadQueueChunked(queueTracks, startIndex);
   await TrackPlayer.play();
 }
 
@@ -132,14 +137,15 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
   originalOrder = tracks.map((t) => t.id);
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
-  await TrackPlayer.setQueue(queueTracks);
   useQueueStore.getState().setSnapshot(queueTracks, 0);
+  await loadQueueChunked(queueTracks, 0);
   await TrackPlayer.play();
 }
 
 /** M0 demo entry point: load the streamed sample queue if nothing is queued. */
 export async function playSample(): Promise<void> {
   await ensurePlayerReady();
+  await queueLoadSettled();
   const queue = await TrackPlayer.getQueue();
   if (queue.length === 0) {
     const sampleQueue = SAMPLE_TRACKS.map(toRntpTrack);
@@ -206,6 +212,7 @@ export async function toggleShuffle(): Promise<void> {
   const store = usePlayerStore.getState();
   const next = !store.shuffle;
   await ensurePlayerReady();
+  await queueLoadSettled();
 
   const snapshot = await getQueueSnapshot();
   const queue = snapshot.queue;
@@ -218,7 +225,7 @@ export async function toggleShuffle(): Promise<void> {
     if (upcoming.length > 1) {
       const shuffledUpcoming = shuffleArray(upcoming);
       await TrackPlayer.removeUpcomingTracks();
-      await TrackPlayer.add(shuffledUpcoming);
+      await appendUpcomingChunked(shuffledUpcoming, activeIndex + 1);
       mirroredQueue = [...queue.slice(0, activeIndex + 1), ...shuffledUpcoming];
     }
   } else if (originalOrder) {
@@ -230,7 +237,7 @@ export async function toggleShuffle(): Promise<void> {
       .map((id) => byId.get(id))
       .filter((t): t is RntpTrack => Boolean(t));
     await TrackPlayer.removeUpcomingTracks();
-    if (restored.length) await TrackPlayer.add(restored);
+    if (restored.length) await appendUpcomingChunked(restored, activeIndex + 1);
     mirroredQueue = [...queue.slice(0, activeIndex + 1), ...restored];
   }
 
@@ -241,6 +248,7 @@ export async function toggleShuffle(): Promise<void> {
 /** Insert a track right after the current one ("Play next"). */
 export async function enqueueTop(track: Track): Promise<void> {
   await ensurePlayerReady();
+  await queueLoadSettled();
   const activeIndex = await TrackPlayer.getActiveTrackIndex();
   const activeTrack = await TrackPlayer.getActiveTrack();
   const insertBefore = activeIndex === undefined ? undefined : activeIndex + 1;
@@ -262,6 +270,7 @@ export async function enqueueTop(track: Track): Promise<void> {
 /** Append a track to the end of the queue ("Add to queue"). */
 export async function enqueueEnd(track: Track): Promise<void> {
   await ensurePlayerReady();
+  await queueLoadSettled();
   const queueTrack = toRntpTrack(track);
   await TrackPlayer.add(queueTrack);
   if (useQueueStore.getState().hasSnapshot) {
@@ -287,15 +296,20 @@ function moveOriginalOrderIfUnshuffled(fromIndex: number, toIndex: number): void
 
 /** Replace everything after the current track with `upcoming` (in order). */
 export async function setUpcoming(upcoming: RntpTrack[]): Promise<void> {
+  await queueLoadSettled();
   await TrackPlayer.removeUpcomingTracks();
-  if (upcoming.length) await TrackPlayer.add(upcoming);
   useQueueStore.getState().replaceUpcoming(upcoming);
+  if (upcoming.length) {
+    const { activeIndex } = useQueueStore.getState();
+    await appendUpcomingChunked(upcoming, activeIndex >= 0 ? activeIndex + 1 : 0);
+  }
   syncOriginalOrderFromMirrorIfUnshuffled();
 }
 
 /** Move a queued item by absolute RNTP queue index. */
 export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: number): Promise<void> {
   if (fromAbsoluteIndex === toAbsoluteIndex) return;
+  await queueLoadSettled();
   await TrackPlayer.move(fromAbsoluteIndex, toAbsoluteIndex);
   useQueueStore.getState().moveItem(fromAbsoluteIndex, toAbsoluteIndex);
   moveOriginalOrderIfUnshuffled(fromAbsoluteIndex, toAbsoluteIndex);
@@ -303,7 +317,15 @@ export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: 
 
 /** Jump to (and play) an absolute queue index. */
 export async function jumpToQueueIndex(index: number): Promise<void> {
-  await TrackPlayer.skip(index);
+  // Mid-fill, the tapped row may not be in the native queue yet (or may sit at
+  // a shifted native index while the head is still prepending) — translate,
+  // waiting out the fill only when the target isn't loaded.
+  let nativeIndex = absoluteIndexToNative(index);
+  while (nativeIndex == null) {
+    await queueLoadSettled();
+    nativeIndex = absoluteIndexToNative(index);
+  }
+  await TrackPlayer.skip(nativeIndex);
   useQueueStore.getState().setActiveIndex(index);
   await TrackPlayer.play();
 }
@@ -335,6 +357,7 @@ export async function requeueManyToTop(absoluteIndices: number[]): Promise<void>
 
 /** Remove a single track at an absolute queue index. */
 export async function removeFromQueue(absoluteIndex: number): Promise<void> {
+  await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndex);
   useQueueStore.getState().removeIndices([absoluteIndex]);
   syncOriginalOrderFromMirrorIfUnshuffled();
@@ -343,6 +366,7 @@ export async function removeFromQueue(absoluteIndex: number): Promise<void> {
 /** Remove a group of tracks at absolute queue indices. */
 export async function removeManyFromQueue(absoluteIndices: number[]): Promise<void> {
   if (absoluteIndices.length === 0) return;
+  await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndices);
   useQueueStore.getState().removeIndices(absoluteIndices);
   syncOriginalOrderFromMirrorIfUnshuffled();

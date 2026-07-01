@@ -92,6 +92,31 @@ abstract class BaseAudioPlayer internal constructor(
     private val scope = MainScope()
     private var playerConfig: PlayerConfig = playerConfig
 
+    // Shared per-player media-source machinery. Building these per item made
+    // large queue loads O(n) main-thread stalls (Util.getUserAgent alone is a
+    // PackageManager lookup); items without per-item overrides reuse them.
+    // All access is @MainThread (like the rest of this class), so plain lazy
+    // initialization is safe.
+    private val defaultUserAgent: String by lazy { Util.getUserAgent(context, APPLICATION_NAME) }
+    private val sharedLocalDataSourceFactory: DataSource.Factory by lazy {
+        DefaultDataSourceFactory(context, defaultUserAgent)
+    }
+    private val sharedHttpDataSourceFactory: DataSource.Factory by lazy {
+        enableCaching(DefaultHttpDataSource.Factory().apply {
+            setUserAgent(defaultUserAgent)
+            setAllowCrossProtocolRedirects(true)
+        })
+    }
+    private val sharedExtractorsFactory: DefaultExtractorsFactory by lazy {
+        DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
+    }
+    private val sharedLocalProgressiveFactory: ProgressiveMediaSource.Factory by lazy {
+        ProgressiveMediaSource.Factory(sharedLocalDataSourceFactory, sharedExtractorsFactory)
+    }
+    private val sharedHttpProgressiveFactory: ProgressiveMediaSource.Factory by lazy {
+        ProgressiveMediaSource.Factory(sharedHttpDataSourceFactory, sharedExtractorsFactory)
+    }
+
     val notificationManager: NotificationManager
 
     open val playerOptions: PlayerOptions = DefaultPlayerOptions()
@@ -460,28 +485,43 @@ abstract class BaseAudioPlayer internal constructor(
             .setTag(AudioItemHolder(audioItem))
             .build()
 
-        val userAgent =
-            if (audioItem.options == null || audioItem.options!!.userAgent.isNullOrBlank()) {
-                Util.getUserAgent(context, APPLICATION_NAME)
+        val options = audioItem.options
+        val hasCustomConfig =
+            options != null && (!options.userAgent.isNullOrBlank() || !options.headers.isNullOrEmpty())
+
+        // Fast path: no per-item overrides — reuse the shared factories.
+        if (options?.resourceId == null && !hasCustomConfig && audioItem.type == MediaType.DEFAULT) {
+            return if (isUriLocalFile(uri)) {
+                sharedLocalProgressiveFactory.createMediaSource(mediaItem)
             } else {
-                audioItem.options!!.userAgent
+                sharedHttpProgressiveFactory.createMediaSource(mediaItem)
+            }
+        }
+
+        val userAgent =
+            if (options == null || options.userAgent.isNullOrBlank()) {
+                defaultUserAgent
+            } else {
+                options.userAgent
             }
 
         val factory: DataSource.Factory = when {
-            audioItem.options?.resourceId != null -> {
+            options?.resourceId != null -> {
                 val raw = RawResourceDataSource(context)
                 raw.open(DataSpec(uri))
                 DataSource.Factory { raw }
             }
             isUriLocalFile(uri) -> {
-                DefaultDataSourceFactory(context, userAgent)
+                if (hasCustomConfig) DefaultDataSourceFactory(context, userAgent)
+                else sharedLocalDataSourceFactory
             }
+            !hasCustomConfig -> sharedHttpDataSourceFactory
             else -> {
                 val tempFactory = DefaultHttpDataSource.Factory().apply {
                     setUserAgent(userAgent)
                     setAllowCrossProtocolRedirects(true)
 
-                    audioItem.options?.headers?.let {
+                    options?.headers?.let {
                         setDefaultRequestProperties(it.toMap())
                     }
                 }

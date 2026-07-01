@@ -157,8 +157,13 @@ export function QueueTray({ onClose }: QueueTrayProps) {
   const dKey = useSharedValue('');
   const dSettling = useSharedValue(false);
   const dIndexByKey = useSharedValue<QueueIndexByKey>({});
+  // The index map is only read by worklets while a drag is active/settling, so
+  // it's maintained only inside that window — serializing a map with one entry
+  // per queued track to the UI runtime on every queue change froze long queues.
+  const dragInFlightRef = useRef(false);
 
   const clearDragState = useCallback(() => {
+    dragInFlightRef.current = false;
     runOnUI(
       (
         active: SharedValue<boolean>,
@@ -166,7 +171,8 @@ export function QueueTray({ onClose }: QueueTrayProps) {
         start: SharedValue<number>,
         target: SharedValue<number>,
         key: SharedValue<string>,
-        settling: SharedValue<boolean>
+        settling: SharedValue<boolean>,
+        indexMap: SharedValue<QueueIndexByKey>
       ) => {
         'worklet';
         active.value = false;
@@ -175,9 +181,10 @@ export function QueueTray({ onClose }: QueueTrayProps) {
         start.value = -1;
         target.value = -1;
         key.value = '';
+        indexMap.value = {};
       }
-    )(dActive, dTy, dStart, dTarget, dKey, dSettling);
-  }, [dActive, dKey, dSettling, dStart, dTarget, dTy]);
+    )(dActive, dTy, dStart, dTarget, dKey, dSettling, dIndexByKey);
+  }, [dActive, dIndexByKey, dKey, dSettling, dStart, dTarget, dTy]);
 
   const clearDragAfterReorderCommit = useCallback(() => {
     requestAnimationFrame(() => {
@@ -197,7 +204,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
 
   const setVisibleEntries = useCallback((nextEntries: QueueEntry[]) => {
     entriesRef.current = nextEntries;
-    updateDragIndexMap(indexByEntryKey(nextEntries));
+    if (dragInFlightRef.current) updateDragIndexMap(indexByEntryKey(nextEntries));
     setEntries(nextEntries);
   }, [updateDragIndexMap]);
 
@@ -227,7 +234,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
             )
           : [];
         entriesRef.current = next;
-        updateDragIndexMap(indexByEntryKey(next));
+        if (dragInFlightRef.current) updateDragIndexMap(indexByEntryKey(next));
         return next;
       });
     });
@@ -280,6 +287,15 @@ export function QueueTray({ onClose }: QueueTrayProps) {
     [baseOffset, clearDragAfterReorderCommit, commitNativeMove, setVisibleEntries]
   );
 
+  const onDragArm = useCallback(() => {
+    dragInFlightRef.current = true;
+    dragArmHaptic();
+  }, []);
+
+  const onDragAbort = useCallback(() => {
+    dragInFlightRef.current = false;
+  }, []);
+
   const makeDragGesture = useCallback(
     (
       localIndex: number,
@@ -296,7 +312,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
           dKey.value = entryKey;
           dSettling.value = false;
           dActive.value = true;
-          runOnJS(dragArmHaptic)();
+          runOnJS(onDragArm)();
         })
         .onUpdate((event) => {
           dTy.value = event.translationY;
@@ -321,6 +337,8 @@ export function QueueTray({ onClose }: QueueTrayProps) {
               dTarget.value = -1;
               dSettling.value = false;
               dKey.value = '';
+              dIndexByKey.value = {};
+              runOnJS(onDragAbort)();
             });
             return;
           }
@@ -334,7 +352,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
 
       return longPress ? gesture.activateAfterLongPress(250) : gesture;
     },
-    [dActive, dIndexByKey, dKey, dSettling, dStart, dTarget, dTy, finishDrag]
+    [dActive, dIndexByKey, dKey, dSettling, dStart, dTarget, dTy, finishDrag, onDragAbort, onDragArm]
   );
 
   const runAndRefresh = useCallback(

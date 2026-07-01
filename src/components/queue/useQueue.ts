@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Event, useTrackPlayerEvents, type Track as RntpTrack } from 'react-native-track-player';
 import { useQueueStore } from '@/stores/queueStore';
+import { nativeIndexToAbsolute } from '@/audio/queueLoader';
 
 export interface QueueSnapshot {
   tracks: RntpTrack[];
@@ -29,8 +30,12 @@ export function useQueue(active: boolean): QueueSnapshot {
 
   useTrackPlayerEvents([Event.PlaybackActiveTrackChanged], (event) => {
     if (!active) return;
-    if (hasSnapshot) setActiveIndex(event.index ?? -1);
-    else void refresh();
+    if (hasSnapshot) {
+      // Event indices are native — shifted while a chunked load is prepending the head.
+      setActiveIndex(event.index != null ? nativeIndexToAbsolute(event.index) : -1);
+    } else {
+      void refresh();
+    }
   });
 
   return { tracks, activeIndex, hasSnapshot, refresh };
