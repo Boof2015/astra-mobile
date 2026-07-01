@@ -23,6 +23,7 @@ import { Visualizer } from '@/components/Visualizer';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { colors, radius, spacing } from '@/theme';
+import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveCanonicalBrowseArtist, resolveStrictBrowseArtist } from '@/library/artistGrouping';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -46,10 +47,17 @@ const MAX_CONTENT_WIDTH = 408;
 const CONTENT_SIDE_PADDING = spacing.lg;
 const NARROW_CONTENT_SIDE_PADDING = spacing.md;
 const MEDIA_AREA_MIN = 220;
-const MEDIA_AREA_MAX = 360;
-const ART_SIZE_MAX = 340;
-const VISUALIZER_ART_SCALE = 0.8;
-const VISUALIZER_ART_SIZE_MIN = 176;
+// Tablet-portrait tier: tall windows >= WIDE_MIN_WIDTH keep the single column but grow it.
+const TABLET_MAX_CONTENT_WIDTH = 520;
+const TABLET_ART_SIZE_MAX = 440;
+// Wide (landscape/desktop) tier: two panes, art left, controls right.
+const WIDE_MAX_CONTENT_WIDTH = 960;
+const WIDE_PANE_GAP = spacing.xxl;
+const WIDE_RIGHT_PANE_MIN = 300;
+const WIDE_RIGHT_PANE_MAX = MAX_CONTENT_WIDTH;
+const WIDE_ART_SIZE_MAX = 400;
+const WIDE_ART_SIZE_MIN = 160;
+const WIDE_COMPACT_HEIGHT = 480;
 const VISUALIZER_WIDTH_MAX = 448;
 const VISUALIZER_SIDE_PADDING = spacing.md;
 const VISUALIZER_TOP_GAP = spacing.lg;
@@ -61,7 +69,6 @@ const HEADER_HEIGHT = 32;
 const CONTENT_TOP_PADDING = spacing.sm;
 const CONTENT_BOTTOM_PADDING = spacing.lg;
 const MEDIA_TOP_MARGIN = spacing.lg;
-const VISUALIZER_MEDIA_BOTTOM_GAP = spacing.sm;
 const MEDIA_BOTTOM_GAP = spacing.xl;
 const TRACK_INFO_ESTIMATE = 96;
 const WAVEFORM_HEIGHT = 58;
@@ -80,8 +87,15 @@ const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
 
 interface NowPlayingLayout {
+  isWide: boolean;
   contentPadding: number;
   contentWidth: number;
+  leftPaneWidth: number;
+  rightPaneWidth: number;
+  controlsGap: number;
+  trackInfoGap: number;
+  waveformHeight: number;
+  mediaStackHeight: number;
   artSize: number;
   scopeWidth: number;
   scopeHeight: number;
@@ -109,29 +123,76 @@ function getScopeHeight(scopeWidth: number): number {
 }
 
 function getNowPlayingLayout(
-  windowWidth: number,
+  availableWidth: number,
   availableHeight: number,
   showVisualizer: boolean
 ): NowPlayingLayout {
+  const isWide = isWideWindow(availableWidth, availableHeight);
+
+  if (isWide) {
+    const contentPadding = CONTENT_SIDE_PADDING;
+    const contentWidth = Math.max(
+      0,
+      Math.min(availableWidth - contentPadding * 2, WIDE_MAX_CONTENT_WIDTH)
+    );
+    const rightPaneWidth = Math.round(
+      clamp(contentWidth * 0.46, WIDE_RIGHT_PANE_MIN, WIDE_RIGHT_PANE_MAX)
+    );
+    const leftPaneWidth = Math.max(0, contentWidth - WIDE_PANE_GAP - rightPaneWidth);
+    const scopeWidth = Math.min(leftPaneWidth, VISUALIZER_WIDTH_MAX);
+    const scopeHeight = getScopeHeight(scopeWidth);
+    const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;
+    const verticalBudget =
+      availableHeight - CONTENT_TOP_PADDING - CONTENT_BOTTOM_PADDING - HEADER_HEIGHT - spacing.md;
+    const artHeightBudget = verticalBudget - (showVisualizer ? scopeHeight + visualizerTopGap : 0);
+    const artSize = Math.round(
+      clamp(Math.min(leftPaneWidth, artHeightBudget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX)
+    );
+    const controlsGap = availableHeight < WIDE_COMPACT_HEIGHT ? spacing.sm : spacing.lg;
+    return {
+      isWide: true,
+      contentPadding,
+      contentWidth,
+      leftPaneWidth,
+      rightPaneWidth,
+      controlsGap,
+      trackInfoGap: spacing.md,
+      waveformHeight: WAVEFORM_HEIGHT,
+      mediaStackHeight: showVisualizer
+        ? artSize + visualizerTopGap + scopeHeight
+        : artSize,
+      artSize,
+      scopeWidth,
+      scopeHeight,
+      visualizerTopGap,
+      visualizerBottomGap: 0,
+      mediaTopMargin: 0,
+      mediaBottomGap: 0,
+    };
+  }
+
+  // Tall windows: single column. Tablet-width ones get a larger column and art cap.
+  const isTabletColumn = availableWidth >= WIDE_MIN_WIDTH;
   const contentPadding =
-    windowWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
-  const contentWidth = Math.max(0, Math.min(windowWidth - contentPadding * 2, MAX_CONTENT_WIDTH));
+    availableWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
+  const maxContentWidth = isTabletColumn ? TABLET_MAX_CONTENT_WIDTH : MAX_CONTENT_WIDTH;
+  const contentWidth = Math.max(0, Math.min(availableWidth - contentPadding * 2, maxContentWidth));
   const scopeWidth = Math.max(
     0,
-    Math.min(windowWidth - VISUALIZER_SIDE_PADDING * 2, VISUALIZER_WIDTH_MAX)
+    Math.min(availableWidth - VISUALIZER_SIDE_PADDING * 2, VISUALIZER_WIDTH_MAX)
   );
   const scopeHeight = getScopeHeight(scopeWidth);
-  const mediaMax = Math.min(contentWidth, MEDIA_AREA_MAX);
+  // Art may grow to the full column width when the height budget allows it.
+  const mediaMax = Math.min(contentWidth, isTabletColumn ? TABLET_ART_SIZE_MAX : contentWidth);
   const mediaMin = Math.min(mediaMax, MEDIA_AREA_MIN);
   const mediaTopMargin = availableHeight < 680 ? spacing.md : MEDIA_TOP_MARGIN;
   const defaultMediaBottomGap = availableHeight < 680 ? spacing.lg : MEDIA_BOTTOM_GAP;
-  const mediaBottomGap = showVisualizer ? VISUALIZER_MEDIA_BOTTOM_GAP : defaultMediaBottomGap;
-  const fixedHeight =
+  const mediaBottomGap = defaultMediaBottomGap;
+  const fixedHeightBase =
     CONTENT_TOP_PADDING +
     CONTENT_BOTTOM_PADDING +
     HEADER_HEIGHT +
     mediaTopMargin +
-    mediaBottomGap +
     TRACK_INFO_ESTIMATE +
     WAVEFORM_BLOCK_ESTIMATE +
     TRANSPORT_TOP_MARGIN +
@@ -139,27 +200,38 @@ function getNowPlayingLayout(
     SUB_TOP_MARGIN +
     SUB_BUTTON_SIZE +
     MIN_FLOATING_SPACE;
-  const heightBoundMedia = availableHeight - fixedHeight;
-  const baseArtSize = Math.min(
-    Math.round(clamp(heightBoundMedia, mediaMin, mediaMax)),
-    ART_SIZE_MAX
+  // The Math.max(96, ...) floor lets art shrink below MEDIA_AREA_MIN in squat
+  // windows (split-screen halves) instead of pushing the controls off-screen.
+  const bound = availableHeight - fixedHeightBase - mediaBottomGap;
+  const scopeOffArt = Math.round(
+    clamp(bound, Math.min(mediaMin, Math.max(96, bound)), mediaMax)
   );
-  const artSize = showVisualizer
-    ? Math.round(
-        clamp(
-          baseArtSize * VISUALIZER_ART_SCALE,
-          Math.min(VISUALIZER_ART_SIZE_MIN, mediaMax),
-          mediaMax
-        )
-      )
-    : baseArtSize;
+  // Roomy screens get a taller waveform; the rest of the spare space is
+  // distributed between the control rows by flex (space-between), so no
+  // height estimate error can pool as one gap above the controls.
+  const offSurplus = Math.max(0, bound - scopeOffArt);
+  const stretchUnit = Math.min(Math.floor(offSurplus / 5), spacing.md);
+  const waveformHeight = WAVEFORM_HEIGHT + stretchUnit * 2;
+  // The media stack keeps one locked height in both scope states — the scope
+  // steals its space from the art alone, so toggling it moves nothing else.
+  const scopeBlockHeight = VISUALIZER_TOP_GAP + scopeHeight + VISUALIZER_BOTTOM_GAP;
+  const mediaStackHeight = Math.max(scopeOffArt, 96 + scopeBlockHeight);
+  const scopeOnArt = mediaStackHeight - scopeBlockHeight;
+  const artSize = showVisualizer ? scopeOnArt : scopeOffArt;
 
   const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;
   const visualizerBottomGap = showVisualizer ? VISUALIZER_BOTTOM_GAP : 0;
 
   return {
+    isWide: false,
     contentPadding,
     contentWidth,
+    leftPaneWidth: contentWidth,
+    rightPaneWidth: contentWidth,
+    controlsGap: TRANSPORT_TOP_MARGIN,
+    trackInfoGap: spacing.md,
+    waveformHeight,
+    mediaStackHeight,
     artSize,
     scopeWidth,
     scopeHeight,
@@ -194,9 +266,13 @@ export default function NowPlayingScreen() {
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
   const availableHeight = windowHeight - insets.top - insets.bottom;
-  const layout = getNowPlayingLayout(windowWidth, availableHeight, scopeStageVisible);
+  const effectiveWidth = windowWidth - insets.left - insets.right;
+  const layout = getNowPlayingLayout(effectiveWidth, availableHeight, scopeStageVisible);
   const source = track?.album?.trim() ? track.album : 'Library';
-  const shellRight = Math.max(layout.contentPadding, (windowWidth - layout.contentWidth) / 2);
+  const shellRight =
+    insets.right +
+    layout.contentPadding +
+    Math.max(0, (effectiveWidth - layout.contentPadding * 2 - layout.contentWidth) / 2);
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
   const libraryTrack = useMemo(
     () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
@@ -350,7 +426,8 @@ export default function NowPlayingScreen() {
             styles.content,
             contentStyle,
             {
-              paddingHorizontal: layout.contentPadding,
+              paddingLeft: insets.left + layout.contentPadding,
+              paddingRight: insets.right + layout.contentPadding,
               paddingTop: insets.top + CONTENT_TOP_PADDING,
               paddingBottom: insets.bottom + CONTENT_BOTTOM_PADDING,
             },
@@ -381,14 +458,17 @@ export default function NowPlayingScreen() {
             </View>
 
             {track ? (
-              <View style={styles.player}>
+              <View style={[styles.player, layout.isWide && styles.playerWide]}>
                 <View
                   style={[
                     styles.middleStack,
-                    {
-                      marginTop: layout.mediaTopMargin,
-                      marginBottom: layout.mediaBottomGap,
-                    },
+                    layout.isWide
+                      ? { width: layout.leftPaneWidth, justifyContent: 'center' }
+                      : {
+                          height: layout.mediaStackHeight,
+                          marginTop: layout.mediaTopMargin,
+                          marginBottom: layout.mediaBottomGap,
+                        },
                   ]}
                 >
                   <View
@@ -464,10 +544,15 @@ export default function NowPlayingScreen() {
                   )}
                 </View>
 
-                <View style={styles.spacer} />
-
-                <View style={styles.playerControls}>
-                  <View style={styles.trackInfo}>
+                <View
+                  style={[
+                    styles.playerControls,
+                    layout.isWide
+                      ? { width: layout.rightPaneWidth }
+                      : styles.playerControlsFill,
+                  ]}
+                >
+                  <View style={[styles.trackInfo, { marginBottom: layout.trackInfoGap }]}>
                     <View style={styles.trackTextStack}>
                       <MarqueeText
                         variant="heading"
@@ -508,14 +593,14 @@ export default function NowPlayingScreen() {
                   <WaveformSeekBar
                     currentTime={currentTime}
                     duration={duration}
-                    height={WAVEFORM_HEIGHT}
+                    height={layout.waveformHeight}
                     touchPadding={WAVEFORM_TOUCH_PADDING}
                     trackKey={track.id}
                     trackPath={track.path}
                     onSeek={(seconds) => void seekTo(seconds)}
                   />
 
-                  <View style={styles.transport}>
+                  <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
                     <Pressable
                       hitSlop={10}
                       style={styles.transportSideBtn}
@@ -581,7 +666,7 @@ export default function NowPlayingScreen() {
                     </Pressable>
                   </View>
 
-                  <View style={styles.subRow}>
+                  <View style={[styles.subRow, { marginTop: layout.controlsGap }]}>
                     <View style={styles.subBadges}>
                       <RemoteSourceBadge sourceType={track.sourceType} />
                       <FormatBadges track={track} wrap={false} />
@@ -749,6 +834,12 @@ const styles = StyleSheet.create({
   player: {
     flex: 1,
   },
+  playerWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: WIDE_PANE_GAP,
+  },
   middleStack: {
     width: '100%',
     alignItems: 'center',
@@ -791,7 +882,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginBottom: spacing.md,
   },
   trackTextStack: {
     flex: 1,
@@ -828,18 +918,17 @@ const styles = StyleSheet.create({
   artist: {
     color: colors.accentText,
   },
-  spacer: {
-    flex: 1,
-    minHeight: MIN_FLOATING_SPACE,
-  },
   playerControls: {
     width: '100%',
+  },
+  playerControlsFill: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: TRANSPORT_TOP_MARGIN,
   },
   transportMainBtn: {
     width: 48,
@@ -866,7 +955,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    marginTop: SUB_TOP_MARGIN,
     paddingHorizontal: spacing.sm,
   },
   subBadges: {

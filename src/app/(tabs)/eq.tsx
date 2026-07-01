@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import { Screen } from '@/components/Screen';
@@ -15,6 +16,7 @@ import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
 import { colors, radius, spacing } from '@/theme';
+import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
 import { setActivePostEqNative } from '@/audio/eqNative';
@@ -44,6 +46,12 @@ export default function EQScreen() {
   const [sheet, setSheet] = useState<SheetKind>('none');
   const [editingValue, setEditingValue] = useState<EQEditableValue | null>(null);
   const closeSheet = useCallback(() => setSheet('none'), []);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const availableWidth = windowWidth - insets.left - insets.right;
+  const isWide = isWideWindow(availableWidth, windowHeight - insets.top - insets.bottom);
+  // Editing pane keeps a phone-ish width; the graph gets everything else.
+  const sidePaneWidth = Math.min(360, Math.max(280, Math.round(availableWidth * 0.4)));
 
   // Gate the post-EQ tap to while this screen is visible.
   useFocusEffect(
@@ -77,9 +85,85 @@ export default function EQScreen() {
     }
   };
 
+  const presetRowEl = (
+    <Pressable
+      style={[styles.presetRow, isWide && styles.sideItem]}
+      onPress={() => setSheet('preset')}
+    >
+      <Text variant="body" color={colors.textPrimary}>
+        {presetName}
+      </Text>
+      <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+    </Pressable>
+  );
+
+  const graphEl = (
+    <EQGraph
+      bands={eq.bands}
+      activeBandId={eq.activeBandId}
+      enabled={eq.enabled}
+      spectrumActive={scopeActive && focused}
+      onSelectBand={eq.selectBand}
+      onChangeBand={(id, updates) => eq.updateBand(id, updates)}
+    />
+  );
+
+  const stripEl = (
+    <BandStrip
+      bands={eq.bands}
+      activeBandId={eq.activeBandId}
+      canAdd={eq.bands.length < EQ_MAX_BANDS}
+      onSelect={eq.selectBand}
+      onAdd={() => eq.addBand()}
+    />
+  );
+
+  const detailEl = (
+    <BandDetailPanel
+      band={activeBand}
+      bandNumber={activeBandNumber > 0 ? activeBandNumber : 1}
+      onUpdate={(updates) => activeBand && eq.updateBand(activeBand.id, updates)}
+      onEditType={() => setSheet('type')}
+      onEditValue={setEditingValue}
+    />
+  );
+
+  const bottomBarEl = (
+    <View style={[styles.bottomBar, isWide && styles.bottomBarWide]}>
+      <View style={styles.preamp}>
+        <EQSlider
+          label="Preamp"
+          value={eq.preamp}
+          min={EQ_MIN_PREAMP_DB}
+          max={EQ_MAX_PREAMP_DB}
+          format={(v) => `${formatGain(v)} dB`}
+          onChange={eq.setPreamp}
+        />
+      </View>
+      <Pressable
+        style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
+        onPress={eq.toggleEnabled}
+      >
+        <Ionicons
+          name="power"
+          size={16}
+          color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}
+        />
+        <Text variant="label" color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}>
+          {eq.enabled ? 'EQ on' : 'EQ off'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <Screen padded={false}>
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
+        ]}
+      >
         <Text variant="heading">Equalizer</Text>
         <View style={styles.headerActions}>
           <Pressable style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
@@ -91,69 +175,31 @@ export default function EQScreen() {
         </View>
       </View>
 
-      <Pressable style={styles.presetRow} onPress={() => setSheet('preset')}>
-        <Text variant="body" color={colors.textPrimary}>
-          {presetName}
-        </Text>
-        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-      </Pressable>
-
-      <View style={styles.graphWrap}>
-        <EQGraph
-          bands={eq.bands}
-          activeBandId={eq.activeBandId}
-          enabled={eq.enabled}
-          spectrumActive={scopeActive && focused}
-          onSelectBand={eq.selectBand}
-          onChangeBand={(id, updates) => eq.updateBand(id, updates)}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <BandStrip
-          bands={eq.bands}
-          activeBandId={eq.activeBandId}
-          canAdd={eq.bands.length < EQ_MAX_BANDS}
-          onSelect={eq.selectBand}
-          onAdd={() => eq.addBand()}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <BandDetailPanel
-          band={activeBand}
-          bandNumber={activeBandNumber > 0 ? activeBandNumber : 1}
-          onUpdate={(updates) => activeBand && eq.updateBand(activeBand.id, updates)}
-          onEditType={() => setSheet('type')}
-          onEditValue={setEditingValue}
-        />
-      </View>
-
-      <View style={styles.bottomBar}>
-        <View style={styles.preamp}>
-          <EQSlider
-            label="Preamp"
-            value={eq.preamp}
-            min={EQ_MIN_PREAMP_DB}
-            max={EQ_MAX_PREAMP_DB}
-            format={(v) => `${formatGain(v)} dB`}
-            onChange={eq.setPreamp}
-          />
-        </View>
-        <Pressable
-          style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
-          onPress={eq.toggleEnabled}
+      {isWide ? (
+        <View
+          style={[
+            styles.wideBody,
+            { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
+          ]}
         >
-          <Ionicons
-            name="power"
-            size={16}
-            color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}
-          />
-          <Text variant="label" color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}>
-            {eq.enabled ? 'EQ on' : 'EQ off'}
-          </Text>
-        </Pressable>
-      </View>
+          <View style={styles.wideGraphPane}>{graphEl}</View>
+          <View style={{ width: sidePaneWidth }}>
+            {presetRowEl}
+            {stripEl}
+            <View style={styles.sideDetail}>{detailEl}</View>
+            <View style={styles.wideSpacer} />
+            {bottomBarEl}
+          </View>
+        </View>
+      ) : (
+        <>
+          {presetRowEl}
+          <View style={styles.graphWrap}>{graphEl}</View>
+          <View style={styles.section}>{stripEl}</View>
+          <View style={styles.section}>{detailEl}</View>
+          {bottomBarEl}
+        </>
+      )}
 
       {sheet === 'preset' ? (
         <PresetSheet
@@ -311,7 +357,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
@@ -348,6 +393,28 @@ const styles = StyleSheet.create({
   section: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
+  },
+  wideBody: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  wideGraphPane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  wideSpacer: {
+    flex: 1,
+  },
+  sideItem: {
+    marginHorizontal: 0,
+  },
+  sideDetail: {
+    marginTop: spacing.md,
+  },
+  bottomBarWide: {
+    paddingHorizontal: 0,
   },
   bottomBar: {
     flexDirection: 'row',
