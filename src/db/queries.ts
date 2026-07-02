@@ -365,6 +365,67 @@ export async function setTrackReplayGain(
   );
 }
 
+/**
+ * Loudness facts for many track paths in one round trip (chunked IN at 500/chunk,
+ * same shape as deleteTracksByPaths). Used by the gain registry to register the
+ * whole queue's gains in a single pass. Keys of the returned map are the selected
+ * `path` values — string params go through encodeParams/toUtf8Latin1 and the read
+ * path decodes them back, so they match the input JS strings exactly.
+ */
+export async function getTrackLoudnessByPaths(
+  db: LibraryDatabase,
+  paths: string[]
+): Promise<Map<string, TrackLoudness>> {
+  const out = new Map<string, TrackLoudness>();
+  for (let i = 0; i < paths.length; i += 500) {
+    const chunk = paths.slice(i, i + 500);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const rows = await db.all<TrackLoudness & { path: string }>(
+      `SELECT path, loudness_lufs, sample_peak,
+              replay_gain_track_db, replay_gain_album_db,
+              replay_gain_track_peak, replay_gain_album_peak, rg_scanned
+       FROM tracks WHERE path IN (${placeholders})`,
+      chunk as SqlParams
+    );
+    for (const row of rows) out.set(row.path, row);
+  }
+  return out;
+}
+
+/** Library-wide loudness aggregates, feeding the fallback ("temp") gain. */
+export interface LibraryLoudnessStatsRow {
+  lufsCount: number;
+  medianLufs: number | null;
+  rgCount: number;
+  medianRgTrackDb: number | null;
+}
+
+/**
+ * Counts + medians of measured LUFS and ReplayGain track gain across the library.
+ * SQLite has no MEDIAN — ORDER BY + LIMIT 1 OFFSET (COUNT-1)/2 scalar subqueries;
+ * empty sets yield NULL.
+ */
+export async function getLibraryLoudnessStats(
+  db: LibraryDatabase
+): Promise<LibraryLoudnessStatsRow> {
+  const row = await db.get<LibraryLoudnessStatsRow>(
+    `SELECT
+       (SELECT COUNT(*) FROM tracks WHERE loudness_lufs IS NOT NULL) AS lufsCount,
+       (SELECT loudness_lufs FROM tracks WHERE loudness_lufs IS NOT NULL
+          ORDER BY loudness_lufs LIMIT 1
+          OFFSET (SELECT (COUNT(*) - 1) / 2 FROM tracks WHERE loudness_lufs IS NOT NULL)
+       ) AS medianLufs,
+       (SELECT COUNT(*) FROM tracks WHERE replay_gain_track_db IS NOT NULL) AS rgCount,
+       (SELECT replay_gain_track_db FROM tracks WHERE replay_gain_track_db IS NOT NULL
+          ORDER BY replay_gain_track_db LIMIT 1
+          OFFSET (SELECT (COUNT(*) - 1) / 2 FROM tracks WHERE replay_gain_track_db IS NOT NULL)
+       ) AS medianRgTrackDb`
+  );
+  return (
+    row ?? { lufsCount: 0, medianLufs: null, rgCount: 0, medianRgTrackDb: null }
+  );
+}
+
 // --- Settings (key-value preferences) ----------------------------------------
 
 export async function getSetting(db: LibraryDatabase, key: string): Promise<string | null> {

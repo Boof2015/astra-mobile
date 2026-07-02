@@ -57,8 +57,9 @@ class AstraScopeModule : Module() {
       EqBridge.revision += 1
     }
 
+    // Glide to an explicit gain (unity paths: no track / remote track / disabled).
     Function("setNormalizationGain") { linear: Double ->
-      GainBridge.linearGain = linear.toFloat()
+      GainBridge.setGainSmooth(linear.toFloat())
     }
 
     // Register a queued track's gain by URL so the player can switch to it natively at
@@ -67,14 +68,21 @@ class AstraScopeModule : Module() {
       GainBridge.putGain(url, linear.toFloat())
     }
 
-    // Make the registered gain for this URL active now (used for the current track on
-    // mount / settings change, where no transition fires).
-    Function("activateTrackGain") { url: String ->
-      GainBridge.activateFor(url)
+    // Bulk-register the whole queue's gains in one bridge call (gainRegistry.ts).
+    Function("setTrackGains") { entries: Map<String, Double>, clearExisting: Boolean ->
+      GainBridge.putGains(entries.mapValues { it.value.toFloat() }, clearExisting)
     }
 
-    Function("clearTrackGains") {
-      GainBridge.clearGains()
+    // Make the registered gain for this URL active now, as a smooth glide (mount /
+    // settings change / late measurement — no media-item transition fires for these).
+    Function("activateTrackGain") { url: String ->
+      GainBridge.activateSmoothFor(url)
+    }
+
+    // Conservative temp gain applied when a transition hits an unregistered URL
+    // (unanalyzed track). JS keeps this at 1 while normalization is disabled.
+    Function("setFallbackGain") { linear: Double ->
+      GainBridge.fallbackGain = linear.toFloat()
     }
   }
 }

@@ -2,6 +2,7 @@ import TrackPlayer, { Event } from 'react-native-track-player';
 import { syncCarNowPlayingFromTrackPlayer } from './carSync';
 import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
+import { ensureGainRegistryStarted } from './gainRegistry';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -9,6 +10,10 @@ import { applyNormalizationForActiveTrack } from './applyNormalization';
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
+  // Whole-queue gain registration + fallback gain, headless-safe (Android Auto /
+  // Bluetooth starts with the app UI never mounted must still normalize).
+  ensureGainRegistryStarted();
+
   const syncNowPlaying = () =>
     Promise.allSettled([
       syncWidgetNowPlayingFromTrackPlayer(),

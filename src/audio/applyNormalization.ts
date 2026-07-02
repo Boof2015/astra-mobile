@@ -56,7 +56,9 @@ export async function applyNormalizationForActiveTrack(): Promise<void> {
 
   const resolved = resolveNormalizationGain(facts, settings);
   // Register by URL (the key the native player swaps on at the media transition) and
-  // activate it now, since no transition fires for the already-current track.
+  // activate it now, since no transition fires for the already-current track. The
+  // track has been playing at the fallback "temp" gain (gainRegistry) meanwhile, and
+  // activation glides natively — no burst, no step.
   setTrackGainNative(url, resolved.linearGain);
   activateTrackGainNative(url);
 }

@@ -1,9 +1,12 @@
-// Owns per-track normalization gain. It reads each track's loudness facts from
-// SQLite, resolves the gain, and registers it natively keyed by URL — for the current
-// track AND the next few queued tracks. The player then swaps to the matching gain
-// natively at the real media-item transition (no JS round-trip on track change). The
-// current track is also activated directly here, since on mount / settings change no
-// transition fires. Renders nothing — mount once near the root.
+// Fire-and-forget analysis half of normalization. Bulk registration of every
+// ALREADY-ANALYZED queued track's gain lives in gainRegistry.ts (started below);
+// this hook covers what the registry can't know synchronously: it measures the
+// current track + the next few queued tracks on demand (decode-ahead) and registers
+// each late-arriving result natively by URL, so the player picks it up at the media
+// transition — or, for the current track, via a smooth native glide (the track is
+// already playing at the fallback "temp" gain from sample zero; activation never
+// yanks the volume). Also owns the oscilloscope's per-track display gain. Renders
+// nothing — mount once near the root.
 
 import { useEffect } from 'react';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -18,6 +21,7 @@ import {
 } from '@/audio/eqNative';
 import { useScopeStore } from '@/scope/scopeStore';
 import { computeOscilloscopeGain, DEFAULT_OSC_GAIN } from '@/scope/oscilloscopeGain';
+import { ensureGainRegistryStarted } from '@/audio/gainRegistry';
 
 const EMPTY_FACTS: LoudnessFacts = {
   loudnessLufs: null,
@@ -34,6 +38,9 @@ const PREFETCH_AHEAD = 5;
 
 export function useNormalizationSync(): void {
   useEffect(() => {
+    // Idempotent (also started from the headless PlaybackService).
+    ensureGainRegistryStarted();
+
     let cancelled = false;
 
     async function recompute(): Promise<void> {
@@ -55,7 +62,9 @@ export function useNormalizationSync(): void {
       }
 
       // ensureTrackLoudness is cheap when already analyzed (single DB read) and
-      // decodes+stores on a miss (lazy backfill for pre-scan tracks).
+      // decodes+stores on a miss (lazy backfill for pre-scan tracks). During the
+      // await the track is already playing at the conservative fallback gain
+      // (gainRegistry) — never at unity/full volume.
       let facts = EMPTY_FACTS;
       try {
         facts = await ensureTrackLoudness(path);
@@ -68,7 +77,9 @@ export function useNormalizationSync(): void {
 
       const resolved = resolveNormalizationGain(facts, settings);
       // Seed the native map (so transitioning back to this track picks it up) and make
-      // it active now (mount / settings change fire no media-item transition).
+      // it active now (mount / settings change / late measurement fire no media-item
+      // transition). Activation glides natively (~1.2s) — usually a small upward
+      // correction from the fallback gain, never a hard step.
       setTrackGainNative(path, resolved.linearGain);
       activateTrackGainNative(path);
 
@@ -80,13 +91,15 @@ export function useNormalizationSync(): void {
       useScopeStore.getState().setOscGain(computeOscilloscopeGain(basePeak, resolved.linearGain));
     }
 
-    // Warm the next several upcoming tracks' loudness while the current one plays, and
-    // register each one's resolved gain natively by URL — so when the player advances,
-    // the gain is already in the map and gets applied at the transition with no JS in
-    // the loop. Looking a few ahead (not just the immediate next) means a song added
-    // several positions back is still measured + registered with plenty of lead time.
-    // Derived from the queue mirror, so it re-runs on reorder / add-next / advance.
-    // Deduped + DB-cached + native-semaphore-capped, so it stays cheap and gentle.
+    // MEASURE the next several upcoming tracks' loudness while the current one plays
+    // (decode-ahead for tracks with no facts yet), and register each late-arriving
+    // result natively by URL — so when the player advances, the gain is in the map
+    // and applies at the transition with no JS in the loop. Already-analyzed tracks
+    // are bulk-registered by gainRegistry; re-registering them here is a harmless
+    // cheap DB hit with the same value. Looking a few ahead (not just the immediate
+    // next) means a song added several positions back is still measured with plenty
+    // of lead time. Derived from the queue mirror, so it re-runs on reorder /
+    // add-next / advance. Deduped + DB-cached + native-semaphore-capped.
     function prefetchUpcoming(): void {
       const { tracks, activeIndex } = useQueueStore.getState();
       if (activeIndex < 0) return;

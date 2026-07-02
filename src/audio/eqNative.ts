@@ -10,8 +10,9 @@ type NativeEq = {
   setEqBands?: (params: number[]) => void;
   setNormalizationGain?: (linear: number) => void;
   setTrackGain?: (url: string, linear: number) => void;
+  setTrackGains?: (entries: Record<string, number>, clearExisting: boolean) => void;
   activateTrackGain?: (url: string) => void;
-  clearTrackGains?: () => void;
+  setFallbackGain?: (linear: number) => void;
   setActivePostEq?: (active: boolean) => void;
 };
 
@@ -41,7 +42,7 @@ export function setEqBandsNative(params: number[]): void {
   }
 }
 
-/** Set the active normalization/ReplayGain gain directly (linear). 1 = unity. */
+/** Glide the active normalization gain to an explicit linear value. 1 = unity. */
 export function setNormalizationGainNative(linear: number): void {
   try {
     native.setNormalizationGain?.(linear);
@@ -62,7 +63,22 @@ export function setTrackGainNative(url: string, linear: number): void {
   }
 }
 
-/** Activate the registered gain for this URL now (current track on mount/settings). */
+/**
+ * Bulk-register queued tracks' gains (url -> linear) in one bridge call. With
+ * `clearExisting` the native map is cleared first (bounds it to the live queue).
+ */
+export function setTrackGainsNative(
+  entries: Record<string, number>,
+  clearExisting: boolean
+): void {
+  try {
+    native.setTrackGains?.(entries, clearExisting);
+  } catch {
+    /* no-op */
+  }
+}
+
+/** Glide to the registered gain for this URL now (mount/settings/late measurement). */
 export function activateTrackGainNative(url: string): void {
   try {
     native.activateTrackGain?.(url);
@@ -71,10 +87,13 @@ export function activateTrackGainNative(url: string): void {
   }
 }
 
-/** Drop all registered per-track gains. */
-export function clearTrackGainsNative(): void {
+/**
+ * Conservative temp gain applied natively when a media-item transition hits a URL
+ * with no registered gain (unanalyzed track). Pinned to 1 while normalization is off.
+ */
+export function setFallbackGainNative(linear: number): void {
   try {
-    native.clearTrackGains?.();
+    native.setFallbackGain?.(linear);
   } catch {
     /* no-op */
   }

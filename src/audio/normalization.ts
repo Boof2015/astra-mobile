@@ -44,7 +44,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-function dbToLinear(db: number): number {
+export function dbToLinear(db: number): number {
   return Math.pow(10, db / 20);
 }
 
@@ -130,4 +130,62 @@ export function resolveNormalizationGain(
     mode,
     peakLimited: limited.peakLimited,
   };
+}
+
+// --- Fallback gain for tracks with no facts yet (Poweramp-style temp attenuation) ---
+//
+// A track that reaches a media-item transition with no registered gain plays at this
+// fallback instead of unity: deliberately a touch QUIET, so the later correction is
+// a small upward glide (natural) instead of a blast-then-duck (jarring). Derived
+// from the library's median loudness when enough tracks are analyzed; otherwise
+// assumes an unknown track is a loud modern master.
+
+/** Temp gain never louder than this: errs quiet by construction. */
+export const FALLBACK_CEILING_DB = -3;
+/** Assumed integrated loudness of an unknown modern master. */
+export const FALLBACK_ASSUMED_LUFS = -9;
+/** Below this many analyzed tracks, library stats are noise — use the assumption. */
+export const FALLBACK_MIN_SAMPLE = 10;
+
+export interface LibraryLoudnessStats {
+  /** Tracks with a measured loudness_lufs. */
+  lufsCount: number;
+  medianLufs: number | null;
+  /** Tracks with a ReplayGain track-gain tag. */
+  rgCount: number;
+  medianRgTrackDb: number | null;
+}
+
+/**
+ * Resolve the conservative fallback gain applied natively when a transition hits a
+ * track with no registered gain. Unity when normalization is off (that is the
+ * mechanism keeping map misses at full volume with the feature disabled).
+ */
+export function resolveFallbackGain(
+  stats: LibraryLoudnessStats,
+  settings: NormalizationSettings
+): { gainDb: number; linearGain: number } {
+  if (!settings.enabled) return { gainDb: 0, linearGain: 1 };
+
+  let candidateDb: number;
+  if (
+    settings.replayGainEnabled &&
+    stats.rgCount >= FALLBACK_MIN_SAMPLE &&
+    stats.medianRgTrackDb != null &&
+    Number.isFinite(stats.medianRgTrackDb)
+  ) {
+    // RG tags are already "gain to apply" — the median IS the typical gain.
+    candidateDb = stats.medianRgTrackDb;
+  } else if (
+    stats.lufsCount >= FALLBACK_MIN_SAMPLE &&
+    stats.medianLufs != null &&
+    Number.isFinite(stats.medianLufs)
+  ) {
+    candidateDb = settings.targetLufs - stats.medianLufs;
+  } else {
+    candidateDb = settings.targetLufs - FALLBACK_ASSUMED_LUFS;
+  }
+
+  const gainDb = clamp(candidateDb, NORM_MIN_GAIN_DB, FALLBACK_CEILING_DB);
+  return { gainDb, linearGain: dbToLinear(gainDb) };
 }

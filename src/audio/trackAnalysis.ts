@@ -13,7 +13,8 @@ import { getTrackLoudness, setTrackLoudness, setTrackReplayGain, type TrackLoudn
 import { hasUsableReplayGain, type LoudnessFacts } from '@/audio/normalization';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 
-function factsFromRow(row: TrackLoudness | null): LoudnessFacts {
+/** Map a loudness DB row (or a miss) to the resolver's facts shape. */
+export function factsFromRow(row: TrackLoudness | null): LoudnessFacts {
   return {
     loudnessLufs: row?.loudness_lufs ?? null,
     samplePeak: row?.sample_peak ?? null,

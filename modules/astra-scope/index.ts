@@ -45,17 +45,25 @@ declare class AstraScopeModuleType extends NativeModule {
    * enabled?1:0]. Native recomputes biquad coefficients at the stream rate.
    */
   setEqBands(params: number[]): void;
-  /** Set the active per-track normalization/ReplayGain gain (linear; 1 = unity). */
+  /** Glide the active normalization gain to an explicit linear value (1 = unity). */
   setNormalizationGain(linear: number): void;
   /**
    * Register a queued track's gain by URL. The player switches the active gain to the
    * matching entry natively at the media-item transition (no JS round-trip).
    */
   setTrackGain(url: string, linear: number): void;
-  /** Activate the registered gain for this URL now (current track on mount/settings). */
+  /**
+   * Bulk-register queued tracks' gains (url -> linear) in one bridge call. With
+   * `clearExisting` the native map is cleared first (bounds it to the live queue).
+   */
+  setTrackGains(entries: Record<string, number>, clearExisting: boolean): void;
+  /** Glide to the registered gain for this URL now (mount/settings/late measurement). */
   activateTrackGain(url: string): void;
-  /** Drop all registered per-track gains. */
-  clearTrackGains(): void;
+  /**
+   * Conservative temp gain (linear) applied when a media-item transition hits a URL
+   * with no registered gain (unanalyzed track). Keep at 1 while normalization is off.
+   */
+  setFallbackGain(linear: number): void;
 }
 
 export const AstraScope = requireNativeModule<AstraScopeModuleType>('AstraScope');
