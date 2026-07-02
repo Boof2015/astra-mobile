@@ -13,7 +13,7 @@ export default function TabsLayout() {
       detachInactiveScreens
       screenOptions={{
         headerShown: false,
-        freezeOnBlur: true,
+        freezeOnBlur: false,
         sceneStyle: { backgroundColor: colors.bgPrimary },
         // Directional slide + cross-fade between tabs, following tab order.
         animation: 'shift',
