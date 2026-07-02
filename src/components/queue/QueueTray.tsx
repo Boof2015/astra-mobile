@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -131,8 +131,16 @@ interface QueueTrayProps {
 
 export function QueueTray({ onClose }: QueueTrayProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const snapPoints = useMemo(() => ['58%', '100%'], []);
   const renderFlashListScrollComponent = useBottomSheetScrollableCreator();
+  // While the sheet-open animation runs, the bottom-sheet scrollable can
+  // momentarily fail to constrain the list, so FlashList measures its viewport
+  // as the full CONTENT height (~100k dp for a long queue), believes every row
+  // is visible, and mounts thousands of views — a multi-second main-thread
+  // freeze. Clamping the list container to the window height caps the viewport
+  // no matter what the sheet reports; both snap points stay unaffected.
+  const listClampStyle = useMemo(() => ({ maxHeight: windowHeight }), [windowHeight]);
 
   const { tracks, activeIndex, hasSnapshot, refresh } = useQueue(true);
   const currentTrack = activeIndex >= 0 ? tracks[activeIndex] : undefined;
@@ -582,6 +590,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
       <FlashList
         data={entries}
         scrollEnabled={!editMode}
+        style={listClampStyle}
         keyExtractor={(item) => item.key}
         drawDistance={QUEUE_ROW_HEIGHT * 12}
         maintainVisibleContentPosition={{ disabled: true }}
