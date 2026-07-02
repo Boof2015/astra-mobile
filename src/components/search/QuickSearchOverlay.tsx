@@ -830,7 +830,7 @@ function QuickSearchPanel({
     if (result.kind === 'album') {
       router.push({
         pathname: '/library/album/[key]',
-        params: { key: result.album.identity_key },
+        params: { key: result.album.identity_key, from: 'search' },
       });
       return;
     }
@@ -838,17 +838,16 @@ function QuickSearchPanel({
     if (result.kind === 'artist') {
       router.push({
         pathname: '/library/artist/[name]',
-        params: { name: result.artist.artist },
+        params: { name: result.artist.artist, from: 'search' },
       });
       return;
     }
 
     if (result.kind === 'playlist') {
-      router.push(
-        result.playlist.id === 'favorites'
-          ? '/library/playlist/favorites'
-          : `/library/playlist/${result.playlist.id}`
-      );
+      router.push({
+        pathname: '/library/playlist/[id]',
+        params: { id: result.playlist.id, from: 'search' },
+      });
       return;
     }
 

@@ -17,6 +17,7 @@ import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { artworkUri } from '@/library/artwork';
 import { buildArtistDetail, type ArtistAlbum, type ArtistDetail } from '@/library/artistDetail';
+import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -41,7 +42,8 @@ type ArtistPageItem =
 
 export default function ArtistScreen() {
   const router = useRouter();
-  const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
+  const { name = 'Artist', from } = useLocalSearchParams<{ name: string; from?: string }>();
+  const handleBack = useLibraryDetailBack(from);
   const { width } = useWindowDimensions();
   const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
@@ -134,7 +136,7 @@ export default function ArtistScreen() {
 
   return (
     <Screen>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+      <Pressable style={styles.back} onPress={handleBack} hitSlop={8}>
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         <Text variant="body" color={colors.textSecondary}>
           Library

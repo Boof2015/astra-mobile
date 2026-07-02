@@ -3,7 +3,7 @@ import { View, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -16,6 +16,7 @@ import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
+import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 
@@ -41,8 +42,8 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
 }
 
 export default function PlaylistScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  const handleBack = useLibraryDetailBack(from);
   const isFavorites = id === 'favorites';
   const playlistId = isFavorites ? null : Number(id);
 
@@ -155,7 +156,7 @@ export default function PlaylistScreen() {
 
   return (
     <Screen>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+      <Pressable style={styles.back} onPress={handleBack} hitSlop={8}>
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         <Text variant="body" color={colors.textSecondary}>
           Library
