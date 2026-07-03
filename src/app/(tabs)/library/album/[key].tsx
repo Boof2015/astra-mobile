@@ -111,6 +111,7 @@ export default function AlbumScreen() {
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}
+            onOpenActions={() => setActionTrack(item)}
           />
         )}
       />

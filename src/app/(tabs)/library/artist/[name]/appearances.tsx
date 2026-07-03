@@ -62,6 +62,7 @@ export default function ArtistAppearancesScreen() {
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}
+            onOpenActions={() => setActionTrack(item)}
           />
         )}
         ListEmptyComponent={<EmptyList label="No appearances found for this artist." />}

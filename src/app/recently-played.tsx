@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
@@ -5,11 +6,13 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
+import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
+import type { DbTrack } from '@/types/library';
 
 function formatCount(count: number, noun: string): string {
   return `${count} ${count === 1 ? noun : `${noun}s`}`;
@@ -30,6 +33,7 @@ export default function RecentlyPlayedScreen() {
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
+  const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
@@ -62,11 +66,14 @@ export default function RecentlyPlayedScreen() {
             active={item.path === currentPath}
             swipeToQueue={false}
             onPress={() => playFrom(index)}
+            onLongPress={() => setActionTrack(item)}
+            onOpenActions={() => setActionTrack(item)}
           />
         )}
         ListEmptyComponent={<EmptyList />}
         contentContainerStyle={styles.listContent}
       />
+      <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }

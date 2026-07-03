@@ -231,6 +231,7 @@ export default function PlaylistScreen() {
               active={item.track.path === currentPath}
               onPress={() => startPlayback(playableIndexByEntryId.get(item.id) ?? 0)}
               onLongPress={() => setActionEntry(item)}
+              onOpenActions={() => setActionEntry(item)}
             />
           ) : (
             <MissingRow entry={item} onLongPress={() => setMissingEntry(item)} />

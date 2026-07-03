@@ -3,12 +3,14 @@ import {
   Pressable,
   StyleSheet,
   View,
+  type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
+import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import { playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -18,9 +20,10 @@ import {
   type FlattenedFolderTreeRow,
 } from '@/library/folderTree';
 import { formatDuration } from '@/lib/format';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import type { DbTrack } from '@/types/library';
 
 interface FoldersViewProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -74,20 +77,27 @@ function FolderRow({
 function FolderTrackRow({
   row,
   active,
+  onOpenActions,
 }: {
   row: Extract<FlattenedFolderTreeRow, { type: 'track' }>;
   active: boolean;
+  onOpenActions: () => void;
 }) {
   const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
 
   const playFolderTrack = () => {
     void playTracks(row.folderTracks.map(dbTrackToTrack), Math.max(0, index));
   };
+  const openActions = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    onOpenActions();
+  };
 
   return (
     <Pressable
       style={[styles.trackRow, active && styles.trackRowActive]}
       onPress={playFolderTrack}
+      onLongPress={onOpenActions}
       accessibilityRole="button"
     >
       <View style={[styles.indent, { width: row.depth * 18 + 16 }]} />
@@ -103,6 +113,15 @@ function FolderTrackRow({
       <Text variant="mono" style={styles.duration}>
         {formatDuration(row.track.duration)}
       </Text>
+      <Pressable
+        style={({ pressed }) => [styles.actionsButton, pressed && styles.actionsButtonPressed]}
+        onPress={openActions}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`More actions for ${row.track.title}`}
+      >
+        <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
+      </Pressable>
     </Pressable>
   );
 }
@@ -112,6 +131,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   const tracks = useLibraryStore((s) => s.tracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
+  const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   const tree = useMemo(() => buildFolderTree(folders, tracks), [folders, tracks]);
   const rows = useMemo(() => flattenFolderTree(tree, expandedNodeIds), [expandedNodeIds, tree]);
@@ -141,23 +161,30 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   }
 
   return (
-    <FlashList
-      data={rows}
-      keyExtractor={(row) => row.id}
-      showsVerticalScrollIndicator={false}
-      overScrollMode="never"
-      renderScrollComponent={PullSearchScrollView}
-      onScroll={onScroll}
-      scrollEventThrottle={scrollEventThrottle}
-      contentContainerStyle={styles.listContent}
-      renderItem={({ item }) =>
-        item.type === 'folder' ? (
-          <FolderRow row={item} onToggle={toggleFolder} />
-        ) : (
-          <FolderTrackRow row={item} active={item.track.path === currentPath} />
-        )
-      }
-    />
+    <>
+      <FlashList
+        data={rows}
+        keyExtractor={(row) => row.id}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        renderScrollComponent={PullSearchScrollView}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) =>
+          item.type === 'folder' ? (
+            <FolderRow row={item} onToggle={toggleFolder} />
+          ) : (
+            <FolderTrackRow
+              row={item}
+              active={item.track.path === currentPath}
+              onOpenActions={() => setActionTrack(item.track)}
+            />
+          )
+        }
+      />
+      <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
+    </>
   );
 }
 
@@ -216,6 +243,17 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     color: colors.textTertiary,
     fontSize: 12,
+  },
+  actionsButton: {
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionsButtonPressed: {
+    backgroundColor: colors.glassBg,
   },
   empty: {
     flex: 1,

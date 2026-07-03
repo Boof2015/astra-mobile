@@ -119,6 +119,7 @@ export default function ArtistScreen() {
             active={item.track.path === currentPath}
             onPress={() => playTrackListFrom(sourceTracks, item.index)}
             onLongPress={() => setActionTrack(item.track)}
+            onOpenActions={() => setActionTrack(item.track)}
           />
         );
       }

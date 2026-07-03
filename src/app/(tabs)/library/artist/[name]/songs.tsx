@@ -62,6 +62,7 @@ export default function ArtistSongsScreen() {
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}
+            onOpenActions={() => setActionTrack(item)}
           />
         )}
         ListEmptyComponent={<EmptyList label="No songs found for this artist." />}

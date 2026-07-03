@@ -175,6 +175,7 @@ export default function LibraryScreen() {
                       active={item.path === currentPath}
                       onPress={() => playAllFrom(index)}
                       onLongPress={() => setActionTrack(item)}
+                      onOpenActions={() => setActionTrack(item)}
                     />
                   )}
                 />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet, type GestureResponderEvent } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
@@ -20,6 +21,7 @@ export function TrackRow({
   track,
   onPress,
   onLongPress,
+  onOpenActions,
   showArtist = true,
   subtitle,
   active = false,
@@ -29,6 +31,8 @@ export function TrackRow({
   onPress: () => void;
   /** Opens the track actions sheet where wired. */
   onLongPress?: () => void;
+  /** Visible trailing affordance for the track actions sheet. */
+  onOpenActions?: () => void;
   /** Hide on album detail where every row shares the artist. */
   showArtist?: boolean;
   /** Overrides the secondary line; useful for artist pages that need album context. */
@@ -44,12 +48,16 @@ export function TrackRow({
 
   const thumbUri = failedArtKey !== artKey ? trackArtworkThumbSource(track) : null;
   const secondaryText = subtitle ?? (showArtist ? track.artist : null);
+  const openActions = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    onOpenActions?.();
+  };
 
   const row = (
     <Pressable
       style={styles.row}
       onPress={onPress}
-      onLongPress={onLongPress}
+      onLongPress={onLongPress ?? onOpenActions}
       accessibilityRole="button"
     >
       <View style={styles.art}>
@@ -103,6 +111,18 @@ export function TrackRow({
       <Text variant="mono" style={styles.duration}>
         {formatDuration(track.duration)}
       </Text>
+
+      {onOpenActions ? (
+        <Pressable
+          style={({ pressed }) => [styles.actionsButton, pressed && styles.actionsButtonPressed]}
+          onPress={openActions}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`More actions for ${track.title}`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 
@@ -185,5 +205,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textTertiary,
     textAlign: 'right',
+  },
+  actionsButton: {
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionsButtonPressed: {
+    backgroundColor: colors.glassBg,
   },
 });

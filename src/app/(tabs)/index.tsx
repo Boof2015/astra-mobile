@@ -8,6 +8,7 @@ import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SpectrumCurve } from '@/components/SpectrumCurve';
 import { TrackRow } from '@/components/library/TrackRow';
+import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import {
@@ -357,6 +358,7 @@ export default function HomeScreen() {
 
   const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
   const [randomSeed] = useState(() => Math.random());
+  const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
   const hasLibrary = tracks.length > 0;
 
@@ -511,6 +513,8 @@ export default function HomeScreen() {
                       active={track.path === currentPath}
                       swipeToQueue={false}
                       onPress={() => playTrackList(recentTracks, index)}
+                      onLongPress={() => setActionTrack(track)}
+                      onOpenActions={() => setActionTrack(track)}
                     />
                   ))}
                 </View>
@@ -564,6 +568,7 @@ export default function HomeScreen() {
         )}
         </PullSearchScrollView>
       </PullSearchGesture>
+      <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }
