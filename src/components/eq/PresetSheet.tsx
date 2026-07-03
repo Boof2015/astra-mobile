@@ -14,6 +14,14 @@ interface PresetSheetProps {
   onClose: () => void;
 }
 
+/**
+ * Leading row icon telling a custom preset's editor mode apart at a glance.
+ * Built-ins get no icon — they're mode-agnostic and apply in the active mode.
+ */
+function modeIcon(preset: EQPreset): 'options-outline' | 'analytics-outline' {
+  return preset.mode === 'graphic' ? 'options-outline' : 'analytics-outline';
+}
+
 /** Preset hub: pick a built-in or custom preset, delete custom ones, or save a new one. */
 export function PresetSheet({
   presets,
@@ -55,6 +63,7 @@ export function PresetSheet({
           <EqSheetItem
             key={p.id}
             label={p.name}
+            icon={modeIcon(p)}
             selected={p.id === activePresetId}
             onPress={() => {
               onApply(p.id);

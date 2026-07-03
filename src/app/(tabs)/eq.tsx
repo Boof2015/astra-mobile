@@ -12,7 +12,9 @@ import { BandStrip } from '@/components/eq/BandStrip';
 import { BandDetailPanel, type EQEditableValue } from '@/components/eq/BandDetailPanel';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { EqSheet, EqSheetItem } from '@/components/eq/EqSheet';
+import { EQModeSwitcher } from '@/components/eq/EQModeSwitcher';
 import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
+import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
 import { colors, radius, spacing } from '@/theme';
@@ -68,6 +70,7 @@ export default function EQScreen() {
     }, [])
   );
 
+  const isGraphic = eq.mode === 'graphic';
   const activeBand = eq.bands.find((b) => b.id === eq.activeBandId) ?? null;
   const activeBandNumber = eq.bands.findIndex((b) => b.id === eq.activeBandId) + 1;
   const presetName = eq.presets.find((p) => p.id === eq.activePresetId)?.name ?? 'Custom';
@@ -100,6 +103,12 @@ export default function EQScreen() {
     </Pressable>
   );
 
+  const modeSwitcherEl = (
+    <View style={[styles.modeSwitcherWrap, isWide && styles.sideItem]}>
+      <EQModeSwitcher value={eq.mode} onChange={eq.setMode} />
+    </View>
+  );
+
   const graphEl = (
     <EQGraph
       bands={eq.bands}
@@ -109,6 +118,14 @@ export default function EQScreen() {
       onSelectBand={eq.selectBand}
       onChangeBand={(id, updates) => eq.updateBand(id, updates)}
     />
+  );
+
+  // Graphic editor card — the panel draws its response curve behind the sliders
+  // in the tracks' own coordinate space, so it stays glued to the thumbs.
+  const graphicEditorEl = (
+    <View style={styles.graphicEditor}>
+      <GraphicEQPanel gains={eq.graphicGains} enabled={eq.enabled} onChangeGain={eq.setGraphicGain} />
+    </View>
   );
 
   const stripEl = (
@@ -185,21 +202,33 @@ export default function EQScreen() {
             { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
           ]}
         >
-          <View style={styles.wideGraphPane}>{graphEl}</View>
+          <View style={styles.wideGraphPane}>{isGraphic ? graphicEditorEl : graphEl}</View>
           <View style={{ width: sidePaneWidth }}>
+            {modeSwitcherEl}
             {presetRowEl}
-            {stripEl}
-            <View style={styles.sideDetail}>{detailEl}</View>
+            {isGraphic ? null : (
+              <>
+                {stripEl}
+                <View style={styles.sideDetail}>{detailEl}</View>
+              </>
+            )}
             <View style={styles.wideSpacer} />
             {bottomBarEl}
           </View>
         </View>
       ) : (
         <>
+          {modeSwitcherEl}
           {presetRowEl}
-          <View style={styles.graphWrap}>{graphEl}</View>
-          <View style={styles.section}>{stripEl}</View>
-          <View style={styles.section}>{detailEl}</View>
+          {isGraphic ? (
+            <View style={styles.graphWrap}>{graphicEditorEl}</View>
+          ) : (
+            <>
+              <View style={styles.graphWrap}>{graphEl}</View>
+              <View style={styles.section}>{stripEl}</View>
+              <View style={styles.section}>{detailEl}</View>
+            </>
+          )}
           {bottomBarEl}
         </>
       )}
@@ -226,7 +255,7 @@ export default function EQScreen() {
       {sheet === 'overflow' ? (
         <EqSheet onClose={closeSheet}>
           <EqSheetItem label="Import AutoEQ…" icon="download-outline" onPress={handleImportAutoEQ} />
-          {eq.bands.length > 1 && activeBand ? (
+          {!isGraphic && eq.bands.length > 1 && activeBand ? (
             <EqSheetItem
               label={`Remove band ${activeBandNumber}`}
               icon="remove-circle-outline"
@@ -376,6 +405,20 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
+  },
+  modeSwitcherWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  graphicEditor: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
   },
   presetRow: {
     flexDirection: 'row',

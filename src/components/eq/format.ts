@@ -11,6 +11,15 @@ export function formatFreq(hz: number): string {
   return `${Math.round(hz)}`;
 }
 
+/** Frequency with unit, for the graphic-band captions ("60 Hz", "12 kHz"). */
+export function formatFreqHz(hz: number): string {
+  if (hz >= 1000) {
+    const k = hz / 1000;
+    return `${Number.isInteger(k) ? k : k.toFixed(1)} kHz`;
+  }
+  return `${Math.round(hz)} Hz`;
+}
+
 export function formatGain(db: number): string {
   if (Math.abs(db) < 0.05) return '0';
   return `${db > 0 ? '+' : ''}${db.toFixed(1)}`;

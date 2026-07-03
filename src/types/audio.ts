@@ -67,6 +67,10 @@ export interface EQBand {
   enabled: boolean;
 }
 
+// EQ editor mode — graphic is a fixed 5-band front-end compiled onto the same
+// parametric engine (see src/audio/graphicEq.ts).
+export type EQMode = 'parametric' | 'graphic';
+
 // EQ Preset
 export interface EQPreset {
   id: string;
@@ -74,6 +78,11 @@ export interface EQPreset {
   bands: EQBand[];
   preamp: number;
   isCustom?: boolean;
+  // Which editor the preset targets; absent = 'parametric' (pre-mode presets).
+  mode?: EQMode;
+  // Slider gains (dB) when mode === 'graphic'; `bands` then holds the compiled
+  // snapshot so older builds / missing gains degrade to an identical parametric preset.
+  graphicGains?: number[];
 }
 
 // Visualizer config (scopes land at M3)
