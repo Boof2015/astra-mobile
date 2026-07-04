@@ -5,7 +5,11 @@ import { EQ_MAX_GAIN_DB, EQ_MIN_GAIN_DB } from '@/audio/eq';
 import { GRAPHIC_BANDS } from '@/audio/graphicEq';
 import { GraphicResponseCurve } from './GraphicResponseCurve';
 import { VerticalEQSlider } from './VerticalEQSlider';
-import { formatFreqHz, formatGain, gainColor } from './format';
+import {
+  formatFreqHz,
+  formatGain,
+  gainColor
+} from './format';
 
 interface GraphicEQPanelProps {
   gains: number[];

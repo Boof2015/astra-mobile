@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef
+} from 'react';
 import {
   PaintStyle,
   Skia,
   SkiaPictureView,
   StrokeCap,
   StrokeJoin,
-  type SkPicture,
+  type SkPicture
 } from '@shopify/react-native-skia';
 import { AstraScope, OSCILLOSCOPE_POINTS } from '../../modules/astra-scope';
 import { useScopeStore } from '@/scope/scopeStore';

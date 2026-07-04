@@ -1,5 +1,11 @@
 import { useCallback, useState } from 'react';
-import { InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  InteractionManager,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +23,11 @@ import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
 import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
@@ -31,7 +41,7 @@ import {
   EQ_MIN_FREQUENCY,
   EQ_MIN_PREAMP_DB,
   EQ_MIN_Q,
-  isPassEQBandType,
+  isPassEQBandType
 } from '@/audio/eq';
 import { parseAutoEQ } from '@/audio/autoEQParser';
 import { BAND_TYPE_LABEL, formatGain } from '@/components/eq/format';

@@ -1,12 +1,21 @@
 import { useState } from 'react';
-import { View, Pressable, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  type LayoutChangeEvent
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
 import { SpectrumCurve } from './SpectrumCurve';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { usePlayerStore } from '@/stores/playerStore';
 import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';

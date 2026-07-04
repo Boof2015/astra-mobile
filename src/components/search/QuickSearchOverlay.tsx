@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import {
   Keyboard,
   Modal,
@@ -7,7 +12,7 @@ import {
   TextInput,
   View,
   useWindowDimensions,
-  type GestureResponderEvent,
+  type GestureResponderEvent
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,10 +21,20 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { colors, fonts, fontSize, radius, spacing } from '@/theme';
+import {
+  colors,
+  fonts,
+  fontSize,
+  radius,
+  spacing
+} from '@/theme';
 import { enqueueTop, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { albumArtworkSource, artworkUri, trackArtworkThumbSource } from '@/library/artwork';
+import {
+  albumArtworkSource,
+  artworkUri,
+  trackArtworkThumbSource
+} from '@/library/artwork';
 import { multiFieldScore, MIN_SCORE_THRESHOLD } from '@/lib/fuzzySearch';
 import { formatDuration } from '@/lib/format';
 import { commitHaptic } from '@/lib/haptics';
@@ -27,7 +42,11 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
-import type { Album, Artist, DbTrack } from '@/types/library';
+import type {
+  Album,
+  Artist,
+  DbTrack
+} from '@/types/library';
 import type { Playlist } from '@/types/playlist';
 
 type IconName = keyof typeof Ionicons.glyphMap;

@@ -1,14 +1,22 @@
 import { useCallback, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import {
+  StyleSheet,
+  Pressable,
+  View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
-  type BottomSheetBackdropProps,
+  type BottomSheetBackdropProps
 } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 
 export function AppSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -47,6 +55,21 @@ export function AppSheetSection({ label }: { label: string }) {
     <Text variant="caption" style={styles.section}>
       {label}
     </Text>
+  );
+}
+
+export function AppSheetTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={styles.titleBlock}>
+      <Text variant="heading" numberOfLines={1} style={styles.title}>
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text variant="label" numberOfLines={1} color={colors.textSecondary}>
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -108,6 +131,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: spacing.md,
     marginBottom: spacing.xs,
+  },
+  titleBlock: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    gap: 2,
+  },
+  title: {
+    paddingRight: spacing.lg,
   },
   itemRow: {
     flexDirection: 'row',

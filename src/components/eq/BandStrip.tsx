@@ -1,9 +1,21 @@
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import type { EQBand } from '@/types/audio';
-import { formatFreq, formatGain, gainColor } from './format';
+import {
+  formatFreq,
+  formatGain,
+  gainColor
+} from './format';
 
 interface BandStripProps {
   bands: EQBand[];

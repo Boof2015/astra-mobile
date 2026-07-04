@@ -4,22 +4,27 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
-  useBottomSheetScrollableCreator,
+  useBottomSheetScrollableCreator
 } from '@gorhom/bottom-sheet';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import {
   Gesture,
   GestureDetector,
-  type GestureType,
+  type GestureType
 } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -27,13 +32,17 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  type SharedValue,
+  type SharedValue
 } from 'react-native-reanimated';
 import type { Track as RntpTrack } from 'react-native-track-player';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SwipeableRow } from '@/components/SwipeableRow';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { motion } from '@/theme/motion';
 import { dragArmHaptic, tickHaptic } from '@/lib/haptics';
 import { useQueueStore } from '@/stores/queueStore';
@@ -44,7 +53,7 @@ import {
   removeManyFromQueue,
   requeueManyToTop,
   requeueToTop,
-  setUpcoming,
+  setUpcoming
 } from '@/audio/playbackController';
 import { useQueue } from './useQueue';
 

@@ -75,4 +75,7 @@ export interface Artist {
   artist: string;
   track_count: number;
   artwork_hash: string | null;
+  album_count: number;
+  /** Primary hash first, then one distinct cover per further album (max 4) — grid mosaic. */
+  artwork_hashes: string[];
 }

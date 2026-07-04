@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -11,7 +16,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -22,7 +27,11 @@ import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { QueueTray } from '@/components/queue/QueueTray';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveCanonicalBrowseArtist, resolveStrictBrowseArtist } from '@/library/artistGrouping';
@@ -37,7 +46,7 @@ import {
   skipToNext,
   skipToPrevious,
   togglePlay,
-  toggleShuffle,
+  toggleShuffle
 } from '@/audio/playbackController';
 
 const DISMISS_DISTANCE = 140;

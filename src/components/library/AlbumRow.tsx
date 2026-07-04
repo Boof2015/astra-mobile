@@ -1,8 +1,16 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 

@@ -4,10 +4,14 @@ import {
   View,
   StyleSheet,
   type GestureResponderEvent,
-  type LayoutChangeEvent,
+  type LayoutChangeEvent
 } from 'react-native';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 
 const THUMB = 16;
 

@@ -1,9 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import {
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import {
   View,
   StyleSheet,
   type GestureResponderEvent,
-  type LayoutChangeEvent,
+  type LayoutChangeEvent
 } from 'react-native';
 import {
   Canvas,
@@ -12,7 +16,7 @@ import {
   Group,
   Path,
   Skia,
-  type SkPath,
+  type SkPath
 } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
 import { SpectrumCurve } from '@/components/SpectrumCurve';
@@ -25,7 +29,7 @@ import {
   freqToX,
   gainToY,
   xToFreq,
-  yToGain,
+  yToGain
 } from './eqGraphMath';
 
 const HIT_RADIUS = 34;

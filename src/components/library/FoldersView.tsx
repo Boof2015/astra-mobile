@@ -5,22 +5,37 @@ import {
   View,
   type GestureResponderEvent,
   type NativeScrollEvent,
-  type NativeSyntheticEvent,
+  type NativeSyntheticEvent
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
+import {
+  AppSheet,
+  AppSheetItem,
+  AppSheetTitle
+} from '@/components/sheets/AppSheet';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
-import { playTracks } from '@/audio/playbackController';
+import {
+  playTracks,
+  shuffleTracks,
+  enqueueTopMany,
+  enqueueEndMany
+} from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   buildFolderTree,
   flattenFolderTree,
   type FlattenedFolderTreeRow,
+  type FolderTreeNode
 } from '@/library/folderTree';
 import { formatDuration } from '@/lib/format';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
@@ -33,16 +48,32 @@ interface FoldersViewProps {
 function FolderRow({
   row,
   onToggle,
+  onPlay,
+  onShuffle,
+  onOpenActions,
 }: {
   row: Extract<FlattenedFolderTreeRow, { type: 'folder' }>;
   onToggle: (nodeId: string) => void;
+  onPlay: (node: FolderTreeNode) => void;
+  onShuffle: (node: FolderTreeNode) => void;
+  onOpenActions: (node: FolderTreeNode) => void;
 }) {
   const { node, depth, isExpanded } = row;
 
+  const play = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    onPlay(node);
+  };
+  const shuffle = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    onShuffle(node);
+  };
+
   return (
     <Pressable
-      style={styles.folderRow}
+      style={({ pressed }) => [styles.folderRow, pressed && styles.rowPressed]}
       onPress={() => onToggle(node.id)}
+      onLongPress={() => onOpenActions(node)}
       accessibilityRole="button"
       accessibilityState={{ expanded: isExpanded }}
     >
@@ -70,6 +101,24 @@ function FolderRow({
       <Text variant="mono" style={styles.count}>
         {node.totalTrackCount}
       </Text>
+      <Pressable
+        style={({ pressed }) => [styles.folderButton, pressed && styles.folderButtonPressed]}
+        onPress={play}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={`Play ${node.name}`}
+      >
+        <Ionicons name="play" size={16} color={colors.accent} />
+      </Pressable>
+      <Pressable
+        style={({ pressed }) => [styles.folderButton, pressed && styles.folderButtonPressed]}
+        onPress={shuffle}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={`Shuffle ${node.name}`}
+      >
+        <Ionicons name="shuffle" size={16} color={colors.textSecondary} />
+      </Pressable>
     </Pressable>
   );
 }
@@ -95,7 +144,11 @@ function FolderTrackRow({
 
   return (
     <Pressable
-      style={[styles.trackRow, active && styles.trackRowActive]}
+      style={({ pressed }) => [
+        styles.trackRow,
+        active && styles.trackRowActive,
+        pressed && styles.rowPressed,
+      ]}
       onPress={playFolderTrack}
       onLongPress={onOpenActions}
       accessibilityRole="button"
@@ -132,9 +185,28 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
+  const [actionFolder, setActionFolder] = useState<FolderTreeNode | null>(null);
 
   const tree = useMemo(() => buildFolderTree(folders, tracks), [folders, tracks]);
   const rows = useMemo(() => flattenFolderTree(tree, expandedNodeIds), [expandedNodeIds, tree]);
+
+  // Folder-level playback runs the whole subtree (subfolders included), in tree order.
+  const playFolder = (node: FolderTreeNode) => {
+    if (node.subtreeTracks.length === 0) return;
+    void playTracks(node.subtreeTracks.map(dbTrackToTrack), 0);
+  };
+  const shuffleFolder = (node: FolderTreeNode) => {
+    if (node.subtreeTracks.length === 0) return;
+    void shuffleTracks(node.subtreeTracks.map(dbTrackToTrack));
+  };
+  const playFolderNext = (node: FolderTreeNode) => {
+    if (node.subtreeTracks.length === 0) return;
+    void enqueueTopMany(node.subtreeTracks.map(dbTrackToTrack));
+  };
+  const queueFolder = (node: FolderTreeNode) => {
+    if (node.subtreeTracks.length === 0) return;
+    void enqueueEndMany(node.subtreeTracks.map(dbTrackToTrack));
+  };
 
   const toggleFolder = (nodeId: string) => {
     setExpandedNodeIds((current) => {
@@ -173,7 +245,13 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) =>
           item.type === 'folder' ? (
-            <FolderRow row={item} onToggle={toggleFolder} />
+            <FolderRow
+              row={item}
+              onToggle={toggleFolder}
+              onPlay={playFolder}
+              onShuffle={shuffleFolder}
+              onOpenActions={setActionFolder}
+            />
           ) : (
             <FolderTrackRow
               row={item}
@@ -184,6 +262,46 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
         }
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
+      {actionFolder ? (
+        <AppSheet onClose={() => setActionFolder(null)}>
+          <AppSheetTitle
+            title={actionFolder.name}
+            subtitle={`${actionFolder.totalTrackCount} ${actionFolder.totalTrackCount === 1 ? 'track' : 'tracks'}`}
+          />
+          <AppSheetItem
+            label="Play"
+            icon="play"
+            onPress={() => {
+              playFolder(actionFolder);
+              setActionFolder(null);
+            }}
+          />
+          <AppSheetItem
+            label="Shuffle"
+            icon="shuffle"
+            onPress={() => {
+              shuffleFolder(actionFolder);
+              setActionFolder(null);
+            }}
+          />
+          <AppSheetItem
+            label="Play next"
+            icon="play-skip-forward"
+            onPress={() => {
+              playFolderNext(actionFolder);
+              setActionFolder(null);
+            }}
+          />
+          <AppSheetItem
+            label="Add to queue"
+            icon="list-outline"
+            onPress={() => {
+              queueFolder(actionFolder);
+              setActionFolder(null);
+            }}
+          />
+        </AppSheet>
+      ) : null}
     </>
   );
 }
@@ -215,6 +333,17 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     fontSize: 12,
   },
+  folderButton: {
+    width: 32,
+    height: 32,
+    flexShrink: 0,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderButtonPressed: {
+    backgroundColor: colors.glassBg,
+  },
   trackRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,6 +355,9 @@ const styles = StyleSheet.create({
   },
   trackRowActive: {
     backgroundColor: colors.accentGlow,
+  },
+  rowPressed: {
+    opacity: 0.72,
   },
   trackMeta: {
     flex: 1,

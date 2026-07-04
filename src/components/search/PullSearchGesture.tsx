@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
   type MutableRefObject,
-  type ReactNode,
+  type ReactNode
 } from 'react';
 import {
   ScrollView as RNScrollView,
@@ -16,7 +16,7 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type ScrollViewProps,
+  type ScrollViewProps
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -24,11 +24,19 @@ import {
   GestureDetector,
   ScrollView as GestureScrollView,
   type GestureType,
-  type NativeViewGestureHandlerProps,
+  type NativeViewGestureHandlerProps
 } from 'react-native-gesture-handler';
-import { runOnJS, runOnUI, useSharedValue } from 'react-native-reanimated';
+import {
+  runOnJS,
+  runOnUI,
+  useSharedValue
+} from 'react-native-reanimated';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { commitHaptic, tickHaptic } from '@/lib/haptics';
 
 const OPEN_THRESHOLD = 76;
@@ -85,6 +93,14 @@ export const PullSearchScrollView = forwardRef<RNScrollView, PullSearchScrollVie
     );
   }
 );
+
+/**
+ * The pull-to-search Pan gesture ref, so overlaid gestures (e.g. the A-Z rail)
+ * can declare relations like `.blocksExternalGesture(ref)` against it.
+ */
+export function usePullSearchGestureRef(): PullSearchGestureRef | null {
+  return useContext(PullSearchGestureContext)?.gestureRef ?? null;
+}
 
 export function useScrollTopGate(initialAtTop = true) {
   const atTopRef = useRef(initialAtTop);

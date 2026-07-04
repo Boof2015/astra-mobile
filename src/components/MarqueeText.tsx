@@ -5,7 +5,7 @@ import {
   type LayoutChangeEvent,
   type StyleProp,
   type TextStyle,
-  type ViewStyle,
+  type ViewStyle
 } from 'react-native';
 import type { TextLayoutEvent } from 'react-native/Libraries/Types/CoreEventTypes';
 import Animated, {

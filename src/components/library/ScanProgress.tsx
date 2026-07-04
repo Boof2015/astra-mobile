@@ -1,4 +1,4 @@
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Text';
 import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';

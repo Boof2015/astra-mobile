@@ -12,7 +12,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.astra.mobile",
+      "package": "io.github.boof2015.astra",
       "backgroundColor": "#000000",
       "adaptiveIcon": {
         "backgroundColor": "#000000",

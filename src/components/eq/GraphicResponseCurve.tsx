@@ -1,13 +1,24 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import { Canvas, DashPathEffect, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia';
+import {
+  StyleSheet,
+  View,
+  type LayoutChangeEvent
+} from 'react-native';
+import {
+  Canvas,
+  DashPathEffect,
+  Group,
+  Path,
+  Skia,
+  type SkPath
+} from '@shopify/react-native-skia';
 import { colors } from '@/theme';
 import type { EQBand } from '@/types/audio';
 import {
   EQ_MAX_FREQUENCY,
   EQ_MAX_GAIN_DB,
   EQ_MIN_FREQUENCY,
-  computeCombinedEQMagnitude,
+  computeCombinedEQMagnitude
 } from '@/audio/eq';
 import { GRAPHIC_BANDS, buildGraphicBands } from '@/audio/graphicEq';
 import { GRAPH_SAMPLE_RATE, buildResponseFill } from './eqGraphMath';

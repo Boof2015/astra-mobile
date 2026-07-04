@@ -1,23 +1,38 @@
 import { useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { colors, radius, spacing } from '@/theme';
+import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
+import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { albumArtworkSource } from '@/library/artwork';
+import { albumArtworkSource, artworkThumbUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
+
+type AlbumRow =
+  | { kind: 'track'; track: DbTrack; index: number }
+  | { kind: 'disc'; disc: number };
+
+function DiscHeader({ disc }: { disc: number }) {
+  return (
+    <View style={styles.discHeader}>
+      <Ionicons name="disc-outline" size={16} color={colors.textSecondary} />
+      <Text variant="heading">Disc {disc}</Text>
+    </View>
+  );
+}
 
 export default function AlbumScreen() {
   const { key, from } = useLocalSearchParams<{ key: string; from?: string }>();
@@ -25,6 +40,9 @@ export default function AlbumScreen() {
   const allTracks = useLibraryStore((s) => s.tracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const handleBack = useLibraryDetailBack(from);
+  const insets = useSafeAreaInsets();
+  const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
+    useDetailCollapse();
 
   const album = albums.find((entry) => entry.identity_key === key);
   // Store tracks are ordered artist/album/disc/track, so the filtered slice
@@ -37,150 +55,121 @@ export default function AlbumScreen() {
   const totalDuration = tracks.reduce((sum, track) => sum + track.duration, 0);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
+  // Interleave "Disc N" headers only when the album spans multiple discs;
+  // untagged tracks fall back to disc 1. Track rows keep their index into the
+  // flat `tracks` array so tap-to-play stays correct.
+  const albumItems = useMemo<AlbumRow[]>(() => {
+    const maxDisc = tracks.reduce((m, track) => Math.max(m, track.disc_number ?? 1), 1);
+    if (maxDisc <= 1) {
+      return tracks.map((track, index) => ({ kind: 'track', track, index }));
+    }
+    const rows: AlbumRow[] = [];
+    let lastDisc: number | null = null;
+    tracks.forEach((track, index) => {
+      const disc = track.disc_number ?? 1;
+      if (disc !== lastDisc) {
+        rows.push({ kind: 'disc', disc });
+        lastDisc = disc;
+      }
+      rows.push({ kind: 'track', track, index });
+    });
+    return rows;
+  }, [tracks]);
+
   const playFrom = (index: number) => {
     void playTracks(tracks.map(dbTrackToTrack), index);
   };
 
+  const artSource = album ? albumArtworkSource(album) : null;
+  // Blur the cached thumbnail, not the full-res cover (remote albums have no
+  // local thumb — their server URL is already sized reasonably).
+  const backdropUri = album?.artwork_hash ? artworkThumbUri(album.artwork_hash) : artSource;
+  const meta = [
+    album?.year ? String(album.year) : null,
+    `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`,
+    formatDuration(totalDuration),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
-    <Screen>
-      <Pressable style={styles.back} onPress={handleBack} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary}>
-          Library
-        </Text>
-      </Pressable>
-
-      <View style={styles.header}>
-        <View style={styles.art}>
-          {album && albumArtworkSource(album) ? (
-            <Image
-              source={{ uri: albumArtworkSource(album)! }}
-              style={styles.artImage}
-              contentFit="cover"
-              transition={120}
-            />
-          ) : (
-            <AstraLogo size={42} />
-          )}
-        </View>
-        <View style={styles.headerMeta}>
-          <Text variant="heading" numberOfLines={2}>
-            {album?.album ?? 'Album'}
-          </Text>
-          <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-            {album?.artist ?? ''}
-          </Text>
-          <Text variant="label">
-            {[
-              album?.year ? String(album.year) : null,
-              `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`,
-              formatDuration(totalDuration),
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
-          <View style={styles.buttons}>
-            <Pressable style={styles.playButton} onPress={() => playFrom(0)} accessibilityRole="button">
-              <Ionicons name="play" size={16} color={colors.bgPrimary} />
-              <Text variant="body" style={styles.playLabel}>
-                Play
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.shuffleButton}
-              onPress={() => void shuffleTracks(tracks.map(dbTrackToTrack))}
-              accessibilityRole="button"
-            >
-              <Ionicons name="shuffle" size={16} color={colors.accent} />
-              <Text variant="body" color={colors.accent}>
-                Shuffle
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-
+    <Screen padded={false} style={styles.screen}>
       <FlashList
-        data={tracks}
-        keyExtractor={(track) => String(track.id)}
+        data={albumItems}
+        keyExtractor={(item) => (item.kind === 'disc' ? `disc-${item.disc}` : String(item.track.id))}
+        getItemType={(item) => item.kind}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item, index }) => (
-          <TrackRow
-            track={item}
-            showArtist={false}
-            active={item.path === currentPath}
-            onPress={() => playFrom(index)}
-            onLongPress={() => setActionTrack(item)}
-            onOpenActions={() => setActionTrack(item)}
-          />
-        )}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={{
+          paddingTop: insets.top + expandedHeight,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: spacing.xxl,
+        }}
+        renderItem={({ item }) =>
+          item.kind === 'disc' ? (
+            <DiscHeader disc={item.disc} />
+          ) : (
+            <TrackRow
+              track={item.track}
+              showArtist={false}
+              active={item.track.path === currentPath}
+              onPress={() => playFrom(item.index)}
+              onLongPress={() => setActionTrack(item.track)}
+              onOpenActions={() => setActionTrack(item.track)}
+            />
+          )
+        }
       />
-
+      <CollapsingHeader
+        artwork={
+          artSource ? (
+            <Image source={{ uri: artSource }} style={styles.artFill} contentFit="cover" transition={150} />
+          ) : (
+            <AstraLogo size={56} />
+          )
+        }
+        backdropUri={backdropUri}
+        title={album?.album ?? 'Album'}
+        heroMeta={
+          <>
+            {album?.artist ? (
+              <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
+                {album.artist}
+              </Text>
+            ) : null}
+            <Text variant="label">{meta}</Text>
+          </>
+        }
+        disabled={tracks.length === 0}
+        onBack={handleBack}
+        onPlay={() => playFrom(0)}
+        onShuffle={() => void shuffleTracks(tracks.map(dbTrackToTrack))}
+        scrollY={scrollY}
+        heroFaded={heroFaded}
+        collapsed={collapsed}
+        expandedHeight={expandedHeight}
+        onHeroBlockLayout={onHeroBlockLayout}
+      />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    alignSelf: 'flex-start',
+  // The backdrop runs behind the status bar; content pads itself instead.
+  screen: {
+    paddingTop: 0,
   },
-  header: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  art: {
-    width: 128,
-    height: 128,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  artImage: {
+  artFill: {
     width: '100%',
     height: '100%',
   },
-  headerMeta: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  buttons: {
+  discHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  playButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  shuffleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  playLabel: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
   },
 });

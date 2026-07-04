@@ -8,13 +8,17 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  View,
+  View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import type { LastFmScrobbleProtocol } from '@/types/lastFm';
 

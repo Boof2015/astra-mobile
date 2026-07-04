@@ -3,7 +3,7 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
-  type LayoutChangeEvent,
+  type LayoutChangeEvent
 } from 'react-native';
 import { colors, radius } from '@/theme';
 

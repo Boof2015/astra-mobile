@@ -1,10 +1,21 @@
 import { useEffect } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { requestLastFmFlush } from '@/services/lastfm';
 import type { LastFmProfileStatus } from '@/types/lastFm';

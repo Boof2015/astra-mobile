@@ -1,6 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
-import { Canvas, Group, Path, Skia, rect } from '@shopify/react-native-skia';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
+import {
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent
+} from 'react-native';
+import {
+  Canvas,
+  Group,
+  Path,
+  Skia,
+  rect
+} from '@shopify/react-native-skia';
 import { Text } from './Text';
 import { colors, spacing } from '@/theme';
 import { formatDuration } from '@/lib/format';

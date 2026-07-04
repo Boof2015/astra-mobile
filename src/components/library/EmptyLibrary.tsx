@@ -1,8 +1,16 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Pressable
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 
 export function EmptyLibrary() {
   const router = useRouter();

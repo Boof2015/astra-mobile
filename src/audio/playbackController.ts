@@ -281,6 +281,36 @@ export async function enqueueEnd(track: Track): Promise<void> {
   if (originalOrder) originalOrder.push(track.id);
 }
 
+/** Insert tracks after the current one in the given order (batch "Play next"). */
+export async function enqueueTopMany(tracks: Track[]): Promise<void> {
+  if (tracks.length === 0) return;
+  await ensurePlayerReady();
+  await queueLoadSettled();
+  const activeIndex = await TrackPlayer.getActiveTrackIndex();
+  const activeTrack = await TrackPlayer.getActiveTrack();
+  const insertBefore = activeIndex === undefined ? undefined : activeIndex + 1;
+  await TrackPlayer.add(tracks.map(toRntpTrack), insertBefore);
+  // One settle-gated native read keeps the mirror consistent for any batch size.
+  await useQueueStore.getState().refreshFromNative();
+  if (originalOrder) {
+    const currentId = activeTrack ? rntpTrackId(activeTrack) : null;
+    const pos = currentId ? originalOrder.indexOf(currentId) : -1;
+    const ids = tracks.map((track) => track.id);
+    if (pos >= 0) originalOrder.splice(pos + 1, 0, ...ids);
+    else originalOrder.unshift(...ids);
+  }
+}
+
+/** Append tracks to the end of the queue in the given order (batch "Add to queue"). */
+export async function enqueueEndMany(tracks: Track[]): Promise<void> {
+  if (tracks.length === 0) return;
+  await ensurePlayerReady();
+  await queueLoadSettled();
+  await TrackPlayer.add(tracks.map(toRntpTrack));
+  await useQueueStore.getState().refreshFromNative();
+  if (originalOrder) originalOrder.push(...tracks.map((track) => track.id));
+}
+
 // ── Queue-tray operations ────────────────────────────────────────────────────
 // The tray works in absolute RNTP queue indices. Single-item reorders use
 // RNTP's native move; group operations rebuild the upcoming tail so the current

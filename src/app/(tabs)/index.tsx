@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -14,9 +20,14 @@ import { ScanProgress } from '@/components/library/ScanProgress';
 import {
   PullSearchGesture,
   PullSearchScrollView,
-  useScrollTopGate,
+  useScrollTopGate
 } from '@/components/search/PullSearchGesture';
-import { colors, fonts, radius, spacing } from '@/theme';
+import {
+  colors,
+  fonts,
+  radius,
+  spacing
+} from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -26,7 +37,7 @@ import {
   shuffleTracks,
   skipToNext,
   skipToPrevious,
-  togglePlay,
+  togglePlay
 } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { albumArtworkSource } from '@/library/artwork';

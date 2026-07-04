@@ -1,7 +1,16 @@
 import { useRef, useState } from 'react';
-import { View, StyleSheet, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent
+} from 'react-native';
 import { Text } from './Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { formatDuration } from '@/lib/format';
 
 const THUMB_SIZE = 12;

@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react';
-import { View, Pressable, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  type LayoutChangeEvent
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated';
 import { MiniPlayer } from './MiniPlayer';
-import { colors, fonts, layout, spacing } from '@/theme';
+import {
+  colors,
+  fonts,
+  layout,
+  spacing
+} from '@/theme';
 import { motion } from '@/theme/motion';
 
 type IconName = keyof typeof Ionicons.glyphMap;

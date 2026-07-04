@@ -1,22 +1,42 @@
-import { useMemo, useState, type ComponentProps } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  useMemo,
+  useState,
+  type ComponentProps
+} from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { colors, fontSize, radius, spacing } from '@/theme';
+import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
+import {
+  colors,
+  fontSize,
+  radius,
+  spacing
+} from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { artworkUri } from '@/library/artwork';
-import { buildArtistDetail, type ArtistAlbum, type ArtistDetail } from '@/library/artistDetail';
+import { artworkThumbUri, artworkUri } from '@/library/artwork';
+import {
+  buildArtistDetail,
+  type ArtistAlbum,
+  type ArtistDetail
+} from '@/library/artistDetail';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 
@@ -28,7 +48,6 @@ const ALBUM_PREVIEW_LIMIT = 8;
 const APPEARANCE_PREVIEW_LIMIT = 5;
 
 type ArtistPageItem =
-  | { key: 'hero'; type: 'hero' }
   | {
       key: string;
       type: 'section';
@@ -44,7 +63,9 @@ export default function ArtistScreen() {
   const router = useRouter();
   const { name = 'Artist', from } = useLocalSearchParams<{ name: string; from?: string }>();
   const handleBack = useLibraryDetailBack(from);
-  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
+    useDetailCollapse();
   const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -77,16 +98,6 @@ export default function ArtistScreen() {
 
   const renderItem = ({ item }: { item: ArtistPageItem }) => {
     switch (item.type) {
-      case 'hero':
-        return (
-          <ArtistHero
-            artistName={name}
-            detail={detail}
-            compact={width < 380}
-            onPlay={playArtist}
-            onShuffle={shuffleArtist}
-          />
-        );
       case 'section': {
         const target = item.target;
         return (
@@ -135,30 +146,56 @@ export default function ArtistScreen() {
     }
   };
 
-  return (
-    <Screen>
-      <Pressable style={styles.back} onPress={handleBack} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary}>
-          Library
-        </Text>
-      </Pressable>
+  const backdropHash = detail.artworkHashes[0] ?? null;
+  const disabled = detail.playbackTracks.length === 0;
 
+  return (
+    <Screen padded={false} style={styles.screen}>
       <FlashList
         data={listItems}
         keyExtractor={(item) => item.key}
         showsVerticalScrollIndicator={false}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={{
+          paddingTop: insets.top + expandedHeight,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: spacing.xxl,
+        }}
       />
-
+      <CollapsingHeader
+        artwork={artistArtwork(detail.artworkHashes)}
+        backdropUri={backdropHash ? artworkThumbUri(backdropHash) : null}
+        title={name}
+        heroMeta={
+          <View style={styles.stats}>
+            {detail.albums.length > 0 ? (
+              <StatChip icon="albums-outline" label={formatCount(detail.albums.length, 'album')} />
+            ) : null}
+            <StatChip icon="musical-notes-outline" label={formatCount(detail.tracks.length, 'track')} />
+            {detail.totalDuration > 0 ? (
+              <StatChip icon="time-outline" label={formatRuntime(detail.totalDuration)} />
+            ) : null}
+          </View>
+        }
+        disabled={disabled}
+        onBack={handleBack}
+        onPlay={playArtist}
+        onShuffle={shuffleArtist}
+        scrollY={scrollY}
+        heroFaded={heroFaded}
+        collapsed={collapsed}
+        expandedHeight={expandedHeight}
+        onHeroBlockLayout={onHeroBlockLayout}
+      />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }
 
 function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
-  const items: ArtistPageItem[] = [{ key: 'hero', type: 'hero' }];
+  const items: ArtistPageItem[] = [];
 
   if (detail.tracks.length === 0) {
     items.push({ key: 'empty', type: 'empty' });
@@ -209,83 +246,18 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
   return items;
 }
 
-function ArtistHero({
-  artistName,
-  detail,
-  compact,
-  onPlay,
-  onShuffle,
-}: {
-  artistName: string;
-  detail: ArtistDetail;
-  compact: boolean;
-  onPlay: () => void;
-  onShuffle: () => void;
-}) {
-  const disabled = detail.playbackTracks.length === 0;
-
-  return (
-    <View style={styles.hero}>
-      <ArtistArtwork hashes={detail.artworkHashes} compact={compact} />
-      <View style={styles.heroMeta}>
-        <Text
-          variant="title"
-          numberOfLines={3}
-          adjustsFontSizeToFit
-          minimumFontScale={0.78}
-          style={styles.artistName}
-        >
-          {artistName}
-        </Text>
-        <View style={styles.stats}>
-          {detail.albums.length > 0 ? (
-            <StatChip icon="albums-outline" label={formatCount(detail.albums.length, 'album')} />
-          ) : null}
-          <StatChip icon="musical-notes-outline" label={formatCount(detail.tracks.length, 'track')} />
-          {detail.totalDuration > 0 ? (
-            <StatChip icon="time-outline" label={formatRuntime(detail.totalDuration)} />
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.actionRow}>
-        <Pressable
-          style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
-          onPress={onPlay}
-          disabled={disabled}
-          accessibilityRole="button"
-        >
-          <Ionicons name="play" size={17} color={colors.bgPrimary} />
-          <Text variant="body" style={styles.primaryActionText}>
-            Play
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
-          onPress={onShuffle}
-          disabled={disabled}
-          accessibilityRole="button"
-        >
-          <Ionicons name="shuffle" size={17} color={colors.accent} />
-          <Text variant="body" color={colors.accent} style={styles.secondaryActionText}>
-            Shuffle
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function ArtistArtwork({ hashes, compact }: { hashes: string[]; compact: boolean }) {
+/** Inner artwork for the collapsing header: 2x2 album mosaic, single cover, or fallback. */
+function artistArtwork(hashes: string[]) {
   const useMosaic = hashes.length >= 4;
-  const displayHashes = useMosaic ? hashes.slice(0, 4) : hashes.slice(0, 1);
+  const display = useMosaic ? hashes.slice(0, 4) : hashes.slice(0, 1);
 
-  return (
-    <View style={[styles.heroArt, compact && styles.heroArtCompact]}>
-      {displayHashes.length === 0 ? (
-        <Ionicons name="person" size={compact ? 42 : 52} color={colors.textTertiary} />
-      ) : useMosaic ? (
-        displayHashes.map((hash) => (
+  if (display.length === 0) {
+    return <Ionicons name="person" size={60} color={colors.textTertiary} />;
+  }
+  if (useMosaic) {
+    return (
+      <View style={styles.mosaic}>
+        {display.map((hash) => (
           <Image
             key={hash}
             source={{ uri: artworkUri(hash) }}
@@ -293,16 +265,12 @@ function ArtistArtwork({ hashes, compact }: { hashes: string[]; compact: boolean
             contentFit="cover"
             transition={120}
           />
-        ))
-      ) : (
-        <Image
-          source={{ uri: artworkUri(displayHashes[0]) }}
-          style={styles.heroArtImage}
-          contentFit="cover"
-          transition={120}
-        />
-      )}
-    </View>
+        ))}
+      </View>
+    );
+  }
+  return (
+    <Image source={{ uri: artworkUri(display[0]) }} style={styles.artFill} contentFit="cover" transition={120} />
   );
 }
 
@@ -413,57 +381,23 @@ function trackSubtitle(track: DbTrack, section: 'appearances' | 'songs'): string
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    alignSelf: 'flex-start',
+  // The backdrop runs behind the status bar; content pads itself instead.
+  screen: {
+    paddingTop: 0,
   },
-  listContent: {
-    paddingBottom: spacing.xxl,
-  },
-  hero: {
-    alignItems: 'center',
-    gap: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  heroArt: {
-    width: 168,
-    height: 168,
-    borderRadius: radius.lg,
-    backgroundColor: colors.bgTertiary,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  heroArtCompact: {
-    width: 144,
-    height: 144,
-  },
-  heroArtImage: {
+  mosaic: {
     width: '100%',
     height: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   mosaicTile: {
     width: '50%',
     height: '50%',
   },
-  heroMeta: {
+  artFill: {
     width: '100%',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  artistName: {
-    maxWidth: '100%',
-    textAlign: 'center',
-    lineHeight: fontSize.xxl * 1.08,
+    height: '100%',
   },
   stats: {
     flexDirection: 'row',
@@ -486,39 +420,6 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     maxWidth: 180,
-  },
-  actionRow: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  actionButton: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-  },
-  primaryAction: {
-    backgroundColor: colors.accent,
-  },
-  secondaryAction: {
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.glassBg,
-  },
-  disabledAction: {
-    opacity: 0.45,
-  },
-  primaryActionText: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
-  },
-  secondaryActionText: {
-    fontWeight: '600',
   },
   sectionHeader: {
     minHeight: 36,

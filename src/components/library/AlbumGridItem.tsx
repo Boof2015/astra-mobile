@@ -1,8 +1,16 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
@@ -16,7 +24,8 @@ export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () =>
             source={{ uri: artUri }}
             style={styles.artImage}
             contentFit="cover"
-            transition={120}
+            recyclingKey={album.identity_key}
+            transition={null}
           />
         ) : (
           <AstraLogo size={36} />

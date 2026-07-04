@@ -1,12 +1,20 @@
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  type LayoutChangeEvent
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
+import {
+  Gesture,
+  GestureDetector,
+  type GestureType
+} from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated';
 import { colors } from '@/theme';
 import { motion } from '@/theme/motion';

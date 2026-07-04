@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +13,7 @@ import {
   StyleSheet,
   TextInput,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +24,11 @@ import { MarqueeText } from '@/components/MarqueeText';
 import { Screen } from '@/components/Screen';
 import { SeekBar } from '@/components/SeekBar';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteDiscoveredDesktop } from '@/types/desktopRemote';
 

@@ -1,7 +1,19 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View
+} from 'react-native';
 import { Text } from '@/components/Text';
-import { colors, fonts, fontSize, radius, spacing } from '@/theme';
+import {
+  colors,
+  fonts,
+  fontSize,
+  radius,
+  spacing
+} from '@/theme';
 
 interface TextPromptModalProps {
   visible: boolean;

@@ -3,7 +3,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { colors, spacing } from '@/theme';
 import type { EQPreset } from '@/types/audio';
-import { EqSheet, EqSheetItem, EqSheetSection } from './EqSheet';
+import {
+  EqSheet,
+  EqSheetItem,
+  EqSheetSection
+} from './EqSheet';
 
 interface PresetSheetProps {
   presets: EQPreset[];

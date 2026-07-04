@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef
+} from 'react';
 import {
   PaintStyle,
   Skia,
@@ -6,7 +10,7 @@ import {
   StrokeCap,
   StrokeJoin,
   TileMode,
-  type SkPicture,
+  type SkPicture
 } from '@shopify/react-native-skia';
 import { AstraScope, SPECTRUM_BINS } from '../../modules/astra-scope';
 import { colors } from '@/theme';

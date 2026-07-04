@@ -5,17 +5,25 @@ import {
   StyleSheet,
   Alert,
   type NativeScrollEvent,
-  type NativeSyntheticEvent,
+  type NativeSyntheticEvent
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
-import { ActionSheet } from '@/components/sheets/ActionSheet';
+import {
+  AppSheet,
+  AppSheetItem,
+  AppSheetTitle
+} from '@/components/sheets/AppSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
 
@@ -164,6 +172,14 @@ export function PlaylistsView({
             onLongPress={() => setMenuFor(item)}
           />
         )}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="musical-notes-outline" size={28} color={colors.textTertiary} />
+            <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
+              No playlists yet. Create one or import an M3U below.
+            </Text>
+          </View>
+        }
         ListFooterComponent={
           <View style={styles.actions}>
             <Pressable
@@ -190,12 +206,14 @@ export function PlaylistsView({
         }
       />
 
-      <ActionSheet
-        visible={menuFor !== null}
-        title={menuFor === 'favorites' ? 'Favorites' : (menuFor?.name ?? '')}
-        items={menuItems}
-        onClose={() => setMenuFor(null)}
-      />
+      {menuFor !== null ? (
+        <AppSheet onClose={() => setMenuFor(null)}>
+          <AppSheetTitle title={menuFor === 'favorites' ? 'Favorites' : menuFor.name} />
+          {menuItems.map(({ key, ...item }) => (
+            <AppSheetItem key={key} {...item} />
+          ))}
+        </AppSheet>
+      ) : null}
       <TextPromptModal
         visible={prompt !== null}
         title={prompt?.kind === 'rename' ? 'Rename playlist' : 'New playlist'}
@@ -224,6 +242,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     marginTop: spacing.lg,
+  },
+  empty: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
+  emptyText: {
+    textAlign: 'center',
+    maxWidth: 260,
   },
   action: {
     flexDirection: 'row',

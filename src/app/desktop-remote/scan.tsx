@@ -1,11 +1,24 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View
+} from 'react-native';
+import {
+  CameraView,
+  useCameraPermissions,
+  type BarcodeScanningResult
+} from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 
 export default function DesktopRemoteScanScreen() {

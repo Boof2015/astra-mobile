@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { View, Pressable, StyleSheet, type GestureResponderEvent } from 'react-native';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  type GestureResponderEvent
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
@@ -7,7 +12,11 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { SwipeableRow } from '@/components/SwipeableRow';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import { formatDuration } from '@/lib/format';
 import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -16,6 +25,7 @@ import type { DbTrack } from '@/types/library';
 
 const ART_SIZE = 44;
 const ROW_MIN_HEIGHT = ART_SIZE + (spacing.sm + 2) * 2;
+const ACTIONS_BUTTON = 34;
 
 export function TrackRow({
   track,
@@ -26,6 +36,9 @@ export function TrackRow({
   subtitle,
   active = false,
   swipeToQueue = true,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   track: DbTrack;
   onPress: () => void;
@@ -40,6 +53,10 @@ export function TrackRow({
   active?: boolean;
   /** Swipe right → play next, swipe left → add to queue. Off in queue-like lists. */
   swipeToQueue?: boolean;
+  /** Multi-select: press toggles selection, checkbox leads, swipes/actions off. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   // Key the artwork by hash (local) or identity path (remote) so the error fallback
   // and FlashList recycling work for both.
@@ -55,11 +72,20 @@ export function TrackRow({
 
   const row = (
     <Pressable
-      style={styles.row}
-      onPress={onPress}
-      onLongPress={onLongPress ?? onOpenActions}
+      style={[styles.row, selectionMode && selected && styles.rowSelected]}
+      onPress={selectionMode ? onToggleSelect : onPress}
+      onLongPress={selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions)}
       accessibilityRole="button"
+      accessibilityState={selectionMode ? { selected } : undefined}
     >
+      {selectionMode ? (
+        <Ionicons
+          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+          size={22}
+          color={selected ? colors.accent : colors.textTertiary}
+          style={styles.checkbox}
+        />
+      ) : null}
       <View style={styles.art}>
         {thumbUri ? (
           <Image
@@ -99,6 +125,7 @@ export function TrackRow({
         <View style={styles.badges}>
           <RemoteSourceBadge sourceType={track.source_type} />
           <FormatBadges
+            variant="plain"
             track={{
               format: track.format,
               bitDepth: track.bit_depth ?? undefined,
@@ -108,11 +135,11 @@ export function TrackRow({
         </View>
       </View>
 
-      <Text variant="mono" style={styles.duration}>
+      <Text variant="mono" style={[styles.duration, selectionMode && styles.durationSelection]}>
         {formatDuration(track.duration)}
       </Text>
 
-      {onOpenActions ? (
+      {onOpenActions && !selectionMode ? (
         <Pressable
           style={({ pressed }) => [styles.actionsButton, pressed && styles.actionsButtonPressed]}
           onPress={openActions}
@@ -126,7 +153,7 @@ export function TrackRow({
     </Pressable>
   );
 
-  if (!swipeToQueue) return row;
+  if (!swipeToQueue || selectionMode) return row;
 
   return (
     <SwipeableRow
@@ -159,6 +186,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  rowSelected: {
+    backgroundColor: colors.glassHighlight,
+  },
+  checkbox: {
+    flexShrink: 0,
+  },
   art: {
     width: ART_SIZE,
     height: ART_SIZE,
@@ -176,8 +209,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   trackNumber: {
-    width: 24,
+    width: 20,
     flexShrink: 0,
+    // The row's uniform gap plus a right-aligned box leaves the number floating
+    // too far off the artwork; pull it back in toward the cover.
+    marginLeft: -spacing.sm,
     fontSize: 12,
     color: colors.textTertiary,
     textAlign: 'right',
@@ -206,8 +242,13 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: 'right',
   },
+  // Selection mode drops the actions button; reserve its footprint so the
+  // duration holds its position instead of sliding to the row edge.
+  durationSelection: {
+    marginRight: ACTIONS_BUTTON + spacing.md,
+  },
   actionsButton: {
-    width: 34,
+    width: ACTIONS_BUTTON,
     height: 34,
     flexShrink: 0,
     borderRadius: radius.pill,

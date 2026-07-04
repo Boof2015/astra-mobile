@@ -1,6 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import type { EQMode } from '@/types/audio';
 
 const MODES: { key: EQMode; label: string }[] = [
@@ -8,7 +6,7 @@ const MODES: { key: EQMode; label: string }[] = [
   { key: 'graphic', label: 'Graphic' },
 ];
 
-/** Two-segment Parametric | Graphic control (ViewModeSwitcher styling, fixed row). */
+/** Two-segment Parametric | Graphic control (shared SegmentedControl). */
 export function EQModeSwitcher({
   value,
   onChange,
@@ -17,51 +15,12 @@ export function EQModeSwitcher({
   onChange: (mode: EQMode) => void;
 }) {
   return (
-    <View style={styles.row}>
-      {MODES.map((mode) => {
-        const active = mode.key === value;
-        return (
-          <Pressable
-            key={mode.key}
-            onPress={() => onChange(mode.key)}
-            style={[styles.pill, active && styles.pillActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-          >
-            <Text variant="label" style={[styles.label, active && styles.labelActive]}>
-              {mode.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <SegmentedControl
+      segments={MODES}
+      value={value}
+      onChange={(key) => onChange(key as EQMode)}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  pill: {
-    flex: 1,
-    alignItems: 'center',
-    backgroundColor: colors.glassBg,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.xs + 2,
-  },
-  pillActive: {
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-  },
-  label: {
-    color: colors.textSecondary,
-  },
-  labelActive: {
-    color: colors.accent,
-  },
-});
 
 export default EQModeSwitcher;

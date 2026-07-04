@@ -1,11 +1,31 @@
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Switch,
+  View
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import {
+  colors,
+  radius,
+  spacing
+} from '@/theme';
 import type { EQBand } from '@/types/audio';
-import { EQ_MAX_FREQUENCY, EQ_MAX_GAIN_DB, EQ_MAX_Q, EQ_MIN_FREQUENCY, EQ_MIN_Q, isPassEQBandType } from '@/audio/eq';
+import {
+  EQ_MAX_FREQUENCY,
+  EQ_MAX_GAIN_DB,
+  EQ_MAX_Q,
+  EQ_MIN_FREQUENCY,
+  EQ_MIN_Q,
+  isPassEQBandType
+} from '@/audio/eq';
 import { EQSlider } from './EQSlider';
-import { BAND_TYPE_LABEL, formatFreq, formatGain } from './format';
+import {
+  BAND_TYPE_LABEL,
+  formatFreq,
+  formatGain
+} from './format';
 
 interface BandDetailPanelProps {
   band: EQBand | null;

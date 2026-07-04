@@ -1,8 +1,17 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  View
+} from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
-import { colors, fonts, radius, spacing } from '@/theme';
+import {
+  colors,
+  fonts,
+  radius,
+  spacing
+} from '@/theme';
 import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {

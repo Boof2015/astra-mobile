@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
-import { Text as RNText, type TextProps as RNTextProps, StyleSheet } from 'react-native';
-import { colors, fonts, fontSize } from '@/theme';
+import {
+  StyleSheet,
+  Text as RNText,
+  type TextProps as RNTextProps
+} from 'react-native';
+import {
+  colors,
+  fonts,
+  fontSize
+} from '@/theme';
 
 type Variant = 'title' | 'heading' | 'body' | 'label' | 'caption' | 'mono';
 

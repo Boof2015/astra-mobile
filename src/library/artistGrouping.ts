@@ -18,7 +18,7 @@ const UNKNOWN_ARTIST = 'Unknown Artist';
 /** Track fields the grouping logic reads (subset of DbTrack, for testability). */
 type ArtistTrackLike = Pick<
   DbTrack,
-  'artist' | 'album_artist' | 'artwork_hash' | 'year' | 'added_at' | 'modified_at'
+  'artist' | 'album_artist' | 'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
 >;
 
 export function normalizeDisplay(value: string): string {
@@ -136,6 +136,9 @@ interface ArtistAggregate {
   artworkYear: number;
   artworkAddedAt: number;
   artworkModifiedAt: number;
+  albumKeys: Set<string>;
+  /** First artwork hash seen per album — feeds the grid's 2x2 mosaic. */
+  albumArtwork: Map<string, string>;
 }
 
 /**
@@ -166,12 +169,18 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
           artworkYear: -1,
           artworkAddedAt: -1,
           artworkModifiedAt: -1,
+          albumKeys: new Set(),
+          albumArtwork: new Map(),
         };
         byKey.set(key, aggregate);
       }
       aggregate.track_count += 1;
+      aggregate.albumKeys.add(track.album_identity_key);
 
       if (!track.artwork_hash) continue;
+      if (!aggregate.albumArtwork.has(track.album_identity_key)) {
+        aggregate.albumArtwork.set(track.album_identity_key, track.artwork_hash);
+      }
       const candidateYear = track.year ?? -1;
       const better =
         aggregate.artwork_hash == null ||
@@ -188,7 +197,15 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
   }
 
   return Array.from(byKey.values())
-    .map(({ artist, track_count, artwork_hash }) => ({ artist, track_count, artwork_hash }))
+    .map(({ artist, track_count, artwork_hash, albumKeys, albumArtwork }) => {
+      // Primary artwork first, then one distinct cover per further album (max 4).
+      const artwork_hashes: string[] = artwork_hash ? [artwork_hash] : [];
+      for (const hash of albumArtwork.values()) {
+        if (artwork_hashes.length >= 4) break;
+        if (!artwork_hashes.includes(hash)) artwork_hashes.push(hash);
+      }
+      return { artist, track_count, artwork_hash, album_count: albumKeys.size, artwork_hashes };
+    })
     .sort((a, b) => a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }));
 }
 
