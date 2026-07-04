@@ -202,17 +202,6 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
     return items;
   }
 
-  items.push({
-    key: 'section-songs',
-    type: 'section',
-    title: 'Songs',
-    trailing: formatCount(detail.songTracks.length, 'track'),
-    target: 'songs',
-  });
-  detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
-    items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
-  });
-
   if (detail.albums.length > 0) {
     items.push({
       key: 'section-albums',
@@ -223,6 +212,17 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
     });
     items.push({ key: 'albums', type: 'albums' });
   }
+
+  items.push({
+    key: 'section-songs',
+    type: 'section',
+    title: 'Songs',
+    trailing: formatCount(detail.songTracks.length, 'track'),
+    target: 'songs',
+  });
+  detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
+    items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
+  });
 
   if (detail.showAppearances) {
     items.push({
