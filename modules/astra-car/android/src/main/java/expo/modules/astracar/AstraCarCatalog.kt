@@ -12,6 +12,7 @@ import android.support.v4.media.MediaMetadataCompat
 import android.util.Log
 import java.io.File
 import java.util.Locale
+import org.json.JSONObject
 
 private const val TAG = "AstraCarCatalog"
 
@@ -242,12 +243,15 @@ class AstraCarCatalog(private val context: Context) {
     )
 
   private fun getPlaylistTracks(db: SQLiteDatabase, playlistId: Long): List<TrackRow> =
-    queryTracks(
-      db,
-      "SELECT $TRACK_COLUMNS FROM playlist_tracks pt JOIN tracks t ON t.path = pt.track_path " +
-        "WHERE pt.playlist_id = ? ORDER BY pt.position, pt.id",
-      arrayOf(playlistId.toString()),
-    )
+    getPlaylistRuleRow(db, playlistId)?.let { row ->
+      if (row.kind == "dynamic") getDynamicPlaylistTracks(db, row.dynamicRulesJson)
+      else queryTracks(
+        db,
+        "SELECT $TRACK_COLUMNS FROM playlist_tracks pt JOIN tracks t ON t.path = pt.track_path " +
+          "WHERE pt.playlist_id = ? ORDER BY pt.position, pt.id",
+        arrayOf(playlistId.toString()),
+      )
+    } ?: emptyList()
 
   private fun getAlbumTracks(db: SQLiteDatabase, identityKey: String): List<TrackRow> =
     queryTracks(
@@ -304,10 +308,29 @@ class AstraCarCatalog(private val context: Context) {
       }
     }
 
-  private fun getPlaylists(db: SQLiteDatabase): List<PlaylistRow> =
-    db.rawQuery(
+  private fun getPlaylistRuleRow(db: SQLiteDatabase, playlistId: Long): PlaylistRuleRow? {
+    if (!hasColumn(db, "playlists", "kind")) return PlaylistRuleRow("normal", null)
+    return db.rawQuery(
+      "SELECT kind, dynamic_rules_json FROM playlists WHERE id = ? LIMIT 1",
+      arrayOf(playlistId.toString()),
+    ).use { cursor ->
+      if (!cursor.moveToFirst()) return@use null
+      PlaylistRuleRow(
+        kind = if (cursor.string("kind") == "dynamic") "dynamic" else "normal",
+        dynamicRulesJson = cursor.nullableString("dynamic_rules_json"),
+      )
+    }
+  }
+
+  private fun getPlaylists(db: SQLiteDatabase): List<PlaylistRow> {
+    val supportsDynamic = hasColumn(db, "playlists", "kind") && hasColumn(db, "playlists", "dynamic_rules_json")
+    val kindColumns =
+      if (supportsDynamic) "p.kind, p.dynamic_rules_json,"
+      else "'normal' AS kind, NULL AS dynamic_rules_json,"
+
+    return db.rawQuery(
       """
-      SELECT p.id, p.name,
+      SELECT p.id, p.name, $kindColumns
              (SELECT t.artwork_hash
                 FROM playlist_tracks pt JOIN tracks t ON t.path = pt.track_path
                WHERE pt.playlist_id = p.id AND t.artwork_hash IS NOT NULL
@@ -330,19 +353,225 @@ class AstraCarCatalog(private val context: Context) {
     ).use { cursor ->
       buildList {
         while (cursor.moveToNext()) {
+          val kind = if (cursor.string("kind") == "dynamic") "dynamic" else "normal"
+          val rulesJson = cursor.nullableString("dynamic_rules_json")
+          val dynamicTracks = if (kind == "dynamic") getDynamicPlaylistTracks(db, rulesJson) else null
+          val firstDynamicCover = dynamicTracks?.firstOrNull {
+            it.artworkHash != null || (it.sourceId != null && !it.artworkSourceId.isNullOrBlank())
+          }
           add(
             PlaylistRow(
               id = cursor.long("id"),
               name = cursor.string("name"),
-              artworkHash = cursor.nullableString("artwork_hash"),
-              sourceId = cursor.nullableLong("source_id"),
-              artworkSourceId = cursor.nullableString("artwork_source_id"),
-              trackCount = cursor.long("track_count"),
+              kind = kind,
+              artworkHash = firstDynamicCover?.artworkHash ?: cursor.nullableString("artwork_hash"),
+              sourceId = firstDynamicCover?.sourceId ?: cursor.nullableLong("source_id"),
+              artworkSourceId = firstDynamicCover?.artworkSourceId ?: cursor.nullableString("artwork_source_id"),
+              trackCount = dynamicTracks?.size?.toLong() ?: cursor.long("track_count"),
             ),
           )
         }
       }
     }
+  }
+
+  private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
+    db.rawQuery("PRAGMA table_info($table)", emptyArray()).use { cursor ->
+      while (cursor.moveToNext()) {
+        if (cursor.string("name") == column) return@use true
+      }
+      false
+    }
+
+  private fun getDynamicPlaylistTracks(db: SQLiteDatabase, rawRules: String?): List<TrackRow> {
+    val rules = parseDynamicRules(rawRules)
+    val conditions = rules.optJSONArray("conditions")
+    val joins = StringBuilder()
+    val where = mutableListOf<String>()
+    val args = mutableListOf<String>()
+    var needsFavoriteJoin = false
+
+    if (conditions != null) {
+      for (i in 0 until conditions.length()) {
+        val condition = conditions.optJSONObject(i) ?: continue
+        if (condition.optString("kind") == "exact" && condition.optString("field") == "favorite") {
+          needsFavoriteJoin = true
+        }
+      }
+      if (needsFavoriteJoin) joins.append("LEFT JOIN favorites f ON f.track_path = t.path")
+
+      for (i in 0 until conditions.length()) {
+        appendDynamicCondition(conditions.optJSONObject(i) ?: continue, where, args)
+      }
+    }
+
+    val sort = rules.optJSONObject("sort")
+    val orderBy = dynamicOrderBy(
+      field = sort?.optString("field") ?: "title",
+      direction = sort?.optString("direction") ?: "asc",
+    )
+    val limit = rules.opt("limit").let { value ->
+      when (value) {
+        is Number -> value.toInt().coerceIn(1, 5000)
+        else -> null
+      }
+    }
+    val limitSql = limit?.let { " LIMIT $it" }.orEmpty()
+    val whereSql = if (where.isEmpty()) "1 = 1" else where.joinToString("\n      AND ")
+
+    return queryTracks(
+      db,
+      "SELECT $TRACK_COLUMNS FROM tracks t $joins WHERE $whereSql ORDER BY $orderBy$limitSql",
+      args.toTypedArray(),
+    )
+  }
+
+  private fun parseDynamicRules(rawRules: String?): JSONObject {
+    if (rawRules.isNullOrBlank()) return JSONObject("""{"version":1,"conditions":[],"sort":{"field":"title","direction":"asc"},"limit":null}""")
+    return try {
+      JSONObject(rawRules)
+    } catch (_: Throwable) {
+      JSONObject("""{"version":1,"conditions":[],"sort":{"field":"title","direction":"asc"},"limit":null}""")
+    }
+  }
+
+  private fun appendDynamicCondition(
+    condition: JSONObject,
+    where: MutableList<String>,
+    args: MutableList<String>,
+  ) {
+    when (condition.optString("kind")) {
+      "text" -> appendDynamicTextCondition(condition, where, args)
+      "exact" -> appendDynamicExactCondition(condition, where, args)
+      "numeric" -> appendDynamicNumericCondition(condition, where, args)
+      "date" -> appendDynamicDateCondition(condition, where, args)
+    }
+  }
+
+  private fun appendDynamicTextCondition(
+    condition: JSONObject,
+    where: MutableList<String>,
+    args: MutableList<String>,
+  ) {
+    val expression = when (condition.optString("field")) {
+      "title" -> "t.title"
+      "artist" -> "t.artist"
+      "album" -> "t.album"
+      "album_artist" -> "t.album_artist"
+      "genre" -> "t.genre"
+      "format" -> "t.format"
+      "musical_key" -> "t.musical_key"
+      else -> return
+    }
+    val value = condition.optString("value").trim().lowercase(Locale.ROOT)
+    if (value.isEmpty()) return
+    when (condition.optString("operator")) {
+      "contains" -> {
+        where.add("LOWER(COALESCE($expression, '')) LIKE ?")
+        args.add("%$value%")
+      }
+      "is_not" -> {
+        where.add("LOWER(COALESCE($expression, '')) <> ?")
+        args.add(value)
+      }
+      else -> {
+        where.add("LOWER(COALESCE($expression, '')) = ?")
+        args.add(value)
+      }
+    }
+  }
+
+  private fun appendDynamicExactCondition(
+    condition: JSONObject,
+    where: MutableList<String>,
+    args: MutableList<String>,
+  ) {
+    if (condition.optString("field") == "source_type") {
+      val operator = if (condition.optString("operator") == "is_not") "<>" else "="
+      where.add("t.source_type $operator ?")
+      args.add(condition.optString("value"))
+      return
+    }
+    if (condition.optString("field") != "favorite") return
+
+    val value = condition.optBoolean("value", false)
+    val expectsFavorite = if (condition.optString("operator") == "is_not") !value else value
+    where.add("f.track_path IS ${if (expectsFavorite) "NOT NULL" else "NULL"}")
+  }
+
+  private fun appendDynamicNumericCondition(
+    condition: JSONObject,
+    where: MutableList<String>,
+    args: MutableList<String>,
+  ) {
+    val expression = when (condition.optString("field")) {
+      "play_count" -> "COALESCE(t.play_count, 0)"
+      "year" -> "t.year"
+      "duration_seconds" -> "t.duration"
+      "bpm" -> "t.bpm"
+      else -> return
+    }
+    val value = condition.optDouble("value", Double.NaN)
+    if (value.isNaN() || value.isInfinite()) return
+    val operator = when (condition.optString("operator")) {
+      "lte" -> "<="
+      "gte" -> ">="
+      else -> "="
+    }
+    where.add("$expression $operator ?")
+    args.add(value.toString())
+  }
+
+  private fun appendDynamicDateCondition(
+    condition: JSONObject,
+    where: MutableList<String>,
+    args: MutableList<String>,
+  ) {
+    val field = condition.optString("field")
+    val expression = when (field) {
+      "last_played_at" -> "t.last_played_at"
+      "added_at" -> "t.added_at"
+      else -> return
+    }
+    val operator = condition.optString("operator")
+    if (field == "last_played_at" && operator == "never") {
+      where.add("$expression IS NULL")
+      return
+    }
+
+    val days = condition.optInt("value", 1).coerceAtLeast(1)
+    val cutoff = System.currentTimeMillis() - days * 24L * 60L * 60L * 1000L
+    if (field == "last_played_at") {
+      if (operator == "within_days") {
+        where.add("$expression >= ?")
+      } else {
+        where.add("($expression IS NULL OR $expression < ?)")
+      }
+      args.add(cutoff.toString())
+      return
+    }
+
+    where.add("$expression ${if (operator == "older_than_days") "<" else ">="} ?")
+    args.add(cutoff.toString())
+  }
+
+  private fun dynamicOrderBy(field: String, direction: String): String {
+    val sort = when (field) {
+      "artist" -> DynamicSort("t.artist", nullable = false, text = true)
+      "album" -> DynamicSort("t.album", nullable = false, text = true)
+      "added_at" -> DynamicSort("t.added_at", nullable = false)
+      "last_played_at" -> DynamicSort("t.last_played_at", nullable = true)
+      "play_count" -> DynamicSort("COALESCE(t.play_count, 0)", nullable = false)
+      "year" -> DynamicSort("t.year", nullable = true)
+      "duration_seconds" -> DynamicSort("t.duration", nullable = false)
+      "bpm" -> DynamicSort("t.bpm", nullable = true)
+      else -> DynamicSort("t.title", nullable = false, text = true)
+    }
+    val dir = if (direction == "desc") "DESC" else "ASC"
+    val expression = if (sort.text) "${sort.expression} COLLATE NOCASE" else sort.expression
+    val nullablePrefix = if (sort.nullable) "CASE WHEN ${sort.expression} IS NULL THEN 1 ELSE 0 END ASC, " else ""
+    return "$nullablePrefix$expression $dir, t.path COLLATE NOCASE ASC"
+  }
 
   private fun getArtistGroupingMode(db: SQLiteDatabase): String =
     db.rawQuery(
@@ -538,10 +767,22 @@ private data class AlbumRow(
 private data class PlaylistRow(
   val id: Long,
   val name: String,
+  val kind: String,
   val artworkHash: String?,
   val sourceId: Long?,
   val artworkSourceId: String?,
   val trackCount: Long,
+)
+
+private data class PlaylistRuleRow(
+  val kind: String,
+  val dynamicRulesJson: String?,
+)
+
+private data class DynamicSort(
+  val expression: String,
+  val nullable: Boolean,
+  val text: Boolean = false,
 )
 
 private data class ArtistRow(

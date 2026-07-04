@@ -122,16 +122,18 @@ export interface RemoteTrackUpsert {
   bitrate: number | null;
   channels: number | null;
   codec: string | null;
+  bpm: number | null;
+  musical_key: string | null;
 }
 
 const UPSERT_REMOTE_TRACK_SQL = `
   INSERT INTO tracks (
     path, folder_id, title, artist, album, album_artist, album_identity_key,
     duration, track_number, disc_number, year, genre, artwork_hash, format,
-    sample_rate, bit_depth, bitrate, channels, codec, source_type, source_id,
-    source_track_id, source_path, artwork_source_id, file_name, size, mtime,
+    sample_rate, bit_depth, bitrate, channels, codec, bpm, musical_key,
+    source_type, source_id, source_track_id, source_path, artwork_source_id, file_name, size, mtime,
     added_at, modified_at
-  ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 0, ?, ?)
+  ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 0, ?, ?)
   ON CONFLICT(path) DO UPDATE SET
     title = excluded.title,
     artist = excluded.artist,
@@ -149,6 +151,8 @@ const UPSERT_REMOTE_TRACK_SQL = `
     bitrate = excluded.bitrate,
     channels = excluded.channels,
     codec = excluded.codec,
+    bpm = excluded.bpm,
+    musical_key = excluded.musical_key,
     source_track_id = excluded.source_track_id,
     source_path = excluded.source_path,
     artwork_source_id = excluded.artwork_source_id,
@@ -181,6 +185,8 @@ export async function upsertRemoteTracks(
         row.bitrate,
         row.channels,
         row.codec,
+        row.bpm,
+        row.musical_key,
         row.source_type,
         row.source_id,
         row.source_track_id,
@@ -273,15 +279,25 @@ export async function getTrackCount(db: LibraryDatabase): Promise<number> {
  * samples / external paths are ignored unless they are actually in the library.
  */
 export async function markTrackPlayed(db: LibraryDatabase, path: string): Promise<boolean> {
-  const result = await db.run(
-    `INSERT INTO playback_history (track_path, last_played_at, play_count)
-       SELECT path, ?, 1 FROM tracks WHERE path = ?
-     ON CONFLICT(track_path) DO UPDATE SET
-       last_played_at = excluded.last_played_at,
-       play_count = playback_history.play_count + 1`,
-    [Date.now(), path]
-  );
-  return result.changes > 0;
+  const playedAt = Date.now();
+  let recorded = false;
+  await db.transaction(async (tx) => {
+    const trackResult = await tx.run(
+      'UPDATE tracks SET play_count = play_count + 1, last_played_at = ? WHERE path = ?',
+      [playedAt, path]
+    );
+    if (trackResult.changes === 0) return;
+    await tx.run(
+      `INSERT INTO playback_history (track_path, last_played_at, play_count)
+         VALUES (?, ?, 1)
+       ON CONFLICT(track_path) DO UPDATE SET
+         last_played_at = excluded.last_played_at,
+         play_count = playback_history.play_count + 1`,
+      [path, playedAt]
+    );
+    recorded = true;
+  });
+  return recorded;
 }
 
 export function getRecentlyPlayedTracks(

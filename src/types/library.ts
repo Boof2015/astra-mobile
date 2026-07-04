@@ -24,6 +24,8 @@ export interface DbTrack {
   bitrate: number | null;
   channels: number | null;
   codec: string | null;
+  bpm: number | null;
+  musical_key: string | null;
   source_type: TrackSourceType;
   // Remote-source linkage (NULL for local tracks). source_id -> remote_sources.id;
   // source_track_id is the server's track id; artwork_source_id is its cover-art id.
@@ -36,6 +38,8 @@ export interface DbTrack {
   mtime: number;
   added_at: number;
   modified_at: number;
+  play_count: number;
+  last_played_at: number | null;
   // M4 loudness facts (NULL until analyzed). loudness_lufs: integrated LUFS (dB,
   // negative); sample_peak: linear [0,1]; replay_gain_*: tag dB when present.
   loudness_lufs: number | null;

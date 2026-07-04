@@ -2,10 +2,12 @@
 // (astra src/main/services/library.ts, renderer playlistStore.ts).
 
 import type { DbTrack } from './library';
+import type { PlaylistKind } from '@/shared/playlists/dynamicPlaylist';
 
 export interface Playlist {
   id: number;
   name: string;
+  kind: PlaylistKind;
   created_at: number;
   updated_at: number;
   last_played_at: number | null;

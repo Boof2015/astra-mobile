@@ -46,6 +46,7 @@ export function PlaylistPickerSheet({
   const addTracksToPlaylist = usePlaylistStore((s) => s.addTracksToPlaylist);
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist);
   const trimmedPlaylistName = playlistName.trim();
+  const targetPlaylists = playlists.filter((playlist) => playlist.kind !== 'dynamic');
 
   const addToExisting = (playlistId: number) => {
     onClose();
@@ -104,12 +105,12 @@ export function PlaylistPickerSheet({
       {onBackToMenu ? (
         <AppSheetItem label="Track actions" icon="arrow-back" onPress={onBackToMenu} />
       ) : null}
-      {playlists.length === 0 ? (
+      {targetPlaylists.length === 0 ? (
         <Text variant="caption" color={colors.textTertiary} style={styles.empty}>
           No playlists yet.
         </Text>
       ) : null}
-      {playlists.map((playlist) => (
+      {targetPlaylists.map((playlist) => (
         <AppSheetItem
           key={playlist.id}
           label={playlist.name}

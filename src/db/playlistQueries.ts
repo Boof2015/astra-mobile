@@ -5,9 +5,21 @@ import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
 import type { RemotePlaylist } from '@/types/remote';
 import type { LibraryDatabase } from './database';
+import {
+  createDefaultDynamicPlaylistRules,
+  normalizeDynamicPlaylistRules,
+  type DynamicPlaylistPreview,
+  type DynamicPlaylistRulesV1,
+  type PlaylistKind,
+} from '@/shared/playlists/dynamicPlaylist';
+import {
+  buildDynamicPlaylistOrderByClause,
+  buildDynamicPlaylistWhereClause,
+} from './dynamicPlaylistSql';
 
 const PLAYLIST_SELECT = `
-  SELECT p.id, p.name, p.created_at, p.updated_at, p.last_played_at, p.remote_source_id,
+  SELECT p.id, p.name, p.kind, p.dynamic_rules_json,
+         p.created_at, p.updated_at, p.last_played_at, p.remote_source_id,
          (SELECT t.artwork_hash
             FROM playlist_tracks pt JOIN tracks t ON t.path = pt.track_path
            WHERE pt.playlist_id = p.id AND t.artwork_hash IS NOT NULL
@@ -21,15 +33,168 @@ const PLAYLIST_SELECT = `
   FROM playlists p
 `;
 
-export function getPlaylists(db: LibraryDatabase): Promise<Playlist[]> {
-  return db.all<Playlist>(`
+interface PlaylistSummaryRow extends Playlist {
+  dynamic_rules_json: string | null;
+}
+
+interface PlaylistRuleRow {
+  id: number;
+  kind: PlaylistKind;
+  dynamic_rules_json: string | null;
+}
+
+const DYNAMIC_PLAYLIST_PREVIEW_TRACK_LIMIT = 25;
+
+function normalizePlaylistKind(value: unknown): PlaylistKind {
+  return value === 'dynamic' ? 'dynamic' : 'normal';
+}
+
+function serializeDynamicPlaylistRules(rules: DynamicPlaylistRulesV1): string {
+  return JSON.stringify(normalizeDynamicPlaylistRules(rules));
+}
+
+function parseDynamicPlaylistRules(rawRules: unknown): DynamicPlaylistRulesV1 {
+  if (typeof rawRules !== 'string' || rawRules.trim().length === 0) {
+    return createDefaultDynamicPlaylistRules();
+  }
+
+  try {
+    return normalizeDynamicPlaylistRules(JSON.parse(rawRules));
+  } catch {
+    return createDefaultDynamicPlaylistRules();
+  }
+}
+
+async function readPlaylistRuleRow(
+  db: LibraryDatabase,
+  playlistId: number
+): Promise<PlaylistRuleRow | null> {
+  if (!Number.isInteger(playlistId) || playlistId <= 0) return null;
+  const row = await db.get<PlaylistRuleRow>(
+    'SELECT id, kind, dynamic_rules_json FROM playlists WHERE id = ? LIMIT 1',
+    [playlistId]
+  );
+  if (!row) return null;
+  return {
+    ...row,
+    kind: normalizePlaylistKind(row.kind),
+  };
+}
+
+async function assertNormalPlaylist(
+  db: LibraryDatabase,
+  playlistId: number,
+  action: string
+): Promise<void> {
+  const row = await readPlaylistRuleRow(db, playlistId);
+  if (row?.kind === 'dynamic') {
+    throw new Error(`Dynamic playlists cannot ${action}.`);
+  }
+}
+
+async function requireDynamicPlaylistRulesForId(
+  db: LibraryDatabase,
+  playlistId: number
+): Promise<DynamicPlaylistRulesV1> {
+  const row = await readPlaylistRuleRow(db, playlistId);
+  if (!row) {
+    throw new Error('Playlist not found.');
+  }
+  if (row.kind !== 'dynamic') {
+    throw new Error('Playlist is not dynamic.');
+  }
+  return parseDynamicPlaylistRules(row.dynamic_rules_json);
+}
+
+async function getDynamicPlaylistTracksForRules(
+  db: LibraryDatabase,
+  rules: DynamicPlaylistRulesV1
+): Promise<DbTrack[]> {
+  const normalizedRules = normalizeDynamicPlaylistRules(rules);
+  const { joins, where, params } = buildDynamicPlaylistWhereClause(normalizedRules);
+  const orderBy = buildDynamicPlaylistOrderByClause(normalizedRules);
+  const limitSql = normalizedRules.limit === null ? '' : '\n     LIMIT ?';
+  const limitParams = normalizedRules.limit === null ? [] : [normalizedRules.limit];
+
+  return db.all<DbTrack>(
+    `SELECT t.* FROM tracks t
+     ${joins}
+     WHERE ${where}
+     ORDER BY ${orderBy}${limitSql}`,
+    [...params, ...limitParams]
+  );
+}
+
+function dynamicTracksToEntries(tracks: DbTrack[]): PlaylistTrackEntry[] {
+  return tracks.map((track, index) => ({
+    id: -index - 1,
+    track_path: track.path,
+    position: index,
+    added_at: track.added_at,
+    missing: false,
+    fallback_title: null,
+    fallback_artist: null,
+    fallback_album: null,
+    track,
+  }));
+}
+
+async function buildDynamicPlaylistSummary(
+  db: LibraryDatabase,
+  row: PlaylistSummaryRow
+): Promise<Playlist> {
+  const tracks = await getDynamicPlaylistTracksForRules(db, parseDynamicPlaylistRules(row.dynamic_rules_json));
+  return {
+    id: row.id,
+    name: row.name,
+    kind: 'dynamic',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    last_played_at: row.last_played_at,
+    auto_cover_hash: tracks.find((track) => track.artwork_hash)?.artwork_hash ?? null,
+    track_count: tracks.length,
+    missing_track_count: 0,
+    remote_source_id: null,
+  };
+}
+
+function buildNormalPlaylistSummary(row: PlaylistSummaryRow): Playlist {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: 'normal',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    last_played_at: row.last_played_at,
+    auto_cover_hash: row.auto_cover_hash,
+    track_count: row.track_count,
+    missing_track_count: row.missing_track_count,
+    remote_source_id: row.remote_source_id,
+  };
+}
+
+export async function getPlaylists(db: LibraryDatabase): Promise<Playlist[]> {
+  const rows = await db.all<PlaylistSummaryRow>(`
     ${PLAYLIST_SELECT}
     ORDER BY (p.last_played_at IS NULL), p.last_played_at DESC, p.updated_at DESC
   `);
+  const playlists: Playlist[] = [];
+  for (const row of rows) {
+    playlists.push(
+      normalizePlaylistKind(row.kind) === 'dynamic'
+        ? await buildDynamicPlaylistSummary(db, row)
+        : buildNormalPlaylistSummary(row)
+    );
+  }
+  return playlists;
 }
 
 export async function getPlaylist(db: LibraryDatabase, id: number): Promise<Playlist | undefined> {
-  return db.get<Playlist>(`${PLAYLIST_SELECT} WHERE p.id = ?`, [id]);
+  const row = await db.get<PlaylistSummaryRow>(`${PLAYLIST_SELECT} WHERE p.id = ?`, [id]);
+  if (!row) return undefined;
+  return normalizePlaylistKind(row.kind) === 'dynamic'
+    ? buildDynamicPlaylistSummary(db, row)
+    : buildNormalPlaylistSummary(row);
 }
 
 export async function createPlaylist(db: LibraryDatabase, name: string): Promise<Playlist> {
@@ -41,6 +206,63 @@ export async function createPlaylist(db: LibraryDatabase, name: string): Promise
   const row = await getPlaylist(db, result.lastInsertRowid);
   if (!row) throw new Error('Playlist insert failed');
   return row;
+}
+
+export async function createDynamicPlaylist(
+  db: LibraryDatabase,
+  name: string,
+  rules: DynamicPlaylistRulesV1
+): Promise<Playlist> {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error('Playlist name is required.');
+  }
+
+  const now = Date.now();
+  const result = await db.run(
+    `INSERT INTO playlists (name, created_at, updated_at, kind, dynamic_rules_json)
+     VALUES (?, ?, ?, 'dynamic', ?)`,
+    [trimmedName, now, now, serializeDynamicPlaylistRules(rules)]
+  );
+  const row = await getPlaylist(db, result.lastInsertRowid);
+  if (!row) throw new Error('Dynamic playlist insert failed');
+  return row;
+}
+
+export function getDynamicPlaylistRules(
+  db: LibraryDatabase,
+  playlistId: number
+): Promise<DynamicPlaylistRulesV1> {
+  return requireDynamicPlaylistRulesForId(db, playlistId);
+}
+
+export async function updateDynamicPlaylistRules(
+  db: LibraryDatabase,
+  playlistId: number,
+  rules: DynamicPlaylistRulesV1
+): Promise<void> {
+  await requireDynamicPlaylistRulesForId(db, playlistId);
+  await db.run('UPDATE playlists SET dynamic_rules_json = ?, updated_at = ? WHERE id = ?', [
+    serializeDynamicPlaylistRules(rules),
+    Date.now(),
+    playlistId,
+  ]);
+}
+
+export async function previewDynamicPlaylist(
+  db: LibraryDatabase,
+  rules: DynamicPlaylistRulesV1
+): Promise<DynamicPlaylistPreview> {
+  const tracks = await getDynamicPlaylistTracksForRules(db, normalizeDynamicPlaylistRules(rules));
+  return {
+    track_count: tracks.length,
+    tracks: tracks.slice(0, DYNAMIC_PLAYLIST_PREVIEW_TRACK_LIMIT).map((track) => ({
+      path: track.path,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+    })),
+  };
 }
 
 export async function renamePlaylist(db: LibraryDatabase, id: number, name: string): Promise<void> {
@@ -79,6 +301,14 @@ export async function getPlaylistEntries(
   db: LibraryDatabase,
   playlistId: number
 ): Promise<PlaylistTrackEntry[]> {
+  const ruleRow = await readPlaylistRuleRow(db, playlistId);
+  if (ruleRow?.kind === 'dynamic') {
+    return dynamicTracksToEntries(await getDynamicPlaylistTracksForRules(
+      db,
+      parseDynamicPlaylistRules(ruleRow.dynamic_rules_json)
+    ));
+  }
+
   const rows = await db.all<EntryRow>(
     `SELECT pt.id AS entry_id, pt.track_path AS entry_track_path,
             pt.position AS entry_position, pt.added_at AS entry_added_at,
@@ -129,6 +359,7 @@ export async function addPlaylistEntries(
   playlistId: number,
   entries: PlaylistEntryInsert[]
 ): Promise<number> {
+  await assertNormalPlaylist(db, playlistId, 'accept manual tracks');
   if (entries.length === 0) return 0;
   let inserted = 0;
   await db.transaction(async (tx) => {
@@ -185,6 +416,7 @@ export async function removeFromPlaylist(
   playlistId: number,
   trackPath: string
 ): Promise<void> {
+  await assertNormalPlaylist(db, playlistId, 'remove tracks manually');
   await db.transaction(async (tx) => {
     await tx.run('DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_path = ?', [
       playlistId,
@@ -202,6 +434,7 @@ export async function movePlaylistTrack(
   trackPath: string,
   direction: -1 | 1
 ): Promise<void> {
+  await assertNormalPlaylist(db, playlistId, 'reorder tracks manually');
   await db.transaction(async (tx) => {
     const row = await tx.get<{ id: number; position: number }>(
       'SELECT id, position FROM playlist_tracks WHERE playlist_id = ? AND track_path = ?',

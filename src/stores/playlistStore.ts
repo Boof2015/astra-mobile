@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+import type {
+  DynamicPlaylistPreview,
+  DynamicPlaylistRulesV1,
+} from '@/shared/playlists/dynamicPlaylist';
 import { openLibraryDb, type LibraryDatabase } from '@/db/database';
 import { getAllTracks } from '@/db/queries';
 import * as playlistDb from '@/db/playlistQueries';
@@ -41,6 +45,10 @@ interface PlaylistStore {
   openPlaylist: (id: number) => Promise<void>;
   closePlaylist: () => void;
   createPlaylist: (name: string) => Promise<Playlist>;
+  createDynamicPlaylist: (name: string, rules: DynamicPlaylistRulesV1) => Promise<Playlist>;
+  getDynamicPlaylistRules: (id: number) => Promise<DynamicPlaylistRulesV1>;
+  updateDynamicPlaylistRules: (id: number, rules: DynamicPlaylistRulesV1) => Promise<void>;
+  previewDynamicPlaylist: (rules: DynamicPlaylistRulesV1) => Promise<DynamicPlaylistPreview>;
   renamePlaylist: (id: number, name: string) => Promise<void>;
   deletePlaylist: (id: number) => Promise<void>;
   addTracksToPlaylist: (id: number, tracks: DbTrack[]) => Promise<number>;
@@ -115,6 +123,29 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
       const playlist = await playlistDb.createPlaylist(db, name);
       await refreshWith(db);
       return playlist;
+    },
+
+    createDynamicPlaylist: async (name, rules) => {
+      const db = await openLibraryDb();
+      const playlist = await playlistDb.createDynamicPlaylist(db, name, rules);
+      await refreshWith(db);
+      return playlist;
+    },
+
+    getDynamicPlaylistRules: async (id) => {
+      const db = await openLibraryDb();
+      return playlistDb.getDynamicPlaylistRules(db, id);
+    },
+
+    updateDynamicPlaylistRules: async (id, rules) => {
+      const db = await openLibraryDb();
+      await playlistDb.updateDynamicPlaylistRules(db, id, rules);
+      await refreshWith(db);
+    },
+
+    previewDynamicPlaylist: async (rules) => {
+      const db = await openLibraryDb();
+      return playlistDb.previewDynamicPlaylist(db, rules);
     },
 
     renamePlaylist: async (id, name) => {

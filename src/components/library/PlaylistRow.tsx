@@ -20,6 +20,7 @@ export function PlaylistRow({
   coverHash,
   pinned = false,
   remote = false,
+  dynamic = false,
   onPress,
   onLongPress,
 }: {
@@ -31,6 +32,8 @@ export function PlaylistRow({
   pinned?: boolean;
   /** Synced from a remote server — shows a cloud marker. */
   remote?: boolean;
+  /** Rule-owned playlist — shows a spark marker. */
+  dynamic?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
 }) {
@@ -63,6 +66,7 @@ export function PlaylistRow({
             {name}
           </Text>
           {remote ? <Ionicons name="cloud" size={12} color={colors.accent} /> : null}
+          {dynamic ? <Ionicons name="sparkles" size={12} color={colors.accent} /> : null}
         </View>
         <Text variant="label" numberOfLines={1}>
           {`${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}

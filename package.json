@@ -63,6 +63,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts",
+    "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/db/dynamicPlaylistSql.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

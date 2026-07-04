@@ -64,6 +64,8 @@ function toUpsertRow(source: RemoteSourceRow, track: RemoteCatalogTrack): Remote
     bitrate: track.bitrate,
     channels: track.channels,
     codec: track.codec,
+    bpm: track.bpm,
+    musical_key: track.musical_key,
   };
 }
 

@@ -16,11 +16,12 @@
 // marks playlists that mirror a server playlist (remote_source_id/remote_playlist_id)
 // so remote playlist sync can upsert + reconcile them; v13 adds `remote_sources.art_auth`
 // — a self-contained cover-art URL template the native Android Auto artwork provider uses
-// to fetch server art without a JS round-trip.
+// to fetch server art without a JS round-trip; v14 adds desktop-style dynamic
+// playlist rules plus fresh aggregate track play stats (no playback_history backfill).
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -259,6 +260,22 @@ const MIGRATIONS: readonly (readonly string[])[] = [
   // It embeds a fixed Subsonic salt+token / Jellyfin api_key with an `__ASTRA_ART_ID__`
   // placeholder for the cover id; the password itself never leaves expo-secure-store.
   [`ALTER TABLE remote_sources ADD COLUMN art_auth TEXT`],
+  // v13 -> v14 — dynamic playlists and fresh aggregate play stats. Do not seed
+  // play_count / last_played_at from playback_history: existing recents remain for
+  // Home, while dynamic play-stat rules start fresh from this version forward.
+  [
+    `ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE tracks ADD COLUMN last_played_at INTEGER`,
+    `ALTER TABLE tracks ADD COLUMN bpm REAL`,
+    `ALTER TABLE tracks ADD COLUMN musical_key TEXT`,
+    `ALTER TABLE playlists ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal'`,
+    `ALTER TABLE playlists ADD COLUMN dynamic_rules_json TEXT`,
+    `UPDATE playlists SET kind = 'normal' WHERE kind IS NULL OR kind NOT IN ('normal', 'dynamic')`,
+    `UPDATE playlists SET dynamic_rules_json = NULL WHERE kind <> 'dynamic'`,
+    `CREATE INDEX IF NOT EXISTS idx_tracks_play_count ON tracks(play_count DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks(last_played_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_playlists_kind ON playlists(kind)`,
+  ],
 ];
 
 export async function migrate(db: LibraryDatabase): Promise<void> {

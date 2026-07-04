@@ -108,6 +108,23 @@ export function PlaylistsView({
         ]
       : menuFor
         ? [
+            ...(menuFor.kind === 'dynamic'
+              ? [
+                  {
+                    key: 'edit-rules',
+                    label: 'Edit rules',
+                    icon: 'options-outline' as const,
+                    onPress: () => {
+                      const id = menuFor.id;
+                      setMenuFor(null);
+                      router.push({
+                        pathname: '/library/playlist/edit-dynamic' as never,
+                        params: { id: String(id) },
+                      });
+                    },
+                  },
+                ]
+              : []),
             {
               key: 'rename',
               label: 'Rename…',
@@ -168,6 +185,7 @@ export function PlaylistsView({
             missingCount={item.missing_track_count}
             coverHash={item.auto_cover_hash}
             remote={item.remote_source_id != null}
+            dynamic={item.kind === 'dynamic'}
             onPress={() => router.push(`/library/playlist/${item.id}`)}
             onLongPress={() => setMenuFor(item)}
           />
@@ -190,6 +208,16 @@ export function PlaylistsView({
               <Ionicons name="add" size={18} color={colors.accent} />
               <Text variant="body" color={colors.accent}>
                 New playlist
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.action}
+              onPress={() => router.push('/library/playlist/edit-dynamic' as never)}
+              accessibilityRole="button"
+            >
+              <Ionicons name="sparkles-outline" size={16} color={colors.accent} />
+              <Text variant="body" color={colors.accent}>
+                New dynamic
               </Text>
             </Pressable>
             <Pressable
@@ -240,6 +268,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
     marginTop: spacing.lg,
   },

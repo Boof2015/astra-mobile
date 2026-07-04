@@ -11,7 +11,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
@@ -56,6 +56,7 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
 }
 
 export default function PlaylistScreen() {
+  const router = useRouter();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const handleBack = useLibraryDetailBack(from);
   const isFavorites = id === 'favorites';
@@ -86,6 +87,7 @@ export default function PlaylistScreen() {
   const playlist = isFavorites ? null : playlists.find((entry) => entry.id === playlistId);
   const name = isFavorites ? 'Favorites' : (playlist?.name ?? 'Playlist');
   const coverHash = playlist?.auto_cover_hash ?? null;
+  const isDynamic = playlist?.kind === 'dynamic';
 
   const entries: PlaylistTrackEntry[] = useMemo(
     () =>
@@ -138,7 +140,7 @@ export default function PlaylistScreen() {
   // Move/remove only exist on real playlists; favorites rows use the standard
   // sheet (its favorite toggle is the "remove" affordance there).
   const extraItems: TrackActionSheetItem[] =
-    playlistId != null && actionEntry
+    playlistId != null && actionEntry && !isDynamic
       ? [
           {
             key: 'move-up',
@@ -221,6 +223,25 @@ export default function PlaylistScreen() {
         backdropUri={coverHash ? artworkThumbUri(coverHash) : null}
         title={name}
         heroMeta={<Text variant="label">{meta}</Text>}
+        heroExtra={
+          isDynamic && playlistId != null ? (
+            <Pressable
+              style={styles.editRules}
+              onPress={() =>
+                router.push({
+                  pathname: '/library/playlist/edit-dynamic' as never,
+                  params: { id: String(playlistId) },
+                })
+              }
+              accessibilityRole="button"
+            >
+              <Ionicons name="sparkles" size={14} color={colors.accent} />
+              <Text variant="label" color={colors.accent}>
+                Edit rules
+              </Text>
+            </Pressable>
+          ) : null
+        }
         disabled={playable.length === 0}
         onBack={handleBack}
         onPlay={() => startPlayback(0)}
@@ -243,7 +264,7 @@ export default function PlaylistScreen() {
             title={missingEntry.fallback_title ?? 'Missing track'}
             subtitle={missingEntry.fallback_artist ?? 'Track not in library'}
           />
-          {playlistId != null ? (
+          {playlistId != null && !isDynamic ? (
             <AppSheetItem
               label="Remove from playlist"
               icon="remove-circle-outline"
@@ -281,5 +302,17 @@ const styles = StyleSheet.create({
   missingMeta: {
     flex: 1,
     gap: 2,
+  },
+  editRules: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
   },
 });

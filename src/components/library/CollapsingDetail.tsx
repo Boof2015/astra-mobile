@@ -120,6 +120,7 @@ export function CollapsingHeader({
   backdropUri,
   title,
   heroMeta,
+  heroExtra,
   disabled,
   onBack,
   onPlay,
@@ -136,6 +137,8 @@ export function CollapsingHeader({
   title: string;
   /** The middle of the hero block, between title and buttons (subtitle/meta or stat chips). */
   heroMeta: ReactNode;
+  /** Optional compact control below meta, before the Play / Shuffle buttons. */
+  heroExtra?: ReactNode;
   disabled?: boolean;
   onBack: () => void;
   onPlay: () => void;
@@ -235,6 +238,7 @@ export function CollapsingHeader({
           {title}
         </Text>
         {heroMeta}
+        {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
           <Pressable
             style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
