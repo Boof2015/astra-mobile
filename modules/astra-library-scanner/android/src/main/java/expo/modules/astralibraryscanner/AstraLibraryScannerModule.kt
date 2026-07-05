@@ -101,6 +101,15 @@ class AstraLibraryScannerModule : Module() {
       }
     }
 
+    // Fast waveform preview for first paint: sparse short-window decode across
+    // the file. The JS side shows this immediately but only persists the full
+    // extractWaveform result.
+    AsyncFunction("extractWaveformPreview") Coroutine { uri: String, bins: Int ->
+      waveformSemaphore.withPermit {
+        withContext(Dispatchers.IO) { decodeWaveformPreview(uri, if (bins > 0) bins else 96) }
+      }
+    }
+
     // Fast loudness (M4): decodes only a few short windows spread across the track
     // (not the whole file) + gated K-weighting -> integrated LUFS + sample peak.
     // Waveform peaks stay lazy/full-decode (extractWaveform), decoupled from this.
@@ -538,6 +547,172 @@ class AstraLibraryScannerModule : Module() {
       try { codec?.release() } catch (_: Throwable) {}
       try { extractor.release() } catch (_: Throwable) {}
     }
+  }
+
+  private data class PcmEnergy(
+    val sumSquares: Double,
+    val sampleCount: Long,
+    val frameCount: Long
+  )
+
+  // Sparse preview waveform: seek to a bounded number of points, decode a very
+  // short audio window at each point, and normalize those RMS samples. This is
+  // intentionally approximate; decodeAndAnalyze remains the accurate cache fill.
+  private fun decodeWaveformPreview(uriStr: String, bins: Int): FloatArray {
+    val context = requireContext()
+    val previewBins = bins.coerceIn(16, 128)
+    val uri = Uri.parse(uriStr)
+    val extractor = MediaExtractor()
+    var codec: MediaCodec? = null
+    try {
+      extractor.setDataSource(context, uri, null)
+
+      var trackFormat: MediaFormat? = null
+      var trackIndex = -1
+      for (i in 0 until extractor.trackCount) {
+        val f = extractor.getTrackFormat(i)
+        if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+          trackFormat = f; trackIndex = i; break
+        }
+      }
+      val format = trackFormat ?: return FloatArray(0)
+      extractor.selectTrack(trackIndex)
+
+      val mime = format.getString(MediaFormat.KEY_MIME) ?: return FloatArray(0)
+      val durationUs =
+        if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+      if (durationUs <= 0L) return FloatArray(0)
+
+      val sampleRate =
+        if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+      var channelCount =
+        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+      var pcmFloat = false
+      val windowFrames = max(512L, (sampleRate * 0.018).roundToInt().toLong())
+      val peaks = FloatArray(previewBins)
+
+      codec = MediaCodec.createDecoderByType(mime)
+      codec.configure(format, null, null, 0)
+      codec.start()
+      val info = MediaCodec.BufferInfo()
+
+      for (bin in 0 until previewBins) {
+        val targetUs = ((durationUs.toDouble() * bin) / previewBins).toLong()
+          .coerceIn(0L, max(0L, durationUs - 1))
+        try {
+          extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+          codec.flush()
+        } catch (_: Throwable) {
+          continue
+        }
+
+        var sawInputEOS = false
+        var frames = 0L
+        var sumSquares = 0.0
+        var sampleCount = 0L
+        var safety = 0
+
+        while (frames < windowFrames && safety++ < 180) {
+          if (!sawInputEOS) {
+            val inIndex = codec.dequeueInputBuffer(2_000)
+            if (inIndex >= 0) {
+              val inBuf = codec.getInputBuffer(inIndex)!!
+              val size = extractor.readSampleData(inBuf, 0)
+              if (size < 0) {
+                codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                sawInputEOS = true
+              } else {
+                codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
+                extractor.advance()
+              }
+            }
+          }
+
+          when (val outIndex = codec.dequeueOutputBuffer(info, 2_000)) {
+            MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+              val nf = codec.outputFormat
+              if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channelCount = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+              if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                pcmFloat = nf.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+              }
+            }
+            MediaCodec.INFO_TRY_AGAIN_LATER -> {
+              if (sawInputEOS) break
+            }
+            else -> if (outIndex >= 0) {
+              if (info.size > 0) {
+                val out = codec.getOutputBuffer(outIndex)!!
+                out.position(info.offset)
+                out.limit(info.offset + info.size)
+                out.order(ByteOrder.nativeOrder())
+                val energy = collectEnergy(out, pcmFloat, channelCount, windowFrames - frames)
+                frames += energy.frameCount
+                sumSquares += energy.sumSquares
+                sampleCount += energy.sampleCount
+              }
+              val ended = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+              codec.releaseOutputBuffer(outIndex, false)
+              if (ended) break
+            }
+          }
+        }
+
+        if (sampleCount > 0) {
+          peaks[bin] = sqrt(sumSquares / sampleCount).toFloat()
+        }
+      }
+
+      var globalMax = 0f
+      for (value in peaks) if (value > globalMax) globalMax = value
+      if (globalMax > 0f) {
+        for (i in peaks.indices) peaks[i] /= globalMax
+      }
+      return peaks
+    } catch (_: Throwable) {
+      return FloatArray(0)
+    } finally {
+      try { codec?.stop() } catch (_: Throwable) {}
+      try { codec?.release() } catch (_: Throwable) {}
+      try { extractor.release() } catch (_: Throwable) {}
+    }
+  }
+
+  private fun collectEnergy(
+    out: java.nio.ByteBuffer,
+    pcmFloat: Boolean,
+    channelCount: Int,
+    maxFrames: Long
+  ): PcmEnergy {
+    if (maxFrames <= 0) return PcmEnergy(0.0, 0L, 0L)
+    var sumSquares = 0.0
+    var sampleCount = 0L
+    var frameCount = 0L
+    if (pcmFloat) {
+      val fb = out.asFloatBuffer()
+      while (fb.hasRemaining() && frameCount < maxFrames) {
+        var c = 0
+        while (c < channelCount && fb.hasRemaining()) {
+          val s = fb.get().toDouble()
+          sumSquares += s * s
+          sampleCount++
+          c++
+        }
+        frameCount++
+      }
+    } else {
+      val sb = out.asShortBuffer()
+      while (sb.hasRemaining() && frameCount < maxFrames) {
+        var c = 0
+        while (c < channelCount && sb.hasRemaining()) {
+          val s = sb.get() / 32768.0
+          sumSquares += s * s
+          sampleCount++
+          c++
+        }
+        frameCount++
+      }
+    }
+    return PcmEnergy(sumSquares, sampleCount, frameCount)
   }
 
   // Integrated gated loudness over the WHOLE file (accurate — subset sampling caused

@@ -19,6 +19,7 @@ import {
 import { usePlayerStore } from '@/stores/playerStore';
 import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
+import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 
 const PILL_HEIGHT = 56;
 const ART = 42;
@@ -26,6 +27,24 @@ const CURVE_POINTS = 64;
 
 interface MiniPlayerProps {
   visible?: boolean;
+}
+
+function MiniProgress({
+  currentTime,
+  duration,
+  isPlaying,
+}: {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+}) {
+  const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
+  const progress = duration > 0 ? Math.min(1, smoothTime / duration) : 0;
+  return (
+    <View style={styles.progressTrack}>
+      <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+    </View>
+  );
 }
 
 /**
@@ -47,7 +66,6 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
 
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
-  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const liveScopeActive = visible && scopeActive;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
@@ -109,9 +127,7 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
         </Pressable>
       </View>
 
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
+      <MiniProgress currentTime={currentTime} duration={duration} isPlaying={isPlaying} />
     </Pressable>
   );
 }

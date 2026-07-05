@@ -1,13 +1,13 @@
 import TrackPlayer, {
-  isPlaying,
   RepeatMode,
+  State,
   type Track as RntpTrack,
 } from 'react-native-track-player';
-import type { Track } from '@/types/audio';
+import type { PlaybackState, Track } from '@/types/audio';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { setupPlayer } from './trackPlayer';
-import { SAMPLE_TRACKS, toRntpTrack } from './sampleTracks';
+import { SAMPLE_TRACKS, rntpToTrack, toRntpTrack } from './sampleTracks';
 import {
   absoluteIndexToNative,
   appendUpcomingChunked,
@@ -50,8 +50,50 @@ function toRntpRepeat(mode: RepeatModeStr): RepeatMode {
   }
 }
 
+function mapRntpState(state?: State): PlaybackState {
+  switch (state) {
+    case State.Playing:
+      return 'playing';
+    case State.Buffering:
+    case State.Loading:
+      return 'loading';
+    case State.Paused:
+    case State.Ready:
+      return 'paused';
+    default:
+      return 'stopped';
+  }
+}
+
 function rntpTrackId(track: RntpTrack): string {
   return String(track.id ?? track.url);
+}
+
+function setOptimisticTrack(track: RntpTrack | undefined, playbackState?: PlaybackState): void {
+  if (!track) return;
+  const current = rntpToTrack(track);
+  const player = usePlayerStore.getState();
+  player.setCurrentTrack(current);
+  player.setProgress(0, current.duration);
+  player.clearPendingSeek();
+  if (playbackState) player.setPlaybackState(playbackState);
+}
+
+async function reconcilePlayerFromNative(): Promise<void> {
+  try {
+    const [activeTrack, playbackState, progress] = await Promise.all([
+      TrackPlayer.getActiveTrack(),
+      TrackPlayer.getPlaybackState(),
+      TrackPlayer.getProgress(),
+    ]);
+    const player = usePlayerStore.getState();
+    player.setCurrentTrack(activeTrack ? rntpToTrack(activeTrack) : null);
+    player.setPlaybackState(mapRntpState(playbackState.state));
+    player.setProgress(progress.position, progress.duration);
+    player.clearPendingSeek();
+  } catch {
+    // PlaybackSync will reconcile on the next native event/tick.
+  }
 }
 
 async function getQueueSnapshot(): Promise<{ queue: RntpTrack[]; activeIndex: number }> {
@@ -126,8 +168,15 @@ async function playTracksInternal(
   }
   const queueTracks = ordered.map(toRntpTrack);
   useQueueStore.getState().setSnapshot(queueTracks, startIndex);
-  await loadQueueChunked(queueTracks, startIndex);
-  await TrackPlayer.play();
+  setOptimisticTrack(queueTracks[startIndex], 'loading');
+  try {
+    await loadQueueChunked(queueTracks, startIndex);
+    await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
 }
 
 /** Shuffle a context and play from the top (the library/album "Shuffle" buttons). */
@@ -138,8 +187,15 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
   useQueueStore.getState().setSnapshot(queueTracks, 0);
-  await loadQueueChunked(queueTracks, 0);
-  await TrackPlayer.play();
+  setOptimisticTrack(queueTracks[0], 'loading');
+  try {
+    await loadQueueChunked(queueTracks, 0);
+    await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
 }
 
 /** M0 demo entry point: load the streamed sample queue if nothing is queued. */
@@ -152,45 +208,95 @@ export async function playSample(): Promise<void> {
     await TrackPlayer.add(sampleQueue);
     originalOrder = SAMPLE_TRACKS.map((t) => t.id);
     useQueueStore.getState().setSnapshot(sampleQueue, 0);
+    setOptimisticTrack(sampleQueue[0], 'loading');
   } else {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();
     useQueueStore.getState().setSnapshot(queue, activeIndex);
+    setOptimisticTrack(queue[activeIndex ?? 0], 'loading');
   }
-  await TrackPlayer.play();
+  try {
+    await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
 }
 
-export const play = (): Promise<void> => TrackPlayer.play();
+export async function play(): Promise<void> {
+  usePlayerStore.getState().setPlaybackState('playing');
+  try {
+    await TrackPlayer.play();
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
+}
 export async function playForCar(): Promise<void> {
   await ensurePlayerReady({ allowBackgroundSetup: true });
-  await TrackPlayer.play();
+  await play();
 }
-export const pause = (): Promise<void> => TrackPlayer.pause();
-export const seekTo = (seconds: number): Promise<void> => TrackPlayer.seekTo(seconds);
+export async function pause(): Promise<void> {
+  usePlayerStore.getState().setPlaybackState('paused');
+  try {
+    await TrackPlayer.pause();
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
+}
+
+export async function seekTo(seconds: number): Promise<void> {
+  const duration = usePlayerStore.getState().duration;
+  usePlayerStore.getState().setPendingSeek(seconds);
+  usePlayerStore.getState().setProgress(seconds, duration);
+  try {
+    await TrackPlayer.seekTo(seconds);
+  } catch (err) {
+    usePlayerStore.getState().clearPendingSeek();
+    await reconcilePlayerFromNative();
+    throw err;
+  }
+}
 
 export async function togglePlay(): Promise<void> {
-  const { playing } = await isPlaying();
+  const playing = usePlayerStore.getState().playbackState === 'playing';
   if (playing) {
-    await TrackPlayer.pause();
+    await pause();
   } else {
     await ensurePlayerReady();
-    await TrackPlayer.play();
+    await play();
   }
 }
 
 export async function skipToNext(): Promise<void> {
+  const { tracks, activeIndex } = useQueueStore.getState();
+  const nextIndex = activeIndex >= 0 ? activeIndex + 1 : -1;
+  if (nextIndex >= 0 && nextIndex < tracks.length) {
+    useQueueStore.getState().setActiveIndex(nextIndex);
+    setOptimisticTrack(tracks[nextIndex], usePlayerStore.getState().playbackState);
+  }
   try {
     await TrackPlayer.skipToNext();
     await refreshActiveIndexFromNative();
   } catch {
+    await reconcilePlayerFromNative();
     // no next track — ignore
   }
 }
 
 export async function skipToPrevious(): Promise<void> {
+  const { tracks, activeIndex } = useQueueStore.getState();
+  const previousIndex = activeIndex > 0 ? activeIndex - 1 : -1;
+  if (previousIndex >= 0 && previousIndex < tracks.length) {
+    useQueueStore.getState().setActiveIndex(previousIndex);
+    setOptimisticTrack(tracks[previousIndex], usePlayerStore.getState().playbackState);
+  }
   try {
     await TrackPlayer.skipToPrevious();
     await refreshActiveIndexFromNative();
   } catch {
+    await reconcilePlayerFromNative();
     // no previous track — ignore
   }
 }
@@ -350,14 +456,23 @@ export async function jumpToQueueIndex(index: number): Promise<void> {
   // Mid-fill, the tapped row may not be in the native queue yet (or may sit at
   // a shifted native index while the head is still prepending) — translate,
   // waiting out the fill only when the target isn't loaded.
+  const queuedTrack = useQueueStore.getState().tracks[index];
+  useQueueStore.getState().setActiveIndex(index);
+  setOptimisticTrack(queuedTrack, 'playing');
   let nativeIndex = absoluteIndexToNative(index);
   while (nativeIndex == null) {
     await queueLoadSettled();
     nativeIndex = absoluteIndexToNative(index);
   }
-  await TrackPlayer.skip(nativeIndex);
-  useQueueStore.getState().setActiveIndex(index);
-  await TrackPlayer.play();
+  try {
+    await TrackPlayer.skip(nativeIndex);
+    useQueueStore.getState().setActiveIndex(index);
+    await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
+  } catch (err) {
+    await reconcilePlayerFromNative();
+    throw err;
+  }
 }
 
 async function getUpcoming(): Promise<{ activeIndex: number; upcoming: RntpTrack[] }> {

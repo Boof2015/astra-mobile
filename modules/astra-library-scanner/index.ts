@@ -69,6 +69,11 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    */
   extractWaveform(uri: string, bins: number): Promise<number[]>;
   /**
+   * Decode short windows across the file and return approximate RMS peaks for
+   * immediate seek-bar paint. Cheap preview only; callers should not persist it.
+   */
+  extractWaveformPreview(uri: string, bins: number): Promise<number[]>;
+  /**
    * Fast integrated loudness (M4): decodes only a few short windows across the
    * track + gated K-weighting -> integrated LUFS + absolute sample peak. Null on
    * failure / unmeasurable audio. Waveform peaks are separate (extractWaveform).

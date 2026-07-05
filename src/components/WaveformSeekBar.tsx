@@ -21,23 +21,22 @@ import { Text } from './Text';
 import { colors, spacing } from '@/theme';
 import { formatDuration } from '@/lib/format';
 import { downsampleWaveform, getWaveform } from '@/scope/waveform';
+import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import { usePlayerStore } from '@/stores/playerStore';
 
 const CANVAS_HEIGHT = 58;
 const BAR_WIDTH = 3;
 const BAR_GAP = 2;
 const MIN_BAR = 0.05; // floor so silent/idle sections still show a sliver
-// While a seek is pending, keep showing the target until the player's reported
-// position moves off the pre-seek value (`from`) — i.e. the seek has landed.
-const HOLD_EPS = 0.75;
+type WaveformQuality = 'preview' | 'accurate';
 
 interface WaveformSeekBarProps {
   currentTime: number;
   duration: number;
+  isPlaying?: boolean;
   onSeek: (seconds: number) => void;
   height?: number;
   touchPadding?: number;
-  /** Identity of the playing track; a pending seek only applies to its own track. */
-  trackKey?: string | number;
   /** Track file URI used to load/cache the offline waveform peaks. */
   trackPath?: string;
 }
@@ -53,33 +52,48 @@ const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
 export function WaveformSeekBar({
   currentTime,
   duration,
+  isPlaying = false,
   onSeek,
   height = CANVAS_HEIGHT,
   touchPadding = spacing.md,
-  trackKey,
   trackPath,
 }: WaveformSeekBarProps) {
   const [scrubFraction, setScrubFraction] = useState<number | null>(null);
   const [barWidth, setBarWidth] = useState(0);
-  const [pendingSeek, setPendingSeek] = useState<{
-    target: number;
-    from: number;
-    key?: string | number;
-  } | null>(null);
+  const pendingSeek = usePlayerStore((s) => s.pendingSeek);
   // Peaks tagged with the path they belong to, so a track change drops the old
   // waveform as a pure derivation (no synchronous setState in the effect).
-  const [loaded, setLoaded] = useState<{ path: string; peaks: Float32Array | null } | null>(null);
+  const [loaded, setLoaded] = useState<{
+    path: string;
+    peaks: Float32Array | null;
+    quality: WaveformQuality;
+  } | null>(null);
 
   const widthRef = useRef(0);
   const scrubRef = useRef<number | null>(null);
   const grantRef = useRef({ fraction: 0, pageX: 0 });
+  const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
 
   // Load (cache-first) the offline peaks whenever the track changes.
   useEffect(() => {
     if (!trackPath) return;
     let cancelled = false;
-    void getWaveform(trackPath).then((peaks) => {
-      if (!cancelled) setLoaded({ path: trackPath, peaks });
+    void getWaveform(trackPath, {
+      onPreview: (peaks) => {
+        if (cancelled) return;
+        setLoaded((current) => {
+          if (current?.path === trackPath && current.quality === 'accurate' && current.peaks) {
+            return current;
+          }
+          return { path: trackPath, peaks, quality: 'preview' };
+        });
+      },
+    }).then((peaks) => {
+      if (cancelled) return;
+      setLoaded((current) => {
+        if (!peaks && current?.path === trackPath && current.quality === 'preview') return current;
+        return { path: trackPath, peaks, quality: 'accurate' };
+      });
     });
     return () => {
       cancelled = true;
@@ -112,23 +126,16 @@ export function WaveformSeekBar({
   const handleRelease = () => {
     const fraction = scrubRef.current ?? grantRef.current.fraction;
     const target = fraction * duration;
-    // Capture the pre-seek position so we can hold the target until the player
-    // moves off it. Using `from` (not the target) means the hold releases when
-    // the seek lands and can never re-engage as playback advances past target.
-    setPendingSeek({ target, from: currentTime, key: trackKey });
     onSeek(target);
     setScrub(null);
   };
 
-  // Displayed position: scrub > held seek target > live progress. Hold while the
-  // player still reports the stale pre-seek position; release once it jumps.
-  const holdSeek =
-    pendingSeek != null &&
-    pendingSeek.key === trackKey &&
-    duration > 0 &&
-    Math.abs(currentTime - pendingSeek.from) < HOLD_EPS;
-  const liveFraction = duration > 0 ? Math.min(1, currentTime / duration) : 0;
-  const heldFraction = holdSeek ? clamp(pendingSeek.target / duration) : null;
+  // Displayed position: scrub > pending seek target > live progress. The player
+  // store clears pendingSeek only after native progress acknowledges the target
+  // or the guard times out, so stale RNTP progress cannot bounce the UI back.
+  const liveTime = isPlaying ? smoothTime : currentTime;
+  const liveFraction = duration > 0 ? Math.min(1, liveTime / duration) : 0;
+  const heldFraction = pendingSeek && duration > 0 ? clamp(pendingSeek.target / duration) : null;
   const fraction = scrubFraction ?? heldFraction ?? liveFraction;
   const shownTime = fraction * duration;
 

@@ -3,6 +3,11 @@ import type { PlaybackState, Track } from '@/types/audio';
 
 export type RepeatMode = 'none' | 'one' | 'all';
 
+interface PendingSeek {
+  target: number;
+  startedAt: number;
+}
+
 /**
  * Player state — the UI's single source of truth, mirrored from the playback
  * engine (RNTP at M0) by `usePlaybackSync`. Field names match desktop
@@ -14,6 +19,7 @@ interface PlayerStore {
   playbackState: PlaybackState;
   currentTime: number;
   duration: number;
+  pendingSeek: PendingSeek | null;
   volume: number; // 0–1
   isMuted: boolean;
   // Field names mirror desktop playerStore so queue/transport logic stays consistent.
@@ -23,6 +29,8 @@ interface PlayerStore {
   setCurrentTrack: (track: Track | null) => void;
   setPlaybackState: (state: PlaybackState) => void;
   setProgress: (currentTime: number, duration: number) => void;
+  setPendingSeek: (target: number) => void;
+  clearPendingSeek: () => void;
   setVolume: (volume: number) => void;
   setMuted: (isMuted: boolean) => void;
   setShuffle: (shuffle: boolean) => void;
@@ -35,6 +43,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   playbackState: 'stopped',
   currentTime: 0,
   duration: 0,
+  pendingSeek: null,
   volume: 1,
   isMuted: false,
   shuffle: false,
@@ -43,10 +52,18 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setCurrentTrack: (currentTrack) => set({ currentTrack }),
   setPlaybackState: (playbackState) => set({ playbackState }),
   setProgress: (currentTime, duration) => set({ currentTime, duration }),
+  setPendingSeek: (target) => set({ pendingSeek: { target, startedAt: Date.now() } }),
+  clearPendingSeek: () => set({ pendingSeek: null }),
   setVolume: (volume) => set({ volume }),
   setMuted: (isMuted) => set({ isMuted }),
   setShuffle: (shuffle) => set({ shuffle }),
   setRepeat: (repeat) => set({ repeat }),
   reset: () =>
-    set({ currentTrack: null, playbackState: 'stopped', currentTime: 0, duration: 0 }),
+    set({
+      currentTrack: null,
+      playbackState: 'stopped',
+      currentTime: 0,
+      duration: 0,
+      pendingSeek: null,
+    }),
 }));

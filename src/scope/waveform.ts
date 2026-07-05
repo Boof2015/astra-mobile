@@ -1,30 +1,53 @@
-// Waveform peaks for the seek bar: cache-first, decode-on-miss, store. The heavy
-// native decode (AstraLibraryScanner.extractWaveform) runs once per track and the
-// result is cached in SQLite; downsampleWaveform shapes the cached high-res peaks
-// to the display's bar count at render time (ported from desktop waveformExtractor).
+// Waveform peaks for the seek bar: cache-first, preview-on-miss, accurate
+// decode-on-miss, store. The heavy native decode (extractWaveform) still runs
+// once per track and persists; extractWaveformPreview gives uncached local
+// tracks a fast first paint.
 
 import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import { openLibraryDb } from '@/db/database';
 import { getWaveformPeaks, putWaveformPeaks } from '@/db/waveformQueries';
 
 export const WAVEFORM_BINS = 512;
+export const WAVEFORM_PREVIEW_BINS = 96;
+
+export interface WaveformLoadOptions {
+  onPreview?: (peaks: Float32Array) => void;
+}
 
 // Dedupe concurrent requests for the same track (e.g. mini-player + now-playing).
 const inflight = new Map<string, Promise<Float32Array | null>>();
+const previewInflight = new Map<string, Promise<Float32Array | null>>();
 
-export function getWaveform(trackPath: string): Promise<Float32Array | null> {
-  const existing = inflight.get(trackPath);
-  if (existing) return existing;
-  const task = loadWaveform(trackPath).finally(() => inflight.delete(trackPath));
-  inflight.set(trackPath, task);
-  return task;
+export function getWaveform(
+  trackPath: string,
+  options: WaveformLoadOptions = {}
+): Promise<Float32Array | null> {
+  if (!isLocalWaveformPath(trackPath)) return Promise.resolve(null);
+  return loadWaveform(trackPath, options);
 }
 
-async function loadWaveform(trackPath: string): Promise<Float32Array | null> {
+async function loadWaveform(
+  trackPath: string,
+  options: WaveformLoadOptions
+): Promise<Float32Array | null> {
   const db = await openLibraryDb();
   const cached = await getWaveformPeaks(db, trackPath);
   if (cached && cached.length > 0) return cached;
 
+  if (options.onPreview) {
+    void getWaveformPreview(trackPath).then((preview) => {
+      if (preview && preview.length > 0) options.onPreview?.(preview);
+    });
+  }
+
+  const existing = inflight.get(trackPath);
+  if (existing) return existing;
+  const task = decodeAccurateWaveform(trackPath).finally(() => inflight.delete(trackPath));
+  inflight.set(trackPath, task);
+  return task;
+}
+
+async function decodeAccurateWaveform(trackPath: string): Promise<Float32Array | null> {
   let raw: number[];
   try {
     raw = await AstraLibraryScanner.extractWaveform(trackPath, WAVEFORM_BINS);
@@ -34,10 +57,34 @@ async function loadWaveform(trackPath: string): Promise<Float32Array | null> {
   if (!raw || raw.length === 0) return null;
 
   const peaks = Float32Array.from(raw);
+  const db = await openLibraryDb();
   await putWaveformPeaks(db, trackPath, peaks).catch(() => {
     /* cache write failure is non-fatal */
   });
   return peaks;
+}
+
+function getWaveformPreview(trackPath: string): Promise<Float32Array | null> {
+  const existing = previewInflight.get(trackPath);
+  if (existing) return existing;
+  const task = decodePreviewWaveform(trackPath).finally(() => previewInflight.delete(trackPath));
+  previewInflight.set(trackPath, task);
+  return task;
+}
+
+async function decodePreviewWaveform(trackPath: string): Promise<Float32Array | null> {
+  let raw: number[];
+  try {
+    raw = await AstraLibraryScanner.extractWaveformPreview(trackPath, WAVEFORM_PREVIEW_BINS);
+  } catch {
+    return null;
+  }
+  if (!raw || raw.length === 0) return null;
+  return Float32Array.from(raw);
+}
+
+function isLocalWaveformPath(trackPath: string): boolean {
+  return trackPath.startsWith('content://') || trackPath.startsWith('file://');
 }
 
 /**

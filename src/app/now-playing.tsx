@@ -603,9 +603,9 @@ export default function NowPlayingScreen() {
                   <WaveformSeekBar
                     currentTime={currentTime}
                     duration={duration}
+                    isPlaying={isPlaying}
                     height={layout.waveformHeight}
                     touchPadding={WAVEFORM_TOUCH_PADDING}
-                    trackKey={track.id}
                     trackPath={track.path}
                     onSeek={(seconds) => void seekTo(seconds)}
                   />

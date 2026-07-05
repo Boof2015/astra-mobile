@@ -12,12 +12,19 @@ import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
 
 const RECENT_PLAY_THRESHOLD_MS = 15_000;
+const SEEK_ACK_EPS = 0.75;
+const SEEK_ACK_TIMEOUT_MS = 3000;
 
 interface RecentPlayCandidate {
   path: string | null;
   accumulatedMs: number;
   playingSinceMs: number | null;
   recorded: boolean;
+}
+
+interface StablePlaybackState {
+  path: string | null;
+  state: PlaybackState;
 }
 
 function mapState(state?: State): PlaybackState {
@@ -35,6 +42,22 @@ function mapState(state?: State): PlaybackState {
   }
 }
 
+function resolveTransientLoading(
+  rawState: PlaybackState,
+  activeTrackPath: string | null,
+  stable: StablePlaybackState
+): PlaybackState {
+  if (
+    rawState === 'loading' &&
+    activeTrackPath != null &&
+    activeTrackPath === stable.path &&
+    (stable.state === 'playing' || stable.state === 'paused')
+  ) {
+    return stable.state;
+  }
+  return rawState;
+}
+
 /**
  * Mirrors RNTP's playback state into `playerStore` so the whole UI reads from
  * one Zustand source (matching the desktop pattern). Mount once, near the root.
@@ -43,13 +66,17 @@ export function usePlaybackSync(): void {
   const activeTrack = useActiveTrack();
   const progress = useProgress(500);
   const playbackState = usePlaybackState();
-  const mappedPlaybackState = mapState(playbackState.state);
   const recentPlayCandidate = useRef<RecentPlayCandidate>({
     path: null,
     accumulatedMs: 0,
     playingSinceMs: null,
     recorded: false,
   });
+  const stablePlayback = useRef<{ path: string | null; state: PlaybackState }>({
+    path: null,
+    state: 'stopped',
+  });
+  const rawPlaybackState = mapState(playbackState.state);
 
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setProgress = usePlayerStore((s) => s.setProgress);
@@ -58,16 +85,39 @@ export function usePlaybackSync(): void {
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
 
   useEffect(() => {
-    setCurrentTrack(activeTrack ? rntpToTrack(activeTrack) : null);
+    const nextTrack = activeTrack ? rntpToTrack(activeTrack) : null;
+    if (usePlayerStore.getState().currentTrack?.path !== nextTrack?.path) {
+      usePlayerStore.getState().clearPendingSeek();
+    }
+    setCurrentTrack(nextTrack);
   }, [activeTrack, setCurrentTrack]);
 
   useEffect(() => {
+    const pendingSeek = usePlayerStore.getState().pendingSeek;
+    if (pendingSeek) {
+      const acknowledged = Math.abs(progress.position - pendingSeek.target) <= SEEK_ACK_EPS;
+      const timedOut = Date.now() - pendingSeek.startedAt > SEEK_ACK_TIMEOUT_MS;
+      if (!acknowledged && !timedOut) return;
+      usePlayerStore.getState().clearPendingSeek();
+    }
     setProgress(progress.position, progress.duration);
   }, [progress.position, progress.duration, setProgress]);
 
   useEffect(() => {
+    const activeTrackPath = activeTrack ? rntpToTrack(activeTrack).path : null;
+    const mappedPlaybackState = resolveTransientLoading(
+      rawPlaybackState,
+      activeTrackPath,
+      stablePlayback.current
+    );
     setPlaybackState(mappedPlaybackState);
-  }, [mappedPlaybackState, setPlaybackState]);
+    if (mappedPlaybackState !== 'loading') {
+      stablePlayback.current = {
+        path: activeTrackPath,
+        state: mappedPlaybackState,
+      };
+    }
+  }, [activeTrack, rawPlaybackState, setPlaybackState]);
 
   // Push the widget now-playing (incl. the recents list) on track/state/recents change only
   // — NOT on every 500ms progress tick. The widget shows no position, so per-tick updates
@@ -78,17 +128,27 @@ export function usePlaybackSync(): void {
   // pushed from here at all (the MediaSession extrapolates position between those events).
   useEffect(() => {
     const track = activeTrack ? rntpToTrack(activeTrack) : null;
+    const mappedPlaybackState = resolveTransientLoading(
+      rawPlaybackState,
+      track?.path ?? null,
+      stablePlayback.current
+    );
     setWidgetNowPlaying(
       track,
       mappedPlaybackState,
       buildWidgetRecentItems(recentlyPlayedTracks, track?.path),
     );
-  }, [activeTrack, mappedPlaybackState, recentlyPlayedTracks]);
+  }, [activeTrack, rawPlaybackState, recentlyPlayedTracks]);
 
   useEffect(() => {
     // Use the identity path (subsonic://|jellyfin:// for remote; the file URI for
     // local) so history matches `tracks.path` — activeTrack.url is the stream URL.
     const path = activeTrack ? rntpToTrack(activeTrack).path : null;
+    const mappedPlaybackState = resolveTransientLoading(
+      rawPlaybackState,
+      path,
+      stablePlayback.current
+    );
     const now = Date.now();
     const candidate = recentPlayCandidate.current;
 
@@ -128,5 +188,5 @@ export function usePlaybackSync(): void {
     void recordTrackPlayed(path).catch((err) => {
       console.warn('[library] playback history update failed', err);
     });
-  }, [activeTrack, mappedPlaybackState, progress.position, recordTrackPlayed]);
+  }, [activeTrack, rawPlaybackState, progress.position, recordTrackPlayed]);
 }
