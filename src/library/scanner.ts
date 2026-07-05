@@ -18,6 +18,7 @@ import {
 } from '@/db/queries';
 import type { LibraryFolder } from '@/types/library';
 import { AUDIO_EXTENSIONS } from './audioExtensions';
+import { recomputeAlbumIdentity } from './albumIdentity';
 import { metadataToUpsertRow } from './trackAdapter';
 
 const EXTRACT_BATCH_SIZE = 24;
@@ -158,6 +159,11 @@ export async function scanFolder(
 
   await markFolderScanned(db, folder.id);
 
+  // Settle album identities: the compilation heuristic is cross-track, so adds,
+  // re-extractions AND removals can regroup albums. Upserts only wrote
+  // provisional per-track keys.
+  await recomputeAlbumIdentity(db);
+
   // Loudness + waveform are measured on the fly: the first time a track is played,
   // useNormalizationSync (loudness) and the seek bar (waveform) decode + cache it.
   // No bulk background decoding — gentle on low-end devices.
@@ -185,5 +191,8 @@ export async function rescanAll(
 export async function removeFolder(folder: Pick<LibraryFolder, 'id' | 'tree_uri'>): Promise<void> {
   const db = await openLibraryDb();
   await deleteFolder(db, folder.id);
+  // Removals can dissolve compilations (e.g. a Various Artists group reduced to
+  // one artist's tracks must fall back to a track-artist group).
+  await recomputeAlbumIdentity(db);
   await AstraLibraryScanner.releasePersistedUriPermission(folder.tree_uri);
 }

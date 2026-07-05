@@ -39,6 +39,7 @@ import {
   skipToPrevious,
   togglePlay
 } from '@/audio/playbackController';
+import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { albumArtworkSource } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
@@ -407,6 +408,9 @@ export default function HomeScreen() {
       list.push(track);
       map.set(track.album_identity_key, list);
     }
+    // Store tracks are artist-ordered; a multi-artist compilation would play
+    // blocked by artist without an explicit album-order sort.
+    for (const list of map.values()) list.sort(compareTracksByDiscTrackTitle);
     return map;
   }, [randomAlbumNeedsTracks, tracks]);
   const randomTracks =

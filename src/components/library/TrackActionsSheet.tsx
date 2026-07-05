@@ -10,7 +10,7 @@ import {
 import { PlaylistPickerSheet } from '@/components/sheets/PlaylistPickerSheet';
 import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { resolveCanonicalBrowseArtist, resolveStrictBrowseArtist } from '@/library/artistGrouping';
+import { resolveNavigationArtist } from '@/library/artistGrouping';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { DbTrack } from '@/types/library';
@@ -48,8 +48,7 @@ function TrackActionsSheetInner({
   const isFavorite = usePlaylistStore((s) => s.favoritePaths.has(track.path));
   const toggleFavorite = usePlaylistStore((s) => s.toggleFavorite);
 
-  const artistName =
-    groupingMode === 'fileTags' ? resolveStrictBrowseArtist(track) : resolveCanonicalBrowseArtist(track);
+  const artistName = resolveNavigationArtist(track, groupingMode);
 
   const closeAndRun = (run: () => void) => {
     onClose();

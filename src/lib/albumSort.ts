@@ -9,7 +9,7 @@ export const ALBUM_SORT_LABELS: Record<AlbumSort, string> = {
   year: 'Year',
 };
 
-/** 'artist' is the DB's native order (getAlbums); others sort a copy. */
+/** 'artist' is buildAlbumList's native order (artist → album); others sort a copy. */
 export function sortAlbums(albums: Album[], sort: AlbumSort): Album[] {
   switch (sort) {
     case 'artist':

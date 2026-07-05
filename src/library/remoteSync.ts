@@ -10,7 +10,7 @@ import {
   type RemoteTrackUpsert,
 } from '@/db/queries';
 import { addFavoritePaths, syncRemotePlaylists } from '@/db/playlistQueries';
-import { buildAlbumIdentityKey } from '@/library/trackAdapter';
+import { buildProvisionalAlbumIdentity, recomputeAlbumIdentity } from '@/library/albumIdentity';
 import {
   buildSubsonicTrackPath,
   fetchSubsonicStarredTrackIds,
@@ -40,6 +40,9 @@ export interface SyncRemoteOptions {
 }
 
 function toUpsertRow(source: RemoteSourceRow, track: RemoteCatalogTrack): RemoteTrackUpsert {
+  // Same album identity rule as local tracks so remote/local albums group consistently;
+  // the post-sync recompute settles cross-track compilations.
+  const albumIdentity = buildProvisionalAlbumIdentity(track.album_artist, track.artist, track.album);
   return {
     path: track.path,
     source_type: source.type,
@@ -51,8 +54,8 @@ function toUpsertRow(source: RemoteSourceRow, track: RemoteCatalogTrack): Remote
     artist: track.artist,
     album: track.album,
     album_artist: track.album_artist,
-    // Same album identity rule as local tracks so remote/local albums group consistently.
-    album_identity_key: buildAlbumIdentityKey(track.album_artist, track.artist, track.album),
+    album_identity_key: albumIdentity.key,
+    album_display_artist: albumIdentity.displayArtist,
     duration: track.duration,
     track_number: track.track_number,
     disc_number: track.disc_number,
@@ -112,6 +115,10 @@ export async function syncRemoteSource(
   const existing = await getRemoteSourcePaths(db, source.type, source.id);
   const toDelete = existing.map((row) => row.path).filter((path) => !currentPaths.has(path));
   const removed = toDelete.length > 0 ? await deleteTracksByPaths(db, toDelete) : 0;
+
+  // Settle album identities across the whole library (compilation heuristic is
+  // cross-track; additions AND removals can change grouping).
+  await recomputeAlbumIdentity(db);
 
   // Subsonic also exposes server favorites + playlists; mirror them into the local
   // favorites/playlists tables (must run after the track upsert so paths resolve).

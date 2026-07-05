@@ -234,6 +234,8 @@ export default function SettingsScreen() {
 
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
+  const includeSingles = useSettingsStore((s) => s.includeSingles);
+  const setIncludeSingles = useSettingsStore((s) => s.setIncludeSingles);
 
   const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
   const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
@@ -356,6 +358,13 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        <ToggleRow
+          title="Show singles in Albums"
+          description="Include 1-track albums in the Albums view. Off matches desktop."
+          value={includeSingles}
+          onValueChange={(v) => void setIncludeSingles(v)}
+        />
 
         <Text variant="label" color={colors.textTertiary} style={[styles.sectionLabel, styles.sectionSpacing]}>
           REMOTE SOURCES

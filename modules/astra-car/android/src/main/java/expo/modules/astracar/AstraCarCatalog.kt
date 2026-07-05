@@ -21,8 +21,10 @@ private const val TAG = "AstraCarCatalog"
 // the browser on a spinner. Auto pages large lists itself; this only guards the unpaged path.
 private const val MAX_UNPAGED_CHILDREN = 500
 
+// Desktop track order (nulls first, path tiebreak) — keep in sync with the JS
+// TRACK_ORDER in src/db/queries.ts and compareTracksByDiscTrackTitle.
 private const val TRACK_ORDER =
-  "COALESCE(disc_number, 9999), COALESCE(track_number, 9999), title COLLATE NOCASE"
+  "COALESCE(disc_number, 0), COALESCE(track_number, 0), title COLLATE NOCASE, path"
 
 // Fully alias-qualified (every column `t.`): these columns are SELECTed from joins where
 // the other table (favorites / playlist_tracks) also has an `added_at`, so an unqualified
@@ -274,12 +276,21 @@ class AstraCarCatalog(private val context: Context) {
     return getAllTracks(db).filter { trackMatchesBrowseArtist(it, normalizeKey(artist), mode) }
   }
 
-  private fun getAlbums(db: SQLiteDatabase): List<AlbumRow> =
-    db.rawQuery(
+  private fun getAlbums(db: SQLiteDatabase): List<AlbumRow> {
+    // album_display_artist is the settled group artist ("Various Artists" for
+    // compilations), uniform per group so MAX() is exact. Guarded: this headless
+    // service can open a pre-v15 DB before the JS app ever runs its migration.
+    val artistExpr =
+      if (hasColumn(db, "tracks", "album_display_artist")) {
+        "MAX(COALESCE(album_display_artist, album_artist, artist))"
+      } else {
+        "MAX(COALESCE(album_artist, artist))"
+      }
+    return db.rawQuery(
       """
       SELECT album_identity_key AS identity_key,
              MAX(album) AS album,
-             MAX(COALESCE(album_artist, artist)) AS artist,
+             $artistExpr AS artist,
              MAX(year) AS year,
              MAX(artwork_hash) AS artwork_hash,
              MAX(source_id) AS source_id,
@@ -307,6 +318,7 @@ class AstraCarCatalog(private val context: Context) {
         }
       }
     }
+  }
 
   private fun getPlaylistRuleRow(db: SQLiteDatabase, playlistId: Long): PlaylistRuleRow? {
     if (!hasColumn(db, "playlists", "kind")) return PlaylistRuleRow("normal", null)

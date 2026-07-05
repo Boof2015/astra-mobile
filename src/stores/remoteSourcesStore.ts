@@ -12,6 +12,7 @@ import {
   deleteFavoritesByPathPrefix,
   deleteRemotePlaylistsBySource,
 } from '@/db/playlistQueries';
+import { recomputeAlbumIdentity } from '@/library/albumIdentity';
 import {
   deleteRemoteSource,
   getRemoteSource,
@@ -256,6 +257,8 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
       // `${type}://${id}/` path prefix).
       await deleteRemotePlaylistsBySource(db, id);
       await deleteFavoritesByPathPrefix(db, `${source.type}://${id}/`);
+      // Removals can regroup albums (compilation heuristic is cross-track).
+      await recomputeAlbumIdentity(db);
     }
     await deleteRemoteSource(db, id);
     await deleteRemoteSecret(id);

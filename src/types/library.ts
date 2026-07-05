@@ -12,6 +12,9 @@ export interface DbTrack {
   album: string;
   album_artist: string | null;
   album_identity_key: string;
+  /** Settled group artist ("Various Artists" for shared-artwork compilations);
+   *  written by the album-identity recompute pass, NULL until it first runs. */
+  album_display_artist: string | null;
   duration: number;
   track_number: number | null;
   disc_number: number | null;

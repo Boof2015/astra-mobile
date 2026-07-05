@@ -17,11 +17,15 @@
 // so remote playlist sync can upsert + reconcile them; v13 adds `remote_sources.art_auth`
 // — a self-contained cover-art URL template the native Android Auto artwork provider uses
 // to fetch server art without a JS round-trip; v14 adds desktop-style dynamic
-// playlist rules plus fresh aggregate track play stats (no playback_history backfill).
+// playlist rules plus fresh aggregate track play stats (no playback_history backfill);
+// v15 adds `album_display_artist` — the settled group artist ("Various Artists" for
+// shared-artwork compilations) written by the album-identity recompute pass
+// (src/library/albumIdentity.ts); the backfill itself runs from libraryStore.initialize
+// via the `album_grouping_version` settings sentinel (v3 precedent: SQL marks, store acts).
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -276,6 +280,9 @@ const MIGRATIONS: readonly (readonly string[])[] = [
     `CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks(last_played_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_playlists_kind ON playlists(kind)`,
   ],
+  // v14 -> v15 — settled album display artist (see header). NULL until the
+  // startup recompute pass backfills it; readers fall back to album_artist/artist.
+  [`ALTER TABLE tracks ADD COLUMN album_display_artist TEXT`],
 ];
 
 export async function migrate(db: LibraryDatabase): Promise<void> {

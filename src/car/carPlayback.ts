@@ -1,5 +1,4 @@
 import {
-  getAlbums,
   getAllTracks,
   getRecentlyPlayedTracks,
   getTracksByAlbumKey,
@@ -11,6 +10,7 @@ import {
   markPlaylistPlayed,
 } from '@/db/playlistQueries';
 import { openLibraryDb, type LibraryDatabase } from '@/db/database';
+import { buildAlbumList } from '@/library/albumSummary';
 import { buildArtistList, filterTracksByArtist } from '@/library/artistGrouping';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playForCar, playTracksForCar, pause, seekTo, skipToNext, skipToPrevious } from '@/audio/playbackController';
@@ -201,7 +201,9 @@ async function playSearch(payload: CarCommandPayload): Promise<void> {
 
   const albumTerm = cleanSearchTerm(payload.album) || focusedTerm(payload, 'album');
   if (albumTerm) {
-    const album = bestMatch(await getAlbums(db), albumTerm, (entry) => [entry.album, entry.artist]);
+    // Voice search matches everything, including singles the browse grid hides.
+    const albums = buildAlbumList(await getAllTracks(db), { includeSingles: true });
+    const album = bestMatch(albums, albumTerm, (entry) => [entry.album, entry.artist]);
     if (album) return playMedia({ kind: 'album', key: album.identity_key });
   }
 
@@ -232,11 +234,8 @@ async function bestGeneralSearchCandidate(
   query: string,
   focus?: string,
 ): Promise<CarMediaPayload | null> {
-  const [tracks, albums, playlists] = await Promise.all([
-    getAllTracks(db),
-    getAlbums(db),
-    getPlaylists(db),
-  ]);
+  const [tracks, playlists] = await Promise.all([getAllTracks(db), getPlaylists(db)]);
+  const albums = buildAlbumList(tracks, { includeSingles: true });
   const artistName = await bestArtistName(db, query);
 
   const candidates: { media: CarMediaPayload; score: number }[] = [];

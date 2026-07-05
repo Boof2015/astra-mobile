@@ -15,8 +15,9 @@ import { colors, spacing } from '@/theme';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
+import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { albumArtworkSource, artworkThumbUri } from '@/library/artwork';
+import { albumArtworkSource, artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
@@ -45,10 +46,13 @@ export default function AlbumScreen() {
     useDetailCollapse();
 
   const album = albums.find((entry) => entry.identity_key === key);
-  // Store tracks are ordered artist/album/disc/track, so the filtered slice
-  // keeps disc/track order within one album.
+  // Store tracks are artist-ordered, so a multi-artist group (Various Artists
+  // compilation) would come out blocked by artist — re-sort into album order.
   const tracks = useMemo(
-    () => allTracks.filter((track) => track.album_identity_key === key),
+    () =>
+      allTracks
+        .filter((track) => track.album_identity_key === key)
+        .sort(compareTracksByDiscTrackTitle),
     [allTracks, key]
   );
 
@@ -80,12 +84,25 @@ export default function AlbumScreen() {
     void playTracks(tracks.map(dbTrackToTrack), index);
   };
 
-  const artSource = album ? albumArtworkSource(album) : null;
+  // Eligibility can filter an album out of the store list (a single reached via
+  // "go to album") — fall back to the filtered tracks' own metadata.
+  const fallbackTrack = tracks[0];
+  const headerArtist =
+    album?.artist ??
+    fallbackTrack?.album_display_artist ??
+    fallbackTrack?.album_artist ??
+    fallbackTrack?.artist;
+  const headerArtworkHash = album?.artwork_hash ?? fallbackTrack?.artwork_hash ?? null;
+  const artSource = album
+    ? albumArtworkSource(album)
+    : headerArtworkHash
+      ? artworkUri(headerArtworkHash)
+      : null;
   // Blur the cached thumbnail, not the full-res cover (remote albums have no
   // local thumb — their server URL is already sized reasonably).
-  const backdropUri = album?.artwork_hash ? artworkThumbUri(album.artwork_hash) : artSource;
+  const backdropUri = headerArtworkHash ? artworkThumbUri(headerArtworkHash) : artSource;
   const meta = [
-    album?.year ? String(album.year) : null,
+    (album?.year ?? fallbackTrack?.year) ? String(album?.year ?? fallbackTrack?.year) : null,
     `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`,
     formatDuration(totalDuration),
   ]
@@ -130,12 +147,12 @@ export default function AlbumScreen() {
           )
         }
         backdropUri={backdropUri}
-        title={album?.album ?? 'Album'}
+        title={album?.album ?? tracks[0]?.album ?? 'Album'}
         heroMeta={
           <>
-            {album?.artist ? (
+            {headerArtist ? (
               <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-                {album.artist}
+                {headerArtist}
               </Text>
             ) : null}
             <Text variant="label">{meta}</Text>

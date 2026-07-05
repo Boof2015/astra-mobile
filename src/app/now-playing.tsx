@@ -34,7 +34,7 @@ import {
 } from '@/theme';
 import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
-import { resolveCanonicalBrowseArtist, resolveStrictBrowseArtist } from '@/library/artistGrouping';
+import { resolveNavigationArtist } from '@/library/artistGrouping';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -288,9 +288,10 @@ export default function NowPlayingScreen() {
     [libraryTracks, track]
   );
   const artistName = track
-    ? artistGroupingMode === 'fileTags'
-      ? resolveStrictBrowseArtist(libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null })
-      : resolveCanonicalBrowseArtist(libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null })
+    ? resolveNavigationArtist(
+        libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null },
+        artistGroupingMode
+      )
     : '';
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 

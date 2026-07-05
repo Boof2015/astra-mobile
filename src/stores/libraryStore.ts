@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
 import { openLibraryDb } from '@/db/database';
 import {
-  getAlbums,
   getAllTracks,
   getRecentlyPlayedTracks,
   getSetting,
@@ -10,6 +9,8 @@ import {
   markTrackPlayed,
   setSetting,
 } from '@/db/queries';
+import { recomputeAlbumIdentity } from '@/library/albumIdentity';
+import { buildAlbumList } from '@/library/albumSummary';
 import { ensureArtworkThumbnails } from '@/library/artwork';
 import { buildArtistList } from '@/library/artistGrouping';
 import {
@@ -36,6 +37,11 @@ const VIEW_MODE_KEY = 'library_view_mode';
 const TRACK_SORT_KEY = 'library_track_sort';
 const ALBUM_SORT_KEY = 'library_album_sort';
 const ARTIST_SORT_KEY = 'library_artist_sort';
+
+// Bump when the album-identity algorithm changes to re-run the whole-library
+// recompute at startup. '2' = the desktop three-tier grouping port (v15 schema).
+const ALBUM_GROUPING_VERSION_KEY = 'album_grouping_version';
+const ALBUM_GROUPING_VERSION = '2';
 
 const VIEW_MODES: readonly ViewMode[] = ['tracks', 'albums', 'artists', 'playlists', 'folders'];
 
@@ -95,6 +101,7 @@ interface LibraryStore {
   refresh: () => Promise<void>;
   recordTrackPlayed: (path: string) => Promise<void>;
   recomputeArtists: () => void;
+  recomputeAlbums: () => void;
   setViewMode: (mode: ViewMode) => void;
   setTrackSort: (sort: TrackSort) => void;
   setAlbumSort: (sort: AlbumSort) => void;
@@ -148,7 +155,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           await useSettingsStore.getState().load();
           useSettingsStore.subscribe((state, prev) => {
             if (state.artistGroupingMode !== prev.artistGroupingMode) get().recomputeArtists();
+            if (state.includeSingles !== prev.includeSingles) get().recomputeAlbums();
           });
+          // One-time backfill when the album-identity algorithm changes (e.g. the
+          // desktop three-tier grouping port): settle every track's identity key +
+          // display artist before the first refresh so first paint is grouped right.
+          if ((await getSetting(db, ALBUM_GROUPING_VERSION_KEY)) !== ALBUM_GROUPING_VERSION) {
+            await recomputeAlbumIdentity(db);
+            await setSetting(db, ALBUM_GROUPING_VERSION_KEY, ALBUM_GROUPING_VERSION);
+          }
           // Restore view preferences before the first render of the library screen.
           const [savedViewMode, savedTrackSort, savedAlbumSort, savedArtistSort] =
             await Promise.all([
@@ -189,9 +204,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     refresh: async () => {
       const db = await openLibraryDb();
-      const [tracks, albums, folders, totalTrackCount, recentlyPlayedTracks] = await Promise.all([
+      const [tracks, folders, totalTrackCount, recentlyPlayedTracks] = await Promise.all([
         getAllTracks(db),
-        getAlbums(db),
         loadFolders(),
         getTrackCount(db),
         getRecentlyPlayedTracks(db),
@@ -201,8 +215,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       } catch {
         // Missing thumbnails should not prevent the library itself from loading.
       }
-      // The artist list is derived in JS so it can honor the grouping mode.
-      const artists = buildArtistList(tracks, useSettingsStore.getState().artistGroupingMode);
+      // Album + artist lists are derived in JS: albums for the desktop-parity
+      // display picks + singles eligibility, artists to honor the grouping mode.
+      const settings = useSettingsStore.getState();
+      const albums = buildAlbumList(tracks, { includeSingles: settings.includeSingles });
+      const artists = buildArtistList(tracks, settings.artistGroupingMode);
       set({ tracks, recentlyPlayedTracks, albums, artists, folders, totalTrackCount });
       // Playlist counts/missing states depend on tracks — keep them in step.
       await usePlaylistStore.getState().refresh();
@@ -221,6 +238,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     recomputeArtists: () =>
       set((state) => ({
         artists: buildArtistList(state.tracks, useSettingsStore.getState().artistGroupingMode),
+      })),
+
+    // Rebuild the album list from in-memory tracks (e.g. on singles-toggle change).
+    recomputeAlbums: () =>
+      set((state) => ({
+        albums: buildAlbumList(state.tracks, {
+          includeSingles: useSettingsStore.getState().includeSingles,
+        }),
       })),
 
     setViewMode: (viewMode) => {

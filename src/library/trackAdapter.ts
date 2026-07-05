@@ -7,28 +7,11 @@ import type { TrackUpsert } from '@/db/queries';
 import type { ExtractedMetadata, ScannedFile } from '../../modules/astra-library-scanner';
 import { artworkUri } from './artwork';
 import { artworkUrlForTrack } from '@/services/remoteUrls';
+import { buildProvisionalAlbumIdentity } from './albumIdentity';
 import { repairMojibakeTag } from './tagEncoding';
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
 const UNKNOWN_ALBUM = 'Unknown Album';
-
-// Ports desktop normalizeDisplay/normalizeKey (library.ts:1023).
-function normalizeKey(value: string): string {
-  return value.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
-}
-
-// M1-simple album identity: normalized "<album artist or artist>|<album>".
-// Stored per track so getAlbums is a plain GROUP BY; the desktop compilation
-// heuristic can land later by recomputing this column.
-export function buildAlbumIdentityKey(
-  albumArtist: string | null,
-  artist: string,
-  album: string
-): string {
-  const artistKey = normalizeKey(albumArtist || artist) || 'unknown artist';
-  const albumKey = normalizeKey(album) || 'unknown album';
-  return `${artistKey}|${albumKey}`;
-}
 
 const CODEC_BY_MIME: Record<string, string> = {
   'audio/flac': 'flac',
@@ -75,6 +58,7 @@ export function metadataToUpsertRow(
   const artist = cleanTag(meta.artist) ?? UNKNOWN_ARTIST;
   const album = cleanTag(meta.album) ?? UNKNOWN_ALBUM;
   const albumArtist = cleanTag(meta.albumArtist);
+  const albumIdentity = buildProvisionalAlbumIdentity(albumArtist, artist, album);
 
   return {
     path: file.uri,
@@ -83,7 +67,8 @@ export function metadataToUpsertRow(
     artist,
     album,
     album_artist: albumArtist,
-    album_identity_key: buildAlbumIdentityKey(albumArtist, artist, album),
+    album_identity_key: albumIdentity.key,
+    album_display_artist: albumIdentity.displayArtist,
     duration: meta.durationMs != null ? meta.durationMs / 1000 : 0,
     track_number: meta.trackNumber ?? null,
     disc_number: meta.discNumber ?? null,

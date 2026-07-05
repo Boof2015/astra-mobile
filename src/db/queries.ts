@@ -1,6 +1,6 @@
 // Library queries — SQL ported/adapted from the desktop library service.
 
-import type { Album, DbTrack, LibraryFolder } from '@/types/library';
+import type { DbTrack, LibraryFolder } from '@/types/library';
 import type { LibraryDatabase, SqlParams } from './database';
 
 /** Row shape the scanner produces for insert/update (id and timestamps are db-managed). */
@@ -12,6 +12,7 @@ export interface TrackUpsert {
   album: string;
   album_artist: string | null;
   album_identity_key: string;
+  album_display_artist: string | null;
   duration: number;
   track_number: number | null;
   disc_number: number | null;
@@ -32,10 +33,10 @@ export interface TrackUpsert {
 const UPSERT_TRACK_SQL = `
   INSERT INTO tracks (
     path, folder_id, title, artist, album, album_artist, album_identity_key,
-    duration, track_number, disc_number, year, genre, artwork_hash, format,
-    sample_rate, bit_depth, bitrate, channels, codec, source_type,
-    file_name, size, mtime, added_at, modified_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)
+    album_display_artist, duration, track_number, disc_number, year, genre,
+    artwork_hash, format, sample_rate, bit_depth, bitrate, channels, codec,
+    source_type, file_name, size, mtime, added_at, modified_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?, ?)
   ON CONFLICT(path) DO UPDATE SET
     folder_id = excluded.folder_id,
     title = excluded.title,
@@ -43,6 +44,7 @@ const UPSERT_TRACK_SQL = `
     album = excluded.album,
     album_artist = excluded.album_artist,
     album_identity_key = excluded.album_identity_key,
+    album_display_artist = excluded.album_display_artist,
     duration = excluded.duration,
     track_number = excluded.track_number,
     disc_number = excluded.disc_number,
@@ -74,6 +76,7 @@ export async function upsertTracks(db: LibraryDatabase, rows: TrackUpsert[]): Pr
         row.album,
         row.album_artist,
         row.album_identity_key,
+        row.album_display_artist,
         row.duration,
         row.track_number,
         row.disc_number,
@@ -111,6 +114,7 @@ export interface RemoteTrackUpsert {
   album: string;
   album_artist: string | null;
   album_identity_key: string;
+  album_display_artist: string | null;
   duration: number;
   track_number: number | null;
   disc_number: number | null;
@@ -129,17 +133,19 @@ export interface RemoteTrackUpsert {
 const UPSERT_REMOTE_TRACK_SQL = `
   INSERT INTO tracks (
     path, folder_id, title, artist, album, album_artist, album_identity_key,
-    duration, track_number, disc_number, year, genre, artwork_hash, format,
-    sample_rate, bit_depth, bitrate, channels, codec, bpm, musical_key,
+    album_display_artist, duration, track_number, disc_number, year, genre,
+    artwork_hash, format, sample_rate, bit_depth, bitrate, channels, codec,
+    bpm, musical_key,
     source_type, source_id, source_track_id, source_path, artwork_source_id, file_name, size, mtime,
     added_at, modified_at
-  ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 0, ?, ?)
+  ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, 0, ?, ?)
   ON CONFLICT(path) DO UPDATE SET
     title = excluded.title,
     artist = excluded.artist,
     album = excluded.album,
     album_artist = excluded.album_artist,
     album_identity_key = excluded.album_identity_key,
+    album_display_artist = excluded.album_display_artist,
     duration = excluded.duration,
     track_number = excluded.track_number,
     disc_number = excluded.disc_number,
@@ -174,6 +180,7 @@ export async function upsertRemoteTracks(
         row.album,
         row.album_artist,
         row.album_identity_key,
+        row.album_display_artist,
         row.duration,
         row.track_number,
         row.disc_number,
@@ -223,28 +230,17 @@ export async function deleteRemoteTracksBySource(
   return result.changes;
 }
 
-const TRACK_ORDER = 'COALESCE(disc_number, 9999), COALESCE(track_number, 9999), title COLLATE NOCASE';
+// Desktop track order (library.ts compareTracksByDiscTrackTitle): nulls sort
+// first (as 0) and path is the final tiebreak. Keep in sync with the JS
+// comparator in src/library/albumIdentity.ts and astra-car's Kotlin TRACK_ORDER.
+const TRACK_ORDER =
+  'COALESCE(disc_number, 0), COALESCE(track_number, 0), title COLLATE NOCASE, path';
 
-export function getAlbums(db: LibraryDatabase): Promise<Album[]> {
-  return db.all<Album>(`
-    SELECT album_identity_key AS identity_key,
-           MAX(album) AS album,
-           MAX(COALESCE(album_artist, artist)) AS artist,
-           MAX(year) AS year,
-           MAX(artwork_hash) AS artwork_hash,
-           COUNT(*) AS track_count,
-           MAX(added_at) AS latest_added_at,
-           MAX(source_type) AS source_type,
-           MAX(source_id) AS source_id,
-           MAX(artwork_source_id) AS artwork_source_id
-    FROM tracks
-    GROUP BY album_identity_key
-    ORDER BY 3 COLLATE NOCASE, 2 COLLATE NOCASE
-  `);
-}
-
-// NOTE: the artist browse list is built in JS (src/library/artistGrouping.ts) so it
-// can honor the astra-grouping vs file-tags mode; there is no SQL getArtists anymore.
+// NOTE: the album browse list is built in JS (src/library/albumSummary.ts) — the
+// desktop-parity display picks (most-frequent name/artwork variants, settled
+// display artist, singles eligibility) don't map cleanly onto GROUP BY aggregates.
+// The artist browse list is likewise built in JS (src/library/artistGrouping.ts)
+// so it can honor the astra-grouping vs file-tags mode.
 
 export function getAllTracks(db: LibraryDatabase): Promise<DbTrack[]> {
   return db.all<DbTrack>(`

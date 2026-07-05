@@ -9,39 +9,23 @@
 // so desktop's parsed-array paths collapse to splitCollaborators(artist) — which is
 // the parsing heuristic. Everything here is derivable from artist + album_artist.
 
+import { normalizeDisplay, normalizeKey, splitCollaborators } from '@/shared/library/albumGrouping';
 import type { Artist, DbTrack } from '@/types/library';
+
+// Shared with the album-identity port so artist and album grouping can never
+// drift apart on normalization or collaborator splitting.
+export { normalizeDisplay, normalizeKey, splitCollaborators };
 
 export type ArtistGroupingMode = 'astra' | 'fileTags';
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
+const VARIOUS_ARTISTS_KEY = 'various artists';
 
 /** Track fields the grouping logic reads (subset of DbTrack, for testability). */
 type ArtistTrackLike = Pick<
   DbTrack,
   'artist' | 'album_artist' | 'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
 >;
-
-export function normalizeDisplay(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-export function normalizeKey(value: string): string {
-  return normalizeDisplay(value).toLocaleLowerCase();
-}
-
-/** Split "A & B feat. C; D" into ["A","B","C","D"], deduped by normalized key. */
-export function splitCollaborators(rawArtist: string): string[] {
-  const normalized = normalizeDisplay(rawArtist);
-  if (!normalized) return [];
-
-  const unified = normalized
-    .replace(/\s*;\s*/g, ',')
-    .replace(/\s+&\s+/g, ',')
-    .replace(/\s+[x×]\s+/gi, ',')
-    .replace(/\s+(?:feat\.?|ft\.?|featuring|with)\s+/gi, ',');
-
-  return dedupeByKey(unified.split(','));
-}
 
 /** Like splitCollaborators but keeps "&" (e.g. "Earth, Wind & Fire" stays whole). */
 export function splitAlbumArtistCollaborators(rawAlbumArtist: string): string[] {
@@ -103,6 +87,23 @@ export function getCanonicalArtistIndexNames(track: Pick<DbTrack, 'artist' | 'al
   }
 
   return Array.from(unique.values());
+}
+
+/**
+ * Per-track "View artist" destination. "Various Artists" is an album-level
+ * placeholder, not a person — in astra mode fall through to the track's own
+ * primary artist (desktop parity: album artist links are nulled when they
+ * normalize to Various Artists). File-tags mode keeps the tag verbatim: the VA
+ * bucket is the only artist page that lists those tracks in that mode.
+ */
+export function resolveNavigationArtist(
+  track: Pick<DbTrack, 'artist' | 'album_artist'>,
+  mode: ArtistGroupingMode
+): string {
+  if (mode === 'fileTags') return resolveStrictBrowseArtist(track);
+  const canonical = resolveCanonicalBrowseArtist(track);
+  if (normalizeKey(canonical) !== VARIOUS_ARTISTS_KEY) return canonical;
+  return splitCollaborators(track.artist)[0] ?? canonical;
 }
 
 /** Whether a track belongs to the given artist key under the active browse mode. */
