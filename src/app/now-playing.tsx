@@ -23,10 +23,13 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { MarqueeText } from '@/components/MarqueeText';
+import { SeekBar } from '@/components/SeekBar';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
+import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { QueueTray } from '@/components/queue/QueueTray';
+import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import {
   colors,
   radius,
@@ -36,8 +39,10 @@ import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveNavigationArtist } from '@/library/artistGrouping';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { DbTrack } from '@/types/library';
 import {
@@ -48,6 +53,13 @@ import {
   togglePlay,
   toggleShuffle
 } from '@/audio/playbackController';
+import {
+  desktopConnectionLabel,
+  getDesktopPlaybackPresentation,
+  getEffectivePlaybackPresentation,
+  getPhonePlaybackPresentation,
+  hostFromBaseUrl,
+} from '@/playback/playbackTargetPresentation';
 
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
@@ -257,7 +269,9 @@ export default function NowPlayingScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [queueOpen, setQueueOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
+  const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
@@ -271,13 +285,41 @@ export default function NowPlayingScreen() {
   const repeat = usePlayerStore((s) => s.repeat);
   const isFavorite = usePlaylistStore((s) => (track ? s.favoritePaths.has(track.path) : false));
   const toggleFavorite = usePlaylistStore((s) => s.toggleFavorite);
+  const desktopConnection = useDesktopRemoteStore((s) => s.connection);
+  const desktopConnectionState = useDesktopRemoteStore((s) => s.connectionState);
+  const desktopSnapshot = useDesktopRemoteStore((s) => s.snapshot);
+  const desktopQueue = useDesktopRemoteStore((s) => s.queue);
+  const sendDesktopControl = useDesktopRemoteStore((s) => s.sendControl);
+  const reconnectDesktop = useDesktopRemoteStore((s) => s.reconnect);
 
-  const isPlaying = playbackState === 'playing';
-  const isLoading = playbackState === 'loading';
+  const phonePresentation = getPhonePlaybackPresentation({
+    track,
+    playbackState,
+    currentTime,
+    duration,
+  });
+  const desktopPresentation = getDesktopPlaybackPresentation({
+    connection: desktopConnection,
+    connectionState: desktopConnectionState,
+    snapshot: desktopSnapshot,
+  });
+  const activePresentation = getEffectivePlaybackPresentation({
+    selectedTarget,
+    phone: phonePresentation,
+    desktop: desktopPresentation,
+  });
+  const isDesktopTarget = activePresentation.target === 'desktop';
+  const activeTrack = desktopSnapshot?.currentTrack ?? null;
+  const isPlaying = activePresentation.playbackState === 'playing';
+  const isLoading = activePresentation.playbackState === 'loading';
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
-  const layout = getNowPlayingLayout(effectiveWidth, availableHeight, scopeStageVisible);
-  const source = track?.album?.trim() ? track.album : 'Library';
+  const layout = getNowPlayingLayout(
+    effectiveWidth,
+    availableHeight,
+    isDesktopTarget ? false : scopeStageVisible
+  );
+  const source = activePresentation.sourceLabel;
   const shellRight =
     insets.right +
     layout.contentPadding +
@@ -312,7 +354,16 @@ export default function NowPlayingScreen() {
   };
 
   const menuItems: NowPlayingMenuItem[] = [];
-  if (artistName) {
+  menuItems.push({
+    key: 'output',
+    label: 'Choose output device',
+    icon: isDesktopTarget ? 'desktop-outline' : 'phone-portrait-outline',
+    onPress: () => {
+      closeMenu();
+      setTargetPickerOpen(true);
+    },
+  });
+  if (!isDesktopTarget && artistName) {
     menuItems.push({
       key: 'artist',
       label: 'View artist',
@@ -323,7 +374,7 @@ export default function NowPlayingScreen() {
       },
     });
   }
-  if (albumKey) {
+  if (!isDesktopTarget && albumKey) {
     menuItems.push({
       key: 'album',
       label: 'View album',
@@ -334,7 +385,7 @@ export default function NowPlayingScreen() {
       },
     });
   }
-  if (libraryTrack) {
+  if (!isDesktopTarget && libraryTrack) {
     menuItems.push({
       key: 'add-to-playlist',
       label: 'Add to playlist...',
@@ -445,9 +496,11 @@ export default function NowPlayingScreen() {
         >
           <View style={[styles.shell, { width: layout.contentWidth }]}>
             <View style={styles.header}>
-              <Pressable style={styles.headerBtn} onPress={() => dismissSheet()} hitSlop={12}>
-                <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
-              </Pressable>
+              <View style={styles.headerSide}>
+                <Pressable style={styles.headerBtn} onPress={() => dismissSheet()} hitSlop={12}>
+                  <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
+                </Pressable>
+              </View>
               <View style={styles.headerMid}>
                 <Text variant="caption" style={styles.eyebrow}>
                   PLAYING FROM
@@ -456,18 +509,252 @@ export default function NowPlayingScreen() {
                   {source}
                 </Text>
               </View>
-              <Pressable
-                style={styles.headerBtn}
-                onPress={openMenu}
-                disabled={menuItems.length === 0}
-                hitSlop={12}
-                accessibilityLabel="More options"
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-              </Pressable>
+              <View style={[styles.headerSide, styles.headerActions]}>
+                <Pressable
+                  style={styles.headerBtn}
+                  onPress={openMenu}
+                  hitSlop={12}
+                  accessibilityLabel="More options"
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+                </Pressable>
+              </View>
             </View>
 
-            {track ? (
+            {isDesktopTarget ? (
+              activeTrack ? (
+                <View style={[styles.player, layout.isWide && styles.playerWide]}>
+                  <View
+                    style={[
+                      styles.middleStack,
+                      layout.isWide
+                        ? { width: layout.leftPaneWidth, justifyContent: 'center' }
+                        : {
+                            height: layout.mediaStackHeight,
+                            marginTop: layout.mediaTopMargin,
+                            marginBottom: layout.mediaBottomGap,
+                          },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.artCard,
+                        {
+                          width: layout.artSize,
+                          height: layout.artSize,
+                        },
+                      ]}
+                    >
+                      {activePresentation.artworkUri ? (
+                        <Image
+                          key={activeTrack.id}
+                          source={{ uri: activePresentation.artworkUri }}
+                          style={styles.artImage}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <AstraLogo size={Math.round(layout.artSize * 0.4)} />
+                      )}
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.playerControls,
+                      layout.isWide
+                        ? { width: layout.rightPaneWidth }
+                        : styles.playerControlsFill,
+                    ]}
+                  >
+                    <View style={[styles.trackInfo, { marginBottom: layout.trackInfoGap }]}>
+                      <View style={styles.trackTextStack}>
+                        <MarqueeText
+                          variant="heading"
+                          containerStyle={styles.trackTitle}
+                          style={styles.trackTitleText}
+                        >
+                          {activeTrack.title}
+                        </MarqueeText>
+                        <MarqueeText variant="body" style={styles.artist}>
+                          {activeTrack.artist || activeTrack.album || activePresentation.deviceLabel}
+                        </MarqueeText>
+                      </View>
+                      <Pressable
+                        hitSlop={10}
+                        style={styles.inlineActionBtn}
+                        onPress={() => void sendDesktopControl('toggle-favorite')}
+                        accessibilityLabel={activeTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        accessibilityState={{ selected: activeTrack.isFavorite }}
+                      >
+                        <Ionicons
+                          name={activeTrack.isFavorite ? 'heart' : 'heart-outline'}
+                          size={SUB_ICON_SIZE + 4}
+                          color={activeTrack.isFavorite ? colors.accent : colors.textTertiary}
+                        />
+                      </Pressable>
+                    </View>
+
+                    <SeekBar
+                      currentTime={activePresentation.currentTime}
+                      duration={activePresentation.duration}
+                      trackKey={activeTrack.id}
+                      onSeek={(seconds) => void sendDesktopControl('seek', seconds)}
+                    />
+
+                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                      <Pressable
+                        hitSlop={10}
+                        style={[
+                          styles.transportSideBtn,
+                          desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
+                        ]}
+                        disabled={desktopSnapshot?.shuffle === undefined}
+                        onPress={() => void sendDesktopControl('toggle-shuffle')}
+                        accessibilityLabel="Shuffle"
+                        accessibilityState={{ selected: Boolean(desktopSnapshot?.shuffle) }}
+                      >
+                        <Ionicons
+                          name="shuffle"
+                          size={SUB_ICON_SIZE + 2}
+                          color={desktopSnapshot?.shuffle ? colors.accent : colors.textTertiary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void sendDesktopControl('previous')}
+                        hitSlop={12}
+                        style={styles.transportMainBtn}
+                        accessibilityLabel="Previous"
+                      >
+                        <Ionicons
+                          name="play-skip-back"
+                          size={SKIP_ICON_SIZE}
+                          color={colors.textPrimary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void sendDesktopControl(isPlaying ? 'pause' : 'play')}
+                        hitSlop={12}
+                        style={styles.playButton}
+                        accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
+                      >
+                        <Ionicons
+                          name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+                          size={PLAY_ICON_SIZE}
+                          color={colors.bgPrimary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void sendDesktopControl('next')}
+                        hitSlop={12}
+                        style={styles.transportMainBtn}
+                        accessibilityLabel="Next"
+                      >
+                        <Ionicons
+                          name="play-skip-forward"
+                          size={SKIP_ICON_SIZE}
+                          color={colors.textPrimary}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        style={[
+                          styles.transportSideBtn,
+                          desktopSnapshot?.repeat === undefined && styles.controlDisabled,
+                        ]}
+                        disabled={desktopSnapshot?.repeat === undefined}
+                        onPress={() => void sendDesktopControl('toggle-repeat')}
+                        accessibilityLabel="Repeat"
+                        accessibilityState={{ selected: desktopSnapshot?.repeat !== 'none' }}
+                      >
+                        {desktopSnapshot?.repeat === 'one' ? (
+                          <MaterialCommunityIcons
+                            name="repeat-once"
+                            size={SUB_ICON_SIZE + 2}
+                            color={colors.accent}
+                          />
+                        ) : (
+                          <Ionicons
+                            name="repeat"
+                            size={SUB_ICON_SIZE + 2}
+                            color={desktopSnapshot?.repeat === 'all' ? colors.accent : colors.textTertiary}
+                          />
+                        )}
+                      </Pressable>
+                    </View>
+
+                    <View style={[styles.subRow, { marginTop: layout.controlsGap }]}>
+                      <View style={styles.statusPill}>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            {
+                              backgroundColor:
+                                desktopConnectionState === 'connected' ? colors.accent : colors.warning,
+                            },
+                          ]}
+                        />
+                        <Text variant="label" color={colors.textSecondary}>
+                          {desktopConnectionLabel(desktopConnectionState)}
+                        </Text>
+                      </View>
+                      <Text
+                        variant="caption"
+                        color={colors.textTertiary}
+                        numberOfLines={1}
+                        style={styles.remoteDetail}
+                      >
+                        {desktopSnapshot?.outputDeviceLabel?.trim() ||
+                          (desktopConnection ? hostFromBaseUrl(desktopConnection.baseUrl) : '')}
+                      </Text>
+                      <View style={styles.subActions}>
+                        <Pressable
+                          hitSlop={10}
+                          style={styles.subBtn}
+                          onPress={() => void reconnectDesktop()}
+                          accessibilityLabel="Reconnect to desktop"
+                        >
+                          <Ionicons name="refresh" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                        </Pressable>
+                        {desktopQueue ? (
+                          <Pressable
+                            hitSlop={10}
+                            style={styles.subBtn}
+                            onPress={() => setQueueOpen(true)}
+                            accessibilityLabel="Desktop queue"
+                          >
+                            <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.empty}>
+                  <AstraLogo size={72} />
+                  <Text variant="heading" style={styles.emptyTitle}>
+                    {desktopConnection ? 'Nothing playing on desktop' : 'No desktop paired'}
+                  </Text>
+                  <Text variant="body" color={colors.textSecondary} style={styles.centered}>
+                    {desktopConnection
+                      ? desktopConnectionLabel(desktopConnectionState)
+                      : 'Pair with Astra Desktop to control it here.'}
+                  </Text>
+                  <Pressable
+                    style={styles.emptyAction}
+                    onPress={() =>
+                      desktopConnection
+                        ? void reconnectDesktop()
+                        : router.push('/desktop-remote' as never)
+                    }
+                  >
+                    <Text variant="label" color={colors.accentTextStrong}>
+                      {desktopConnection ? 'Reconnect' : 'Pair desktop'}
+                    </Text>
+                  </Pressable>
+                </View>
+              )
+            ) : track ? (
               <View style={[styles.player, layout.isWide && styles.playerWide]}>
                 <View
                   style={[
@@ -757,7 +1044,17 @@ export default function NowPlayingScreen() {
         initialStep="pickPlaylist"
         onClose={() => setPlaylistActionTrack(null)}
       />
-      {queueOpen && <QueueTray onClose={() => setQueueOpen(false)} />}
+      {queueOpen && (
+        isDesktopTarget ? (
+          <RemoteQueueSheet onClose={() => setQueueOpen(false)} />
+        ) : (
+          <QueueTray onClose={() => setQueueOpen(false)} />
+        )
+      )}
+      <PlaybackTargetPicker
+        visible={targetPickerOpen}
+        onClose={() => setTargetPickerOpen(false)}
+      />
     </View>
   );
 }
@@ -786,6 +1083,14 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerSide: {
+    width: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActions: {
+    justifyContent: 'flex-end',
   },
   headerMid: {
     flex: 1,
@@ -952,6 +1257,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  controlDisabled: {
+    opacity: 0.35,
+  },
   playButton: {
     width: PLAY_BUTTON_SIZE,
     height: PLAY_BUTTON_SIZE,
@@ -981,6 +1289,24 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     gap: spacing.lg,
   },
+  statusPill: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glassBg,
+    paddingHorizontal: spacing.sm,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  remoteDetail: {
+    flex: 1,
+    minWidth: 0,
+  },
   subBtn: {
     width: SUB_BUTTON_SIZE,
     height: SUB_BUTTON_SIZE,
@@ -991,5 +1317,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyTitle: {
+    marginTop: spacing.lg,
+  },
+  emptyAction: {
+    marginTop: spacing.lg,
+    minHeight: 42,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.glassBg,
   },
 });

@@ -6,6 +6,7 @@ import TrackPlayer, {
 import type { PlaybackState, Track } from '@/types/audio';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { setupPlayer } from './trackPlayer';
 import { SAMPLE_TRACKS, rntpToTrack, toRntpTrack } from './sampleTracks';
 import {
@@ -120,6 +121,10 @@ function syncOriginalOrderFromMirrorIfUnshuffled(): void {
   if (hasSnapshot) originalOrder = tracks.map(rntpTrackId);
 }
 
+function selectPhonePlaybackTarget(): void {
+  void usePlaybackTargetStore.getState().setTarget('phone');
+}
+
 /** Fisher–Yates shuffle a copy of the array. */
 function shuffleArray<T>(items: readonly T[]): T[] {
   const out = [...items];
@@ -158,6 +163,7 @@ async function playTracksInternal(
   options: { allowBackgroundSetup: boolean },
 ): Promise<void> {
   if (tracks.length === 0) return;
+  selectPhonePlaybackTarget();
   await ensurePlayerReady(options);
   originalOrder = tracks.map((t) => t.id);
   // Honor an already-on shuffle by scrambling the upcoming tail of the new
@@ -182,6 +188,7 @@ async function playTracksInternal(
 /** Shuffle a context and play from the top (the library/album "Shuffle" buttons). */
 export async function shuffleTracks(tracks: Track[]): Promise<void> {
   if (tracks.length === 0) return;
+  selectPhonePlaybackTarget();
   await ensurePlayerReady();
   originalOrder = tracks.map((t) => t.id);
   usePlayerStore.getState().setShuffle(true);
@@ -200,6 +207,7 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
 
 /** M0 demo entry point: load the streamed sample queue if nothing is queued. */
 export async function playSample(): Promise<void> {
+  selectPhonePlaybackTarget();
   await ensurePlayerReady();
   await queueLoadSettled();
   const queue = await TrackPlayer.getQueue();
@@ -224,6 +232,7 @@ export async function playSample(): Promise<void> {
 }
 
 export async function play(): Promise<void> {
+  selectPhonePlaybackTarget();
   usePlayerStore.getState().setPlaybackState('playing');
   try {
     await TrackPlayer.play();
@@ -453,6 +462,7 @@ export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: 
 
 /** Jump to (and play) an absolute queue index. */
 export async function jumpToQueueIndex(index: number): Promise<void> {
+  selectPhonePlaybackTarget();
   // Mid-fill, the tapped row may not be in the native queue yet (or may sit at
   // a shifted native index while the head is still prepending) — translate,
   // waiting out the fill only when the target isn't loaded.

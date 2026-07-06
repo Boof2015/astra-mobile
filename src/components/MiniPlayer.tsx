@@ -17,9 +17,17 @@ import {
   spacing
 } from '@/theme';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import { PlaybackTargetPicker } from './PlaybackTargetPicker';
+import {
+  getDesktopPlaybackPresentation,
+  getEffectivePlaybackPresentation,
+  getPhonePlaybackPresentation,
+} from '@/playback/playbackTargetPresentation';
 
 const PILL_HEIGHT = 56;
 const ART = 42;
@@ -54,81 +62,146 @@ function MiniProgress({
  */
 export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const router = useRouter();
+  const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
+  const desktopConnection = useDesktopRemoteStore((s) => s.connection);
+  const desktopConnectionState = useDesktopRemoteStore((s) => s.connectionState);
+  const desktopSnapshot = useDesktopRemoteStore((s) => s.snapshot);
+  const sendDesktopControl = useDesktopRemoteStore((s) => s.sendControl);
+  const connectDesktop = useDesktopRemoteStore((s) => s.connect);
 
   const scopeActive = useScopeActive();
   const [pillWidth, setPillWidth] = useState(0);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
 
-  if (!track) return null;
+  const phonePresentation = getPhonePlaybackPresentation({
+    track,
+    playbackState,
+    currentTime,
+    duration,
+  });
+  const desktopPresentation = getDesktopPlaybackPresentation({
+    connection: desktopConnection,
+    connectionState: desktopConnectionState,
+    snapshot: desktopSnapshot,
+  });
+  const presentation = getEffectivePlaybackPresentation({
+    selectedTarget,
+    phone: phonePresentation,
+    desktop: desktopPresentation,
+  });
 
-  const isPlaying = playbackState === 'playing';
-  const isLoading = playbackState === 'loading';
-  const liveScopeActive = visible && scopeActive;
+  if (!presentation.visible) return null;
+
+  const isDesktop = presentation.target === 'desktop';
+  const isPlaying = presentation.playbackState === 'playing';
+  const isLoading = presentation.playbackState === 'loading';
+  const liveScopeActive = visible && scopeActive && !isDesktop;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
+  const onTogglePlay = () => {
+    if (isDesktop) {
+      if (!desktopConnection || desktopConnectionState === 'error') {
+        void connectDesktop();
+        return;
+      }
+      void sendDesktopControl(isPlaying ? 'pause' : 'play');
+      return;
+    }
+    void togglePlay();
+  };
+  const onSkipNext = () => {
+    if (isDesktop) {
+      void sendDesktopControl('next');
+      return;
+    }
+    void skipToNext();
+  };
 
   return (
-    <Pressable
-      pointerEvents={visible ? 'auto' : 'none'}
-      style={[styles.pill, !visible && styles.hidden]}
-      onPress={() => router.push('/now-playing')}
-      onLayout={onLayout}
-    >
-      {liveScopeActive && pillWidth > 0 && (
-        <View pointerEvents="none" style={styles.spectrum}>
-          <SpectrumCurve
-            active={liveScopeActive}
-            pointCount={CURVE_POINTS}
-            analysisFrameMs={0}
-            dbMin={-84}
-            dbMax={-20}
-            width={pillWidth}
-            height={PILL_HEIGHT}
-            lineWidth={1.25}
-            lineOpacity={0.38}
-            fillOpacity={0.3}
-            glow
-            glowOpacity={0.06}
+    <>
+      <Pressable
+        pointerEvents={visible ? 'auto' : 'none'}
+        style={[styles.pill, !visible && styles.hidden]}
+        onPress={() => router.push('/now-playing')}
+        onLayout={onLayout}
+      >
+        {liveScopeActive && pillWidth > 0 && (
+          <View pointerEvents="none" style={styles.spectrum}>
+            <SpectrumCurve
+              active={liveScopeActive}
+              pointCount={CURVE_POINTS}
+              analysisFrameMs={0}
+              dbMin={-84}
+              dbMax={-20}
+              width={pillWidth}
+              height={PILL_HEIGHT}
+              lineWidth={1.25}
+              lineOpacity={0.38}
+              fillOpacity={0.3}
+              glow
+              glowOpacity={0.06}
+            />
+          </View>
+        )}
+        {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
+
+        <View style={styles.row}>
+          <View style={styles.art}>
+            {presentation.artworkUri ? (
+              <Image source={{ uri: presentation.artworkUri }} style={styles.artImage} contentFit="cover" />
+            ) : (
+              <AstraLogo size={20} />
+            )}
+          </View>
+
+          <View style={styles.meta}>
+            <Text variant="body" numberOfLines={1} style={styles.title}>
+              {presentation.title}
+            </Text>
+            <Text variant="label" numberOfLines={1}>
+              {presentation.subtitle}
+            </Text>
+          </View>
+
+          {isDesktop ? (
+            <Pressable
+              hitSlop={10}
+              onPress={() => setTargetPickerOpen(true)}
+              style={styles.control}
+              accessibilityLabel="Choose output device"
+            >
+              <Ionicons name="desktop-outline" size={21} color={colors.textSecondary} />
+            </Pressable>
+          ) : null}
+          <Pressable hitSlop={10} onPress={onTogglePlay} style={styles.control}>
+            <Ionicons
+              name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+              size={24}
+              color={colors.accent}
+            />
+          </Pressable>
+          <Pressable hitSlop={10} onPress={onSkipNext} style={styles.control}>
+            <Ionicons name="play-skip-forward" size={22} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+
+        {presentation.hasTrack ? (
+          <MiniProgress
+            currentTime={presentation.currentTime}
+            duration={presentation.duration}
+            isPlaying={isPlaying}
           />
-        </View>
-      )}
-      {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
-
-      <View style={styles.row}>
-        <View style={styles.art}>
-          {track.artworkData ? (
-            <Image source={{ uri: track.artworkData }} style={styles.artImage} contentFit="cover" />
-          ) : (
-            <AstraLogo size={20} />
-          )}
-        </View>
-
-        <View style={styles.meta}>
-          <Text variant="body" numberOfLines={1} style={styles.title}>
-            {track.title}
-          </Text>
-          <Text variant="label" numberOfLines={1}>
-            {track.artist}
-          </Text>
-        </View>
-
-        <Pressable hitSlop={10} onPress={togglePlay} style={styles.control}>
-          <Ionicons
-            name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-            size={24}
-            color={colors.accent}
-          />
-        </Pressable>
-        <Pressable hitSlop={10} onPress={skipToNext} style={styles.control}>
-          <Ionicons name="play-skip-forward" size={22} color={colors.textPrimary} />
-        </Pressable>
-      </View>
-
-      <MiniProgress currentTime={currentTime} duration={duration} isPlaying={isPlaying} />
-    </Pressable>
+        ) : null}
+      </Pressable>
+      <PlaybackTargetPicker
+        visible={targetPickerOpen}
+        onClose={() => setTargetPickerOpen(false)}
+      />
+    </>
   );
 }
 

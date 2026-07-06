@@ -25,6 +25,7 @@ import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { useNormalizationSync } from '@/audio/useNormalizationSync';
 import { useLastFmScrobbler } from '@/audio/useLastFmScrobbler';
 import {
@@ -72,6 +73,23 @@ function NormalizationSync() {
 /** Feeds playback snapshots to the Last.fm scrobble service. Renders nothing. */
 function LastFmScrobbler() {
   useLastFmScrobbler();
+  return null;
+}
+
+/** Loads the selected playback target and connects remote only when desktop is selected. */
+function PlaybackTargetSync() {
+  const target = usePlaybackTargetStore((s) => s.target);
+  const loadTarget = usePlaybackTargetStore((s) => s.load);
+  const initDesktopRemote = useDesktopRemoteStore((s) => s.init);
+
+  useEffect(() => {
+    void loadTarget();
+  }, [loadTarget]);
+
+  useEffect(() => {
+    if (target === 'desktop') void initDesktopRemote();
+  }, [target, initDesktopRemote]);
+
   return null;
 }
 
@@ -290,6 +308,7 @@ export default function RootLayout() {
         <ScopeLifecycle />
         <NormalizationSync />
         <LastFmScrobbler />
+        <PlaybackTargetSync />
         <DesktopRemoteMediaSessionSync />
         <DesktopSyncAutoTrigger />
         <Stack

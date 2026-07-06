@@ -21,6 +21,9 @@ import {
   spacing
 } from '@/theme';
 import { motion } from '@/theme/motion';
+import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
+import { usePlayerStore } from '@/stores/playerStore';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type MiniPlayerPhase = 'hidden' | 'reserved' | 'visible';
@@ -54,6 +57,10 @@ export function TabBar({ items, onPress }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
   const homeFocused = items.some((item) => item.name === 'index' && item.focused);
+  const selectedTarget = usePlaybackTargetStore((s) => s.target);
+  const phoneTrack = usePlayerStore((s) => s.currentTrack);
+  const desktopConnection = useDesktopRemoteStore((s) => s.connection);
+  const desktopTrack = useDesktopRemoteStore((s) => s.snapshot?.currentTrack);
   const [settledHomeFocused, setSettledHomeFocused] = useState(homeFocused);
   const count = tabs.length;
   const activeIndex = Math.max(
@@ -79,11 +86,17 @@ export function TabBar({ items, onPress }: TabBarProps) {
     return () => clearTimeout(timer);
   }, [homeFocused, settledHomeFocused]);
 
-  const miniPlayerPhase: MiniPlayerPhase = homeFocused
-    ? settledHomeFocused
+  const remoteMiniVisibleOnHome =
+    (selectedTarget === 'desktop' && Boolean(desktopConnection || desktopTrack)) ||
+    (!phoneTrack && Boolean(desktopTrack));
+  const suppressMiniForHome = homeFocused && !remoteMiniVisibleOnHome;
+  const suppressMiniForSettledHome = settledHomeFocused && !remoteMiniVisibleOnHome;
+
+  const miniPlayerPhase: MiniPlayerPhase = suppressMiniForHome
+    ? suppressMiniForSettledHome
       ? 'hidden'
       : 'reserved'
-    : settledHomeFocused
+    : suppressMiniForSettledHome
       ? 'hidden'
       : 'visible';
 

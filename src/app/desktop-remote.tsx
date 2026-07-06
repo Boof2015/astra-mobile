@@ -16,15 +16,12 @@ import {
   View
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
-import { MarqueeText } from '@/components/MarqueeText';
 import { Screen } from '@/components/Screen';
-import { SeekBar } from '@/components/SeekBar';
 import { Text } from '@/components/Text';
-import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import {
   colors,
   radius,
@@ -59,11 +56,8 @@ const MEDIA_BOTTOM_GAP = spacing.xl;
 const TRACK_INFO_ESTIMATE = 96;
 const SEEK_BLOCK_ESTIMATE = 54;
 const PLAY_BUTTON_SIZE = 68;
-const SKIP_ICON_SIZE = 32;
-const PLAY_ICON_SIZE = 34;
 const TRANSPORT_TOP_MARGIN = spacing.lg;
 const SUB_BUTTON_SIZE = 40;
-const SUB_ICON_SIZE = 20;
 const SUB_TOP_MARGIN = spacing.lg;
 const MIN_FLOATING_SPACE = spacing.sm;
 
@@ -246,15 +240,12 @@ export default function DesktopRemoteScreen() {
   const pairManual = useDesktopRemoteStore((s) => s.pairManual);
   const reconnect = useDesktopRemoteStore((s) => s.reconnect);
   const forget = useDesktopRemoteStore((s) => s.forget);
-  const sendControl = useDesktopRemoteStore((s) => s.sendControl);
-  const queue = useDesktopRemoteStore((s) => s.queue);
 
   const [pairingLink, setPairingLink] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinClock, setPinClock] = useState(() => Date.now());
   const [manualBaseUrl, setManualBaseUrl] = useState('');
   const [manualTicket, setManualTicket] = useState('');
-  const [queueOpen, setQueueOpen] = useState(false);
 
   useEffect(() => {
     void init();
@@ -281,21 +272,13 @@ export default function DesktopRemoteScreen() {
   }, [pinPairing]);
 
   const currentTrack = snapshot?.currentTrack ?? null;
-  const isPlaying = snapshot?.playbackState === 'playing';
   const isBusy = connectionState === 'pairing' || connectionState === 'pendingApproval' || connectionState === 'connecting';
   const art = currentTrack?.artworkDataUrl ?? null;
-  const accent = snapshot?.visualizerLineColor || colors.accent;
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
   const remoteLayout = getRemoteLayout(effectiveWidth, availableHeight);
   const remoteSource = connection?.desktopName ?? 'Astra Desktop';
   const remoteDetail = snapshot?.outputDeviceLabel?.trim() || (connection ? hostFromBaseUrl(connection.baseUrl) : '');
-  // Live protocol gate: protocol-1 desktops omit shuffle/repeat from the
-  // snapshot and 404 the queue endpoint (queue stays null).
-  const supportsShuffleRepeat = snapshot?.shuffle !== undefined;
-  const shuffleOn = snapshot?.shuffle === true;
-  const repeatMode = snapshot?.repeat ?? 'none';
-  const queueAvailable = queue !== null;
   const countdown = pairing ? formatPairingCountdown(pairing.expiresAt) : '';
   const pinPairingActive = Boolean(pinPairing && pinPairing.expiresAt > pinClock);
   const pinCountdown = pinPairing ? formatPairingCountdown(pinPairing.expiresAt, pinClock) : '';
@@ -541,7 +524,7 @@ export default function DesktopRemoteScreen() {
           </Pressable>
           <View style={styles.headerMid}>
             <Text variant="caption" style={styles.eyebrow}>
-              PLAYING FROM
+              DESKTOP REMOTE
             </Text>
             <Text variant="label" numberOfLines={1} style={styles.source}>
               {remoteSource}
@@ -557,199 +540,65 @@ export default function DesktopRemoteScreen() {
           </Pressable>
         </View>
 
-        {currentTrack ? (
-          <View style={[styles.remotePlayer, remoteLayout.isWide && styles.remotePlayerWide]}>
-            <View
-              style={[
-                styles.middleStack,
-                remoteLayout.isWide
-                  ? { width: remoteLayout.leftPaneWidth, justifyContent: 'center' }
-                  : {
-                      height: remoteLayout.mediaStackHeight,
-                      marginTop: remoteLayout.mediaTopMargin,
-                      marginBottom: remoteLayout.mediaBottomGap,
-                    },
-              ]}
-            >
-              <View
-                style={[
-                  styles.artCard,
-                  {
-                    width: remoteLayout.artSize,
-                    height: remoteLayout.artSize,
-                  },
-                ]}
-              >
-                {art ? (
-                  <Image
-                    key={currentTrack.id}
-                    source={{ uri: art }}
-                    style={styles.artImage}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <AstraLogo size={Math.round(remoteLayout.artSize * 0.4)} />
-                )}
-              </View>
-            </View>
-
-            <View
-              style={[
-                styles.playerControls,
-                remoteLayout.isWide
-                  ? { width: remoteLayout.rightPaneWidth }
-                  : styles.playerControlsFill,
-              ]}
-            >
-              <View style={styles.trackInfo}>
-                <View style={styles.trackTextStack}>
-                  <MarqueeText
-                    variant="heading"
-                    containerStyle={styles.trackTitle}
-                    style={styles.trackTitleText}
-                  >
-                    {currentTrack.title}
-                  </MarqueeText>
-                  <MarqueeText variant="body" style={styles.artist}>
-                    {currentTrack.artist || currentTrack.album || remoteSource}
-                  </MarqueeText>
-                </View>
-                <Pressable
-                  hitSlop={10}
-                  style={styles.inlineActionBtn}
-                  onPress={() => void sendControl('toggle-favorite')}
-                  accessibilityLabel={currentTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                  accessibilityState={{ selected: currentTrack.isFavorite }}
-                >
-                  <Ionicons
-                    name={currentTrack.isFavorite ? 'heart' : 'heart-outline'}
-                    size={SUB_ICON_SIZE + 4}
-                    color={currentTrack.isFavorite ? colors.accent : colors.textTertiary}
-                  />
-                </Pressable>
-              </View>
-
-              <SeekBar
-                currentTime={snapshot?.currentTime ?? 0}
-                duration={snapshot?.duration ?? 0}
-                trackKey={currentTrack.id}
-                onSeek={(seconds) => void sendControl('seek', seconds)}
+        <View style={styles.managePanel}>
+          <View style={styles.manageArt}>
+            {art ? (
+              <Image
+                key={currentTrack?.id}
+                source={{ uri: art }}
+                style={styles.artImage}
+                contentFit="cover"
               />
-
-              <View style={[styles.transport, { marginTop: remoteLayout.controlsGap }]}>
-                <Pressable
-                  hitSlop={10}
-                  style={[styles.transportSideBtn, !supportsShuffleRepeat && styles.transportSideBtnDisabled]}
-                  disabled={!supportsShuffleRepeat}
-                  onPress={() => void sendControl('toggle-shuffle')}
-                  accessibilityLabel="Shuffle"
-                  accessibilityState={{ selected: shuffleOn }}
-                >
-                  <Ionicons
-                    name="shuffle"
-                    size={SUB_ICON_SIZE + 2}
-                    color={shuffleOn ? colors.accent : colors.textTertiary}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={() => void sendControl('previous')}
-                  hitSlop={12}
-                  style={styles.transportMainBtn}
-                  accessibilityLabel="Previous"
-                >
-                  <Ionicons name="play-skip-back" size={SKIP_ICON_SIZE} color={colors.textPrimary} />
-                </Pressable>
-                <Pressable
-                  onPress={() => void sendControl(isPlaying ? 'pause' : 'play')}
-                  hitSlop={12}
-                  style={[styles.playButton, { backgroundColor: accent }]}
-                  accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
-                >
-                  <Ionicons
-                    name={snapshot?.playbackState === 'loading' ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                    size={PLAY_ICON_SIZE}
-                    color={colors.bgPrimary}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={() => void sendControl('next')}
-                  hitSlop={12}
-                  style={styles.transportMainBtn}
-                  accessibilityLabel="Next"
-                >
-                  <Ionicons name="play-skip-forward" size={SKIP_ICON_SIZE} color={colors.textPrimary} />
-                </Pressable>
-                <Pressable
-                  hitSlop={10}
-                  style={[styles.transportSideBtn, !supportsShuffleRepeat && styles.transportSideBtnDisabled]}
-                  disabled={!supportsShuffleRepeat}
-                  onPress={() => void sendControl('toggle-repeat')}
-                  accessibilityLabel="Repeat"
-                  accessibilityState={{ selected: repeatMode !== 'none' }}
-                >
-                  {repeatMode === 'one' ? (
-                    <MaterialCommunityIcons
-                      name="repeat-once"
-                      size={SUB_ICON_SIZE + 2}
-                      color={colors.accent}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="repeat"
-                      size={SUB_ICON_SIZE + 2}
-                      color={repeatMode === 'all' ? colors.accent : colors.textTertiary}
-                    />
-                  )}
-                </Pressable>
-              </View>
-
-              <View style={[styles.subRow, { marginTop: remoteLayout.controlsGap }]}>
-                <View style={styles.statusPill}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: connectionState === 'connected' ? accent : colors.warning },
-                    ]}
-                  />
-                  <Text variant="label" color={colors.textSecondary}>
-                    {connectionLabel(connectionState)}
-                  </Text>
-                </View>
-                <Text variant="caption" color={colors.textTertiary} numberOfLines={1} style={styles.remoteDetail}>
-                  {remoteDetail}
-                </Text>
-                {queueAvailable ? (
-                  <Pressable
-                    hitSlop={10}
-                    style={styles.subBtn}
-                    onPress={() => setQueueOpen(true)}
-                    accessibilityLabel="Desktop queue"
-                  >
-                    <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  hitSlop={10}
-                  style={styles.subBtn}
-                  onPress={confirmForget}
-                  accessibilityLabel="Forget desktop"
-                >
-                  <Ionicons name="trash-outline" size={SUB_ICON_SIZE + 2} color={colors.warning} />
-                </Pressable>
-              </View>
-            </View>
+            ) : (
+              <AstraLogo size={52} />
+            )}
           </View>
-        ) : (
-          <View style={styles.remoteEmpty}>
-            <AstraLogo size={72} />
-            <Text variant="heading" style={styles.emptyTitle}>
-              Nothing playing
+
+          <View style={styles.manageText}>
+            <Text variant="heading" numberOfLines={1} style={styles.emptyTitle}>
+              {remoteSource}
             </Text>
-            <Text variant="body" color={colors.textSecondary} style={styles.centered}>
-              {statusText}
+            <Text variant="body" color={colors.textSecondary} numberOfLines={2} style={styles.centered}>
+              {currentTrack
+                ? `${currentTrack.title}${currentTrack.artist ? ` · ${currentTrack.artist}` : ''}`
+                : remoteDetail || statusText}
             </Text>
           </View>
-        )}
+
+          <View style={styles.statusPill}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: connectionState === 'connected' ? colors.accent : colors.warning },
+              ]}
+            />
+            <Text variant="label" color={colors.textSecondary}>
+              {connectionLabel(connectionState)}
+            </Text>
+          </View>
+
+          <View style={styles.manageActions}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => router.replace('/now-playing' as never)}
+            >
+              <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />
+              <Text variant="body" color={colors.accentTextStrong}>
+                Open Now Playing
+              </Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => void reconnect()}>
+              <Ionicons name="refresh" size={18} color={colors.textPrimary} />
+              <Text variant="body">Reconnect</Text>
+            </Pressable>
+            <Pressable style={styles.dangerButton} onPress={confirmForget}>
+              <Ionicons name="trash-outline" size={18} color={colors.warning} />
+              <Text variant="body" color={colors.warning}>
+                Forget desktop
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
 
       {errorMessage ? (
@@ -788,7 +637,6 @@ export default function DesktopRemoteScreen() {
           </>
         )}
       </KeyboardAvoidingView>
-      {queueOpen && <RemoteQueueSheet onClose={() => setQueueOpen(false)} />}
     </Screen>
   );
 }
@@ -862,6 +710,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
+    backgroundColor: colors.bgTertiary,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  dangerButton: {
+    minHeight: 44,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.warning,
     backgroundColor: colors.bgTertiary,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
@@ -969,6 +829,30 @@ const styles = StyleSheet.create({
   source: {
     color: colors.textSecondary,
     marginTop: 1,
+  },
+  managePanel: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  manageArt: {
+    width: 128,
+    height: 128,
+    borderRadius: radius.lg,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  manageText: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  manageActions: {
+    alignSelf: 'stretch',
+    gap: spacing.sm,
   },
   statusPill: {
     height: 30,

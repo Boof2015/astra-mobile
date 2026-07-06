@@ -30,6 +30,7 @@ import {
 import { openLibraryDb } from '@/db/database';
 import { clearPlaylistSyncBaselines } from '@/db/desktopSyncQueries';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
+import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import type {
   DesktopRemoteConnection,
   DesktopRemoteControlCommand,
@@ -279,6 +280,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           message: 'Paired. Connecting...',
           errorMessage: '',
         });
+        void usePlaybackTargetStore.getState().setTarget('desktop');
         void get().connect();
         return;
       }
@@ -423,6 +425,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
         message: 'Paired. Connecting...',
         errorMessage: '',
       });
+      void usePlaybackTargetStore.getState().setTarget('desktop');
       void get().connect();
     } catch (error) {
       if (error instanceof DesktopRemoteHttpError && error.status === 401) {
@@ -628,6 +631,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
         pinPairing: null,
         message: '',
       });
+      void usePlaybackTargetStore.getState().setTarget('phone');
     },
 
     sendControl: async (command, time) => {
