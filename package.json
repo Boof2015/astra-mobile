@@ -65,6 +65,7 @@
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts",
     "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/db/dynamicPlaylistSql.test.mts",
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",
+    "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/shared/sync/conflictPreview.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

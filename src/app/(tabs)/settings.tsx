@@ -21,6 +21,8 @@ import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
+import { formatRelativeTime } from '@/lib/format';
 import type { ReplayGainMode } from '@/audio/normalization';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 import type { LastFmStatus } from '@/types/lastFm';
@@ -253,6 +255,18 @@ export default function SettingsScreen() {
     return () => task.cancel();
   }, [initDesktopRemote]);
 
+  const desktopSyncStatus = useDesktopSyncStore((s) => s.status);
+  const desktopLastSyncAt = useDesktopSyncStore((s) => s.lastSyncAt);
+  const desktopSyncConflictCount = useDesktopSyncStore((s) => s.conflicts.length);
+  const desktopSyncSubtitle = !desktopRemoteConnection
+    ? 'Sync favorites and playlists with Astra Desktop.'
+    : desktopSyncConflictCount > 0
+      ? `${desktopSyncConflictCount} conflict${desktopSyncConflictCount === 1 ? '' : 's'} to resolve`
+      : desktopSyncStatus === 'syncing'
+        ? 'Syncing…'
+        : desktopLastSyncAt !== null
+          ? `Synced ${formatRelativeTime(desktopLastSyncAt)}`
+          : `${desktopRemoteConnection.desktopName ?? 'Astra Desktop'} · not synced yet`;
   const desktopRemoteSubtitle = desktopRemoteConnection
     ? `${desktopRemoteConnection.desktopName ?? 'Astra Desktop'} · ${desktopRemoteState === 'connected' ? 'connected' : desktopRemoteState}`
     : 'Pair with Astra Desktop to control playback from this phone.';
@@ -399,6 +413,24 @@ export default function SettingsScreen() {
             <Text variant="body">Desktop Remote</Text>
             <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
               {desktopRemoteSubtitle}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </Pressable>
+        <Pressable
+          style={styles.option}
+          onPress={() => router.push('/desktop-sync' as never)}
+          accessibilityRole="button"
+        >
+          <Ionicons name="sync-outline" size={20} color={colors.textSecondary} />
+          <View style={styles.optionText}>
+            <Text variant="body">Desktop Sync</Text>
+            <Text
+              variant="caption"
+              color={desktopSyncConflictCount > 0 ? colors.warning : colors.textSecondary}
+              style={styles.optionDescription}
+            >
+              {desktopSyncSubtitle}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />

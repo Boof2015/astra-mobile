@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -31,6 +32,13 @@ import {
   setDesktopRemoteMediaSession,
   subscribeDesktopRemoteMediaSessionCommands,
 } from '@/services/desktopRemoteMediaSession';
+import {
+  getDesktopRemoteConnection,
+  setDesktopRemoteConnection,
+} from '@/services/desktopRemoteCredentials';
+import { fetchDesktopRemoteIdentity } from '@/services/desktopRemoteClient';
+import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
+import { SyncConflictPrompt } from '@/components/sync/SyncConflictPrompt';
 import { colors } from '@/theme';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route (the
@@ -107,6 +115,113 @@ function DesktopRemoteMediaSessionSync() {
   return null;
 }
 
+const DESKTOP_DISCOVERY_BURST_MS = 20_000;
+const DESKTOP_SYNC_STARTUP_RETRY_MS = 2_500;
+const DESKTOP_SYNC_REQUEST_POLL_MS = 60_000;
+
+/**
+ * Auto-syncs favorites/playlists with the paired desktop when it looks
+ * reachable: on foreground (probe-guarded, min-interval limited), when mDNS
+ * discovery spots the paired desktop, or when the remote screen connects.
+ * Deliberately does NOT init the desktop-remote store here — its connect path
+ * retries a powered-off desktop every 2 s forever, which we don't want running
+ * from app launch.
+ */
+function DesktopSyncAutoTrigger() {
+  const connectionState = useDesktopRemoteStore((s) => s.connectionState);
+  const discovered = useDesktopRemoteStore((s) => s.discovered);
+
+  useEffect(() => {
+    void useDesktopSyncStore.getState().hydrate();
+  }, []);
+
+  // Cold start + each return to foreground: attempt a (probe-guarded) sync and
+  // run a short mDNS burst so a desktop that changed LAN address is found.
+  useEffect(() => {
+    let burstTimer: ReturnType<typeof setTimeout> | null = null;
+    let startupRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    const onActive = () => {
+      void (async () => {
+        const connection = await getDesktopRemoteConnection();
+        if (!connection) return;
+        useDesktopSyncStore.getState().maybeAutoSync('foreground');
+        const remote = useDesktopRemoteStore.getState();
+        if (remote.discoveryAvailable && !remote.discoveryRunning) {
+          void remote.startDiscovery();
+          burstTimer = setTimeout(() => {
+            burstTimer = null;
+            void useDesktopRemoteStore.getState().stopDiscovery();
+          }, DESKTOP_DISCOVERY_BURST_MS);
+        }
+      })();
+    };
+    if (AppState.currentState === 'active') {
+      onActive();
+    } else {
+      startupRetryTimer = setTimeout(() => {
+        startupRetryTimer = null;
+        if (AppState.currentState === 'active') onActive();
+      }, DESKTOP_SYNC_STARTUP_RETRY_MS);
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') onActive();
+    });
+    return () => {
+      subscription.remove();
+      if (burstTimer !== null) clearTimeout(burstTimer);
+      if (startupRetryTimer !== null) clearTimeout(startupRetryTimer);
+    };
+  }, []);
+
+  // Desktop-initiated "Sync now" pickup: a cheap identity poll while
+  // foregrounded (the SSE nudge only reaches us while the remote screen's
+  // stream happens to be connected). fetchDesktopRemoteIdentity swallows
+  // errors, so a powered-off desktop costs one timed-out request per minute.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
+      void (async () => {
+        const connection = await getDesktopRemoteConnection();
+        if (!connection) return;
+        const identity = await fetchDesktopRemoteIdentity(connection.baseUrl);
+        if (identity?.syncRequestedAt) {
+          useDesktopSyncStore.getState().handleSyncRequest();
+        }
+      })();
+    }, DESKTOP_SYNC_REQUEST_POLL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Paired desktop spotted on the LAN: refresh a stale baseUrl (DHCP moves)
+  // and trigger a sync.
+  useEffect(() => {
+    if (discovered.length === 0) return;
+    void (async () => {
+      const connection = await getDesktopRemoteConnection();
+      if (!connection?.endpointUuid) return;
+      const match = discovered.find((desktop) => desktop.endpointUuid === connection.endpointUuid);
+      if (!match) return;
+      if (match.baseUrl && match.baseUrl !== connection.baseUrl) {
+        const updated = { ...connection, baseUrl: match.baseUrl };
+        await setDesktopRemoteConnection(updated);
+        if (useDesktopRemoteStore.getState().connection) {
+          useDesktopRemoteStore.setState({ connection: updated });
+        }
+      }
+      useDesktopSyncStore.getState().maybeAutoSync('discovery');
+    })();
+  }, [discovered]);
+
+  // The remote screen connected — the desktop is definitely reachable.
+  useEffect(() => {
+    if (connectionState === 'connected') {
+      useDesktopSyncStore.getState().maybeAutoSync('connected');
+    }
+  }, [connectionState]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -176,6 +291,7 @@ export default function RootLayout() {
         <NormalizationSync />
         <LastFmScrobbler />
         <DesktopRemoteMediaSessionSync />
+        <DesktopSyncAutoTrigger />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -194,6 +310,7 @@ export default function RootLayout() {
           />
         </Stack>
         <QuickSearchOverlay />
+        <SyncConflictPrompt />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -16,6 +16,7 @@ import {
   buildDynamicPlaylistOrderByClause,
   buildDynamicPlaylistWhereClause,
 } from './dynamicPlaylistSql';
+import { buildTrackSyncKey, normalizeSyncKeyPart } from '@/shared/sync/identity';
 
 const PLAYLIST_SELECT = `
   SELECT p.id, p.name, p.kind, p.dynamic_rules_json,
@@ -274,6 +275,19 @@ export async function renamePlaylist(db: LibraryDatabase, id: number, name: stri
 }
 
 export async function deletePlaylist(db: LibraryDatabase, id: number): Promise<void> {
+  // Tombstone sync-eligible playlists so the desktop LAN sync propagates the
+  // deletion (server-mirrored playlists are excluded from that sync and are
+  // deleted via raw SQL elsewhere, never through here).
+  const row = await db.get<{ sync_uid: string | null; remote_source_id: number | null }>(
+    'SELECT sync_uid, remote_source_id FROM playlists WHERE id = ?',
+    [id]
+  );
+  if (row?.sync_uid && row.remote_source_id == null) {
+    await db.run('INSERT OR REPLACE INTO playlist_tombstones (sync_uid, deleted_at) VALUES (?, ?)', [
+      row.sync_uid,
+      Date.now(),
+    ]);
+  }
   // ON DELETE CASCADE removes the entries (foreign_keys is ON per connection).
   await db.run('DELETE FROM playlists WHERE id = ?', [id]);
 }
@@ -469,14 +483,41 @@ export async function getFavoritePaths(db: LibraryDatabase): Promise<string[]> {
   return rows.map((row) => row.track_path);
 }
 
+/** Metadata identity key for the desktop LAN sync; null when the track is
+ *  unknown or has no usable title. */
+async function trackSyncKeyForPath(db: LibraryDatabase, trackPath: string): Promise<string | null> {
+  const row = await db.get<{ title: string; artist: string; album: string }>(
+    'SELECT title, artist, album FROM tracks WHERE path = ?',
+    [trackPath]
+  );
+  if (!row || !normalizeSyncKeyPart(row.title)) return null;
+  return buildTrackSyncKey(row.title, row.artist, row.album);
+}
+
 export async function addFavorite(db: LibraryDatabase, trackPath: string): Promise<void> {
   await db.run('INSERT OR IGNORE INTO favorites (track_path, added_at) VALUES (?, ?)', [
     trackPath,
     Date.now(),
   ]);
+  // Re-favoriting must clear any sync deletion tombstone for the same identity.
+  const syncKey = await trackSyncKeyForPath(db, trackPath);
+  if (syncKey) {
+    await db.run('DELETE FROM favorite_tombstones WHERE sync_key = ?', [syncKey]);
+    await db.run('DELETE FROM favorite_sync_pending WHERE sync_key = ?', [syncKey]);
+  }
 }
 
 export async function removeFavorite(db: LibraryDatabase, trackPath: string): Promise<void> {
+  // Record a deletion tombstone so the desktop LAN sync propagates the
+  // unfavorite instead of resurrecting it from the desktop's copy.
+  const syncKey = await trackSyncKeyForPath(db, trackPath);
+  if (syncKey) {
+    await db.run('INSERT OR REPLACE INTO favorite_tombstones (sync_key, deleted_at) VALUES (?, ?)', [
+      syncKey,
+      Date.now(),
+    ]);
+    await db.run('DELETE FROM favorite_sync_pending WHERE sync_key = ?', [syncKey]);
+  }
   await db.run('DELETE FROM favorites WHERE track_path = ?', [trackPath]);
 }
 
@@ -484,14 +525,26 @@ export async function removeFavorite(db: LibraryDatabase, trackPath: string): Pr
 export async function addFavoritePaths(db: LibraryDatabase, paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   const now = Date.now();
+  const insertedPaths: string[] = [];
   await db.transaction(async (tx) => {
     for (const path of paths) {
-      await tx.run('INSERT OR IGNORE INTO favorites (track_path, added_at) VALUES (?, ?)', [
+      const result = await tx.run('INSERT OR IGNORE INTO favorites (track_path, added_at) VALUES (?, ?)', [
         path,
         now,
       ]);
+      if (result.changes > 0) insertedPaths.push(path);
     }
   });
+  // Only genuinely new favorites clear tombstones — the remote starred sync
+  // re-runs its inserts every pass and must not keep resurrecting identities
+  // the user unfavorited elsewhere.
+  for (const path of insertedPaths) {
+    const syncKey = await trackSyncKeyForPath(db, path);
+    if (syncKey) {
+      await db.run('DELETE FROM favorite_tombstones WHERE sync_key = ?', [syncKey]);
+      await db.run('DELETE FROM favorite_sync_pending WHERE sync_key = ?', [syncKey]);
+    }
+  }
 }
 
 // --- Remote sync (Subsonic playlists/favorites) ------------------------------

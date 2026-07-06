@@ -11,10 +11,12 @@ import {
   fetchDesktopRemoteIdentity,
   fetchDesktopRemoteNowPlaying,
   fetchDesktopRemotePairingStatus,
+  fetchDesktopRemoteQueue,
   parseDesktopRemoteManualInput,
   parseDesktopRemotePairingInput,
   requestDesktopRemotePinPairing,
   sendDesktopRemoteControl,
+  sendDesktopRemotePlayQueueItem,
   startDesktopRemoteEventStream,
 } from '@/services/desktopRemoteClient';
 import { normalizeDesktopRemotePinInput } from '@/services/desktopRemotePairing';
@@ -25,12 +27,16 @@ import {
   setDesktopRemoteConnection,
   setDesktopRemoteToken,
 } from '@/services/desktopRemoteCredentials';
+import { openLibraryDb } from '@/db/database';
+import { clearPlaylistSyncBaselines } from '@/db/desktopSyncQueries';
+import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import type {
   DesktopRemoteConnection,
   DesktopRemoteControlCommand,
   DesktopRemoteDiscoveredDesktop,
   DesktopRemoteIdentity,
   DesktopRemoteNowPlayingSnapshot,
+  DesktopRemoteQueueSnapshot,
 } from '@/types/desktopRemote';
 
 const PAIR_POLL_INTERVAL_MS = 1500;
@@ -66,6 +72,8 @@ interface DesktopRemoteStore {
   connection: DesktopRemoteConnection | null;
   token: string | null;
   snapshot: DesktopRemoteNowPlayingSnapshot | null;
+  /** Desktop queue (current + upcoming); null on protocol-1 desktops. */
+  queue: DesktopRemoteQueueSnapshot | null;
   discovered: DesktopRemoteDiscoveredDesktop[];
   discoveryAvailable: boolean;
   discoveryRunning: boolean;
@@ -86,6 +94,8 @@ interface DesktopRemoteStore {
   disconnect: () => void;
   forget: () => Promise<void>;
   sendControl: (command: DesktopRemoteControlCommand, time?: number) => Promise<void>;
+  refreshQueue: () => Promise<void>;
+  playQueueItem: (queueId: string) => Promise<void>;
 }
 
 let pairingPollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -210,11 +220,15 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       if (!connection || !token || connectionState === 'connecting') return;
       void fetchDesktopRemoteNowPlaying(connection.baseUrl, token).then(
         (snapshot) => {
+          const wasConnected = get().connectionState === 'connected';
           set((state) => ({
             snapshot: mergeSnapshotArtwork(state.snapshot, snapshot),
             connectionState: 'connected',
             errorMessage: '',
           }));
+          if (!wasConnected) {
+            useDesktopSyncStore.getState().maybeAutoSync('connected');
+          }
           refreshInlineArtwork();
         },
         (error) => {
@@ -434,6 +448,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     connection: null,
     token: null,
     snapshot: null,
+    queue: null,
     discovered: [],
     discoveryAvailable: desktopRemoteDiscoveryAvailable,
     discoveryRunning: false,
@@ -536,15 +551,26 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           message: '',
           errorMessage: '',
         });
+        useDesktopSyncStore.getState().maybeAutoSync('connected');
         stopEventStream = startDesktopRemoteEventStream(connection.baseUrl, token, {
           onSnapshot: (nextSnapshot) => {
+            const wasConnected = get().connectionState === 'connected';
             set((state) => ({
               snapshot: mergeSnapshotArtwork(state.snapshot, nextSnapshot),
               connectionState: 'connected',
               message: '',
               errorMessage: '',
             }));
+            if (!wasConnected) {
+              useDesktopSyncStore.getState().maybeAutoSync('connected');
+            }
             refreshInlineArtwork();
+          },
+          onQueue: (queue) => {
+            set({ queue });
+          },
+          onSyncRequest: () => {
+            useDesktopSyncStore.getState().handleSyncRequest();
           },
           onUnauthorized: () => {
             void get().forget();
@@ -556,6 +582,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           },
         });
         scheduleSnapshotPoll();
+        void get().refreshQueue();
         return true;
       } catch (error) {
         if (error instanceof DesktopRemoteHttpError && error.status === 401) {
@@ -580,18 +607,23 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     disconnect: () => {
       stopRealtime();
       clearPairingPoll();
-      set({ connectionState: get().connection ? 'error' : 'unpaired', message: '', snapshot: null, pinPairing: null });
+      set({ connectionState: get().connection ? 'error' : 'unpaired', message: '', snapshot: null, queue: null, pinPairing: null });
     },
 
     forget: async () => {
       stopRealtime();
       clearPairingPoll();
       await clearDesktopRemotePairing();
+      // Sync baselines are meaningless against a different desktop.
+      void openLibraryDb()
+        .then((db) => clearPlaylistSyncBaselines(db))
+        .catch(() => {});
       set({
         connectionState: 'unpaired',
         connection: null,
         token: null,
         snapshot: null,
+        queue: null,
         pairing: null,
         pinPairing: null,
         message: '',
@@ -609,6 +641,33 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
             ? { snapshot: { ...state.snapshot, currentTime: time, updatedAt: Date.now() } }
             : {});
         }
+      } catch (error) {
+        if (error instanceof DesktopRemoteHttpError && error.status === 401) {
+          await get().forget();
+          set({ errorMessage: 'Desktop pairing was revoked.' });
+          return;
+        }
+        set({ errorMessage: errorMessage(error) });
+      }
+    },
+
+    refreshQueue: async () => {
+      const { connection, token } = get();
+      if (!connection || !token) return;
+      try {
+        const queue = await fetchDesktopRemoteQueue(connection.baseUrl, token);
+        set({ queue });
+      } catch {
+        // Protocol-1 desktops 404 here; the queue UI simply stays hidden.
+      }
+    },
+
+    playQueueItem: async (queueId) => {
+      const { connection, token } = get();
+      if (!connection || !token) return;
+      try {
+        await sendDesktopRemotePlayQueueItem(connection.baseUrl, token, queueId);
+        set({ errorMessage: '' });
       } catch (error) {
         if (error instanceof DesktopRemoteHttpError && error.status === 401) {
           await get().forget();

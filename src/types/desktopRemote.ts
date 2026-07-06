@@ -1,18 +1,24 @@
-export const DESKTOP_REMOTE_PROTOCOL_VERSION = 1;
+export const DESKTOP_REMOTE_PROTOCOL_VERSION = 2;
 
 export type DesktopRemotePlaybackState = 'stopped' | 'playing' | 'paused' | 'loading';
+export type DesktopRemoteRepeatMode = 'none' | 'one' | 'all';
 export type DesktopRemoteControlCommand =
   | 'play'
   | 'pause'
   | 'next'
   | 'previous'
   | 'toggle-favorite'
+  | 'toggle-shuffle'
+  | 'toggle-repeat'
   | 'seek';
 
 export interface DesktopRemoteIdentity {
   endpointUuid: string | null;
   desktopName: string | null;
   protocolVersion: number;
+  /** Set while a desktop-initiated library-sync request awaits pickup;
+   *  read by the phone's periodic foreground probe. */
+  syncRequestedAt?: number | null;
 }
 
 export interface DesktopRemoteConnection extends DesktopRemoteIdentity {
@@ -40,9 +46,25 @@ export interface DesktopRemoteNowPlayingSnapshot {
   currentTime: number;
   duration: number;
   queueLength: number;
+  /** Absent on protocol-1 desktops — the UI hides the shuffle/repeat controls. */
+  shuffle?: boolean;
+  repeat?: DesktopRemoteRepeatMode;
   outputDeviceLabel: string | null;
   visualizerLineColor: string;
   currentTrack: DesktopRemoteTrackSnapshot | null;
+  updatedAt: number;
+}
+
+export interface DesktopRemoteQueueItem {
+  queueId: string;
+  title: string;
+  artist: string;
+  durationSeconds: number | null;
+  isCurrent: boolean;
+}
+
+export interface DesktopRemoteQueueSnapshot {
+  items: DesktopRemoteQueueItem[];
   updatedAt: number;
 }
 

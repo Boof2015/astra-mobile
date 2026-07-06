@@ -16,7 +16,7 @@ import {
   View
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -24,21 +24,33 @@ import { MarqueeText } from '@/components/MarqueeText';
 import { Screen } from '@/components/Screen';
 import { SeekBar } from '@/components/SeekBar';
 import { Text } from '@/components/Text';
+import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import {
   colors,
   radius,
   spacing
 } from '@/theme';
+import { isWideWindow, WIDE_MIN_WIDTH } from '@/theme/adaptive';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteDiscoveredDesktop } from '@/types/desktopRemote';
 
+// Layout mirrors now-playing's adaptive pattern (minus the scope stage): a
+// wide two-pane branch, and a portrait branch where the controls own ALL real
+// leftover space (flex + space-between) so height-estimate error spreads
+// between the control rows instead of pooling as one dead gap.
 const MAX_CONTENT_WIDTH = 408;
+const TABLET_MAX_CONTENT_WIDTH = 520;
+const TABLET_ART_SIZE_MAX = 440;
 const CONTENT_SIDE_PADDING = spacing.lg;
 const NARROW_CONTENT_SIDE_PADDING = spacing.md;
+const WIDE_MAX_CONTENT_WIDTH = 960;
+const WIDE_PANE_GAP = spacing.xxl;
+const WIDE_RIGHT_PANE_MIN = 300;
+const WIDE_RIGHT_PANE_MAX = MAX_CONTENT_WIDTH;
+const WIDE_ART_SIZE_MAX = 400;
+const WIDE_ART_SIZE_MIN = 160;
+const WIDE_COMPACT_HEIGHT = 480;
 const MEDIA_AREA_MIN = 220;
-const COMPACT_MEDIA_AREA_MIN = 128;
-const MEDIA_AREA_MAX = 360;
-const ART_SIZE_MAX = 340;
 const HEADER_HEIGHT = 32;
 const CONTENT_TOP_PADDING = spacing.sm;
 const CONTENT_BOTTOM_PADDING = spacing.lg;
@@ -56,9 +68,14 @@ const SUB_TOP_MARGIN = spacing.lg;
 const MIN_FLOATING_SPACE = spacing.sm;
 
 interface RemoteLayout {
+  isWide: boolean;
   contentPadding: number;
   contentWidth: number;
+  leftPaneWidth: number;
+  rightPaneWidth: number;
+  controlsGap: number;
   artSize: number;
+  mediaStackHeight: number;
   mediaTopMargin: number;
   mediaBottomGap: number;
 }
@@ -67,21 +84,51 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getRemoteLayout(windowWidth: number, availableHeight: number): RemoteLayout {
+function getRemoteLayout(availableWidth: number, availableHeight: number): RemoteLayout {
+  if (isWideWindow(availableWidth, availableHeight)) {
+    const contentPadding = CONTENT_SIDE_PADDING;
+    const contentWidth = Math.max(
+      0,
+      Math.min(availableWidth - contentPadding * 2, WIDE_MAX_CONTENT_WIDTH)
+    );
+    const rightPaneWidth = Math.round(
+      clamp(contentWidth * 0.46, WIDE_RIGHT_PANE_MIN, WIDE_RIGHT_PANE_MAX)
+    );
+    const leftPaneWidth = Math.max(0, contentWidth - WIDE_PANE_GAP - rightPaneWidth);
+    const verticalBudget =
+      availableHeight - CONTENT_TOP_PADDING - CONTENT_BOTTOM_PADDING - HEADER_HEIGHT - spacing.md;
+    const artSize = Math.round(
+      clamp(Math.min(leftPaneWidth, verticalBudget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX)
+    );
+    return {
+      isWide: true,
+      contentPadding,
+      contentWidth,
+      leftPaneWidth,
+      rightPaneWidth,
+      controlsGap: availableHeight < WIDE_COMPACT_HEIGHT ? spacing.sm : spacing.lg,
+      artSize,
+      mediaStackHeight: artSize,
+      mediaTopMargin: 0,
+      mediaBottomGap: 0,
+    };
+  }
+
+  // Tall windows: single column. Tablet-width ones get a larger column/art cap.
+  const isTabletColumn = availableWidth >= WIDE_MIN_WIDTH;
   const contentPadding =
-    windowWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
-  const contentWidth = Math.max(0, Math.min(windowWidth - contentPadding * 2, MAX_CONTENT_WIDTH));
-  const mediaMax = Math.min(contentWidth, MEDIA_AREA_MAX);
-  const mediaFloor = availableHeight < 620 ? COMPACT_MEDIA_AREA_MIN : MEDIA_AREA_MIN;
-  const mediaMin = Math.min(mediaMax, mediaFloor);
+    availableWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
+  const maxContentWidth = isTabletColumn ? TABLET_MAX_CONTENT_WIDTH : MAX_CONTENT_WIDTH;
+  const contentWidth = Math.max(0, Math.min(availableWidth - contentPadding * 2, maxContentWidth));
+  const mediaMax = Math.min(contentWidth, isTabletColumn ? TABLET_ART_SIZE_MAX : contentWidth);
+  const mediaMin = Math.min(mediaMax, MEDIA_AREA_MIN);
   const mediaTopMargin = availableHeight < 680 ? spacing.md : MEDIA_TOP_MARGIN;
   const mediaBottomGap = availableHeight < 680 ? spacing.lg : MEDIA_BOTTOM_GAP;
-  const fixedHeight =
+  const fixedHeightBase =
     CONTENT_TOP_PADDING +
     CONTENT_BOTTOM_PADDING +
     HEADER_HEIGHT +
     mediaTopMargin +
-    mediaBottomGap +
     TRACK_INFO_ESTIMATE +
     SEEK_BLOCK_ESTIMATE +
     TRANSPORT_TOP_MARGIN +
@@ -89,16 +136,19 @@ function getRemoteLayout(windowWidth: number, availableHeight: number): RemoteLa
     SUB_TOP_MARGIN +
     SUB_BUTTON_SIZE +
     MIN_FLOATING_SPACE;
-  const heightBoundMedia = availableHeight - fixedHeight;
-  const fitAwareMediaMin = Math.min(mediaMin, Math.max(96, heightBoundMedia));
-  const artSize = Math.min(
-    Math.round(clamp(heightBoundMedia, fitAwareMediaMin, mediaMax)),
-    ART_SIZE_MAX
-  );
+  // The Math.max(96, ...) floor lets art shrink below MEDIA_AREA_MIN in squat
+  // windows (split-screen halves) instead of pushing the controls off-screen.
+  const bound = availableHeight - fixedHeightBase - mediaBottomGap;
+  const artSize = Math.round(clamp(bound, Math.min(mediaMin, Math.max(96, bound)), mediaMax));
   return {
+    isWide: false,
     contentPadding,
     contentWidth,
+    leftPaneWidth: contentWidth,
+    rightPaneWidth: contentWidth,
+    controlsGap: TRANSPORT_TOP_MARGIN,
     artSize,
+    mediaStackHeight: artSize,
     mediaTopMargin,
     mediaBottomGap,
   };
@@ -197,12 +247,14 @@ export default function DesktopRemoteScreen() {
   const reconnect = useDesktopRemoteStore((s) => s.reconnect);
   const forget = useDesktopRemoteStore((s) => s.forget);
   const sendControl = useDesktopRemoteStore((s) => s.sendControl);
+  const queue = useDesktopRemoteStore((s) => s.queue);
 
   const [pairingLink, setPairingLink] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinClock, setPinClock] = useState(() => Date.now());
   const [manualBaseUrl, setManualBaseUrl] = useState('');
   const [manualTicket, setManualTicket] = useState('');
+  const [queueOpen, setQueueOpen] = useState(false);
 
   useEffect(() => {
     void init();
@@ -234,9 +286,16 @@ export default function DesktopRemoteScreen() {
   const art = currentTrack?.artworkDataUrl ?? null;
   const accent = snapshot?.visualizerLineColor || colors.accent;
   const availableHeight = windowHeight - insets.top - insets.bottom;
-  const remoteLayout = getRemoteLayout(windowWidth, availableHeight);
+  const effectiveWidth = windowWidth - insets.left - insets.right;
+  const remoteLayout = getRemoteLayout(effectiveWidth, availableHeight);
   const remoteSource = connection?.desktopName ?? 'Astra Desktop';
   const remoteDetail = snapshot?.outputDeviceLabel?.trim() || (connection ? hostFromBaseUrl(connection.baseUrl) : '');
+  // Live protocol gate: protocol-1 desktops omit shuffle/repeat from the
+  // snapshot and 404 the queue endpoint (queue stays null).
+  const supportsShuffleRepeat = snapshot?.shuffle !== undefined;
+  const shuffleOn = snapshot?.shuffle === true;
+  const repeatMode = snapshot?.repeat ?? 'none';
+  const queueAvailable = queue !== null;
   const countdown = pairing ? formatPairingCountdown(pairing.expiresAt) : '';
   const pinPairingActive = Boolean(pinPairing && pinPairing.expiresAt > pinClock);
   const pinCountdown = pinPairing ? formatPairingCountdown(pinPairing.expiresAt, pinClock) : '';
@@ -499,14 +558,17 @@ export default function DesktopRemoteScreen() {
         </View>
 
         {currentTrack ? (
-          <View style={styles.remotePlayer}>
+          <View style={[styles.remotePlayer, remoteLayout.isWide && styles.remotePlayerWide]}>
             <View
               style={[
                 styles.middleStack,
-                {
-                  marginTop: remoteLayout.mediaTopMargin,
-                  marginBottom: remoteLayout.mediaBottomGap,
-                },
+                remoteLayout.isWide
+                  ? { width: remoteLayout.leftPaneWidth, justifyContent: 'center' }
+                  : {
+                      height: remoteLayout.mediaStackHeight,
+                      marginTop: remoteLayout.mediaTopMargin,
+                      marginBottom: remoteLayout.mediaBottomGap,
+                    },
               ]}
             >
               <View
@@ -531,9 +593,14 @@ export default function DesktopRemoteScreen() {
               </View>
             </View>
 
-            <View style={styles.spacer} />
-
-            <View style={styles.playerControls}>
+            <View
+              style={[
+                styles.playerControls,
+                remoteLayout.isWide
+                  ? { width: remoteLayout.rightPaneWidth }
+                  : styles.playerControlsFill,
+              ]}
+            >
               <View style={styles.trackInfo}>
                 <View style={styles.trackTextStack}>
                   <MarqueeText
@@ -547,6 +614,19 @@ export default function DesktopRemoteScreen() {
                     {currentTrack.artist || currentTrack.album || remoteSource}
                   </MarqueeText>
                 </View>
+                <Pressable
+                  hitSlop={10}
+                  style={styles.inlineActionBtn}
+                  onPress={() => void sendControl('toggle-favorite')}
+                  accessibilityLabel={currentTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  accessibilityState={{ selected: currentTrack.isFavorite }}
+                >
+                  <Ionicons
+                    name={currentTrack.isFavorite ? 'heart' : 'heart-outline'}
+                    size={SUB_ICON_SIZE + 4}
+                    color={currentTrack.isFavorite ? colors.accent : colors.textTertiary}
+                  />
+                </Pressable>
               </View>
 
               <SeekBar
@@ -556,14 +636,20 @@ export default function DesktopRemoteScreen() {
                 onSeek={(seconds) => void sendControl('seek', seconds)}
               />
 
-              <View style={styles.transport}>
+              <View style={[styles.transport, { marginTop: remoteLayout.controlsGap }]}>
                 <Pressable
                   hitSlop={10}
-                  style={styles.transportSideBtn}
-                  onPress={() => void reconnect()}
-                  accessibilityLabel="Reconnect"
+                  style={[styles.transportSideBtn, !supportsShuffleRepeat && styles.transportSideBtnDisabled]}
+                  disabled={!supportsShuffleRepeat}
+                  onPress={() => void sendControl('toggle-shuffle')}
+                  accessibilityLabel="Shuffle"
+                  accessibilityState={{ selected: shuffleOn }}
                 >
-                  <Ionicons name="refresh" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                  <Ionicons
+                    name="shuffle"
+                    size={SUB_ICON_SIZE + 2}
+                    color={shuffleOn ? colors.accent : colors.textTertiary}
+                  />
                 </Pressable>
                 <Pressable
                   onPress={() => void sendControl('previous')}
@@ -595,20 +681,29 @@ export default function DesktopRemoteScreen() {
                 </Pressable>
                 <Pressable
                   hitSlop={10}
-                  style={styles.transportSideBtn}
-                  onPress={() => void sendControl('toggle-favorite')}
-                  accessibilityLabel={currentTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                  accessibilityState={{ selected: currentTrack.isFavorite }}
+                  style={[styles.transportSideBtn, !supportsShuffleRepeat && styles.transportSideBtnDisabled]}
+                  disabled={!supportsShuffleRepeat}
+                  onPress={() => void sendControl('toggle-repeat')}
+                  accessibilityLabel="Repeat"
+                  accessibilityState={{ selected: repeatMode !== 'none' }}
                 >
-                  <Ionicons
-                    name={currentTrack.isFavorite ? 'heart' : 'heart-outline'}
-                    size={SUB_ICON_SIZE + 4}
-                    color={currentTrack.isFavorite ? colors.accent : colors.textTertiary}
-                  />
+                  {repeatMode === 'one' ? (
+                    <MaterialCommunityIcons
+                      name="repeat-once"
+                      size={SUB_ICON_SIZE + 2}
+                      color={colors.accent}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="repeat"
+                      size={SUB_ICON_SIZE + 2}
+                      color={repeatMode === 'all' ? colors.accent : colors.textTertiary}
+                    />
+                  )}
                 </Pressable>
               </View>
 
-              <View style={styles.subRow}>
+              <View style={[styles.subRow, { marginTop: remoteLayout.controlsGap }]}>
                 <View style={styles.statusPill}>
                   <View
                     style={[
@@ -623,6 +718,16 @@ export default function DesktopRemoteScreen() {
                 <Text variant="caption" color={colors.textTertiary} numberOfLines={1} style={styles.remoteDetail}>
                   {remoteDetail}
                 </Text>
+                {queueAvailable ? (
+                  <Pressable
+                    hitSlop={10}
+                    style={styles.subBtn}
+                    onPress={() => setQueueOpen(true)}
+                    accessibilityLabel="Desktop queue"
+                  >
+                    <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                  </Pressable>
+                ) : null}
                 <Pressable
                   hitSlop={10}
                   style={styles.subBtn}
@@ -683,6 +788,7 @@ export default function DesktopRemoteScreen() {
           </>
         )}
       </KeyboardAvoidingView>
+      {queueOpen && <RemoteQueueSheet onClose={() => setQueueOpen(false)} />}
     </Screen>
   );
 }
@@ -882,6 +988,12 @@ const styles = StyleSheet.create({
   remotePlayer: {
     flex: 1,
   },
+  remotePlayerWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: WIDE_PANE_GAP,
+  },
   middleStack: {
     width: '100%',
     alignItems: 'center',
@@ -897,12 +1009,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  spacer: {
-    flex: 1,
-    minHeight: MIN_FLOATING_SPACE,
-  },
   playerControls: {
     width: '100%',
+  },
+  // Portrait: the controls own all real leftover space; spare pixels spread
+  // evenly between the rows instead of pooling above the track title.
+  playerControlsFill: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   trackInfo: {
     alignSelf: 'stretch',
@@ -929,7 +1043,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: TRANSPORT_TOP_MARGIN,
   },
   transportMainBtn: {
     width: 48,
@@ -940,6 +1053,15 @@ const styles = StyleSheet.create({
   transportSideBtn: {
     width: 48,
     height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transportSideBtnDisabled: {
+    opacity: 0.35,
+  },
+  inlineActionBtn: {
+    width: SUB_BUTTON_SIZE,
+    height: SUB_BUTTON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -955,8 +1077,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    marginTop: SUB_TOP_MARGIN,
+    gap: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
   subBtn: {

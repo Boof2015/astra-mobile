@@ -21,11 +21,18 @@
 // v15 adds `album_display_artist` — the settled group artist ("Various Artists" for
 // shared-artwork compilations) written by the album-identity recompute pass
 // (src/library/albumIdentity.ts); the backfill itself runs from libraryStore.initialize
-// via the `album_grouping_version` settings sentinel (v3 precedent: SQL marks, store acts).
+// via the `album_grouping_version` settings sentinel (v3 precedent: SQL marks, store acts);
+// v16 adds desktop LAN sync state (src/services/desktopSync.ts): a `sync_uid` playlist
+// identity shared with the paired desktop, deletion tombstones for favorites/playlists,
+// and a pending table for incoming favorites that haven't matched a local track yet;
+// v17 adds `playlist_sync_state` — the per-playlist (local, remote) updated_at baseline
+// from the last successful sync, which turns blind last-writer-wins into 3-way change
+// detection: only-one-side-changed syncs silently, both-changed surfaces a conflict
+// prompt (Steam-Cloud style) instead of silently dropping an edit.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 17;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -283,6 +290,41 @@ const MIGRATIONS: readonly (readonly string[])[] = [
   // v14 -> v15 — settled album display artist (see header). NULL until the
   // startup recompute pass backfills it; readers fall back to album_artist/artist.
   [`ALTER TABLE tracks ADD COLUMN album_display_artist TEXT`],
+  // v15 -> v16 — desktop LAN sync (see header). Tombstones record deletions so a
+  // two-way merge propagates them instead of resurrecting the row from the peer;
+  // favorite_sync_pending holds incoming favorites with no local track match yet
+  // (retried against the metadata ladder at each sync). Table shapes mirror the
+  // desktop's (astra src/main/services/library.ts).
+  [
+    `ALTER TABLE playlists ADD COLUMN sync_uid TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_playlists_sync_uid
+       ON playlists(sync_uid)
+       WHERE sync_uid IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS favorite_tombstones (
+      sync_key TEXT PRIMARY KEY NOT NULL,
+      deleted_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS favorite_sync_pending (
+      sync_key TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      album TEXT NOT NULL,
+      added_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS playlist_tombstones (
+      sync_uid TEXT PRIMARY KEY NOT NULL,
+      deleted_at INTEGER NOT NULL
+    )`,
+  ],
+  // v16 -> v17 — desktop sync conflict detection baseline (see header). Rows are
+  // written only for playlists that ended a sync run in-sync on both devices.
+  [
+    `CREATE TABLE IF NOT EXISTS playlist_sync_state (
+      sync_uid TEXT PRIMARY KEY NOT NULL,
+      local_updated_at INTEGER NOT NULL,
+      remote_updated_at INTEGER NOT NULL
+    )`,
+  ],
 ];
 
 export async function migrate(db: LibraryDatabase): Promise<void> {

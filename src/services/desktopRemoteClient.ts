@@ -6,7 +6,14 @@ import type {
   DesktopRemotePairingClaim,
   DesktopRemotePairingStatus,
   DesktopRemotePinPairingRequest,
+  DesktopRemoteQueueSnapshot,
 } from '@/types/desktopRemote';
+import type {
+  DesktopSyncApplyPayload,
+  DesktopSyncApplyResult,
+  DesktopSyncConflictReportPayload,
+  DesktopSyncState,
+} from '@/types/desktopSync';
 export {
   parseDesktopRemoteManualInput,
   parseDesktopRemotePairingInput,
@@ -102,6 +109,10 @@ function normalizeIdentity(payload: unknown): DesktopRemoteIdentity | null {
       typeof candidate.protocolVersion === 'number' && Number.isFinite(candidate.protocolVersion)
         ? candidate.protocolVersion
         : 1,
+    syncRequestedAt:
+      typeof candidate.syncRequestedAt === 'number' && Number.isFinite(candidate.syncRequestedAt)
+        ? candidate.syncRequestedAt
+        : null,
   };
 }
 
@@ -234,8 +245,63 @@ export async function sendDesktopRemoteControl(
   });
 }
 
+export async function sendDesktopRemotePlayQueueItem(
+  baseUrl: string,
+  token: string,
+  queueId: string
+): Promise<void> {
+  await fetchJson<{ ok: true }>(baseUrl, '/v1/control', {
+    method: 'POST',
+    token,
+    body: { command: 'play-queue-item', queueId },
+  });
+}
+
+export async function fetchDesktopRemoteQueue(
+  baseUrl: string,
+  token: string
+): Promise<DesktopRemoteQueueSnapshot> {
+  return fetchJson<DesktopRemoteQueueSnapshot>(baseUrl, '/v1/queue', { token });
+}
+
+// ── Favorites/playlists LAN sync (protocolVersion >= 2) ──────────────────────
+// Sync payloads can carry thousands of favorites/playlist entries, so both
+// calls get generous timeouts compared to the 8 s control default.
+
+export async function fetchDesktopSyncState(baseUrl: string, token: string): Promise<DesktopSyncState> {
+  return fetchJson<DesktopSyncState>(baseUrl, '/v1/sync/state', { token, timeoutMs: 30_000 });
+}
+
+export async function postDesktopSyncApply(
+  baseUrl: string,
+  token: string,
+  payload: DesktopSyncApplyPayload
+): Promise<DesktopSyncApplyResult> {
+  return fetchJson<DesktopSyncApplyResult>(baseUrl, '/v1/sync/apply', {
+    method: 'POST',
+    token,
+    body: payload,
+    timeoutMs: 60_000,
+  });
+}
+
+export async function postDesktopSyncConflicts(
+  baseUrl: string,
+  token: string,
+  payload: DesktopSyncConflictReportPayload
+): Promise<void> {
+  await fetchJson<{ ok: true }>(baseUrl, '/v1/sync/conflicts', {
+    method: 'POST',
+    token,
+    body: payload,
+  });
+}
+
 export type DesktopRemoteSseHandlers = {
   onSnapshot: (snapshot: DesktopRemoteNowPlayingSnapshot) => void;
+  onQueue?: (queue: DesktopRemoteQueueSnapshot) => void;
+  /** Desktop-initiated library-sync nudge (user clicked Sync Now / resolved a conflict there). */
+  onSyncRequest?: () => void;
   onUnauthorized: () => void;
   onDisconnect: () => void;
   onError?: (error: unknown) => void;
@@ -244,7 +310,9 @@ export type DesktopRemoteSseHandlers = {
 function processSseChunk(
   buffer: { value: string },
   chunk: string,
-  onSnapshot: (snapshot: DesktopRemoteNowPlayingSnapshot) => void
+  onSnapshot: (snapshot: DesktopRemoteNowPlayingSnapshot) => void,
+  onQueue?: (queue: DesktopRemoteQueueSnapshot) => void,
+  onSyncRequest?: () => void
 ): void {
   buffer.value += chunk.replace(/\r/g, '');
   let boundary = buffer.value.indexOf('\n\n');
@@ -267,6 +335,14 @@ function processSseChunk(
       } catch {
         // Ignore a malformed event; polling/reconnect will correct the UI.
       }
+    } else if (eventName === 'queue' && data.length > 0 && onQueue) {
+      try {
+        onQueue(JSON.parse(data.join('\n')) as DesktopRemoteQueueSnapshot);
+      } catch {
+        // Ignore a malformed event; the on-demand queue fetch will correct it.
+      }
+    } else if (eventName === 'sync-request' && onSyncRequest) {
+      onSyncRequest();
     }
     boundary = buffer.value.indexOf('\n\n');
   }
@@ -307,9 +383,17 @@ export function startDesktopRemoteEventStream(
       while (!closed) {
         const next = await reader.read();
         if (next.done) break;
-        if (next.value) processSseChunk(buffer, decoder.decode(next.value, { stream: true }), handlers.onSnapshot);
+        if (next.value) {
+          processSseChunk(
+            buffer,
+            decoder.decode(next.value, { stream: true }),
+            handlers.onSnapshot,
+            handlers.onQueue,
+            handlers.onSyncRequest
+          );
+        }
       }
-      processSseChunk(buffer, decoder.decode(), handlers.onSnapshot);
+      processSseChunk(buffer, decoder.decode(), handlers.onSnapshot, handlers.onQueue, handlers.onSyncRequest);
       if (!closed) handlers.onDisconnect();
     } catch (error) {
       if (closed || controller.signal.aborted) return;
