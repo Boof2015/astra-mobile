@@ -6,7 +6,8 @@ import {
 import {
   View,
   Pressable,
-  StyleSheet
+  StyleSheet,
+  Alert
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import {
   AppSheetItem,
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
+import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { colors, spacing } from '@/theme';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -32,7 +34,17 @@ import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
-import type { PlaylistTrackEntry } from '@/types/playlist';
+import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** "content://…/Test.m3u8" -> "Test.m3u8" for the export confirmation. */
+function fileDisplayName(fileUri: string): string {
+  const decoded = decodeURIComponent(fileUri.split('/').pop() ?? fileUri);
+  return decoded.split(/[/:]/).pop() || fileUri;
+}
 
 function basename(path: string): string {
   const decoded = decodeURIComponent(path.split('/').pop() ?? path);
@@ -55,6 +67,8 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
   );
 }
 
+type Prompt = { kind: 'rename'; playlist: Playlist } | null;
+
 export default function PlaylistScreen() {
   const router = useRouter();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
@@ -69,6 +83,9 @@ export default function PlaylistScreen() {
   const closePlaylist = usePlaylistStore((s) => s.closePlaylist);
   const moveTrack = usePlaylistStore((s) => s.moveTrack);
   const removeFromPlaylist = usePlaylistStore((s) => s.removeFromPlaylist);
+  const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist);
+  const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist);
+  const exportM3u = usePlaylistStore((s) => s.exportM3u);
   const markPlayed = usePlaylistStore((s) => s.markPlayed);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const insets = useSafeAreaInsets();
@@ -77,6 +94,8 @@ export default function PlaylistScreen() {
 
   const [actionEntry, setActionEntry] = useState<PlaylistTrackEntry | null>(null);
   const [missingEntry, setMissingEntry] = useState<PlaylistTrackEntry | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [prompt, setPrompt] = useState<Prompt>(null);
 
   useEffect(() => {
     if (playlistId == null || Number.isNaN(playlistId)) return;
@@ -135,6 +154,40 @@ export default function PlaylistScreen() {
     if (playable.length === 0) return;
     void shuffleTracks(playable.map(dbTrackToTrack));
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
+  };
+
+  const handleExport = async (target: number | 'favorites') => {
+    try {
+      const result = await exportM3u(target);
+      if (result) {
+        Alert.alert(
+          'Playlist exported',
+          `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`
+        );
+      }
+    } catch (err) {
+      Alert.alert('Export failed', errorMessage(err));
+    }
+  };
+
+  const confirmDelete = (target: Playlist) => {
+    Alert.alert('Delete playlist?', `"${target.name}" will be deleted. Tracks are not touched.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              await deletePlaylist(target.id);
+              router.back();
+            } catch (err) {
+              Alert.alert('Delete failed', errorMessage(err));
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   // Move/remove only exist on real playlists; favorites rows use the standard
@@ -234,16 +287,18 @@ export default function PlaylistScreen() {
                 })
               }
               accessibilityRole="button"
+              accessibilityLabel="Edit dynamic playlist rules"
             >
               <Ionicons name="sparkles" size={14} color={colors.accent} />
               <Text variant="label" color={colors.accent}>
-                Edit rules
+                Rules
               </Text>
             </Pressable>
           ) : null
         }
         disabled={playable.length === 0}
         onBack={handleBack}
+        onMore={() => setOptionsOpen(true)}
         onPlay={() => startPlayback(0)}
         onShuffle={startShuffle}
         scrollY={scrollY}
@@ -277,6 +332,74 @@ export default function PlaylistScreen() {
           ) : null}
         </AppSheet>
       ) : null}
+      {optionsOpen ? (
+        <AppSheet onClose={() => setOptionsOpen(false)}>
+          <AppSheetTitle title={name} />
+          {isFavorites ? (
+            <AppSheetItem
+              label="Export M3U"
+              icon="download-outline"
+              onPress={() => {
+                setOptionsOpen(false);
+                void handleExport('favorites');
+              }}
+            />
+          ) : playlist && playlistId != null ? (
+            <>
+              {isDynamic ? (
+                <AppSheetItem
+                  label="Edit rules"
+                  icon="options-outline"
+                  onPress={() => {
+                    setOptionsOpen(false);
+                    router.push({
+                      pathname: '/library/playlist/edit-dynamic' as never,
+                      params: { id: String(playlistId) },
+                    });
+                  }}
+                />
+              ) : null}
+              <AppSheetItem
+                label="Rename…"
+                icon="pencil-outline"
+                onPress={() => {
+                  setOptionsOpen(false);
+                  setPrompt({ kind: 'rename', playlist });
+                }}
+              />
+              <AppSheetItem
+                label="Export M3U"
+                icon="download-outline"
+                onPress={() => {
+                  setOptionsOpen(false);
+                  void handleExport(playlistId);
+                }}
+              />
+              <AppSheetItem
+                label="Delete…"
+                icon="trash-outline"
+                destructive
+                onPress={() => {
+                  setOptionsOpen(false);
+                  confirmDelete(playlist);
+                }}
+              />
+            </>
+          ) : null}
+        </AppSheet>
+      ) : null}
+      <TextPromptModal
+        visible={prompt !== null}
+        title="Rename playlist"
+        placeholder="Playlist name"
+        initialValue={prompt?.playlist.name ?? ''}
+        submitLabel="Rename"
+        onSubmit={(nextName) => {
+          if (prompt) void renamePlaylist(prompt.playlist.id, nextName);
+          setPrompt(null);
+        }}
+        onClose={() => setPrompt(null)}
+      />
     </Screen>
   );
 }

@@ -57,6 +57,7 @@ export function PlaylistsView({
 
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [menuFor, setMenuFor] = useState<Playlist | 'favorites' | null>(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
 
   const handleExport = async (target: number | 'favorites') => {
     try {
@@ -168,6 +169,7 @@ export function PlaylistsView({
         renderScrollComponent={PullSearchScrollView}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <PlaylistRow
             name="Favorites"
@@ -194,45 +196,25 @@ export function PlaylistsView({
           <View style={styles.empty}>
             <Ionicons name="musical-notes-outline" size={28} color={colors.textTertiary} />
             <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
-              No playlists yet. Create one or import an M3U below.
+              No playlists yet.
             </Text>
           </View>
         }
-        ListFooterComponent={
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.action}
-              onPress={() => setPrompt({ kind: 'create' })}
-              accessibilityRole="button"
-            >
-              <Ionicons name="add" size={18} color={colors.accent} />
-              <Text variant="body" color={colors.accent}>
-                New playlist
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.action}
-              onPress={() => router.push('/library/playlist/edit-dynamic' as never)}
-              accessibilityRole="button"
-            >
-              <Ionicons name="sparkles-outline" size={16} color={colors.accent} />
-              <Text variant="body" color={colors.accent}>
-                New dynamic
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.action}
-              onPress={() => void handleImport()}
-              accessibilityRole="button"
-            >
-              <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} />
-              <Text variant="body" color={colors.textSecondary}>
-                Import M3U
-              </Text>
-            </Pressable>
-          </View>
-        }
       />
+
+      <View style={styles.addBar}>
+        <Pressable
+          style={styles.addButton}
+          onPress={() => setAddSheetOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add playlist"
+        >
+          <Ionicons name="add" size={20} color={colors.accentTextStrong} />
+          <Text variant="body" color={colors.accentTextStrong}>
+            Add
+          </Text>
+        </Pressable>
+      </View>
 
       {menuFor !== null ? (
         <AppSheet onClose={() => setMenuFor(null)}>
@@ -240,6 +222,35 @@ export function PlaylistsView({
           {menuItems.map(({ key, ...item }) => (
             <AppSheetItem key={key} {...item} />
           ))}
+        </AppSheet>
+      ) : null}
+      {addSheetOpen ? (
+        <AppSheet onClose={() => setAddSheetOpen(false)}>
+          <AppSheetTitle title="Add playlist" />
+          <AppSheetItem
+            label="Standard playlist"
+            icon="list-outline"
+            onPress={() => {
+              setAddSheetOpen(false);
+              setPrompt({ kind: 'create' });
+            }}
+          />
+          <AppSheetItem
+            label="Dynamic playlist"
+            icon="sparkles-outline"
+            onPress={() => {
+              setAddSheetOpen(false);
+              router.push('/library/playlist/edit-dynamic' as never);
+            }}
+          />
+          <AppSheetItem
+            label="Import M3U"
+            icon="document-text-outline"
+            onPress={() => {
+              setAddSheetOpen(false);
+              void handleImport();
+            }}
+          />
         </AppSheet>
       ) : null}
       <TextPromptModal
@@ -266,11 +277,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.lg,
+  listContent: {
+    paddingBottom: 76,
   },
   empty: {
     alignItems: 'center',
@@ -281,14 +289,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 260,
   },
-  action: {
+  addBar: {
+    borderTopColor: colors.glassBorder,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgPrimary,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  addButton: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    borderColor: colors.glassBorder,
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderColor: colors.accent,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.accentGlow,
   },
 });

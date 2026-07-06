@@ -43,6 +43,7 @@ export function PlaylistRow({
       onPress={onPress}
       onLongPress={onLongPress}
       accessibilityRole="button"
+      accessibilityLabel={`${name}, ${dynamic ? 'dynamic playlist, ' : ''}${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
     >
       <View style={styles.cover}>
         {coverHash ? (
@@ -69,6 +70,7 @@ export function PlaylistRow({
           {dynamic ? <Ionicons name="sparkles" size={12} color={colors.accent} /> : null}
         </View>
         <Text variant="label" numberOfLines={1}>
+          {dynamic ? 'Dynamic · ' : ''}
           {`${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
           {missingCount > 0 ? (
             <Text variant="label" color={colors.warning}>

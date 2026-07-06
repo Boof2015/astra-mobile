@@ -123,6 +123,7 @@ export function CollapsingHeader({
   heroExtra,
   disabled,
   onBack,
+  onMore,
   onPlay,
   onShuffle,
   scrollY,
@@ -141,6 +142,7 @@ export function CollapsingHeader({
   heroExtra?: ReactNode;
   disabled?: boolean;
   onBack: () => void;
+  onMore?: () => void;
   onPlay: () => void;
   onShuffle: () => void;
   scrollY: SharedValue<number>;
@@ -282,7 +284,7 @@ export function CollapsingHeader({
         numberOfLines={1}
         style={[
           styles.barTitle,
-          { top: barCenterY - 12, left: thumbCenterX + ART_COLLAPSED / 2 + spacing.sm, right: 84 },
+          { top: barCenterY - 12, left: thumbCenterX + ART_COLLAPSED / 2 + spacing.sm, right: onMore ? 124 : 84 },
           barTitleStyle,
         ]}
       >
@@ -290,7 +292,7 @@ export function CollapsingHeader({
       </Animated.Text>
 
       <Animated.View
-        style={[styles.barIcons, { top: barCenterY - 16, right: spacing.md }, barIconsStyle]}
+        style={[styles.barIcons, { top: barCenterY - 16, right: onMore ? spacing.md + 40 : spacing.md }, barIconsStyle]}
         pointerEvents={collapsed ? 'auto' : 'none'}
       >
         <Pressable onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
@@ -300,6 +302,18 @@ export function CollapsingHeader({
           <Ionicons name="shuffle" size={20} color={colors.accent} />
         </Pressable>
       </Animated.View>
+
+      {onMore ? (
+        <Pressable
+          onPress={onMore}
+          hitSlop={8}
+          style={[styles.moreButton, { top: barCenterY - 16, right: spacing.md }]}
+          accessibilityRole="button"
+          accessibilityLabel="Playlist options"
+        >
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
+        </Pressable>
+      ) : null}
 
       {/* Rendered last so the large art sits on top of the header text until it tucks away. */}
       <Animated.View
@@ -445,6 +459,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   iconBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreButton: {
+    position: 'absolute',
     width: 32,
     height: 32,
     alignItems: 'center',

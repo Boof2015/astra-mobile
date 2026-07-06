@@ -5,19 +5,24 @@ import {
 } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { Text } from '@/components/Text';
 import {
   AppSheet,
   AppSheetItem,
+  AppSheetSection,
   AppSheetTitle,
 } from '@/components/sheets/AppSheet';
 import { colors, fonts, fontSize, radius, spacing } from '@/theme';
@@ -25,6 +30,7 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import {
   DYNAMIC_PLAYLIST_PRESETS,
   createDefaultDynamicPlaylistRules,
+  normalizeDynamicPlaylistCondition,
   normalizeDynamicPlaylistRules,
   type DynamicPlaylistAddedAtCondition,
   type DynamicPlaylistCondition,
@@ -36,6 +42,7 @@ import {
   type DynamicPlaylistNumericField,
   type DynamicPlaylistPreview,
   type DynamicPlaylistRulesV1,
+  type DynamicPlaylistSort,
   type DynamicPlaylistSortField,
   type DynamicPlaylistSourceCondition,
   type DynamicPlaylistTextCondition,
@@ -45,30 +52,50 @@ import {
 type ConditionFieldKey =
   `${DynamicPlaylistCondition['kind']}:${DynamicPlaylistTextField | DynamicPlaylistNumericField | DynamicPlaylistDateField | DynamicPlaylistExactField}`;
 
+type FieldGroup = 'text' | 'activity' | 'library' | 'audio';
+
 interface FieldOption {
   key: ConditionFieldKey;
   label: string;
+  group: FieldGroup;
+  icon: keyof typeof Ionicons.glyphMap;
 }
 
-type Picker = { kind: 'field'; index: number } | { kind: 'sort' } | null;
+type ConditionEditorTarget =
+  | { mode: 'new'; draft: DynamicPlaylistCondition }
+  | { mode: 'edit'; index: number; draft: DynamicPlaylistCondition };
+
+type EditorSheet =
+  | { kind: 'field-picker'; target: 'new' | ConditionEditorTarget }
+  | { kind: 'condition'; target: ConditionEditorTarget }
+  | { kind: 'sort'; draftSort: DynamicPlaylistSort; limitText: string }
+  | { kind: 'preview' }
+  | null;
 
 const FIELD_OPTIONS: readonly FieldOption[] = [
-  { key: 'text:title', label: 'Title' },
-  { key: 'text:artist', label: 'Artist' },
-  { key: 'text:album', label: 'Album' },
-  { key: 'text:album_artist', label: 'Album artist' },
-  { key: 'text:genre', label: 'Genre' },
-  { key: 'text:format', label: 'Format' },
-  { key: 'text:musical_key', label: 'Key' },
-  { key: 'numeric:play_count', label: 'Play count' },
-  { key: 'numeric:year', label: 'Year' },
-  { key: 'numeric:duration_seconds', label: 'Duration' },
-  { key: 'numeric:bpm', label: 'BPM' },
-  { key: 'date:last_played_at', label: 'Last played' },
-  { key: 'date:added_at', label: 'Added' },
-  { key: 'exact:favorite', label: 'Favorite' },
-  { key: 'exact:source_type', label: 'Source' },
+  { key: 'text:title', label: 'Title', group: 'text', icon: 'text-outline' },
+  { key: 'text:artist', label: 'Artist', group: 'text', icon: 'person-outline' },
+  { key: 'text:album', label: 'Album', group: 'text', icon: 'albums-outline' },
+  { key: 'text:album_artist', label: 'Album artist', group: 'text', icon: 'people-outline' },
+  { key: 'text:genre', label: 'Genre', group: 'text', icon: 'pricetag-outline' },
+  { key: 'numeric:play_count', label: 'Play count', group: 'activity', icon: 'repeat-outline' },
+  { key: 'date:last_played_at', label: 'Last played', group: 'activity', icon: 'time-outline' },
+  { key: 'exact:favorite', label: 'Favorite', group: 'activity', icon: 'heart-outline' },
+  { key: 'date:added_at', label: 'Added', group: 'library', icon: 'calendar-outline' },
+  { key: 'exact:source_type', label: 'Source', group: 'library', icon: 'cloud-outline' },
+  { key: 'text:format', label: 'Format', group: 'library', icon: 'document-text-outline' },
+  { key: 'numeric:year', label: 'Year', group: 'audio', icon: 'calendar-number-outline' },
+  { key: 'numeric:duration_seconds', label: 'Duration', group: 'audio', icon: 'timer-outline' },
+  { key: 'numeric:bpm', label: 'BPM', group: 'audio', icon: 'pulse-outline' },
+  { key: 'text:musical_key', label: 'Key', group: 'audio', icon: 'musical-notes-outline' },
 ];
+
+const FIELD_GROUP_LABELS: Record<FieldGroup, string> = {
+  text: 'TEXT',
+  activity: 'ACTIVITY',
+  library: 'LIBRARY',
+  audio: 'AUDIO',
+};
 
 const SORT_LABELS: Record<DynamicPlaylistSortField, string> = {
   title: 'Title',
@@ -82,14 +109,50 @@ const SORT_LABELS: Record<DynamicPlaylistSortField, string> = {
   bpm: 'BPM',
 };
 
+const TEXT_OPERATOR_LABELS: Record<DynamicPlaylistTextCondition['operator'], string> = {
+  contains: 'Contains',
+  is: 'Is',
+  is_not: 'Is not',
+};
+
+const NUMERIC_OPERATOR_LABELS: Record<DynamicPlaylistNumericCondition['operator'], string> = {
+  eq: 'Is',
+  gte: 'At least',
+  lte: 'At most',
+};
+
+const LAST_PLAYED_OPERATOR_LABELS: Record<DynamicPlaylistLastPlayedCondition['operator'], string> = {
+  never: 'Never',
+  within_days: 'Within',
+  not_within_days: 'Not within',
+};
+
+const ADDED_AT_OPERATOR_LABELS: Record<DynamicPlaylistAddedAtCondition['operator'], string> = {
+  within_days: 'Within',
+  older_than_days: 'Older than',
+};
+
+const EXACT_OPERATOR_LABELS: Record<DynamicPlaylistSourceCondition['operator'], string> = {
+  is: 'Is',
+  is_not: 'Is not',
+};
+
+const SORT_FIELD_OPTIONS = Object.entries(SORT_LABELS) as [DynamicPlaylistSortField, string][];
+
+function fieldOptionForKey(key: ConditionFieldKey): FieldOption | undefined {
+  return FIELD_OPTIONS.find((option) => option.key === key);
+}
+
 function createDefaultCondition(fieldKey: ConditionFieldKey = 'text:artist'): DynamicPlaylistCondition {
   const [kind, field] = fieldKey.split(':') as [DynamicPlaylistCondition['kind'], string];
   if (kind === 'numeric') {
+    const value =
+      field === 'play_count' ? 1 : field === 'duration_seconds' ? 180 : field === 'bpm' ? 120 : 2000;
     return {
       kind,
       field: field as DynamicPlaylistNumericField,
       operator: 'gte',
-      value: field === 'play_count' ? 1 : 0,
+      value,
     };
   }
   if (kind === 'date') {
@@ -110,7 +173,12 @@ function getConditionFieldKey(condition: DynamicPlaylistCondition): ConditionFie
 }
 
 function fieldLabel(condition: DynamicPlaylistCondition): string {
-  return FIELD_OPTIONS.find((option) => option.key === getConditionFieldKey(condition))?.label ?? condition.field;
+  return fieldOptionForKey(getConditionFieldKey(condition))?.label ?? condition.field;
+}
+
+function fieldGroupLabel(condition: DynamicPlaylistCondition): string {
+  const group = fieldOptionForKey(getConditionFieldKey(condition))?.group ?? 'text';
+  return FIELD_GROUP_LABELS[group];
 }
 
 function updateCondition(
@@ -174,120 +242,111 @@ function updateExactOperator(
   return { ...condition, operator } as DynamicPlaylistSourceCondition | DynamicPlaylistFavoriteCondition;
 }
 
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={[styles.chip, selected && styles.chipSelected]}
-      onPress={onPress}
-      accessibilityRole="button"
-    >
-      <Text variant="label" color={selected ? colors.accentTextStrong : colors.textSecondary}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+function validateCondition(condition: DynamicPlaylistCondition): string | null {
+  try {
+    normalizeDynamicPlaylistCondition(condition);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Filter is incomplete.';
+  }
 }
 
-function OperatorChips({
-  condition,
-  onChange,
-}: {
-  condition: DynamicPlaylistCondition;
-  onChange: (condition: DynamicPlaylistCondition) => void;
-}) {
+function rulesEqual(a: DynamicPlaylistRulesV1, b: DynamicPlaylistRulesV1): boolean {
+  return JSON.stringify(normalizeDynamicPlaylistRules(a)) === JSON.stringify(normalizeDynamicPlaylistRules(b));
+}
+
+function sourceLabel(value: DynamicPlaylistSourceCondition['value']): string {
+  return value === 'subsonic' ? 'Subsonic' : value === 'jellyfin' ? 'Jellyfin' : 'Local';
+}
+
+function describeCondition(condition: DynamicPlaylistCondition): string {
+  const label = fieldLabel(condition);
+
   if (condition.kind === 'text') {
-    const options: [DynamicPlaylistTextCondition['operator'], string][] = [
-      ['contains', 'Contains'],
-      ['is', 'Is'],
-      ['is_not', 'Is not'],
-    ];
-    return (
-      <View style={styles.chipRow}>
-        {options.map(([operator, label]) => (
-          <Chip
-            key={operator}
-            label={label}
-            selected={condition.operator === operator}
-            onPress={() => onChange(updateTextOperator(condition, operator))}
-          />
-        ))}
-      </View>
-    );
+    const value = condition.value.trim() ? `"${condition.value.trim()}"` : 'value';
+    return `${label} ${TEXT_OPERATOR_LABELS[condition.operator].toLowerCase()} ${value}`;
   }
 
   if (condition.kind === 'numeric') {
-    const options: [DynamicPlaylistNumericCondition['operator'], string][] = [
-      ['eq', 'Is'],
-      ['gte', 'At least'],
-      ['lte', 'At most'],
-    ];
-    return (
-      <View style={styles.chipRow}>
-        {options.map(([operator, label]) => (
-          <Chip
-            key={operator}
-            label={label}
-            selected={condition.operator === operator}
-            onPress={() => onChange(updateNumericOperator(condition, operator))}
-          />
-        ))}
-      </View>
-    );
+    return `${label} ${NUMERIC_OPERATOR_LABELS[condition.operator].toLowerCase()} ${condition.value}`;
   }
 
   if (condition.kind === 'date') {
-    const options =
+    if (condition.field === 'last_played_at' && condition.operator === 'never') {
+      return `${label} never`;
+    }
+    const operator =
       condition.field === 'last_played_at'
-        ? [
-            ['never', 'Never'],
-            ['within_days', 'Within'],
-            ['not_within_days', 'Not within'],
-          ]
-        : [
-            ['within_days', 'Within'],
-            ['older_than_days', 'Older than'],
-          ];
-    return (
-      <View style={styles.chipRow}>
-        {options.map(([operator, label]) => (
-          <Chip
-            key={operator}
-            label={label}
-            selected={condition.operator === operator}
-            onPress={() => onChange(updateDateOperator(condition, operator))}
-          />
-        ))}
-      </View>
-    );
+        ? LAST_PLAYED_OPERATOR_LABELS[condition.operator]
+        : ADDED_AT_OPERATOR_LABELS[condition.operator];
+    return `${label} ${operator.toLowerCase()} ${condition.value ?? 30} days`;
   }
 
-  const options: [DynamicPlaylistSourceCondition['operator'], string][] = [
-    ['is', 'Is'],
-    ['is_not', 'Is not'],
-  ];
+  if (condition.field === 'source_type') {
+    return `${label} ${EXACT_OPERATOR_LABELS[condition.operator].toLowerCase()} ${sourceLabel(condition.value)}`;
+  }
+
+  return `${label} ${EXACT_OPERATOR_LABELS[condition.operator].toLowerCase()} ${condition.value ? 'Yes' : 'No'}`;
+}
+
+function describeSort(sort: DynamicPlaylistSort, limit: number | null): string {
+  const direction = sort.direction === 'asc' ? 'Ascending' : 'Descending';
+  const limitLabel = limit === null ? 'No limit' : `Limit ${limit}`;
+  return `${SORT_LABELS[sort.field]} · ${direction} · ${limitLabel}`;
+}
+
+function previewStatus({
+  isLoadingRules,
+  isPreviewLoading,
+  preview,
+  normalizedRulesError,
+  previewError,
+}: {
+  isLoadingRules: boolean;
+  isPreviewLoading: boolean;
+  preview: DynamicPlaylistPreview | null;
+  normalizedRulesError: string | null;
+  previewError: string | null;
+}): { label: string; tone: 'normal' | 'warning' } {
+  if (isLoadingRules) return { label: 'Loading rules', tone: 'normal' };
+  if (normalizedRulesError) return { label: 'Fix filters', tone: 'warning' };
+  if (previewError) return { label: 'Preview unavailable', tone: 'warning' };
+  if (isPreviewLoading) return { label: 'Previewing', tone: 'normal' };
+  const count = preview?.track_count ?? 0;
+  return { label: `${count} ${count === 1 ? 'track' : 'tracks'}`, tone: 'normal' };
+}
+
+function DraftActions({
+  disabled,
+  onCancel,
+  onApply,
+}: {
+  disabled?: boolean;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
   return (
-    <View style={styles.chipRow}>
-      {options.map(([operator, label]) => (
-        <Chip
-          key={operator}
-          label={label}
-          selected={condition.operator === operator}
-          onPress={() => onChange(updateExactOperator(condition, operator))}
-        />
-      ))}
+    <View style={styles.sheetActions}>
+      <Pressable style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
+        <Text variant="label" color={colors.textSecondary}>
+          Cancel
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[styles.sheetButton, styles.applyButton, disabled && styles.applyDisabled]}
+        disabled={disabled}
+        onPress={onApply}
+        accessibilityRole="button"
+      >
+        <Text variant="label" color={colors.accentTextStrong}>
+          Apply
+        </Text>
+      </Pressable>
     </View>
   );
 }
 
-function ConditionValue({
+function OperatorControl({
   condition,
   onChange,
 }: {
@@ -296,12 +355,88 @@ function ConditionValue({
 }) {
   if (condition.kind === 'text') {
     return (
-      <TextInput
-        style={styles.input}
+      <SegmentedControl
+        value={condition.operator}
+        segments={[
+          { key: 'contains', label: 'Contains' },
+          { key: 'is', label: 'Is' },
+          { key: 'is_not', label: 'Is not' },
+        ]}
+        onChange={(operator) =>
+          onChange(updateTextOperator(condition, operator as DynamicPlaylistTextCondition['operator']))
+        }
+      />
+    );
+  }
+
+  if (condition.kind === 'numeric') {
+    return (
+      <SegmentedControl
+        value={condition.operator}
+        segments={[
+          { key: 'eq', label: 'Is' },
+          { key: 'gte', label: 'At least' },
+          { key: 'lte', label: 'At most' },
+        ]}
+        onChange={(operator) =>
+          onChange(updateNumericOperator(condition, operator as DynamicPlaylistNumericCondition['operator']))
+        }
+      />
+    );
+  }
+
+  if (condition.kind === 'date') {
+    const segments =
+      condition.field === 'last_played_at'
+        ? [
+            { key: 'never', label: 'Never' },
+            { key: 'within_days', label: 'Within' },
+            { key: 'not_within_days', label: 'Not within' },
+          ]
+        : [
+            { key: 'within_days', label: 'Within' },
+            { key: 'older_than_days', label: 'Older than' },
+          ];
+    return (
+      <SegmentedControl
+        value={condition.operator}
+        segments={segments}
+        onChange={(operator) => onChange(updateDateOperator(condition, operator))}
+      />
+    );
+  }
+
+  return (
+    <SegmentedControl
+      value={condition.operator}
+      segments={[
+        { key: 'is', label: 'Is' },
+        { key: 'is_not', label: 'Is not' },
+      ]}
+      onChange={(operator) =>
+        onChange(updateExactOperator(condition, operator as DynamicPlaylistSourceCondition['operator']))
+      }
+    />
+  );
+}
+
+function ConditionValueEditor({
+  condition,
+  onChange,
+}: {
+  condition: DynamicPlaylistCondition;
+  onChange: (condition: DynamicPlaylistCondition) => void;
+}) {
+  if (condition.kind === 'text') {
+    return (
+      <BottomSheetTextInput
+        style={styles.sheetInput}
         value={condition.value}
         onChangeText={(value) => onChange({ ...condition, value })}
         placeholder="Value"
         placeholderTextColor={colors.textTertiary}
+        autoFocus
+        returnKeyType="done"
         selectionColor={colors.accent}
       />
     );
@@ -309,13 +444,15 @@ function ConditionValue({
 
   if (condition.kind === 'numeric') {
     return (
-      <TextInput
-        style={styles.input}
+      <BottomSheetTextInput
+        style={styles.sheetInput}
         value={Number.isFinite(condition.value) ? String(condition.value) : ''}
         onChangeText={(value) => onChange({ ...condition, value: Number(value) })}
         keyboardType="numeric"
         placeholder="0"
         placeholderTextColor={colors.textTertiary}
+        selectTextOnFocus
+        returnKeyType="done"
         selectionColor={colors.accent}
       />
     );
@@ -324,47 +461,271 @@ function ConditionValue({
   if (condition.kind === 'date') {
     if (condition.field === 'last_played_at' && condition.operator === 'never') return null;
     return (
-      <TextInput
-        style={styles.input}
-        value={String(condition.value ?? 30)}
-        onChangeText={(value) => onChange({ ...condition, value: Number(value) } as DynamicPlaylistCondition)}
-        keyboardType="numeric"
-        placeholder="Days"
-        placeholderTextColor={colors.textTertiary}
-        selectionColor={colors.accent}
-      />
-    );
-  }
-
-  if (condition.field === 'source_type') {
-    const options: DynamicPlaylistSourceCondition['value'][] = ['local', 'subsonic', 'jellyfin'];
-    return (
-      <View style={styles.chipRow}>
-        {options.map((value) => (
-          <Chip
-            key={value}
-            label={value === 'local' ? 'Local' : value === 'subsonic' ? 'Subsonic' : 'Jellyfin'}
-            selected={condition.value === value}
-            onPress={() => onChange({ ...condition, value })}
-          />
-        ))}
+      <View style={styles.valueWithUnit}>
+        <BottomSheetTextInput
+          style={[styles.sheetInput, styles.valueInput]}
+          value={String(condition.value ?? 30)}
+          onChangeText={(value) => onChange({ ...condition, value: Number(value) } as DynamicPlaylistCondition)}
+          keyboardType="numeric"
+          placeholder="30"
+          placeholderTextColor={colors.textTertiary}
+          selectTextOnFocus
+          returnKeyType="done"
+          selectionColor={colors.accent}
+        />
+        <Text variant="label" color={colors.textSecondary}>
+          days
+        </Text>
       </View>
     );
   }
 
+  if (condition.field === 'source_type') {
+    return (
+      <SegmentedControl
+        value={condition.value}
+        segments={[
+          { key: 'local', label: 'Local' },
+          { key: 'subsonic', label: 'Subsonic' },
+          { key: 'jellyfin', label: 'Jellyfin' },
+        ]}
+        onChange={(value) =>
+          onChange({ ...condition, value: value as DynamicPlaylistSourceCondition['value'] })
+        }
+      />
+    );
+  }
+
   return (
-    <View style={styles.chipRow}>
-      <Chip
-        label="Yes"
-        selected={condition.value}
-        onPress={() => onChange({ ...condition, value: true })}
-      />
-      <Chip
-        label="No"
-        selected={!condition.value}
-        onPress={() => onChange({ ...condition, value: false })}
-      />
-    </View>
+    <SegmentedControl
+      value={condition.value ? 'yes' : 'no'}
+      segments={[
+        { key: 'yes', label: 'Yes' },
+        { key: 'no', label: 'No' },
+      ]}
+      onChange={(value) => onChange({ ...condition, value: value === 'yes' })}
+    />
+  );
+}
+
+function ConditionEditorSheet({
+  target,
+  onChangeDraft,
+  onChangeField,
+  onRemove,
+  onCancel,
+  onApply,
+}: {
+  target: ConditionEditorTarget;
+  onChangeDraft: (condition: DynamicPlaylistCondition) => void;
+  onChangeField: () => void;
+  onRemove: () => void;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  const draft = target.draft;
+  const error = validateCondition(draft);
+
+  return (
+    <AppSheet onClose={onCancel}>
+      <AppSheetTitle title={target.mode === 'new' ? 'Add filter' : 'Edit filter'} />
+      <Pressable style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
+        <View style={styles.sheetSelectText}>
+          <Text variant="caption" color={colors.textTertiary}>
+            FIELD
+          </Text>
+          <Text variant="body">{fieldLabel(draft)}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+      </Pressable>
+
+      <View style={styles.sheetBlock}>
+        <Text variant="caption" color={colors.textTertiary}>
+          OPERATOR
+        </Text>
+        <OperatorControl condition={draft} onChange={onChangeDraft} />
+      </View>
+
+      <View style={styles.sheetBlock}>
+        <Text variant="caption" color={colors.textTertiary}>
+          VALUE
+        </Text>
+        <ConditionValueEditor condition={draft} onChange={onChangeDraft} />
+      </View>
+
+      {error ? (
+        <Text variant="label" color={colors.warning} style={styles.sheetError}>
+          {error}
+        </Text>
+      ) : null}
+
+      <View style={styles.conditionSheetFooter}>
+        {target.mode === 'edit' ? (
+          <Pressable style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
+            <Ionicons name="trash-outline" size={17} color={colors.warning} />
+            <Text variant="label" color={colors.warning}>
+              Remove
+            </Text>
+          </Pressable>
+        ) : (
+          <View />
+        )}
+        <DraftActions disabled={error !== null} onCancel={onCancel} onApply={onApply} />
+      </View>
+    </AppSheet>
+  );
+}
+
+function SortLimitSheet({
+  sort,
+  limitText,
+  onChangeSort,
+  onChangeLimitText,
+  onCancel,
+  onApply,
+}: {
+  sort: DynamicPlaylistSort;
+  limitText: string;
+  onChangeSort: (sort: DynamicPlaylistSort) => void;
+  onChangeLimitText: (value: string) => void;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  const trimmedLimit = limitText.trim();
+  const parsedLimit = trimmedLimit ? Number(trimmedLimit) : null;
+  const limitValid =
+    parsedLimit === null || (Number.isFinite(parsedLimit) && parsedLimit >= 1 && parsedLimit <= 5000);
+  const applyDisabled = !limitValid;
+
+  return (
+    <AppSheet onClose={onCancel}>
+      <AppSheetTitle title="Result order" />
+      <AppSheetSection label="SORT BY" />
+      {SORT_FIELD_OPTIONS.map(([field, label]) => (
+        <AppSheetItem
+          key={field}
+          label={label}
+          selected={sort.field === field}
+          onPress={() => onChangeSort({ ...sort, field })}
+        />
+      ))}
+
+      <View style={styles.sheetBlock}>
+        <Text variant="caption" color={colors.textTertiary}>
+          DIRECTION
+        </Text>
+        <SegmentedControl
+          value={sort.direction}
+          segments={[
+            { key: 'asc', label: 'Ascending' },
+            { key: 'desc', label: 'Descending' },
+          ]}
+          onChange={(direction) => onChangeSort({ ...sort, direction: direction === 'desc' ? 'desc' : 'asc' })}
+        />
+      </View>
+
+      <View style={styles.sheetBlock}>
+        <Text variant="caption" color={colors.textTertiary}>
+          LIMIT
+        </Text>
+        <BottomSheetTextInput
+          style={[styles.sheetInput, trimmedLimit && !limitValid && styles.inputInvalid]}
+          value={limitText}
+          onChangeText={onChangeLimitText}
+          keyboardType="numeric"
+          placeholder="No limit"
+          placeholderTextColor={colors.textTertiary}
+          returnKeyType="done"
+          selectionColor={colors.accent}
+        />
+        {trimmedLimit && !limitValid ? (
+          <Text variant="caption" color={colors.warning} style={styles.sheetHelp}>
+            Enter 1-5000 or leave blank.
+          </Text>
+        ) : null}
+      </View>
+
+      <DraftActions disabled={applyDisabled} onCancel={onCancel} onApply={onApply} />
+    </AppSheet>
+  );
+}
+
+function PreviewSheet({
+  preview,
+  previewError,
+  isLoading,
+  onClose,
+}: {
+  preview: DynamicPlaylistPreview | null;
+  previewError: string | null;
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  const count = preview?.track_count ?? 0;
+
+  return (
+    <AppSheet onClose={onClose}>
+      <AppSheetTitle title="Preview" subtitle={isLoading ? 'Loading' : `${count} ${count === 1 ? 'track' : 'tracks'}`} />
+      {previewError ? (
+        <Text variant="label" color={colors.warning} style={styles.previewMessage}>
+          {previewError}
+        </Text>
+      ) : preview?.tracks.length ? (
+        <ScrollView style={styles.previewSheetList} showsVerticalScrollIndicator>
+          {preview.tracks.map((track) => (
+            <View key={track.path} style={styles.previewRow}>
+              <Text variant="body" numberOfLines={1}>
+                {track.title}
+              </Text>
+              <Text variant="label" numberOfLines={1} color={colors.textSecondary}>
+                {[track.artist, track.album].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text variant="label" color={colors.textTertiary} style={styles.previewMessage}>
+          No matches
+        </Text>
+      )}
+    </AppSheet>
+  );
+}
+
+function FilterCard({
+  condition,
+  onPress,
+  onRemove,
+}: {
+  condition: DynamicPlaylistCondition;
+  onPress: () => void;
+  onRemove: () => void;
+}) {
+  const option = fieldOptionForKey(getConditionFieldKey(condition));
+
+  return (
+    <Pressable style={styles.ruleCard} onPress={onPress} accessibilityRole="button">
+      <View style={styles.cardIcon}>
+        <Ionicons name={option?.icon ?? 'options-outline'} size={18} color={colors.accent} />
+      </View>
+      <View style={styles.cardText}>
+        <Text variant="body" numberOfLines={2}>
+          {describeCondition(condition)}
+        </Text>
+        <Text variant="caption" color={colors.textTertiary}>
+          {fieldGroupLabel(condition)}
+        </Text>
+      </View>
+      <Pressable
+        style={styles.cardRemove}
+        onPress={onRemove}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Remove filter"
+      >
+        <Ionicons name="close" size={18} color={colors.textTertiary} />
+      </Pressable>
+    </Pressable>
   );
 }
 
@@ -384,7 +745,7 @@ export default function DynamicPlaylistEditorScreen() {
   const playlist = isEditing ? playlists.find((entry) => entry.id === playlistId) : null;
   const [name, setName] = useState(() => (isEditing ? playlist?.name ?? 'Dynamic playlist' : ''));
   const [rules, setRules] = useState<DynamicPlaylistRulesV1>(() => createDefaultDynamicPlaylistRules());
-  const [picker, setPicker] = useState<Picker>(null);
+  const [sheet, setSheet] = useState<EditorSheet>(null);
   const [isLoadingRules, setIsLoadingRules] = useState(isEditing);
   const [isSaving, setIsSaving] = useState(false);
   const [preview, setPreview] = useState<DynamicPlaylistPreview | null>(null);
@@ -424,8 +785,24 @@ export default function DynamicPlaylistEditorScreen() {
     }
   }, [rules]);
 
+  const rulesAreDefault = useMemo(() => rulesEqual(rules, createDefaultDynamicPlaylistRules()), [rules]);
+
   useEffect(() => {
     let didCancel = false;
+    if (normalizedRulesError) {
+      const timeoutId = setTimeout(() => {
+        if (!didCancel) {
+          setIsPreviewLoading(false);
+          setPreview(null);
+          setPreviewError(null);
+        }
+      }, 0);
+      return () => {
+        didCancel = true;
+        clearTimeout(timeoutId);
+      };
+    }
+
     const timeoutId = setTimeout(() => {
       const loadPreview = async () => {
         setIsPreviewLoading(true);
@@ -450,15 +827,99 @@ export default function DynamicPlaylistEditorScreen() {
       didCancel = true;
       clearTimeout(timeoutId);
     };
-  }, [previewDynamicPlaylist, rules]);
+  }, [normalizedRulesError, previewDynamicPlaylist, rules]);
 
   const saveDisabled = !name.trim() || normalizedRulesError !== null || isLoadingRules || isSaving;
+  const status = previewStatus({
+    isLoadingRules,
+    isPreviewLoading,
+    preview,
+    normalizedRulesError,
+    previewError,
+  });
 
-  const addCondition = () => {
+  const applyPreset = (nextRules: DynamicPlaylistRulesV1) => {
+    const apply = () => setRules(normalizeDynamicPlaylistRules(nextRules));
+    if (rulesAreDefault) {
+      apply();
+      return;
+    }
+    Alert.alert('Replace rules?', 'This preset will replace the current filters and result order.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Replace', style: 'destructive', onPress: apply },
+    ]);
+  };
+
+  const openFieldPicker = (target: 'new' | ConditionEditorTarget) => {
+    setSheet({ kind: 'field-picker', target });
+  };
+
+  const openConditionEditor = (index: number) => {
+    setSheet({ kind: 'condition', target: { mode: 'edit', index, draft: rules.conditions[index] } });
+  };
+
+  const updateActiveConditionDraft = (condition: DynamicPlaylistCondition) => {
+    setSheet((current) => {
+      if (current?.kind !== 'condition') return current;
+      if (current.target.mode === 'edit') {
+        return { kind: 'condition', target: { mode: 'edit', index: current.target.index, draft: condition } };
+      }
+      return { kind: 'condition', target: { mode: 'new', draft: condition } };
+    });
+  };
+
+  const selectField = (fieldKey: ConditionFieldKey) => {
+    if (sheet?.kind !== 'field-picker') return;
+    const draft = createDefaultCondition(fieldKey);
+    if (sheet.target === 'new') {
+      setSheet({ kind: 'condition', target: { mode: 'new', draft } });
+      return;
+    }
+    if (sheet.target.mode === 'edit') {
+      setSheet({ kind: 'condition', target: { mode: 'edit', index: sheet.target.index, draft } });
+      return;
+    }
+    setSheet({ kind: 'condition', target: { mode: 'new', draft } });
+  };
+
+  const applyCondition = (target: ConditionEditorTarget) => {
+    if (validateCondition(target.draft) !== null) return;
+    const normalized = normalizeDynamicPlaylistCondition(target.draft);
+    setRules((current) =>
+      target.mode === 'new'
+        ? { ...current, conditions: [...current.conditions, normalized] }
+        : updateCondition(current, target.index, normalized)
+    );
+    setSheet(null);
+  };
+
+  const openSortSheet = () => {
+    setSheet({
+      kind: 'sort',
+      draftSort: { ...rules.sort },
+      limitText: rules.limit === null ? '' : String(rules.limit),
+    });
+  };
+
+  const updateSortDraft = (draftSort: DynamicPlaylistSort) => {
+    setSheet((current) => (current?.kind === 'sort' ? { ...current, draftSort } : current));
+  };
+
+  const updateLimitDraft = (limitText: string) => {
+    setSheet((current) => (current?.kind === 'sort' ? { ...current, limitText } : current));
+  };
+
+  const applySort = () => {
+    if (sheet?.kind !== 'sort') return;
+    const trimmedLimit = sheet.limitText.trim();
+    const parsedLimit = trimmedLimit ? Number(trimmedLimit) : null;
+    if (parsedLimit !== null && (!Number.isFinite(parsedLimit) || parsedLimit < 1 || parsedLimit > 5000)) return;
     setRules((current) => ({
       ...current,
-      conditions: [...current.conditions, createDefaultCondition()],
+      sort: sheet.draftSort,
+      limit: parsedLimit === null ? null : Math.trunc(parsedLimit),
     }));
+    setSheet(null);
   };
 
   const save = () => {
@@ -487,243 +948,237 @@ export default function DynamicPlaylistEditorScreen() {
     })();
   };
 
-  const renderPicker = () => {
-    if (picker === null) return null;
-    if (picker.kind === 'sort') {
+  const renderSheet = () => {
+    if (sheet === null) return null;
+
+    if (sheet.kind === 'field-picker') {
       return (
-        <AppSheet onClose={() => setPicker(null)}>
-          <AppSheetTitle title="Sort by" />
-          {Object.entries(SORT_LABELS).map(([field, label]) => (
-            <AppSheetItem
-              key={field}
-              label={label}
-              selected={rules.sort.field === field}
-              onPress={() => {
-                setRules((current) => ({
-                  ...current,
-                  sort: { ...current.sort, field: field as DynamicPlaylistSortField },
-                }));
-                setPicker(null);
-              }}
-            />
+        <AppSheet onClose={() => setSheet(null)}>
+          <AppSheetTitle title="Choose filter" />
+          {(['text', 'activity', 'library', 'audio'] as FieldGroup[]).map((group) => (
+            <View key={group}>
+              <AppSheetSection label={FIELD_GROUP_LABELS[group]} />
+              {FIELD_OPTIONS.filter((option) => option.group === group).map((option) => (
+                <AppSheetItem
+                  key={option.key}
+                  icon={option.icon}
+                  label={option.label}
+                  onPress={() => selectField(option.key)}
+                />
+              ))}
+            </View>
           ))}
         </AppSheet>
       );
     }
 
+    if (sheet.kind === 'condition') {
+      const target = sheet.target;
+      return (
+        <ConditionEditorSheet
+          target={target}
+          onChangeDraft={updateActiveConditionDraft}
+          onChangeField={() => openFieldPicker(target)}
+          onRemove={() => {
+            if (target.mode === 'edit') {
+              setRules((current) => removeCondition(current, target.index));
+            }
+            setSheet(null);
+          }}
+          onCancel={() => setSheet(null)}
+          onApply={() => applyCondition(target)}
+        />
+      );
+    }
+
+    if (sheet.kind === 'sort') {
+      return (
+        <SortLimitSheet
+          sort={sheet.draftSort}
+          limitText={sheet.limitText}
+          onChangeSort={updateSortDraft}
+          onChangeLimitText={updateLimitDraft}
+          onCancel={() => setSheet(null)}
+          onApply={applySort}
+        />
+      );
+    }
+
     return (
-      <AppSheet onClose={() => setPicker(null)}>
-        <AppSheetTitle title="Filter field" />
-        {FIELD_OPTIONS.map((option) => (
-          <AppSheetItem
-            key={option.key}
-            label={option.label}
-            selected={getConditionFieldKey(rules.conditions[picker.index]) === option.key}
-            onPress={() => {
-              setRules((current) => updateCondition(current, picker.index, createDefaultCondition(option.key)));
-              setPicker(null);
-            }}
-          />
-        ))}
-      </AppSheet>
+      <PreviewSheet
+        preview={preview}
+        previewError={previewError}
+        isLoading={isPreviewLoading}
+        onClose={() => setSheet(null)}
+      />
     );
   };
 
   return (
-    <Screen padded={false} style={styles.screen}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          style={styles.headerButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <Text variant="heading" numberOfLines={1} style={styles.headerTitle}>
-          {isEditing ? 'Edit dynamic playlist' : 'New dynamic playlist'}
-        </Text>
-        <Pressable
-          onPress={save}
-          disabled={saveDisabled}
-          hitSlop={8}
-          style={[styles.headerSave, saveDisabled && styles.disabled]}
-          accessibilityRole="button"
-        >
-          <Text variant="body" color={colors.accent}>
-            {isSaving ? 'Saving' : 'Save'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.section}>
-          <Text variant="caption" style={styles.sectionLabel}>
-            NAME
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Playlist name"
-            placeholderTextColor={colors.textTertiary}
-            selectionColor={colors.accent}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text variant="caption" style={styles.sectionLabel}>
-            STARTERS
-          </Text>
-          <View style={styles.chipRow}>
-            {DYNAMIC_PLAYLIST_PRESETS.map((preset) => (
-              <Chip key={preset.id} label={preset.label} onPress={() => setRules(preset.rules)} />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text variant="caption" style={styles.sectionLabel}>
-              FILTERS
-            </Text>
-            <View style={styles.inlineActions}>
-              <Pressable onPress={() => setRules(createDefaultDynamicPlaylistRules())} accessibilityRole="button">
-                <Text variant="label" color={colors.textSecondary}>
-                  Reset
-                </Text>
-              </Pressable>
-              <Pressable onPress={addCondition} accessibilityRole="button">
-                <Text variant="label" color={colors.accent}>
-                  Add
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          {rules.conditions.length === 0 ? (
-            <Text variant="label" color={colors.textTertiary} style={styles.emptyLine}>
-              No filters
-            </Text>
-          ) : null}
-
-          {rules.conditions.map((condition, index) => (
-            <View key={index} style={styles.condition}>
-              <View style={styles.conditionHeader}>
-                <Pressable
-                  style={styles.fieldButton}
-                  onPress={() => setPicker({ kind: 'field', index })}
-                  accessibilityRole="button"
-                >
-                  <Text variant="body" color={colors.textPrimary}>
-                    {fieldLabel(condition)}
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color={colors.textTertiary} />
-                </Pressable>
-                <Pressable
-                  onPress={() => setRules((current) => removeCondition(current, index))}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove filter"
-                >
-                  <Ionicons name="close" size={20} color={colors.textTertiary} />
-                </Pressable>
-              </View>
-              <OperatorChips
-                condition={condition}
-                onChange={(next) => setRules((current) => updateCondition(current, index, next))}
-              />
-              <ConditionValue
-                condition={condition}
-                onChange={(next) => setRules((current) => updateCondition(current, index, next))}
-              />
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text variant="caption" style={styles.sectionLabel}>
-            SORT
-          </Text>
-          <Pressable style={styles.fieldButton} onPress={() => setPicker({ kind: 'sort' })} accessibilityRole="button">
-            <Text variant="body">{SORT_LABELS[rules.sort.field]}</Text>
-            <Ionicons name="chevron-down" size={16} color={colors.textTertiary} />
+    <KeyboardAvoidingView
+      style={styles.keyboardRoot}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <Screen padded={false}>
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={styles.headerButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
           </Pressable>
-          <View style={styles.chipRow}>
-            <Chip
-              label="Ascending"
-              selected={rules.sort.direction === 'asc'}
-              onPress={() => setRules((current) => ({ ...current, sort: { ...current.sort, direction: 'asc' } }))}
-            />
-            <Chip
-              label="Descending"
-              selected={rules.sort.direction === 'desc'}
-              onPress={() => setRules((current) => ({ ...current, sort: { ...current.sort, direction: 'desc' } }))}
-            />
-          </View>
-          <TextInput
-            style={styles.input}
-            value={rules.limit === null ? '' : String(rules.limit)}
-            onChangeText={(value) =>
-              setRules((current) => ({
-                ...current,
-                limit: value.trim() ? Number(value) : null,
-              }))
-            }
-            keyboardType="numeric"
-            placeholder="Limit"
-            placeholderTextColor={colors.textTertiary}
-            selectionColor={colors.accent}
-          />
+          <Text variant="heading" numberOfLines={1} style={styles.headerTitle}>
+            {isEditing ? 'Edit dynamic playlist' : 'New dynamic playlist'}
+          </Text>
+          <View style={styles.headerButton} />
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
+        >
+          <View style={styles.section}>
             <Text variant="caption" style={styles.sectionLabel}>
+              NAME
+            </Text>
+            <TextInput
+              style={styles.nameInput}
+              value={name}
+              onChangeText={setName}
+              placeholder="Playlist name"
+              placeholderTextColor={colors.textTertiary}
+              selectionColor={colors.accent}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <Text variant="caption" style={styles.sectionLabel}>
+              STARTERS
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.presetRow}
+            >
+              {DYNAMIC_PLAYLIST_PRESETS.map((preset) => (
+                <Pressable
+                  key={preset.id}
+                  style={styles.presetChip}
+                  onPress={() => applyPreset(preset.rules)}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
+                  <Text variant="label" color={colors.accentText}>
+                    {preset.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text variant="caption" style={styles.sectionLabel}>
+                FILTERS
+              </Text>
+              <Pressable style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
+                <Ionicons name="add" size={16} color={colors.accent} />
+                <Text variant="label" color={colors.accent}>
+                  Add filter
+                </Text>
+              </Pressable>
+            </View>
+
+            {rules.conditions.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="filter-outline" size={18} color={colors.textTertiary} />
+                <Text variant="label" color={colors.textTertiary}>
+                  No filters
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.cardStack}>
+                {rules.conditions.map((condition, index) => (
+                  <FilterCard
+                    key={`${getConditionFieldKey(condition)}-${index}`}
+                    condition={condition}
+                    onPress={() => openConditionEditor(index)}
+                    onRemove={() => setRules((current) => removeCondition(current, index))}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <Text variant="caption" style={styles.sectionLabel}>
+              ORDER
+            </Text>
+            <Pressable style={styles.sortCard} onPress={openSortSheet} accessibilityRole="button">
+              <View style={styles.cardIcon}>
+                <Ionicons name="swap-vertical" size={18} color={colors.accent} />
+              </View>
+              <View style={styles.cardText}>
+                <Text variant="body">Result order</Text>
+                <Text variant="label" numberOfLines={1} color={colors.textSecondary}>
+                  {describeSort(rules.sort, rules.limit)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+            </Pressable>
+          </View>
+        </ScrollView>
+
+        <View style={styles.stickyBar}>
+          <View style={styles.stickyMeta}>
+            <Text variant="caption" color={colors.textTertiary}>
               PREVIEW
             </Text>
-            <Text variant="label" color={colors.textSecondary}>
-              {isPreviewLoading ? 'Loading' : `${preview?.track_count ?? 0} tracks`}
+            <Text
+              variant="body"
+              numberOfLines={1}
+              color={status.tone === 'warning' ? colors.warning : colors.textPrimary}
+            >
+              {status.label}
             </Text>
           </View>
-          {previewError || normalizedRulesError ? (
-            <Text variant="label" color={colors.warning} style={styles.errorText}>
-              {previewError ?? normalizedRulesError}
+          <Pressable
+            style={[styles.previewButton, normalizedRulesError !== null && styles.disabled]}
+            disabled={normalizedRulesError !== null}
+            onPress={() => setSheet({ kind: 'preview' })}
+            accessibilityRole="button"
+          >
+            <Ionicons name="eye-outline" size={18} color={colors.textSecondary} />
+            <Text variant="label" color={colors.textSecondary}>
+              Preview
             </Text>
-          ) : preview?.tracks.length ? (
-            <View style={styles.previewList}>
-              {preview.tracks.slice(0, 8).map((track) => (
-                <View key={track.path} style={styles.previewRow}>
-                  <Text variant="body" numberOfLines={1}>
-                    {track.title}
-                  </Text>
-                  <Text variant="label" numberOfLines={1} color={colors.textSecondary}>
-                    {[track.artist, track.album].filter(Boolean).join(' / ')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text variant="label" color={colors.textTertiary} style={styles.emptyLine}>
-              No matches
+          </Pressable>
+          <Pressable
+            style={[styles.saveButton, saveDisabled && styles.disabled]}
+            disabled={saveDisabled}
+            onPress={save}
+            accessibilityRole="button"
+          >
+            <Text variant="label" color={colors.accentTextStrong}>
+              {isSaving ? 'Saving' : 'Save'}
             </Text>
-          )}
+          </Pressable>
         </View>
-      </ScrollView>
 
-      {picker !== null ? renderPicker() : null}
-    </Screen>
+        {renderSheet()}
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    paddingTop: 0,
+  keyboardRoot: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
   },
   header: {
     minHeight: 58,
@@ -731,32 +1186,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerButton: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
     fontSize: fontSize.base,
-  },
-  headerSave: {
-    minWidth: 54,
-    alignItems: 'flex-end',
-    paddingVertical: spacing.sm,
-  },
-  disabled: {
-    opacity: 0.45,
+    textAlign: 'center',
   },
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 124,
     gap: spacing.xl,
   },
   section: {
@@ -772,12 +1219,15 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     letterSpacing: 1,
   },
-  inlineActions: {
+  inlineAction: {
+    minHeight: 34,
     flexDirection: 'row',
-    gap: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
-  input: {
-    minHeight: 44,
+  nameInput: {
+    minHeight: 48,
     color: colors.textPrimary,
     fontFamily: fonts.sans.regular,
     fontSize: fontSize.base,
@@ -788,62 +1238,215 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     backgroundColor: colors.bgTertiary,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  presetRow: {
     gap: spacing.sm,
+    paddingRight: spacing.lg,
   },
-  chip: {
-    minHeight: 34,
-    justifyContent: 'center',
+  presetChip: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
     backgroundColor: colors.glassBg,
   },
-  chipSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
-  },
-  condition: {
+  cardStack: {
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderBottomColor: colors.glassBorder,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  conditionHeader: {
+  ruleCard: {
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  fieldButton: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    gap: spacing.md,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.bgTertiary,
   },
-  emptyLine: {
+  sortCard: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    backgroundColor: colors.bgTertiary,
   },
-  errorText: {
-    paddingVertical: spacing.sm,
+  emptyCard: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassBg,
   },
-  previewList: {
+  cardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentGlow,
+  },
+  cardText: {
+    flex: 1,
+    gap: 2,
+  },
+  cardRemove: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderTopColor: colors.glassBorder,
     borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgSecondary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  stickyMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  previewButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+  },
+  saveButton: {
+    minHeight: 42,
+    minWidth: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.accentGlow,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  sheetSelectRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: colors.glassBg,
+  },
+  sheetSelectText: {
+    flex: 1,
+    gap: 2,
+  },
+  sheetBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  sheetInput: {
+    minHeight: 48,
+    color: colors.textPrimary,
+    fontFamily: fonts.sans.regular,
+    fontSize: fontSize.base,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassBg,
+  },
+  inputInvalid: {
+    borderColor: colors.warning,
+  },
+  valueWithUnit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  valueInput: {
+    flex: 1,
+  },
+  sheetHelp: {
+    marginTop: spacing.xs,
+  },
+  sheetError: {
+    marginTop: spacing.md,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  sheetButton: {
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.xl,
+  },
+  cancelButton: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  applyButton: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentGlow,
+  },
+  applyDisabled: {
+    opacity: 0.4,
+  },
+  conditionSheetFooter: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  removeButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  previewSheetList: {
+    maxHeight: 360,
   },
   previewRow: {
     gap: 2,
     paddingVertical: spacing.sm,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  previewMessage: {
+    paddingVertical: spacing.md,
   },
 });
