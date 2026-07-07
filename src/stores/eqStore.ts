@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { EQBand, EQMode, EQPreset } from '@/types/audio';
+import type { AudioOutputRoute, EQBand, EQMode, EQPreset } from '@/types/audio';
 import { openLibraryDb } from '@/db/database';
 import { getSetting, setSetting } from '@/db/queries';
 import {
@@ -19,6 +19,14 @@ import {
   deriveGraphicGains,
   parseGraphicGains,
 } from '@/audio/graphicEq';
+import {
+  createEQRouteProfile,
+  normalizeAudioOutputRoute,
+  parseEQRouteProfilesJson,
+  restoreEQRouteProfile,
+  stringifyEQRouteProfiles,
+  type EQRouteProfile,
+} from '@/audio/eqRouteProfiles';
 import { setEqBandsNative, setEqEnabledNative, setEqPreampNative } from '@/audio/eqNative';
 
 /**
@@ -34,6 +42,7 @@ const ACTIVE_PRESET_KEY = 'eq_active_preset';
 const CUSTOM_PRESETS_KEY = 'eq_custom_presets';
 const MODE_KEY = 'eq_mode';
 const GRAPHIC_GAINS_KEY = 'eq_graphic_gains';
+const ROUTE_PROFILES_KEY = 'eq_route_profiles_v1';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -97,6 +106,7 @@ interface EQStore {
   presets: EQPreset[]; // built-in + custom
   activePresetId: string | null; // null = manually edited ("Custom")
   activeBandId: string | null; // UI selection shared by curve / strip / panel
+  activeOutputRoute: AudioOutputRoute | null;
   loaded: boolean;
 
   load: () => Promise<void>;
@@ -114,11 +124,13 @@ interface EQStore {
   saveCustomPreset: (name: string) => void;
   deleteCustomPreset: (presetId: string) => void;
   importPreset: (preset: EQPreset) => void;
+  setOutputRoute: (route: AudioOutputRoute | null) => Promise<void>;
 
   _syncToNative: () => void;
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let routeProfilesByKey: Record<string, EQRouteProfile> = {};
 
 export const useEQStore = create<EQStore>((set, get) => {
   function syncToNative(): void {
@@ -129,7 +141,24 @@ export const useEQStore = create<EQStore>((set, get) => {
     setEqBandsNative(flattenBandsForNative(activeBands));
   }
 
+  function captureRouteProfile(route: AudioOutputRoute | null = get().activeOutputRoute): void {
+    if (!route) return;
+    const { enabled, preamp, mode, bands, graphicGains, activePresetId } = get();
+    routeProfilesByKey = {
+      ...routeProfilesByKey,
+      [route.key]: createEQRouteProfile(route, {
+        enabled,
+        preamp,
+        mode,
+        bands,
+        graphicGains,
+        activePresetId,
+      }),
+    };
+  }
+
   function schedulePersist(): void {
+    captureRouteProfile();
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       persistTimer = null;
@@ -138,6 +167,7 @@ export const useEQStore = create<EQStore>((set, get) => {
   }
 
   async function persistNow(): Promise<void> {
+    captureRouteProfile();
     const { enabled, preamp, bands, mode, graphicGains, activePresetId, presets } = get();
     const custom = presets.filter((p) => p.isCustom);
     try {
@@ -149,6 +179,7 @@ export const useEQStore = create<EQStore>((set, get) => {
         setSetting(db, MODE_KEY, mode),
         setSetting(db, GRAPHIC_GAINS_KEY, JSON.stringify(graphicGains)),
         setSetting(db, ACTIVE_PRESET_KEY, activePresetId ?? ''),
+        setSetting(db, ROUTE_PROFILES_KEY, stringifyEQRouteProfiles(routeProfilesByKey)),
         setSetting(
           db,
           CUSTOM_PRESETS_KEY,
@@ -184,12 +215,13 @@ export const useEQStore = create<EQStore>((set, get) => {
     presets: createBuiltInPresets(),
     activePresetId: FLAT_PRESET_ID,
     activeBandId: null,
+    activeOutputRoute: null,
     loaded: false,
 
     load: async () => {
       if (get().loaded) return;
       const db = await openLibraryDb();
-      const [enabledRaw, preampRaw, bandsRaw, modeRaw, gainsRaw, activeRaw, customRaw] = await Promise.all([
+      const [enabledRaw, preampRaw, bandsRaw, modeRaw, gainsRaw, activeRaw, customRaw, routeProfilesRaw] = await Promise.all([
         getSetting(db, ENABLED_KEY),
         getSetting(db, PREAMP_KEY),
         getSetting(db, BANDS_KEY),
@@ -197,11 +229,13 @@ export const useEQStore = create<EQStore>((set, get) => {
         getSetting(db, GRAPHIC_GAINS_KEY),
         getSetting(db, ACTIVE_PRESET_KEY),
         getSetting(db, CUSTOM_PRESETS_KEY),
+        getSetting(db, ROUTE_PROFILES_KEY),
       ]);
 
       const bands = parseBands(bandsRaw) ?? createDefaultBands();
       const presets = [...createBuiltInPresets(), ...parseCustomPresets(customRaw)];
       const storedActive = activeRaw && activeRaw.length > 0 ? activeRaw : null;
+      routeProfilesByKey = parseEQRouteProfilesJson(routeProfilesRaw, genEqId);
 
       set({
         enabled: enabledRaw === 'true',
@@ -390,6 +424,61 @@ export const useEQStore = create<EQStore>((set, get) => {
       };
       set({ presets: [...get().presets, stored] });
       get().applyPreset(stored.id);
+    },
+
+    setOutputRoute: async (route) => {
+      if (!get().loaded) await get().load();
+
+      const nextRoute = normalizeAudioOutputRoute(route);
+      const previousRoute = get().activeOutputRoute;
+      if (previousRoute?.key === nextRoute?.key) {
+        if (
+          previousRoute &&
+          nextRoute &&
+          (previousRoute.label !== nextRoute.label ||
+            previousRoute.kind !== nextRoute.kind ||
+            previousRoute.nativeId !== nextRoute.nativeId ||
+            previousRoute.nativeType !== nextRoute.nativeType ||
+            previousRoute.selectedRouteName !== nextRoute.selectedRouteName)
+        ) {
+          set({ activeOutputRoute: nextRoute });
+          schedulePersist();
+        }
+        return;
+      }
+
+      captureRouteProfile(previousRoute);
+
+      if (!nextRoute) {
+        set({ activeOutputRoute: null });
+        schedulePersist();
+        return;
+      }
+
+      const profile = routeProfilesByKey[nextRoute.key];
+      if (!profile) {
+        // First-seen routes inherit whatever EQ is currently audible, then diverge
+        // as soon as the user edits while this route is active.
+        set({ activeOutputRoute: nextRoute });
+        schedulePersist();
+        return;
+      }
+
+      const restored = restoreEQRouteProfile(profile, (presetId) =>
+        get().presets.some((preset) => preset.id === presetId)
+      );
+      set({
+        activeOutputRoute: nextRoute,
+        enabled: restored.enabled,
+        preamp: restored.preamp,
+        mode: restored.mode,
+        bands: restored.bands,
+        graphicGains: restored.graphicGains,
+        activePresetId: restored.activePresetId,
+        activeBandId: restored.bands[0]?.id ?? null,
+      });
+      syncToNative();
+      schedulePersist();
     },
 
     _syncToNative: syncToNative,

@@ -15,9 +15,9 @@ import { buildArtistList, filterTracksByArtist } from '@/library/artistGrouping'
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playForCar, playTracksForCar, pause, seekTo, skipToNext, skipToPrevious } from '@/audio/playbackController';
 import { syncCarNowPlayingFromTrackPlayer } from '@/audio/carSync';
+import { ensureEQRouteSyncStarted } from '@/audio/eqRouteSync';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
-import { useEQStore } from '@/stores/eqStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
@@ -58,7 +58,7 @@ async function initializeForCar(): Promise<void> {
       await usePlaylistStore.getState().refresh();
       await useRemoteSourcesStore.getState().init();
       await Promise.all([
-        useEQStore.getState().load(),
+        ensureEQRouteSyncStarted(),
         useAudioSettingsStore.getState().load(),
       ]);
     })().catch((err) => {

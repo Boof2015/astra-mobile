@@ -3,6 +3,7 @@ import { syncCarNowPlayingFromTrackPlayer } from './carSync';
 import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
 import { ensureGainRegistryStarted } from './gainRegistry';
+import { ensureEQRouteSyncStarted } from './eqRouteSync';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -13,6 +14,9 @@ export async function PlaybackService(): Promise<void> {
   // Whole-queue gain registration + fallback gain, headless-safe (Android Auto /
   // Bluetooth starts with the app UI never mounted must still normalize).
   ensureGainRegistryStarted();
+  void ensureEQRouteSyncStarted().catch((error) => {
+    console.warn('[eq-route] headless init failed', error);
+  });
 
   const syncNowPlaying = () =>
     Promise.allSettled([

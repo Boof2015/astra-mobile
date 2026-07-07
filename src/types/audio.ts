@@ -85,6 +85,18 @@ export interface EQPreset {
   graphicGains?: number[];
 }
 
+export type AudioOutputRouteKind = 'speaker' | 'wired' | 'bluetooth' | 'usb' | 'hdmi' | 'unknown';
+
+export interface AudioOutputRoute {
+  key: string;
+  label: string;
+  kind: AudioOutputRouteKind;
+  nativeType: number | null;
+  nativeId: number | null;
+  selectedRouteName: string | null;
+  updatedAt: number;
+}
+
 // Visualizer config (scopes land at M3)
 export interface VisualizerConfig {
   type: 'oscilloscope' | 'spectrum' | 'spectrogram' | 'vu' | 'loudness' | 'stereo';

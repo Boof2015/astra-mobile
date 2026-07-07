@@ -111,6 +111,7 @@ export default function EQScreen() {
   const activeBand = eq.bands.find((b) => b.id === eq.activeBandId) ?? null;
   const activeBandNumber = eq.bands.findIndex((b) => b.id === eq.activeBandId) + 1;
   const presetName = eq.presets.find((p) => p.id === eq.activePresetId)?.name ?? 'Custom';
+  const outputRouteLabel = eq.activeOutputRoute?.label ?? 'This phone';
   const defaultPresetName = `Preset ${eq.presets.filter((p) => p.isCustom).length + 1}`;
   const valueEditConfig = activeBand && editingValue ? getValueEditConfig(editingValue, activeBand) : null;
 
@@ -306,7 +307,17 @@ export default function EQScreen() {
           { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
         ]}
       >
-        <Text variant="heading">Equalizer</Text>
+        <View style={styles.headerTitle}>
+          <Text variant="heading">Equalizer</Text>
+          <Text
+            variant="caption"
+            color={colors.textSecondary}
+            numberOfLines={1}
+            style={styles.routeLabel}
+          >
+            {`Tuning ${outputRouteLabel}`}
+          </Text>
+        </View>
         <View style={styles.headerActions}>
           <Pressable style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
             <Ionicons name="save-outline" size={20} color={colors.textSecondary} />
@@ -597,6 +608,14 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'space-between',
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    gap: spacing.md,
+  },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeLabel: {
+    marginTop: 2,
   },
   headerActions: {
     flexDirection: 'row',

@@ -20,7 +20,7 @@ import { usePlaybackSync } from '@/audio/usePlaybackSync';
 import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
-import { useEQStore } from '@/stores/eqStore';
+import { ensureEQRouteSyncStarted } from '@/audio/eqRouteSync';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
@@ -301,10 +301,7 @@ export default function RootLayout() {
       .getState()
       .initialize()
       .catch((err) => console.error('[library] init failed', err));
-    useEQStore
-      .getState()
-      .load()
-      .catch((err) => console.error('[eq] load failed', err));
+    ensureEQRouteSyncStarted().catch((err) => console.error('[eq-route] init failed', err));
     useAudioSettingsStore
       .getState()
       .load()
