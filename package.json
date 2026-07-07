@@ -27,6 +27,7 @@
     "expo-linking": "~56.0.11",
     "expo-router": "~56.2.6",
     "expo-secure-store": "^56.0.4",
+    "expo-sharing": "~56.0.21",
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
     "expo-symbols": "~56.0.5",
@@ -38,6 +39,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",
+    "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "4.3.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
@@ -67,6 +69,7 @@
     "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/db/dynamicPlaylistSql.test.mts",
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/shared/sync/conflictPreview.test.mts",
+    "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

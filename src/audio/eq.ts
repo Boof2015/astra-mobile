@@ -3,7 +3,7 @@
 // in the EQ screen. Coefficients themselves are computed natively (Kotlin) at the
 // real stream sample rate — here we only flatten band params for the native bridge.
 
-import type { EQBand, EQBandType, EQPreset } from '@/types/audio';
+import type { EQBand, EQBandType, EQMode, EQPreset } from '../types/audio';
 
 export const EQ_MIN_GAIN_DB = -12;
 export const EQ_MAX_GAIN_DB = 12;
@@ -16,6 +16,7 @@ export const EQ_MAX_BANDS = 10;
 export const EQ_MIN_PREAMP_DB = -12;
 export const EQ_MAX_PREAMP_DB = 12;
 export const EQ_PRESET_VERSION = 1;
+export const EQ_GRAPHIC_BAND_COUNT = 5;
 
 // Ordinals MUST match the Kotlin `EqBandType` enum order in EqBridge.kt.
 export const EQ_BAND_TYPE_ORDINAL: Record<EQBandType, number> = {
@@ -32,6 +33,17 @@ interface RawEQBand {
   gain?: unknown;
   Q?: unknown;
   enabled?: unknown;
+}
+
+type SerializedEQBand = Pick<EQBand, 'type' | 'frequency' | 'gain' | 'Q' | 'enabled'>;
+
+export interface SerializedEQPresetData {
+  version: number;
+  name: string;
+  preamp: number;
+  bands: SerializedEQBand[];
+  mode?: EQMode;
+  graphicGains?: number[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -96,15 +108,36 @@ export function createNormalizedEQBand(rawBand: RawEQBand, id: string): EQBand {
   return normalizeEQBand(band);
 }
 
+function parseEQGraphicGains(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length !== EQ_GRAPHIC_BAND_COUNT) return null;
+  const gains: number[] = [];
+  for (const raw of value) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return null;
+    gains.push(clampEQGain(parsed));
+  }
+  return gains;
+}
+
 export function parseEQPresetData(value: unknown, createId: () => string): EQPreset {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Invalid preset file');
   }
-  const raw = value as { name?: unknown; preamp?: unknown; bands?: unknown };
+  const raw = value as {
+    version?: unknown;
+    name?: unknown;
+    preamp?: unknown;
+    bands?: unknown;
+    mode?: unknown;
+    graphicGains?: unknown;
+  };
+  if (raw.version !== undefined && raw.version !== EQ_PRESET_VERSION) {
+    throw new Error('Unsupported preset version');
+  }
   if (typeof raw.name !== 'string' || raw.name.trim().length === 0 || !Array.isArray(raw.bands)) {
     throw new Error('Invalid preset file');
   }
-  return {
+  const preset: EQPreset = {
     id: createId(),
     name: raw.name.trim(),
     preamp: clampPreamp(coerceFiniteNumber(raw.preamp, 0)),
@@ -118,15 +151,19 @@ export function parseEQPresetData(value: unknown, createId: () => string): EQPre
       ),
     isCustom: true,
   };
+  const graphicGains = raw.mode === 'graphic' ? parseEQGraphicGains(raw.graphicGains) : null;
+  if (!graphicGains) return preset;
+  return {
+    ...preset,
+    mode: 'graphic',
+    graphicGains,
+  };
 }
 
-export function serializeEQPresetData(preset: Pick<EQPreset, 'name' | 'preamp' | 'bands'>): {
-  version: number;
-  name: string;
-  preamp: number;
-  bands: Pick<EQBand, 'type' | 'frequency' | 'gain' | 'Q' | 'enabled'>[];
-} {
-  return {
+export function serializeEQPresetData(
+  preset: Pick<EQPreset, 'name' | 'preamp' | 'bands' | 'mode' | 'graphicGains'>
+): SerializedEQPresetData {
+  const data: SerializedEQPresetData = {
     version: EQ_PRESET_VERSION,
     name: preset.name,
     preamp: clampPreamp(coerceFiniteNumber(preset.preamp, 0)),
@@ -135,6 +172,12 @@ export function serializeEQPresetData(preset: Pick<EQPreset, 'name' | 'preamp' |
       return { type: n.type, frequency: n.frequency, gain: n.gain, Q: n.Q, enabled: n.enabled };
     }),
   };
+  const graphicGains = preset.mode === 'graphic' ? parseEQGraphicGains(preset.graphicGains) : null;
+  if (graphicGains) {
+    data.mode = 'graphic';
+    data.graphicGains = graphicGains;
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------

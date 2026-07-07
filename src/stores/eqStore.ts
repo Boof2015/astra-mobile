@@ -379,7 +379,15 @@ export const useEQStore = create<EQStore>((set, get) => {
     },
 
     importPreset: (preset) => {
-      const stored: EQPreset = { ...preset, id: genEqId(), isCustom: true };
+      const graphicGains = preset.mode === 'graphic' ? parseGraphicGains(preset.graphicGains) : null;
+      const stored: EQPreset = {
+        id: genEqId(),
+        name: preset.name,
+        preamp: clampPreamp(preset.preamp),
+        bands: preset.bands.slice(0, EQ_MAX_BANDS).map((band) => createNormalizedEQBand(band, genEqId())),
+        isCustom: true,
+        ...(graphicGains ? { mode: 'graphic' as const, graphicGains } : {}),
+      };
       set({ presets: [...get().presets, stored] });
       get().applyPreset(stored.id);
     },

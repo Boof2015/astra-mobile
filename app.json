@@ -32,7 +32,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Astra to scan desktop pairing QR codes."
+          "cameraPermission": "Allow Astra to scan desktop pairing and EQ preset QR codes."
         }
       ],
       [
@@ -53,7 +53,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

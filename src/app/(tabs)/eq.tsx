@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   InteractionManager,
   Pressable,
   StyleSheet,
@@ -7,10 +8,16 @@ import {
   useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import {
+  StorageAccessFramework,
+  cacheDirectory,
+  readAsStringAsync,
+  writeAsStringAsync,
+} from 'expo-file-system/legacy';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQGraph } from '@/components/eq/EQGraph';
@@ -23,6 +30,9 @@ import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
 import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
+import { EQPresetNameSheet } from '@/components/eq/EQPresetNameSheet';
+import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
+import { EQPresetQrSheet } from '@/components/eq/EQPresetQrSheet';
 import {
   radius,
   spacing,
@@ -44,21 +54,36 @@ import {
   isPassEQBandType
 } from '@/audio/eq';
 import { parseAutoEQ } from '@/audio/autoEQParser';
+import { buildGraphicBands } from '@/audio/graphicEq';
+import { genEqId } from '@/audio/eqPresets';
+import {
+  EQ_PRESET_MIME_TYPE,
+  buildEQPresetFileName,
+  encodeEQPresetQr,
+  parseEQPresetFileContents,
+  stringifyEQPresetFileContents,
+} from '@/audio/eqShare';
 import { BAND_TYPE_LABEL, formatGain } from '@/components/eq/format';
-import type { EQBand, EQBandType } from '@/types/audio';
+import type { EQBand, EQBandType, EQPreset } from '@/types/audio';
 
-type SheetKind = 'none' | 'preset' | 'save' | 'overflow' | 'type';
+type SheetKind = 'none' | 'preset' | 'save' | 'overflow' | 'type' | 'shareName' | 'qr' | 'preview';
+type CurrentPresetAction = 'export' | 'share' | 'qr';
+type EQState = ReturnType<typeof useEQStore.getState>;
 
 const BAND_TYPES: EQBandType[] = ['lowshelf', 'peaking', 'highshelf', 'highpass', 'lowpass'];
 
 export default function EQScreen() {
   const styles = useStyles();
   const colors = useColors();
+  const router = useRouter();
   const eq = useEQStore();
   const scopeActive = useScopeActive();
   const [focused, setFocused] = useState(false);
   const [sheet, setSheet] = useState<SheetKind>('none');
   const [editingValue, setEditingValue] = useState<EQEditableValue | null>(null);
+  const [pendingCurrentAction, setPendingCurrentAction] = useState<CurrentPresetAction | null>(null);
+  const [pendingImportPreset, setPendingImportPreset] = useState<EQPreset | null>(null);
+  const [qrPreset, setQrPreset] = useState<{ name: string; value: string } | null>(null);
   const closeSheet = useCallback(() => setSheet('none'), []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -100,6 +125,91 @@ export default function EQScreen() {
       if (preset.bands.length > 0) eq.importPreset(preset);
     } catch {
       /* invalid file — ignore */
+    }
+  };
+
+  const showPresetImportError = useCallback((message = 'That file is not an Astra EQ preset.') => {
+    Alert.alert('Could not import preset', message);
+  }, []);
+
+  const runCurrentPresetAction = useCallback(async (action: CurrentPresetAction, name: string) => {
+    const preset = buildCurrentEQPreset(useEQStore.getState(), name);
+    try {
+      if (action === 'export') {
+        const permission = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!permission.granted) return;
+        const fileName = buildEQPresetFileName(preset.name);
+        const fileUri = await StorageAccessFramework.createFileAsync(
+          permission.directoryUri,
+          fileName,
+          EQ_PRESET_MIME_TYPE
+        );
+        await writeAsStringAsync(fileUri, stringifyEQPresetFileContents(preset));
+        Alert.alert('Preset exported', `Saved ${fileName}.`);
+        return;
+      }
+
+      if (action === 'share') {
+        const available = await Sharing.isAvailableAsync();
+        if (!available) {
+          Alert.alert('Share unavailable', 'This device cannot open a share sheet right now.');
+          return;
+        }
+        if (!cacheDirectory) {
+          Alert.alert('Share unavailable', 'Astra could not create a temporary preset file.');
+          return;
+        }
+        const fileUri = `${cacheDirectory}${buildEQPresetFileName(preset.name)}`;
+        await writeAsStringAsync(fileUri, stringifyEQPresetFileContents(preset));
+        await Sharing.shareAsync(fileUri, {
+          mimeType: EQ_PRESET_MIME_TYPE,
+          dialogTitle: `Share ${preset.name}`,
+          UTI: 'public.json',
+        });
+        return;
+      }
+
+      setQrPreset({ name: preset.name, value: encodeEQPresetQr(preset) });
+      setSheet('qr');
+    } catch {
+      Alert.alert('Preset sharing failed', 'Astra could not finish that preset sharing action.');
+    }
+  }, []);
+
+  const startCurrentPresetAction = useCallback(
+    (action: CurrentPresetAction) => {
+      const activeName = getActivePresetName(useEQStore.getState());
+      if (activeName) {
+        closeSheet();
+        void runCurrentPresetAction(action, activeName);
+        return;
+      }
+      setPendingCurrentAction(action);
+      setSheet('shareName');
+    },
+    [closeSheet, runCurrentPresetAction]
+  );
+
+  const handleNamedCurrentPresetAction = useCallback(
+    (name: string) => {
+      const action = pendingCurrentAction;
+      setPendingCurrentAction(null);
+      if (!action) return;
+      void runCurrentPresetAction(action, name);
+    },
+    [pendingCurrentAction, runCurrentPresetAction]
+  );
+
+  const handleImportAstraPreset = async () => {
+    closeSheet();
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.[0]) return;
+      const content = await readAsStringAsync(res.assets[0].uri);
+      setPendingImportPreset(parseEQPresetFileContents(content, genEqId));
+      setSheet('preview');
+    } catch (error) {
+      showPresetImportError(error instanceof Error ? error.message : undefined);
     }
   };
 
@@ -266,6 +376,18 @@ export default function EQScreen() {
 
       {sheet === 'overflow' ? (
         <EqSheet onClose={closeSheet}>
+          <EqSheetItem label="Export preset..." icon="folder-outline" onPress={() => startCurrentPresetAction('export')} />
+          <EqSheetItem label="Share preset..." icon="share-outline" onPress={() => startCurrentPresetAction('share')} />
+          <EqSheetItem label="Show preset QR..." icon="qr-code-outline" onPress={() => startCurrentPresetAction('qr')} />
+          <EqSheetItem label="Import Astra preset..." icon="download-outline" onPress={handleImportAstraPreset} />
+          <EqSheetItem
+            label="Scan preset QR..."
+            icon="scan-outline"
+            onPress={() => {
+              closeSheet();
+              router.push('/eq/scan' as never);
+            }}
+          />
           <EqSheetItem label="Import AutoEQ…" icon="download-outline" onPress={handleImportAutoEQ} />
           {!isGraphic && eq.bands.length > 1 && activeBand ? (
             <EqSheetItem
@@ -287,6 +409,40 @@ export default function EQScreen() {
             }}
           />
         </EqSheet>
+      ) : null}
+
+      {sheet === 'shareName' && pendingCurrentAction ? (
+        <EQPresetNameSheet
+          defaultName={defaultPresetName}
+          actionLabel={getCurrentActionLabel(pendingCurrentAction)}
+          onSubmit={handleNamedCurrentPresetAction}
+          onClose={closeSheet}
+        />
+      ) : null}
+
+      {sheet === 'qr' && qrPreset ? (
+        <EQPresetQrSheet
+          presetName={qrPreset.name}
+          value={qrPreset.value}
+          onClose={() => {
+            setQrPreset(null);
+            closeSheet();
+          }}
+        />
+      ) : null}
+
+      {sheet === 'preview' && pendingImportPreset ? (
+        <EQPresetPreviewSheet
+          preset={pendingImportPreset}
+          onConfirm={() => {
+            eq.importPreset(pendingImportPreset);
+            setPendingImportPreset(null);
+          }}
+          onClose={() => {
+            setPendingImportPreset(null);
+            closeSheet();
+          }}
+        />
       ) : null}
 
       {sheet === 'type' && activeBand ? (
@@ -394,6 +550,44 @@ function parseDb(value: string): number | null {
 function parsePlainNumber(value: string): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getActivePresetName(eq: EQState): string | null {
+  if (!eq.activePresetId) return null;
+  const name = eq.presets.find((preset) => preset.id === eq.activePresetId)?.name.trim();
+  return name && name.length > 0 ? name : null;
+}
+
+function buildCurrentEQPreset(eq: EQState, name: string): EQPreset {
+  if (eq.mode === 'graphic') {
+    return {
+      id: 'current-eq',
+      name,
+      preamp: eq.preamp,
+      bands: buildGraphicBands(eq.graphicGains).map((band) => ({ ...band })),
+      mode: 'graphic',
+      graphicGains: [...eq.graphicGains],
+      isCustom: true,
+    };
+  }
+  return {
+    id: 'current-eq',
+    name,
+    preamp: eq.preamp,
+    bands: eq.bands.map((band) => ({ ...band })),
+    isCustom: true,
+  };
+}
+
+function getCurrentActionLabel(action: CurrentPresetAction): string {
+  switch (action) {
+    case 'export':
+      return 'Export';
+    case 'share':
+      return 'Share';
+    case 'qr':
+      return 'Show QR';
+  }
 }
 
 const useStyles = createThemedStyles((colors) => ({
