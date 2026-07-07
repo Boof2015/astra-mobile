@@ -22,6 +22,9 @@ import { commitHaptic, tickHaptic } from '@/lib/haptics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
+const SWIPE_ACTIVE_OFFSET_X = 10;
+const SWIPE_FAIL_OFFSET_Y = 30;
+
 export interface SwipeAction {
   icon: IconName;
   /** Background of the revealed action lane. */
@@ -79,8 +82,8 @@ export function SwipeableRow({
 
   const pan = Gesture.Pan()
     .enabled(enabled && rowWidth > 0 && (hasRight || hasLeft))
-    .activeOffsetX([-12, 12])
-    .failOffsetY([-12, 12])
+    .activeOffsetX([-SWIPE_ACTIVE_OFFSET_X, SWIPE_ACTIVE_OFFSET_X])
+    .failOffsetY([-SWIPE_FAIL_OFFSET_Y, SWIPE_FAIL_OFFSET_Y])
     .onUpdate((e) => {
       let t = e.translationX;
       if (t > 0 && !hasRight) t = 0;
