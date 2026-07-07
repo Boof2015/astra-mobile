@@ -51,7 +51,19 @@ import type {
 import type { Playlist } from '@/types/playlist';
 
 type IconName = keyof typeof Ionicons.glyphMap;
-type RouteHref = '/' | '/library' | '/eq' | '/settings' | '/sources' | '/lastfm';
+type RouteHref =
+  | '/'
+  | '/library'
+  | '/eq'
+  | '/settings'
+  | '/settings/appearance'
+  | '/settings/library'
+  | '/settings/audio'
+  | '/settings/services'
+  | '/settings/experimental'
+  | '/settings/info'
+  | '/sources'
+  | '/lastfm';
 type LibraryViewMode = 'tracks' | 'albums' | 'artists' | 'playlists' | 'folders';
 
 const NAV_RESULT_LIMIT = 3;
@@ -120,34 +132,50 @@ const SETTING_ENTRIES: {
   libraryViewMode?: LibraryViewMode;
 }[] = [
   {
+    id: 'setting:appearance',
+    label: 'Appearance settings',
+    subtitle: 'Theme / dark style / accent',
+    href: '/settings/appearance',
+    icon: 'color-palette-outline',
+    keywords: ['appearance', 'theme', 'dark mode', 'amoled', 'material you', 'accent', 'color'],
+  },
+  {
     id: 'setting:audio',
     label: 'Audio settings',
     subtitle: 'Normalization / ReplayGain',
-    href: '/settings',
+    href: '/settings/audio',
     icon: 'volume-high',
-    keywords: ['normalization', 'replaygain', 'loudness', 'gain', 'target lufs'],
+    keywords: ['audio', 'normalization', 'replaygain', 'loudness', 'gain', 'target lufs'],
   },
   {
     id: 'setting:library',
-    label: 'Artist grouping',
-    subtitle: 'Astra grouping / file tags',
-    href: '/settings',
+    label: 'Library settings',
+    subtitle: 'Folders / artist grouping / albums',
+    href: '/settings/library',
     icon: 'people',
-    keywords: ['library', 'artist grouping', 'collaborators', 'file tags'],
+    keywords: ['library', 'artist grouping', 'collaborators', 'file tags', 'singles', 'albums'],
   },
   {
     id: 'setting:folders',
     label: 'Manage folders',
     subtitle: 'Add / rescan / remove folders',
-    href: '/settings',
+    href: '/settings/library',
     icon: 'folder-open-outline',
     keywords: ['folders', 'scan', 'rescan', 'add folder', 'remove folder', 'local files', 'storage'],
+  },
+  {
+    id: 'setting:services',
+    label: 'Services settings',
+    subtitle: 'Remote sources / scrobbling',
+    href: '/settings/services',
+    icon: 'server-outline',
+    keywords: ['services', 'integrations', 'remote sources', 'scrobbling'],
   },
   {
     id: 'setting:sources',
     label: 'Remote sources',
     subtitle: 'Subsonic / Jellyfin servers',
-    href: '/sources',
+    href: '/settings/services',
     icon: 'server-outline',
     keywords: ['subsonic', 'jellyfin', 'server', 'streaming', 'remote'],
   },
@@ -155,9 +183,25 @@ const SETTING_ENTRIES: {
     id: 'setting:lastfm',
     label: 'Scrobbling',
     subtitle: 'Last.fm / ListenBrainz',
-    href: '/lastfm',
+    href: '/settings/services',
     icon: 'radio-outline',
     keywords: ['lastfm', 'last.fm', 'listenbrainz', 'scrobble', 'audioscrobbler'],
+  },
+  {
+    id: 'setting:experimental',
+    label: 'Experimental settings',
+    subtitle: 'Desktop Remote / Desktop Sync',
+    href: '/settings/experimental',
+    icon: 'flask-outline',
+    keywords: ['experimental', 'desktop remote', 'desktop sync', 'pairing', 'phone remote'],
+  },
+  {
+    id: 'setting:info',
+    label: 'Info',
+    subtitle: 'Version / attribution / license',
+    href: '/settings/info',
+    icon: 'information-circle-outline',
+    keywords: ['info', 'about', 'version', 'license', 'attribution', 'github', 'repo', 'repository', 'discord', 'kofi', 'ko-fi', 'support', 'gpl'],
   },
 ];
 
@@ -829,7 +873,7 @@ function QuickSearchPanel({
   };
 
   const navigateTo = (href: RouteHref) => {
-    router.push(href);
+    router.push(href as never);
   };
 
   const executeResult = (result: SearchResult) => {
