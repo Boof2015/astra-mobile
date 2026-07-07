@@ -76,8 +76,8 @@ export default function PlaylistScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
-  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
-  const handleBack = useLibraryDetailBack(from);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const handleBack = useLibraryDetailBack();
   const isFavorites = id === 'favorites';
   const playlistId = isFavorites ? null : Number(id);
 
@@ -185,7 +185,7 @@ export default function PlaylistScreen() {
           void (async () => {
             try {
               await deletePlaylist(target.id);
-              router.back();
+              handleBack();
             } catch (err) {
               Alert.alert('Delete failed', errorMessage(err));
             }

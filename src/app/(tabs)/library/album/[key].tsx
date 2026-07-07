@@ -39,11 +39,11 @@ function DiscHeader({ disc }: { disc: number }) {
 
 export default function AlbumScreen() {
   const colors = useColors();
-  const { key, from } = useLocalSearchParams<{ key: string; from?: string }>();
+  const { key } = useLocalSearchParams<{ key: string }>();
   const albums = useLibraryStore((s) => s.albums);
   const allTracks = useLibraryStore((s) => s.tracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
-  const handleBack = useLibraryDetailBack(from);
+  const handleBack = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();

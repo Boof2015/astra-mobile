@@ -64,8 +64,8 @@ export default function ArtistScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
-  const { name = 'Artist', from } = useLocalSearchParams<{ name: string; from?: string }>();
-  const handleBack = useLibraryDetailBack(from);
+  const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
+  const handleBack = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();

@@ -901,7 +901,7 @@ function QuickSearchPanel({
     if (result.kind === 'album') {
       router.push({
         pathname: '/library/album/[key]',
-        params: { key: result.album.identity_key, from: 'search' },
+        params: { key: result.album.identity_key },
       });
       return;
     }
@@ -909,7 +909,7 @@ function QuickSearchPanel({
     if (result.kind === 'artist') {
       router.push({
         pathname: '/library/artist/[name]',
-        params: { name: result.artist.artist, from: 'search' },
+        params: { name: result.artist.artist },
       });
       return;
     }
@@ -917,7 +917,7 @@ function QuickSearchPanel({
     if (result.kind === 'playlist') {
       router.push({
         pathname: '/library/playlist/[id]',
-        params: { id: result.playlist.id, from: 'search' },
+        params: { id: result.playlist.id },
       });
       return;
     }
