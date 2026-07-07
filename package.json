@@ -62,6 +62,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/queue/queueActions.test.mts",
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts",
     "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/db/dynamicPlaylistSql.test.mts",
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",

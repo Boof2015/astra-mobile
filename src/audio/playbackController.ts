@@ -439,6 +439,10 @@ function moveOriginalOrderIfUnshuffled(fromIndex: number, toIndex: number): void
   originalOrder.splice(boundedTo, 0, moved);
 }
 
+interface QueueRemoveOptions {
+  updateMirror?: boolean;
+}
+
 /** Replace everything after the current track with `upcoming` (in order). */
 export async function setUpcoming(upcoming: RntpTrack[]): Promise<void> {
   await queueLoadSettled();
@@ -511,18 +515,28 @@ export async function requeueManyToTop(absoluteIndices: number[]): Promise<void>
 }
 
 /** Remove a single track at an absolute queue index. */
-export async function removeFromQueue(absoluteIndex: number): Promise<void> {
+export async function removeFromQueue(
+  absoluteIndex: number,
+  options: QueueRemoveOptions = {}
+): Promise<void> {
   await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndex);
-  useQueueStore.getState().removeIndices([absoluteIndex]);
+  if (options.updateMirror !== false) {
+    useQueueStore.getState().removeIndices([absoluteIndex]);
+  }
   syncOriginalOrderFromMirrorIfUnshuffled();
 }
 
 /** Remove a group of tracks at absolute queue indices. */
-export async function removeManyFromQueue(absoluteIndices: number[]): Promise<void> {
+export async function removeManyFromQueue(
+  absoluteIndices: number[],
+  options: QueueRemoveOptions = {}
+): Promise<void> {
   if (absoluteIndices.length === 0) return;
   await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndices);
-  useQueueStore.getState().removeIndices(absoluteIndices);
+  if (options.updateMirror !== false) {
+    useQueueStore.getState().removeIndices(absoluteIndices);
+  }
   syncOriginalOrderFromMirrorIfUnshuffled();
 }

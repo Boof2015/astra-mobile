@@ -56,6 +56,10 @@ import {
   setUpcoming
 } from '@/audio/playbackController';
 import { useQueue } from './useQueue';
+import {
+  removeQueueEntryAt,
+  resolveSelectedQueueAction,
+} from './queueActions';
 
 const QUEUE_ROW_HEIGHT = 64;
 const ART = 42;
@@ -399,9 +403,11 @@ export function QueueTray({ onClose }: QueueTrayProps) {
 
   const remove = useCallback(
     (localIndex: number) => {
-      const nextEntries = entriesRef.current.filter((_, index) => index !== localIndex);
-      setOptimisticEntries(nextEntries);
-      runAndRefresh(removeFromQueue(baseOffset + localIndex));
+      const action = removeQueueEntryAt(entriesRef.current, localIndex, baseOffset);
+      if (!action) return;
+
+      setOptimisticEntries(action.nextEntries);
+      runAndRefresh(removeFromQueue(action.absoluteIndex, { updateMirror: false }));
     },
     [baseOffset, runAndRefresh, setOptimisticEntries]
   );
@@ -420,30 +426,29 @@ export function QueueTray({ onClose }: QueueTrayProps) {
     setSelectedKeys(new Set());
   }, []);
 
-  const selectedAbsoluteIndices = useCallback((): number[] => {
-    const indices: number[] = [];
-    entriesRef.current.forEach((entry, index) => {
-      if (visibleSelectedKeys.has(entry.key)) indices.push(baseOffset + index);
-    });
-    return indices;
-  }, [baseOffset, visibleSelectedKeys]);
-
   const groupPlayNext = useCallback(() => {
-    const selected = new Set(visibleSelectedKeys);
-    const moved = entriesRef.current.filter((entry) => selected.has(entry.key));
-    const rest = entriesRef.current.filter((entry) => !selected.has(entry.key));
-    setOptimisticEntries([...moved, ...rest]);
-    runAndRefresh(requeueManyToTop(selectedAbsoluteIndices()));
+    const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
+    if (action.absoluteIndices.length === 0) {
+      exitEdit();
+      return;
+    }
+
+    setOptimisticEntries(action.entriesWithSelectedFirst);
+    runAndRefresh(requeueManyToTop(action.absoluteIndices));
     exitEdit();
-  }, [exitEdit, runAndRefresh, selectedAbsoluteIndices, setOptimisticEntries, visibleSelectedKeys]);
+  }, [baseOffset, exitEdit, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
 
   const groupRemove = useCallback(() => {
-    const selected = new Set(visibleSelectedKeys);
-    const nextEntries = entriesRef.current.filter((entry) => !selected.has(entry.key));
-    setOptimisticEntries(nextEntries);
-    runAndRefresh(removeManyFromQueue(selectedAbsoluteIndices()));
+    const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
+    if (action.absoluteIndices.length === 0) {
+      exitEdit();
+      return;
+    }
+
+    setOptimisticEntries(action.entriesWithoutSelected);
+    runAndRefresh(removeManyFromQueue(action.absoluteIndices, { updateMirror: false }));
     exitEdit();
-  }, [exitEdit, runAndRefresh, selectedAbsoluteIndices, setOptimisticEntries, visibleSelectedKeys]);
+  }, [baseOffset, exitEdit, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
