@@ -39,10 +39,10 @@ import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SwipeableRow } from '@/components/SwipeableRow';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 import { dragArmHaptic, tickHaptic } from '@/lib/haptics';
 import { useQueueStore } from '@/stores/queueStore';
@@ -139,6 +139,8 @@ interface QueueTrayProps {
 }
 
 export function QueueTray({ onClose }: QueueTrayProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const snapPoints = useMemo(() => ['58%', '100%'], []);
@@ -530,7 +532,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
         )}
       </View>
     ),
-    [isLoadingQueue]
+    [isLoadingQueue, colors, styles]
   );
 
   const selectedCount = visibleSelectedKeys.size;
@@ -645,6 +647,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
 }
 
 const Artwork = memo(function Artwork({ uri, title }: { uri?: string; title?: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.art}>
       {uri ? (
@@ -711,6 +714,8 @@ const QueueRow = memo(function QueueRow({
   onRemoveIndex,
   onToggleSelectKey,
 }: QueueRowProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const entryKey = entry.key;
   const title = trackTitle(entry.track);
   const artist = trackArtist(entry.track);
@@ -791,13 +796,18 @@ const QueueRow = memo(function QueueRow({
     };
   });
 
+  // Locals so the worklet captures plain strings: a theme switch re-renders,
+  // the captured values change, and Reanimated rebuilds the worklet.
+  const dragSurface = colors.bgTertiary;
+  const selectedSurface = colors.glassHighlight;
+  const restSurface = colors.bgSecondary;
   const rowSurfaceStyle = useAnimatedStyle(() => ({
     backgroundColor:
       dActive.value && dKey.value === entryKey
-        ? colors.bgTertiary
+        ? dragSurface
         : selected
-          ? colors.glassHighlight
-          : colors.bgSecondary,
+          ? selectedSurface
+          : restSurface,
   }));
 
   const rowContent = (
@@ -894,7 +904,7 @@ const QueueRow = memo(function QueueRow({
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   sheetBg: {
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
@@ -1058,6 +1068,6 @@ const styles = StyleSheet.create({
   actionTextDestructive: {
     color: colors.warning,
   },
-});
+}));
 
 export default QueueTray;

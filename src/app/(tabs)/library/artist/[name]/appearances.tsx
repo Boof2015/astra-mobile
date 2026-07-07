@@ -11,7 +11,8 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -21,6 +22,7 @@ import { buildArtistDetail } from '@/library/artistDetail';
 import type { DbTrack } from '@/types/library';
 
 export default function ArtistAppearancesScreen() {
+  const colors = useColors();
   const router = useRouter();
   const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
   const allTracks = useLibraryStore((s) => s.tracks);
@@ -79,6 +81,7 @@ export default function ArtistAppearancesScreen() {
 }
 
 function EmptyList({ label }: { label: string }) {
+  const colors = useColors();
   return (
     <View style={styles.emptyState}>
       <Ionicons name="people-outline" size={24} color={colors.textTertiary} />

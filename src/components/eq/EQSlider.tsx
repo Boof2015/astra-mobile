@@ -8,10 +8,10 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 
 const THUMB = 16;
 
@@ -42,6 +42,7 @@ export function EQSlider({
   disabled,
   onValuePress,
 }: EQSliderProps) {
+  const styles = useStyles();
   const [width, setWidth] = useState(0);
   const [active, setActive] = useState(false);
   const widthRef = useRef(0);
@@ -136,7 +137,7 @@ export function EQSlider({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -195,6 +196,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     color: colors.textPrimary,
   },
-});
+}));
 
 export default EQSlider;

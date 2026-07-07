@@ -12,10 +12,10 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceRow, RemoteSyncProgress } from '@/types/remote';
 
@@ -38,6 +38,8 @@ function statusLine(
 }
 
 export default function SourcesScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const sources = useRemoteSourcesStore((s) => s.sources);
   const progressById = useRemoteSourcesStore((s) => s.progressById);
@@ -196,7 +198,7 @@ export default function SourcesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -274,4 +276,4 @@ const styles = StyleSheet.create({
   rowName: {
     flex: 1,
   },
-});
+}));

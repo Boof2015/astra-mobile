@@ -7,14 +7,15 @@ import { Image } from 'expo-image';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () => void }) {
+  const styles = useStyles();
   const artUri = albumArtworkSource(album);
   return (
     <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
@@ -41,7 +42,7 @@ export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () =>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   item: {
     flex: 1,
     marginBottom: spacing.lg,
@@ -64,4 +65,4 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
   },
-});
+}));

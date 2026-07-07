@@ -12,7 +12,7 @@ import {
   Skia,
   type SkPath
 } from '@shopify/react-native-skia';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 import type { EQBand } from '@/types/audio';
 import {
   EQ_MAX_FREQUENCY,
@@ -39,6 +39,7 @@ interface GraphicResponseCurveProps {
  * the chrome).
  */
 export function GraphicResponseCurve({ gains, enabled }: GraphicResponseCurveProps) {
+  const colors = useColors();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const width = size.width;
   const height = size.height;

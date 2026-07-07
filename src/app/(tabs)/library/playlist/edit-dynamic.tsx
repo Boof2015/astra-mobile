@@ -25,7 +25,8 @@ import {
   AppSheetSection,
   AppSheetTitle,
 } from '@/components/sheets/AppSheet';
-import { colors, fonts, fontSize, radius, spacing } from '@/theme';
+import { fonts, fontSize, radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import {
   DYNAMIC_PLAYLIST_PRESETS,
@@ -325,6 +326,8 @@ function DraftActions({
   onCancel: () => void;
   onApply: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.sheetActions}>
       <Pressable style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
@@ -427,6 +430,8 @@ function ConditionValueEditor({
   condition: DynamicPlaylistCondition;
   onChange: (condition: DynamicPlaylistCondition) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   if (condition.kind === 'text') {
     return (
       <BottomSheetTextInput
@@ -523,6 +528,8 @@ function ConditionEditorSheet({
   onCancel: () => void;
   onApply: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const draft = target.draft;
   const error = validateCondition(draft);
 
@@ -591,6 +598,8 @@ function SortLimitSheet({
   onCancel: () => void;
   onApply: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const trimmedLimit = limitText.trim();
   const parsedLimit = trimmedLimit ? Number(trimmedLimit) : null;
   const limitValid =
@@ -661,6 +670,8 @@ function PreviewSheet({
   isLoading: boolean;
   onClose: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const count = preview?.track_count ?? 0;
 
   return (
@@ -701,6 +712,8 @@ function FilterCard({
   onPress: () => void;
   onRemove: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const option = fieldOptionForKey(getConditionFieldKey(condition));
 
   return (
@@ -730,6 +743,8 @@ function FilterCard({
 }
 
 export default function DynamicPlaylistEditorScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const playlistId = id ? Number(id) : null;
@@ -1175,7 +1190,7 @@ export default function DynamicPlaylistEditorScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   keyboardRoot: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -1449,4 +1464,4 @@ const styles = StyleSheet.create({
   previewMessage: {
     paddingVertical: spacing.md,
   },
-});
+}));

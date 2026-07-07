@@ -6,7 +6,7 @@
 // this app's screen setups (see queue-tray-sheet gotcha).
 
 import { useCallback, useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -15,7 +15,8 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
@@ -25,6 +26,8 @@ interface RemoteQueueSheetProps {
 }
 
 export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const queue = useDesktopRemoteStore((s) => s.queue);
   const snapPoints = useMemo(() => ['58%', '100%'], []);
   const renderFlashListScrollComponent = useBottomSheetScrollableCreator();
@@ -92,7 +95,7 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
         ) : null}
       </Pressable>
     ),
-    [playItem]
+    [playItem, colors, styles]
   );
 
   return (
@@ -131,7 +134,7 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   sheetBg: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
@@ -170,4 +173,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
     alignItems: 'center',
   },
-});
+}));

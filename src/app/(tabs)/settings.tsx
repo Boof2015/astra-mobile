@@ -14,8 +14,13 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { ScanProgress } from '@/components/library/ScanProgress';
-import { colors, radius, spacing } from '@/theme';
+import { SegmentedControl } from '@/components/SegmentedControl';
+import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
+import type { BaseThemeId, PreferredDark } from '@/theme/resolve';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { useLibraryStore, type FolderWithCount } from '@/stores/libraryStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
@@ -32,6 +37,93 @@ function lastFmScrobbleSubtitle(status: LastFmStatus | null): string {
   if (connected === 0) return 'Scrobble plays to Last.fm, ListenBrainz, and more.';
   const base = `${connected} destination${connected === 1 ? '' : 's'} connected`;
   return status?.enabled ? `${base}.` : `${base} · paused.`;
+}
+
+const THEME_OPTIONS: { id: BaseThemeId; title: string; description: string }[] = [
+  { id: 'system', title: 'System', description: 'Follow the Android dark/light setting.' },
+  { id: 'midnight', title: 'Midnight', description: 'Deep navy. The classic Astra look.' },
+  { id: 'dark', title: 'Dark', description: 'Neutral dark gray, no navy cast.' },
+  { id: 'amoled', title: 'AMOLED', description: 'True black. Easy on OLED screens and batteries.' },
+  { id: 'light', title: 'Light', description: 'Cool near-white with navy ink.' },
+  { id: 'materialYou', title: 'Material You', description: 'Colors from your wallpaper.' },
+];
+
+const DARK_STYLE_SEGMENTS = [
+  { key: 'midnight', label: 'Midnight' },
+  { key: 'dark', label: 'Dark' },
+  { key: 'amoled', label: 'AMOLED' },
+];
+
+/** Theme picker + accent swatches. Lives first in settings — it demos live switching. */
+function AppearanceSettings() {
+  const styles = useStyles();
+  const colors = useColors();
+  const baseTheme = useThemeStore((s) => s.baseTheme);
+  const preferredDark = useThemeStore((s) => s.preferredDark);
+  const accentId = useThemeStore((s) => s.accentId);
+  const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
+  const resolvedId = useThemeStore((s) => s.theme.id);
+  const setBaseTheme = useThemeStore((s) => s.setBaseTheme);
+  const setPreferredDark = useThemeStore((s) => s.setPreferredDark);
+  const setAccent = useThemeStore((s) => s.setAccent);
+
+  const options = THEME_OPTIONS.filter(
+    (option) => option.id !== 'materialYou' || materialYouAvailable
+  );
+  // Material You picks its own accent from the wallpaper — hide the swatches.
+  const accentApplies = !resolvedId.startsWith('materialYou');
+
+  return (
+    <>
+      <View style={styles.options}>
+        {options.map((option) => {
+          const selected = option.id === baseTheme;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.option, selected && styles.optionSelected]}
+              onPress={() => void setBaseTheme(option.id)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+            >
+              <View style={styles.optionText}>
+                <Text variant="body" color={selected ? colors.accentTextStrong : colors.textPrimary}>
+                  {option.title}
+                </Text>
+                <Text variant="caption" color={colors.textSecondary} style={styles.optionDescription}>
+                  {option.description}
+                </Text>
+              </View>
+              {selected ? (
+                <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+              ) : (
+                <Ionicons name="ellipse-outline" size={20} color={colors.textTertiary} />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {baseTheme === 'system' ? (
+        <View style={styles.appearanceBlock}>
+          <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+            Dark style used when the system is dark.
+          </Text>
+          <SegmentedControl
+            segments={DARK_STYLE_SEGMENTS}
+            value={preferredDark}
+            onChange={(key) => void setPreferredDark(key as PreferredDark)}
+          />
+        </View>
+      ) : null}
+
+      {accentApplies ? (
+        <View style={styles.appearanceBlock}>
+          <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
+        </View>
+      ) : null}
+    </>
+  );
 }
 
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
@@ -64,6 +156,8 @@ function ToggleRow({
   value: boolean;
   onValueChange: (v: boolean) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.toggleRow}>
       <View style={styles.toggleText}>
@@ -99,6 +193,8 @@ function LibraryFolderSettingsRow({
   disabled: boolean;
   onRemove: (folder: FolderWithCount) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.folderSettingsRow}>
       <Ionicons
@@ -135,6 +231,8 @@ function LibraryFolderSettingsRow({
 }
 
 function LibraryFoldersSettings() {
+  const styles = useStyles();
+  const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
@@ -227,6 +325,8 @@ function LibraryFoldersSettings() {
 }
 
 export default function SettingsScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const remoteSources = useRemoteSourcesStore((s) => s.sources);
   const lastFmStatus = useLastFmSettingsStore((s) => s.status);
@@ -279,6 +379,11 @@ export default function SettingsScreen() {
         </Text>
 
         <Text variant="label" color={colors.textTertiary} style={styles.sectionLabel}>
+          APPEARANCE
+        </Text>
+        <AppearanceSettings />
+
+        <Text variant="label" color={colors.textTertiary} style={[styles.sectionLabel, styles.sectionSpacing]}>
           LIBRARY FOLDERS
         </Text>
         <LibraryFoldersSettings />
@@ -462,7 +567,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   content: {
     paddingBottom: spacing.xxl,
   },
@@ -580,6 +685,9 @@ const styles = StyleSheet.create({
   settingTitle: {
     marginBottom: spacing.xs,
   },
+  appearanceBlock: {
+    marginTop: spacing.md,
+  },
   settingNote: {
     marginBottom: spacing.md,
   },
@@ -607,4 +715,4 @@ const styles = StyleSheet.create({
   optionDescription: {
     lineHeight: 16,
   },
-});
+}));

@@ -1,10 +1,10 @@
 import {
-  StyleSheet,
   View,
   type ViewProps
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 
 interface ScreenProps extends ViewProps {
   /** Apply default horizontal padding. */
@@ -13,6 +13,7 @@ interface ScreenProps extends ViewProps {
 
 /** Base screen container: black background + top safe-area inset. */
 export function Screen({ children, style, padded = true, ...rest }: ScreenProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.root, { paddingTop: insets.top }, style]} {...rest}>
@@ -21,7 +22,7 @@ export function Screen({ children, style, padded = true, ...rest }: ScreenProps)
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -32,6 +33,6 @@ const styles = StyleSheet.create({
   padded: {
     paddingHorizontal: spacing.lg,
   },
-});
+}));
 
 export default Screen;

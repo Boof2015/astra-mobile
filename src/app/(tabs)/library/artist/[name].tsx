@@ -21,11 +21,12 @@ import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
-  colors,
   fontSize,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
+import type { Palette } from '@/theme/palettes';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -60,6 +61,8 @@ type ArtistPageItem =
   | { key: 'empty'; type: 'empty' };
 
 export default function ArtistScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { name = 'Artist', from } = useLocalSearchParams<{ name: string; from?: string }>();
   const handleBack = useLibraryDetailBack(from);
@@ -165,7 +168,7 @@ export default function ArtistScreen() {
         }}
       />
       <CollapsingHeader
-        artwork={artistArtwork(detail.artworkHashes)}
+        artwork={artistArtwork(detail.artworkHashes, colors, styles)}
         backdropUri={backdropHash ? artworkThumbUri(backdropHash) : null}
         title={name}
         heroMeta={
@@ -247,7 +250,11 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
 }
 
 /** Inner artwork for the collapsing header: 2x2 album mosaic, single cover, or fallback. */
-function artistArtwork(hashes: string[]) {
+function artistArtwork(
+  hashes: string[],
+  colors: Palette,
+  styles: ReturnType<typeof useStyles>,
+) {
   const useMosaic = hashes.length >= 4;
   const display = useMosaic ? hashes.slice(0, 4) : hashes.slice(0, 1);
 
@@ -283,6 +290,8 @@ function SectionHeader({
   trailing: string;
   onPress?: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleGroup}>
@@ -312,6 +321,7 @@ function AlbumRail({
   albums: ArtistAlbum[];
   onAlbumPress: (album: ArtistAlbum) => void;
 }) {
+  const styles = useStyles();
   return (
     <ScrollView
       horizontal
@@ -352,6 +362,8 @@ function AlbumRail({
 }
 
 function StatChip({ icon, label }: { icon: IconName; label: string }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.statChip}>
       <Ionicons name={icon} size={13} color={colors.accentText} />
@@ -380,7 +392,7 @@ function trackSubtitle(track: DbTrack, section: 'appearances' | 'songs'): string
   return track.album;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   // The backdrop runs behind the status bar; content pads itself instead.
   screen: {
     paddingTop: 0,
@@ -482,4 +494,4 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
   },
-});
+}));

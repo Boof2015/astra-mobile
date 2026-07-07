@@ -12,10 +12,10 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import {
-  colors,
   fonts,
-  radius
+  radius,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 
 const THUMB_INSET = 3;
@@ -37,6 +37,7 @@ interface SegmentedControlProps {
  * accent via interpolateColor on Animated.Text. Spring-free per theme/motion.
  */
 export function SegmentedControl({ segments, value, onChange }: SegmentedControlProps) {
+  const styles = useStyles();
   const count = segments.length;
   const activeIndex = Math.max(
     0,
@@ -86,6 +87,8 @@ function SegmentButton({
   focused: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   // 0 = inactive, 1 = active; drives the label colour cross-fade.
   const progress = useSharedValue(focused ? 1 : 0);
 
@@ -93,12 +96,12 @@ function SegmentButton({
     progress.value = withTiming(focused ? 1 : 0, motion.quick);
   }, [focused, progress]);
 
+  // Locals so the worklet captures plain strings: a theme switch re-renders,
+  // the captured values change, and Reanimated rebuilds the worklet.
+  const inactiveColor = colors.textSecondary;
+  const activeColor = colors.accentTextStrong;
   const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      progress.value,
-      [0, 1],
-      [colors.textSecondary, colors.accentTextStrong],
-    ),
+    color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
   }));
 
   return (
@@ -115,7 +118,7 @@ function SegmentButton({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   track: {
     flexDirection: 'row',
     backgroundColor: colors.glassBg,
@@ -147,6 +150,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.sans.medium,
   },
-});
+}));
 
 export default SegmentedControl;

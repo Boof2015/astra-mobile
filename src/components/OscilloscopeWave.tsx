@@ -14,7 +14,7 @@ import {
 import { AstraScope, OSCILLOSCOPE_POINTS } from '../../modules/astra-scope';
 import { useScopeStore } from '@/scope/scopeStore';
 import { DEFAULT_OSC_GAIN } from '@/scope/oscilloscopeGain';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 
 interface OscilloscopeWaveProps {
   active: boolean;
@@ -111,11 +111,13 @@ export function OscilloscopeWave({
   active,
   width,
   height,
-  color = colors.accent,
+  color: colorProp,
   lineWidth = 2,
   glow = false,
   edgeFade: _edgeFade = false,
 }: OscilloscopeWaveProps) {
+  const themeColors = useColors();
+  const color = colorProp ?? themeColors.accent;
   const viewRef = useRef<SkiaPictureView | null>(null);
   const initialPicture = useMemo(
     () =>

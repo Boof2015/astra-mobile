@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react';
 import {
-  StyleSheet,
   Text as RNText,
   type TextProps as RNTextProps
 } from 'react-native';
 import {
-  colors,
   fonts,
-  fontSize
+  fontSize,
 } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 
 type Variant = 'title' | 'heading' | 'body' | 'label' | 'caption' | 'mono';
 
@@ -55,6 +54,7 @@ function collectText(node: ReactNode): string {
 
 /** Themed Text — applies Astra fonts/colors. Import this instead of RN's Text. */
 export function Text({ variant = 'body', color, style, ...rest }: TextProps) {
+  const styles = useStyles();
   const fallback = NON_LATIN.test(collectText(rest.children));
   return (
     <RNText
@@ -72,7 +72,7 @@ export function Text({ variant = 'body', color, style, ...rest }: TextProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   title: {
     fontSize: fontSize.xxl,
     color: colors.textPrimary,
@@ -97,6 +97,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
-});
+}));
 
 export default Text;

@@ -13,10 +13,10 @@ import { FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { SwipeableRow } from '@/components/SwipeableRow';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
 import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -58,6 +58,8 @@ export function TrackRow({
   selected?: boolean;
   onToggleSelect?: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   // Key the artwork by hash (local) or identity path (remote) so the error fallback
   // and FlashList recycling work for both.
   const artKey = track.source_type !== 'local' ? track.path : track.artwork_hash;
@@ -174,7 +176,7 @@ export function TrackRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -258,4 +260,4 @@ const styles = StyleSheet.create({
   actionsButtonPressed: {
     backgroundColor: colors.glassBg,
   },
-});
+}));

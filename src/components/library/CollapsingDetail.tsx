@@ -30,10 +30,10 @@ import {
 } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 // Collapsing detail header. An absolute container whose height shrinks with the
 // scroll and clips its faded content, so the track list (padded to the expanded
@@ -97,6 +97,8 @@ export function useDetailCollapse() {
 }
 
 function BottomFade() {
+  const styles = useStyles();
+  const colors = useColors();
   const [width, setWidth] = useState(0);
   return (
     <View style={styles.fade} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
@@ -152,6 +154,8 @@ export function CollapsingHeader({
   expandedHeight: number;
   onHeroBlockLayout: (e: LayoutChangeEvent) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: W } = useWindowDimensions();
   const dist = expandedHeight - BAR_H;
@@ -330,7 +334,7 @@ export function CollapsingHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     position: 'absolute',
     top: 0,
@@ -481,4 +485,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

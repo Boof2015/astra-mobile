@@ -33,10 +33,10 @@ import {
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { commitHaptic, tickHaptic } from '@/lib/haptics';
 
 const OPEN_THRESHOLD = 76;
@@ -133,6 +133,8 @@ export function PullSearchGesture({
   atTop: boolean;
   onOpen: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const [pull, setPull] = useState(0);
   const [armed, setArmed] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -269,7 +271,7 @@ export function PullSearchGesture({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
   },
@@ -293,4 +295,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
-});
+}));

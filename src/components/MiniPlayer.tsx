@@ -12,10 +12,10 @@ import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
 import { SpectrumCurve } from './SpectrumCurve';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -46,6 +46,7 @@ function MiniProgress({
   duration: number;
   isPlaying: boolean;
 }) {
+  const styles = useStyles();
   const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
   const progress = duration > 0 ? Math.min(1, smoothTime / duration) : 0;
   return (
@@ -61,6 +62,8 @@ function MiniProgress({
  * opens the full now-playing screen.
  */
 export function MiniPlayer({ visible = true }: MiniPlayerProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -205,7 +208,7 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   pill: {
     height: PILL_HEIGHT,
     marginHorizontal: spacing.md,
@@ -234,7 +237,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8, 10, 15, 0.24)',
+    backgroundColor: colors.overlayFaint,
   },
   row: {
     flexDirection: 'row',
@@ -279,6 +282,6 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: colors.accent,
   },
-});
+}));
 
 export default MiniPlayer;

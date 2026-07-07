@@ -23,11 +23,12 @@ import {
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
 import {
-  colors,
   fonts,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
+import { rgbaFromHex } from '@/theme/colorUtils';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -90,6 +91,8 @@ function SectionHeader({
   actionLabel?: string;
   onActionPress?: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleGroup}>
@@ -115,6 +118,7 @@ function SectionHeader({
 }
 
 function AlbumCover({ album, size }: { album: Album; size: number }) {
+  const styles = useStyles();
   const artUri = albumArtworkSource(album);
   return (
     <View style={[styles.albumArt, { width: size, height: size }]}>
@@ -145,6 +149,8 @@ function NowPlayingCard({
   duration: number;
   onOpen: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
@@ -231,6 +237,7 @@ function RecentlyAddedAlbum({
   album: Album;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   return (
     <Pressable style={styles.recentAlbum} onPress={onPress} accessibilityRole="button">
       <AlbumCover album={album} size={112} />
@@ -259,6 +266,8 @@ function RandomAlbumCard({
   onReroll: () => void;
   onOpen: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const disabled = tracks.length === 0;
 
   return (
@@ -325,6 +334,8 @@ function EmptyHomeCard({
   scanError: string | null;
   onManageFolders: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.emptyCard}>
       <Ionicons name="folder-open-outline" size={34} color={colors.textTertiary} />
@@ -354,6 +365,8 @@ function EmptyHomeCard({
 }
 
 export default function HomeScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.tracks);
   const albums = useLibraryStore((s) => s.albums);
@@ -588,7 +601,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   content: {
     paddingBottom: spacing.xxl,
   },
@@ -636,7 +649,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8, 10, 15, 0.28)',
+    backgroundColor: rgbaFromHex(colors.bgPrimary, 0.28),
   },
   playerArt: {
     width: 112,
@@ -813,4 +826,4 @@ const styles = StyleSheet.create({
   emptyCopy: {
     gap: spacing.xs,
   },
-});
+}));

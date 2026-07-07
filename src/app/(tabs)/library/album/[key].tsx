@@ -11,7 +11,8 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
@@ -27,6 +28,7 @@ type AlbumRow =
   | { kind: 'disc'; disc: number };
 
 function DiscHeader({ disc }: { disc: number }) {
+  const colors = useColors();
   return (
     <View style={styles.discHeader}>
       <Ionicons name="disc-outline" size={16} color={colors.textSecondary} />
@@ -36,6 +38,7 @@ function DiscHeader({ disc }: { disc: number }) {
 }
 
 export default function AlbumScreen() {
+  const colors = useColors();
   const { key, from } = useLocalSearchParams<{ key: string; from?: string }>();
   const albums = useLibraryStore((s) => s.albums);
   const allTracks = useLibraryStore((s) => s.tracks);

@@ -1,10 +1,13 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '@/components/Text';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 
 /** Thin accent bar + caption shown under the library header while scanning. */
 export function ScanProgress() {
+  const styles = useStyles();
+  const colors = useColors();
   const isScanning = useLibraryStore((s) => s.isScanning);
   const progress = useLibraryStore((s) => s.scanProgress);
 
@@ -42,7 +45,7 @@ export function ScanProgress() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     gap: spacing.xs,
     marginBottom: spacing.md,
@@ -61,4 +64,4 @@ const styles = StyleSheet.create({
     width: '100%',
     opacity: 0.35,
   },
-});
+}));

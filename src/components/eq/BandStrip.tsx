@@ -6,10 +6,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import type { EQBand } from '@/types/audio';
 import {
   formatFreq,
@@ -27,6 +27,8 @@ interface BandStripProps {
 
 /** Horizontal strip of per-band cells (freq + gain) + a trailing "+" add cell. */
 export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: BandStripProps) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <ScrollView
       horizontal
@@ -46,7 +48,7 @@ export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: Band
             </Text>
             <Text
               variant="label"
-              style={[styles.gain, { color: band.enabled ? gainColor(band.gain) : colors.textTertiary }]}
+              style={[styles.gain, { color: band.enabled ? gainColor(band.gain, colors) : colors.textTertiary }]}
             >
               {formatGain(band.gain)}
             </Text>
@@ -62,7 +64,7 @@ export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: Band
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   content: {
     gap: spacing.sm,
     paddingVertical: spacing.xs,
@@ -94,6 +96,6 @@ const styles = StyleSheet.create({
   gain: {
     fontSize: 15,
   },
-});
+}));
 
 export default BandStrip;

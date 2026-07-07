@@ -8,10 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 export interface ActionSheetItem {
   key: string;
@@ -37,6 +37,8 @@ export function ActionSheet({
   items: ActionSheetItem[];
   onClose: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = useSafeAreaInsets();
 
   return (
@@ -88,10 +90,10 @@ export function ActionSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'flex-end',
   },
   card: {
@@ -126,4 +128,4 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
   },
-});
+}));

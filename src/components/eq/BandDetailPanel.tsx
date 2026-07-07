@@ -7,10 +7,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import type { EQBand } from '@/types/audio';
 import {
   EQ_MAX_FREQUENCY,
@@ -41,6 +41,8 @@ export type EQEditableValue = 'frequency' | 'gain' | 'Q';
 
 /** "Band N" + type dropdown + On toggle + Frequency / Gain / Q sliders. */
 export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEditValue }: BandDetailPanelProps) {
+  const styles = useStyles();
+  const colors = useColors();
   if (!band) {
     return (
       <View style={styles.card}>
@@ -108,7 +110,7 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
@@ -140,6 +142,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-});
+}));
 
 export default BandDetailPanel;

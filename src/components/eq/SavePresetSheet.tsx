@@ -7,11 +7,11 @@ import {
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import {
-  colors,
   fonts,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {
@@ -22,6 +22,8 @@ interface SavePresetSheetProps {
 
 /** Name + save a custom preset from the current bands/preamp. */
 export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetSheetProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [name, setName] = useState(defaultName);
   const trimmed = name.trim();
 
@@ -70,7 +72,7 @@ export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetShee
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   title: {
     marginTop: spacing.xs,
     marginBottom: spacing.md,
@@ -109,6 +111,6 @@ const styles = StyleSheet.create({
   saveDisabled: {
     opacity: 0.4,
   },
-});
+}));
 
 export default SavePresetSheet;

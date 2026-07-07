@@ -8,11 +8,11 @@ import {
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import {
-  colors,
   fonts,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { EqSheet } from './EqSheet';
 
 interface EQValueEditSheetProps {
@@ -39,6 +39,8 @@ export function EQValueEditSheet({
   onApply,
   onClose,
 }: EQValueEditSheetProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [value, setValue] = useState(initialValue);
   const trimmed = value.trim();
   const parsed = trimmed.length > 0 ? parseValue(trimmed) : null;
@@ -97,7 +99,7 @@ export function EQValueEditSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   title: {
     marginTop: spacing.xs,
     marginBottom: spacing.md,
@@ -156,6 +158,6 @@ const styles = StyleSheet.create({
   applyDisabled: {
     opacity: 0.4,
   },
-});
+}));
 
 export default EQValueEditSheet;

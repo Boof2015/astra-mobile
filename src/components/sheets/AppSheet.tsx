@@ -1,6 +1,5 @@
 import { useCallback, type ReactNode } from 'react';
 import {
-  StyleSheet,
   Pressable,
   View
 } from 'react-native';
@@ -13,12 +12,13 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 export function AppSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -51,6 +51,7 @@ export function AppSheet({ onClose, children }: { onClose: () => void; children:
 }
 
 export function AppSheetSection({ label }: { label: string }) {
+  const styles = useStyles();
   return (
     <Text variant="caption" style={styles.section}>
       {label}
@@ -59,6 +60,8 @@ export function AppSheetSection({ label }: { label: string }) {
 }
 
 export function AppSheetTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.titleBlock}>
       <Text variant="heading" numberOfLines={1} style={styles.title}>
@@ -90,6 +93,8 @@ export function AppSheetItem({
   onPress,
   trailing,
 }: AppSheetItemProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const tint = destructive ? colors.warning : selected ? colors.accentTextStrong : colors.textPrimary;
 
   return (
@@ -112,7 +117,7 @@ export function AppSheetItem({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   sheetBg: {
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
@@ -157,6 +162,6 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
   },
-});
+}));
 
 export default AppSheet;

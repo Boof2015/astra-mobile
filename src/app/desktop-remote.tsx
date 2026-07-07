@@ -23,10 +23,10 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { isWideWindow, WIDE_MIN_WIDTH } from '@/theme/adaptive';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteDiscoveredDesktop } from '@/types/desktopRemote';
@@ -188,6 +188,8 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
   onPair: (desktop: DesktopRemoteDiscoveredDesktop) => void;
   disabled: boolean;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       style={[styles.discoveredRow, disabled && styles.buttonDisabled]}
@@ -216,6 +218,8 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
 }
 
 export default function DesktopRemoteScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { pair } = useLocalSearchParams<{ pair?: string }>();
   const insets = useSafeAreaInsets();
@@ -641,7 +645,7 @@ export default function DesktopRemoteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   flex: {
     flex: 1,
   },
@@ -993,4 +997,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: CONTENT_SIDE_PADDING,
     textAlign: 'center',
   },
-});
+}));

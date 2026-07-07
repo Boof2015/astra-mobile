@@ -11,7 +11,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatRelativeTime } from '@/lib/format';
 import {
   buildSyncConflictResolutionPreview,
@@ -62,6 +63,8 @@ function diffLine(desktop: SyncPlaylistSnapshot, phone: SyncPlaylistSnapshot): s
 }
 
 export function SyncConflictPrompt() {
+  const styles = useStyles();
+  const colors = useColors();
   const conflicts = useDesktopSyncStore((s) => s.conflicts);
   const status = useDesktopSyncStore((s) => s.status);
   const promptVisible = useDesktopSyncStore((s) => s.conflictPromptVisible);
@@ -209,10 +212,10 @@ export function SyncConflictPrompt() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: colors.backdrop,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
@@ -311,4 +314,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-});
+}));

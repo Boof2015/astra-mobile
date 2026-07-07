@@ -13,7 +13,7 @@ import {
   type SkPicture
 } from '@shopify/react-native-skia';
 import { AstraScope, SPECTRUM_BINS } from '../../modules/astra-scope';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 
 interface SpectrumCurveProps {
   /** Normalized magnitudes in [0,1] for static rendering. Live rendering ignores this. */
@@ -305,16 +305,19 @@ export function SpectrumCurve({
   dbMin = DISPLAY_DB_MIN,
   dbMax = DISPLAY_DB_MAX,
   tiltDbPerOctave = TILT_DB_PER_OCT,
-  color = colors.accent,
+  color: colorProp,
   lineWidth = 2,
   lineOpacity = 1,
   fillOpacity = 1,
   glow = false,
   glowOpacity = 0.18,
   edgeFade = false,
-  edgeFadeColor = colors.bgPrimary,
+  edgeFadeColor: edgeFadeColorProp,
   edgeFadeWidth = 28,
 }: SpectrumCurveProps) {
+  const themeColors = useColors();
+  const color = colorProp ?? themeColors.accent;
+  const edgeFadeColor = edgeFadeColorProp ?? themeColors.bgPrimary;
   const viewRef = useRef<SkiaPictureView | null>(null);
   const activePointCount = Math.max(2, Math.floor(width));
   const resolvedPointCount = pointCount ?? values?.length ?? (active ? activePointCount : DEFAULT_POINTS);

@@ -2,14 +2,14 @@ import { useEffect } from 'react';
 import {
   Modal,
   Pressable,
-  StyleSheet,
   View
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore, type PlaybackTarget } from '@/stores/playbackTargetStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -24,6 +24,8 @@ interface PlaybackTargetPickerProps {
 }
 
 export function PlaybackTargetPicker({ visible, onClose }: PlaybackTargetPickerProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
@@ -114,6 +116,8 @@ function TargetRow({
   selected: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -141,11 +145,11 @@ function TargetRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.58)',
+    backgroundColor: colors.backdrop,
   },
   sheet: {
     borderTopLeftRadius: radius.lg,
@@ -190,6 +194,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-});
+}));
 
 export default PlaybackTargetPicker;

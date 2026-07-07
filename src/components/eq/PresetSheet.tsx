@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import type { EQPreset } from '@/types/audio';
 import {
   EqSheet,
@@ -35,6 +36,7 @@ export function PresetSheet({
   onSaveNew,
   onClose,
 }: PresetSheetProps) {
+  const colors = useColors();
   const builtIn = presets.filter((p) => !p.isCustom);
   const custom = presets.filter((p) => p.isCustom);
 

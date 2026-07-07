@@ -20,7 +20,7 @@ import {
 } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
 import { SpectrumCurve } from '@/components/SpectrumCurve';
-import { colors } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import type { EQBand } from '@/types/audio';
 import {
   FREQ_TICKS,
@@ -59,6 +59,8 @@ export function EQGraph({
   onSelectBand,
   onChangeBand,
 }: EQGraphProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [size, setSize] = useStableSize();
   const width = size.width;
   const height = size.height;
@@ -302,7 +304,7 @@ function useStableSize(): [
   return [size, set];
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     flex: 1,
     borderRadius: 16,
@@ -329,6 +331,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: colors.textTertiary,
   },
-});
+}));
 
 export default EQGraph;

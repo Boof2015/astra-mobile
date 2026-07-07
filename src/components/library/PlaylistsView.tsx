@@ -20,10 +20,10 @@ import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
 
@@ -46,6 +46,8 @@ export function PlaylistsView({
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteCount = usePlaylistStore((s) => s.favoriteTracks.length);
@@ -273,7 +275,7 @@ export function PlaylistsView({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     flex: 1,
   },
@@ -308,4 +310,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.accentGlow,
   },
-});
+}));

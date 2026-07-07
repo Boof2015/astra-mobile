@@ -32,10 +32,10 @@ import {
 } from '@/library/folderTree';
 import { formatDuration } from '@/lib/format';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
@@ -58,6 +58,8 @@ function FolderRow({
   onShuffle: (node: FolderTreeNode) => void;
   onOpenActions: (node: FolderTreeNode) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const { node, depth, isExpanded } = row;
 
   const play = (event: GestureResponderEvent) => {
@@ -132,6 +134,8 @@ function FolderTrackRow({
   active: boolean;
   onOpenActions: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
 
   const playFolderTrack = () => {
@@ -180,6 +184,8 @@ function FolderTrackRow({
 }
 
 export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const tracks = useLibraryStore((s) => s.tracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -306,7 +312,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   listContent: {
     paddingBottom: spacing.xxl,
   },
@@ -398,4 +404,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 260,
   },
-});
+}));

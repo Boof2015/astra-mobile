@@ -14,10 +14,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceType } from '@/types/remote';
 
@@ -60,6 +60,8 @@ function Field({
   autoCapitalize = 'none',
   keyboardType = 'default',
 }: FieldProps) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.field}>
       <Text variant="label" color={colors.textTertiary} style={styles.fieldLabel}>
@@ -81,6 +83,8 @@ function Field({
 }
 
 export default function SourceEditScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const sources = useRemoteSourcesStore((s) => s.sources);
@@ -308,7 +312,7 @@ export default function SourceEditScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   flex: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -403,4 +407,4 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.5,
   },
-});
+}));

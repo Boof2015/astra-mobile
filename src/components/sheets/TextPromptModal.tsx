@@ -8,12 +8,12 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import {
-  colors,
   fonts,
   fontSize,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 interface TextPromptModalProps {
   visible: boolean;
@@ -40,6 +40,8 @@ function TextPromptModalInner({
   onSubmit,
   onClose,
 }: TextPromptModalProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [value, setValue] = useState(initialValue);
   const trimmed = value.trim();
 
@@ -89,10 +91,10 @@ function TextPromptModalInner({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     padding: spacing.xl,
   },
@@ -130,4 +132,4 @@ const styles = StyleSheet.create({
   actionDisabled: {
     opacity: 0.4,
   },
-});
+}));

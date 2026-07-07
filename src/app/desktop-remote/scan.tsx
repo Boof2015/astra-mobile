@@ -15,13 +15,15 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 
 export default function DesktopRemoteScanScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const pairFromInput = useDesktopRemoteStore((s) => s.pairFromInput);
   const [permission, requestPermission] = useCameraPermissions();
@@ -89,7 +91,7 @@ export default function DesktopRemoteScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   header: {
     marginTop: spacing.md,
     marginBottom: spacing.lg,
@@ -156,4 +158,4 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
-});
+}));

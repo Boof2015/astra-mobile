@@ -15,11 +15,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { MiniPlayer } from './MiniPlayer';
 import {
-  colors,
   fonts,
   layout,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -54,6 +54,7 @@ interface TabBarProps {
  * logic stays in the layout's `tabBar` callback.
  */
 export function TabBar({ items, onPress }: TabBarProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
   const homeFocused = items.some((item) => item.name === 'index' && item.focused);
@@ -158,6 +159,8 @@ interface TabButtonProps {
  * theme/motion.
  */
 function TabButton({ meta, focused, onPress }: TabButtonProps) {
+  const styles = useStyles();
+  const colors = useColors();
   // 0 = inactive, 1 = active. Drives the accent fill, label colour, and bloom.
   const progress = useSharedValue(focused ? 1 : 0);
   // 0 = at rest, 1 = finger down.
@@ -171,12 +174,12 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
     transform: [{ scale: 1 - press.value * 0.12 }],
   }));
   const accentStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  // Locals so the worklet captures plain strings: a theme switch re-renders,
+  // the captured values change, and Reanimated rebuilds the worklet.
+  const inactiveColor = colors.textTertiary;
+  const activeColor = colors.accent;
   const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      progress.value,
-      [0, 1],
-      [colors.textTertiary, colors.accent],
-    ),
+    color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
   }));
 
   return (
@@ -204,7 +207,7 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     backgroundColor: colors.bgSecondary,
   },
@@ -237,6 +240,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: fonts.sans.regular,
   },
-});
+}));
 
 export default TabBar;

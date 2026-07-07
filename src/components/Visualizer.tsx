@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  StyleSheet,
   Pressable,
   View
 } from 'react-native';
@@ -8,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
 import { SpectrumCurve } from './SpectrumCurve';
 import { OscilloscopeWave } from './OscilloscopeWave';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useScopeActive } from '@/scope/scopeStore';
 
 const CANVAS_HEIGHT = 96;
@@ -38,6 +38,8 @@ export function Visualizer({
   mode: controlledMode,
   edgeFade = false,
 }: VisualizerProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [uncontrolledMode, setUncontrolledMode] = useState<Mode>('spectrum');
   const mode = controlledMode ?? uncontrolledMode;
   const scopeActive = useScopeActive();
@@ -103,7 +105,7 @@ export function Visualizer({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     paddingVertical: spacing.xs,
   },
@@ -121,6 +123,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     fontSize: 10,
   },
-});
+}));
 
 export default Visualizer;

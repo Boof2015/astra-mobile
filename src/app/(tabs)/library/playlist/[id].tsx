@@ -25,7 +25,8 @@ import {
 } from '@/components/sheets/AppSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
@@ -52,6 +53,8 @@ function basename(path: string): string {
 }
 
 function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongPress: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable style={styles.missingRow} onLongPress={onLongPress} accessibilityRole="button">
       <View style={styles.missingMeta}>
@@ -70,6 +73,8 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
 type Prompt = { kind: 'rename'; playlist: Playlist } | null;
 
 export default function PlaylistScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const handleBack = useLibraryDetailBack(from);
@@ -404,7 +409,7 @@ export default function PlaylistScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   // The backdrop runs behind the status bar; content pads itself instead.
   screen: {
     paddingTop: 0,
@@ -438,4 +443,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     marginTop: spacing.sm,
   },
-});
+}));

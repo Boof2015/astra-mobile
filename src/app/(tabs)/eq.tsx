@@ -24,10 +24,10 @@ import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
@@ -52,6 +52,8 @@ type SheetKind = 'none' | 'preset' | 'save' | 'overflow' | 'type';
 const BAND_TYPES: EQBandType[] = ['lowshelf', 'peaking', 'highshelf', 'highpass', 'lowpass'];
 
 export default function EQScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const eq = useEQStore();
   const scopeActive = useScopeActive();
   const [focused, setFocused] = useState(false);
@@ -394,7 +396,7 @@ function parsePlainNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -501,4 +503,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
-});
+}));

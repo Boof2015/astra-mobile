@@ -4,7 +4,9 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
+import { rgbaFromHex } from '@/theme/colorUtils';
 import { tickHaptic } from '@/lib/haptics';
 import { usePullSearchGestureRef } from '@/components/search/PullSearchGesture';
 import { RAIL_LETTERS } from '@/lib/letterIndex';
@@ -29,6 +31,7 @@ interface AlphabetRailProps {
  * scroll-top never arms the search indicator.
  */
 export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProps) {
+  const styles = useStyles();
   const pullSearchRef = usePullSearchGestureRef();
   const [scrubLetter, setScrubLetter] = useState<string | null>(null);
   const lastLetter = useSharedValue('');
@@ -128,7 +131,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   wrap: {
     position: 'absolute',
     top: 0,
@@ -144,7 +147,7 @@ const styles = StyleSheet.create({
     width: 16,
     paddingVertical: RAIL_PAD,
     alignItems: 'center',
-    backgroundColor: 'rgba(8, 10, 15, 0.35)',
+    backgroundColor: rgbaFromHex(colors.bgPrimary, 0.35),
     borderRadius: radius.pill,
   },
   cell: {
@@ -189,4 +192,4 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     color: colors.accentTextStrong,
   },
-});
+}));

@@ -3,11 +3,12 @@ import { Tabs } from 'expo-router';
 // Animated.timing and may use the native driver, so the easing must be serializable.
 import { Easing } from 'react-native';
 import { TabBar, type TabItem } from '@/components/TabBar';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 
 const TAB_TRANSITION_MS = 160;
 
 export default function TabsLayout() {
+  const colors = useColors();
   return (
     <Tabs
       detachInactiveScreens

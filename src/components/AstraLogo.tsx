@@ -1,5 +1,5 @@
 import Svg, { G, Path } from 'react-native-svg';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 
 /**
  * Astra mark — ported from desktop `astraLogoShared.ts` (same viewBox, paths,
@@ -26,11 +26,9 @@ interface AstraLogoProps {
   includeBackground?: boolean;
 }
 
-export function AstraLogo({
-  size = 28,
-  color = colors.logoMain,
-  includeBackground = false,
-}: AstraLogoProps) {
+export function AstraLogo({ size = 28, color, includeBackground = false }: AstraLogoProps) {
+  const colors = useColors();
+  const mainFill = color ?? colors.logoMain;
   return (
     <Svg width={size} height={size} viewBox={VIEWBOX} fill="none">
       {includeBackground && (
@@ -47,8 +45,8 @@ export function AstraLogo({
         </G>
       </G>
       <G transform={MAIN_TRANSFORM}>
-        <Path d={LEFT_PATH} fill={color} />
-        <Path d={RIGHT_PATH} fill={color} />
+        <Path d={LEFT_PATH} fill={mainFill} />
+        <Path d={RIGHT_PATH} fill={mainFill} />
       </G>
     </Svg>
   );

@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 interface SelectionActionBarProps {
   count: number;
@@ -21,6 +22,7 @@ export function SelectionActionBar({
   onAddToQueue,
   onAddToPlaylist,
 }: SelectionActionBarProps) {
+  const styles = useStyles();
   const disabled = count === 0;
   return (
     <View style={styles.bar}>
@@ -62,6 +64,8 @@ function BarButton({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       style={({ pressed }) => [
@@ -82,7 +86,7 @@ function BarButton({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   bar: {
     flexDirection: 'row',
     borderTopColor: colors.glassBorder,
@@ -106,4 +110,4 @@ const styles = StyleSheet.create({
   label: {
     color: colors.accent,
   },
-});
+}));

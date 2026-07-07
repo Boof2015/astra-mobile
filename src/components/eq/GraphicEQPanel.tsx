@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Text';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { EQ_MAX_GAIN_DB, EQ_MIN_GAIN_DB } from '@/audio/eq';
 import { GRAPHIC_BANDS } from '@/audio/graphicEq';
 import { GraphicResponseCurve } from './GraphicResponseCurve';
@@ -25,6 +26,8 @@ interface GraphicEQPanelProps {
  * curve's evenly spaced band positions.
  */
 export function GraphicEQPanel({ gains, enabled, onChangeGain }: GraphicEQPanelProps) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.container}>
       <View style={styles.metaRow}>
@@ -32,7 +35,7 @@ export function GraphicEQPanel({ gains, enabled, onChangeGain }: GraphicEQPanelP
           <Text
             key={def.key}
             variant="mono"
-            style={[styles.value, { color: gainColor(gains[i] ?? 0) }]}
+            style={[styles.value, { color: gainColor(gains[i] ?? 0, colors) }]}
           >
             {formatGain(gains[i] ?? 0)}
           </Text>
@@ -71,7 +74,7 @@ export function GraphicEQPanel({ gains, enabled, onChangeGain }: GraphicEQPanelP
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     flex: 1,
   },
@@ -100,6 +103,6 @@ const styles = StyleSheet.create({
   caption: {
     color: colors.textTertiary,
   },
-});
+}));
 
 export default GraphicEQPanel;

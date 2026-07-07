@@ -10,12 +10,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildArtistDetail } from '@/library/artistDetail';
 
 export default function ArtistAlbumsScreen() {
+  const colors = useColors();
   const router = useRouter();
   const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
   const allTracks = useLibraryStore((s) => s.tracks);
@@ -68,6 +70,7 @@ export default function ArtistAlbumsScreen() {
 }
 
 function EmptyList({ label }: { label: string }) {
+  const colors = useColors();
   return (
     <View style={styles.emptyState}>
       <Ionicons name="albums-outline" size={24} color={colors.textTertiary} />

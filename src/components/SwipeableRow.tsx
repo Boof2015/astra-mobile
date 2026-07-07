@@ -16,7 +16,7 @@ import Animated, {
   useSharedValue,
   withTiming
 } from 'react-native-reanimated';
-import { colors } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 import { commitHaptic, tickHaptic } from '@/lib/haptics';
 
@@ -59,6 +59,7 @@ export function SwipeableRow({
   enabled = true,
   children,
 }: SwipeableRowProps) {
+  const colors = useColors();
   const tx = useSharedValue(0);
   const armed = useSharedValue(false);
   const [rowWidth, setRowWidth] = useState(0);

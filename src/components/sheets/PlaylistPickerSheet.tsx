@@ -12,11 +12,11 @@ import {
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import {
-  colors,
   fonts,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { DbTrack } from '@/types/library';
 
@@ -40,6 +40,8 @@ export function PlaylistPickerSheet({
   onBackToMenu,
   onAdded,
 }: PlaylistPickerSheetProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [step, setStep] = useState<'pick' | 'create'>('pick');
   const [playlistName, setPlaylistName] = useState('');
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -123,7 +125,7 @@ export function PlaylistPickerSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   empty: {
     paddingVertical: spacing.sm,
   },
@@ -161,4 +163,4 @@ const styles = StyleSheet.create({
   createDisabled: {
     opacity: 0.4,
   },
-});
+}));

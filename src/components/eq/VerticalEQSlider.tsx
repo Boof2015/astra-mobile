@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import {
-  StyleSheet,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent
 } from 'react-native';
-import { colors, radius } from '@/theme';
+import { radius } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 // Vertical fader cap (mixer-style): tall capsule with a horizontal grip line
 // marking the exact value position. Half its height overshoots the rail at the
@@ -37,6 +37,8 @@ const clamp01 = (f: number) => Math.min(1, Math.max(0, f));
  * same code as the readouts).
  */
 export function VerticalEQSlider({ label, value, min, max, onChange }: VerticalEQSliderProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [height, setHeight] = useState(0);
   const [active, setActive] = useState(false);
   const heightRef = useRef(0);
@@ -106,7 +108,7 @@ export function VerticalEQSlider({ label, value, min, max, onChange }: VerticalE
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   touch: {
     flex: 1,
     alignItems: 'center',
@@ -151,6 +153,6 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: colors.bgSecondary,
   },
-});
+}));
 
 export default VerticalEQSlider;

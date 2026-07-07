@@ -12,10 +12,10 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { requestLastFmFlush } from '@/services/lastfm';
 import type { LastFmProfileStatus } from '@/types/lastFm';
@@ -44,6 +44,8 @@ function customStatusLine(profile: LastFmProfileStatus): { text: string; tone: '
 }
 
 export default function LastFmScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const status = useLastFmSettingsStore((s) => s.status);
   const authHint = useLastFmSettingsStore((s) => s.authHint);
@@ -285,7 +287,7 @@ export default function LastFmScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,4 +418,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     lineHeight: 16,
   },
-});
+}));

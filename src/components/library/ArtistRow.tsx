@@ -7,14 +7,16 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { artworkUri } from '@/library/artwork';
 import type { Artist } from '@/types/library';
 
 export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
@@ -41,7 +43,7 @@ export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -66,4 +68,4 @@ const styles = StyleSheet.create({
   meta: {
     flex: 1,
   },
-});
+}));

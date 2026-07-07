@@ -15,10 +15,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import type { LastFmScrobbleProtocol } from '@/types/lastFm';
 
@@ -79,6 +79,8 @@ function Field({
   autoCapitalize = 'none',
   keyboardType = 'default',
 }: FieldProps) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <View style={styles.field}>
       <Text variant="label" color={colors.textTertiary} style={styles.fieldLabel}>
@@ -100,6 +102,8 @@ function Field({
 }
 
 export default function LastFmEditScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const status = useLastFmSettingsStore((s) => s.status);
@@ -318,7 +322,7 @@ export default function LastFmEditScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   flex: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -409,4 +413,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginTop: spacing.lg,
   },
-});
+}));

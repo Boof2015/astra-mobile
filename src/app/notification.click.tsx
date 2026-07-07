@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getNotificationClickRedirectPath } from '@/audio/notificationIntent';
-import { colors } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 
 export default function NotificationClickRoute() {
+  const styles = useStyles();
   const router = useRouter();
 
   useEffect(() => {
@@ -26,9 +27,9 @@ export default function NotificationClickRoute() {
   return <View style={styles.root} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   root: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
   },
-});
+}));

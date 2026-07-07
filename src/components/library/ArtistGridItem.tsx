@@ -7,15 +7,17 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   spacing,
-  radius
+  radius,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { artworkUri } from '@/library/artwork';
 import type { Artist } from '@/types/library';
 
 /** 2-column grid cell: square art (2x2 album mosaic when available) + counts, matching the album grid. */
 export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
   const useMosaic = artist.artwork_hashes.length >= 4;
   const hashes = useMosaic ? artist.artwork_hashes.slice(0, 4) : artist.artwork_hashes.slice(0, 1);
 
@@ -58,7 +60,7 @@ export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: (
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   item: {
     flex: 1,
     marginBottom: spacing.lg,
@@ -87,4 +89,4 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 14,
   },
-});
+}));

@@ -18,7 +18,8 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { SyncConflictDetails } from '@/components/sync/SyncConflictDetails';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatRelativeTime } from '@/lib/format';
 import { getDesktopRemoteConnection } from '@/services/desktopRemoteCredentials';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
@@ -65,6 +66,8 @@ function ConflictCard({
   busy: boolean;
   onResolve: (resolution: DesktopSyncConflictResolution) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const [selectedResolution, setSelectedResolution] = useState<DesktopSyncConflictResolution | null>(null);
   const desktopSnapshot = syncPlaylistToSnapshot(conflict.remote);
   const phoneSnapshot = syncPlaylistToSnapshot(conflict.local);
@@ -126,6 +129,8 @@ function ConflictCard({
 }
 
 export default function DesktopSyncScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const status = useDesktopSyncStore((s) => s.status);
   const lastSyncAt = useDesktopSyncStore((s) => s.lastSyncAt);
@@ -295,7 +300,7 @@ export default function DesktopSyncScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   topBar: {
     marginTop: spacing.md,
     marginBottom: spacing.sm,
@@ -405,4 +410,4 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-});
+}));

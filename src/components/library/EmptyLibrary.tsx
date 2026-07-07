@@ -1,5 +1,4 @@
 import {
-  StyleSheet,
   View,
   Pressable
 } from 'react-native';
@@ -7,12 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 
 export function EmptyLibrary() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
 
   return (
@@ -34,7 +35,7 @@ export function EmptyLibrary() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -63,4 +64,4 @@ const styles = StyleSheet.create({
     color: colors.bgPrimary,
     fontWeight: '600',
   },
-});
+}));

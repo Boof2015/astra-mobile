@@ -5,7 +5,6 @@ import {
   useState
 } from 'react';
 import {
-  StyleSheet,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent
@@ -18,7 +17,8 @@ import {
   rect
 } from '@shopify/react-native-skia';
 import { Text } from './Text';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
 import { downsampleWaveform, getWaveform } from '@/scope/waveform';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
@@ -58,6 +58,8 @@ export function WaveformSeekBar({
   touchPadding = spacing.md,
   trackPath,
 }: WaveformSeekBarProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const [scrubFraction, setScrubFraction] = useState<number | null>(null);
   const [barWidth, setBarWidth] = useState(0);
   const pendingSeek = usePlayerStore((s) => s.pendingSeek);
@@ -199,7 +201,7 @@ export function WaveformSeekBar({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   touchArea: {
     justifyContent: 'center',
   },
@@ -215,6 +217,6 @@ const styles = StyleSheet.create({
   timeActive: {
     color: colors.accentText,
   },
-});
+}));
 
 export default WaveformSeekBar;

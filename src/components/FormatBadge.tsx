@@ -1,14 +1,15 @@
 import { View, StyleSheet } from 'react-native';
 import { Text } from './Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 import type { Track } from '@/types/audio';
 
 /** A single mono pill (e.g. "FLAC", "24-BIT", "48.0 kHz"). */
 export function Badge({ label }: { label: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.badge}>
       <Text variant="mono" style={styles.text}>
@@ -34,6 +35,7 @@ export function FormatBadges({
   wrap?: boolean;
   variant?: 'pill' | 'plain';
 }) {
+  const styles = useStyles();
   const labels: string[] = [];
   if (track.format) labels.push(track.format.toUpperCase());
   if (track.bitDepth) labels.push(`${track.bitDepth}-BIT`);
@@ -66,7 +68,7 @@ export function FormatBadges({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -93,6 +95,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.3,
   },
-});
+}));
 
 export default FormatBadges;

@@ -7,15 +7,17 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 /** Compact album list row (search results) — the grid uses AlbumGridItem. */
 export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
   const artUri = albumArtworkSource(album);
   return (
     <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
@@ -43,7 +45,7 @@ export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -71,4 +73,4 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-});
+}));

@@ -37,7 +37,8 @@ import {
   PullSearchScrollView,
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -75,6 +76,7 @@ const ALBUM_SORT_OPTIONS: AlbumSort[] = ['artist', 'name', 'recently_added', 'ye
 const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
 
 export default function LibraryScreen() {
+  const colors = useColors();
   const router = useRouter();
   const viewMode = useLibraryStore((s) => s.viewMode);
   const setViewMode = useLibraryStore((s) => s.setViewMode);

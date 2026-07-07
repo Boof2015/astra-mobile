@@ -7,10 +7,10 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { artworkUri } from '@/library/artwork';
 
 export function PlaylistRow({
@@ -37,6 +37,8 @@ export function PlaylistRow({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       style={styles.row}
@@ -84,7 +86,7 @@ export function PlaylistRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -120,4 +122,4 @@ const styles = StyleSheet.create({
   title: {
     flexShrink: 1,
   },
-});
+}));

@@ -11,7 +11,8 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { colors, spacing } from '@/theme';
+import { spacing } from '@/theme';
+import { useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks } from '@/audio/playbackController';
@@ -23,6 +24,7 @@ function formatCount(count: number, noun: string): string {
 }
 
 function EmptyList() {
+  const colors = useColors();
   return (
     <View style={styles.emptyState}>
       <Ionicons name="time-outline" size={24} color={colors.textTertiary} />
@@ -34,6 +36,7 @@ function EmptyList() {
 }
 
 export default function RecentlyPlayedScreen() {
+  const colors = useColors();
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);

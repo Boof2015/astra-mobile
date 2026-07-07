@@ -1,6 +1,6 @@
 // Shared EQ value formatting for the band strip + detail panel.
 
-import { colors } from '@/theme';
+import type { Palette } from '@/theme/palettes';
 import type { EQBandType } from '@/types/audio';
 
 export function formatFreq(hz: number): string {
@@ -25,7 +25,7 @@ export function formatGain(db: number): string {
   return `${db > 0 ? '+' : ''}${db.toFixed(1)}`;
 }
 
-export function gainColor(db: number): string {
+export function gainColor(db: number, colors: Palette): string {
   if (db > 0.05) return colors.accentText;
   if (db < -0.05) return colors.warning;
   return colors.textTertiary;

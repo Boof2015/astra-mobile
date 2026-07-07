@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { colors, radius, spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatRelativeTime } from '@/lib/format';
 import {
   buildSyncPlaylistEntryDiff,
@@ -77,6 +78,8 @@ function TrackDiffRow({
   side: 'desktop' | 'phone';
   previewResolution: DesktopSyncConflictResolution | null;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const subtitle = [row.artist, row.album].filter((part) => part.trim().length > 0).join(' · ');
   const previewLabel = previewStatusLabel(row, side, previewResolution);
   const moveLabel = row.status === 'moved' && !previewLabel ? moveStatusLabel(row, side) : null;
@@ -125,6 +128,8 @@ function SideTrackList({
   previewResolution: DesktopSyncConflictResolution | null;
   maxRows: number;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const rows = [...sideOnlyRows, ...movedRows].slice(0, maxRows);
   const hiddenCount = Math.max(0, sideOnlyRows.length + movedRows.length - rows.length);
   const sideName = side === 'desktop' ? 'desktop' : 'phone';
@@ -177,6 +182,8 @@ export function SyncConflictDetails({
   maxRows?: number;
   previewResolution?: DesktopSyncConflictResolution | null;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const desktop = syncPlaylistToSnapshot(conflict.remote);
   const phone = syncPlaylistToSnapshot(conflict.local);
   const isNormal = desktop.kind === 'normal' && phone.kind === 'normal';
@@ -266,7 +273,7 @@ export function SyncConflictDetails({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   container: {
     gap: spacing.sm,
   },
@@ -344,4 +351,4 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: spacing.xs,
   },
-});
+}));

@@ -40,7 +40,8 @@ import {
 import { fetchDesktopRemoteIdentity } from '@/services/desktopRemoteClient';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { SyncConflictPrompt } from '@/components/sync/SyncConflictPrompt';
-import { colors } from '@/theme';
+import { useThemeStore } from '@/stores/themeStore';
+import { useTheme } from '@/theme/themed';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route (the
 // widget/notification opening `now-playing`, or `recently-played`) builds `[(tabs), route]`
@@ -55,6 +56,21 @@ SplashScreen.preventAutoHideAsync();
 /** Mirrors RNTP state into the player store. Renders nothing. */
 function PlaybackSync() {
   usePlaybackSync();
+  return null;
+}
+
+/**
+ * Re-reads system theme inputs (OS scheme + monet wallpaper ramps) on each
+ * return to foreground — wallpaper changes can only happen while backgrounded.
+ * OS dark/light toggles are covered by the Appearance listener in themeStore.
+ */
+function ThemeSystemSync() {
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') useThemeStore.getState().refreshSystemInputs();
+    });
+    return () => subscription.remove();
+  }, []);
   return null;
 }
 
@@ -260,7 +276,12 @@ export default function RootLayout() {
     const timer = setTimeout(() => setSplashTimedOut(true), 2000);
     return () => clearTimeout(timer);
   }, []);
-  const ready = fontsLoaded || splashTimedOut;
+  // Theme joins the gate so the first painted frame is already in the
+  // persisted theme (no flash). The failsafe path paints the default theme
+  // and snaps once the SQLite read lands — accepted degradation.
+  const themeLoaded = useThemeStore((s) => s.loaded);
+  const theme = useTheme();
+  const ready = (fontsLoaded && themeLoaded) || splashTimedOut;
 
   useEffect(() => {
     if (ready) {
@@ -272,6 +293,10 @@ export default function RootLayout() {
   // Library tab + playback adapters get data immediately. EQ + audio settings load
   // alongside so the native EQ/gain reflect persisted prefs from the first play.
   useEffect(() => {
+    useThemeStore
+      .getState()
+      .load()
+      .catch((err) => console.error('[theme] load failed', err));
     useLibraryStore
       .getState()
       .initialize()
@@ -301,9 +326,10 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.bgPrimary }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style={theme.statusBarStyle} />
+        <ThemeSystemSync />
         <PlaybackSync />
         <ScopeLifecycle />
         <NormalizationSync />
@@ -314,7 +340,7 @@ export default function RootLayout() {
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: colors.bgPrimary },
+            contentStyle: { backgroundColor: theme.colors.bgPrimary },
           }}
         >
           <Stack.Screen name="(tabs)" />
@@ -334,7 +360,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-const styles = {
-  root: { flex: 1, backgroundColor: colors.bgPrimary },
-} as const;

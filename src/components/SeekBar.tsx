@@ -1,16 +1,15 @@
 import { useRef, useState } from 'react';
 import {
-  StyleSheet,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent
 } from 'react-native';
 import { Text } from './Text';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
 
 const THUMB_SIZE = 12;
@@ -30,6 +29,7 @@ const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
  * waveform seek bar port (desktop WaveformSeekBar) replaces the visuals at M3+.
  */
 export function SeekBar({ currentTime, duration, onSeek, trackKey }: SeekBarProps) {
+  const styles = useStyles();
   const [scrubFraction, setScrubFraction] = useState<number | null>(null);
   const [barWidth, setBarWidth] = useState(0);
   // Last released seek. Displayed instead of live progress until playback
@@ -129,7 +129,7 @@ export function SeekBar({ currentTime, duration, onSeek, trackKey }: SeekBarProp
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   touchArea: {
     justifyContent: 'center',
     paddingVertical: spacing.md, // generous touch target around the 4px track
@@ -166,6 +166,6 @@ const styles = StyleSheet.create({
   timeActive: {
     color: colors.accentText,
   },
-});
+}));
 
 export default SeekBar;

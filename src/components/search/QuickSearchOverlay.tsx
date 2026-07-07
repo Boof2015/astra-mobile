@@ -22,12 +22,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import {
-  colors,
   fonts,
   fontSize,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
+import { rgbaFromHex } from '@/theme/colorUtils';
 import { enqueueTop, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
@@ -336,6 +337,7 @@ function resultIcon(result: SearchResult): IconName {
 }
 
 function HighlightedLabel({ text, query }: { text: string; query: string }) {
+  const styles = useStyles();
   const normalizedText = text.toLocaleLowerCase();
   const normalizedQuery = query.toLocaleLowerCase().trim();
 
@@ -390,6 +392,8 @@ function HighlightedLabel({ text, query }: { text: string; query: string }) {
 }
 
 function ResultThumb({ result }: { result: SearchResult }) {
+  const styles = useStyles();
+  const colors = useColors();
   const uri =
     result.kind === 'track'
       ? trackArtworkThumbSource(result.track)
@@ -431,6 +435,8 @@ function ResultRow({
   onPress: () => void;
   onQueueTrack: (track: DbTrack) => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const isTrack = result.kind === 'track';
   const isShowMode = result.kind === 'show-all' || result.kind === 'show-top';
 
@@ -481,6 +487,8 @@ function QuickSearchPanel({
   initialQuery: string;
   onClose: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -978,6 +986,7 @@ function QuickSearchPanel({
 }
 
 export function QuickSearchOverlay() {
+  const styles = useStyles();
   const isOpen = useSearchStore((s) => s.isQuickSearchOpen);
   const initialQuery = useSearchStore((s) => s.initialQuery);
   const openVersion = useSearchStore((s) => s.openVersion);
@@ -1006,11 +1015,11 @@ export function QuickSearchOverlay() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   modalRoot: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: 'rgba(2, 4, 8, 0.66)',
+    backgroundColor: colors.backdrop,
     paddingHorizontal: spacing.md,
   },
   panel: {
@@ -1077,7 +1086,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   resultRowActive: {
-    backgroundColor: 'rgba(91, 138, 255, 0.12)',
+    backgroundColor: rgbaFromHex(colors.accent, 0.12),
   },
   showModeRow: {
     marginTop: spacing.sm,
@@ -1119,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   highlight: {
     color: colors.accentTextStrong,
-    backgroundColor: 'rgba(91, 138, 255, 0.22)',
+    backgroundColor: rgbaFromHex(colors.accent, 0.22),
     borderRadius: 2,
   },
   queueButton: {
@@ -1143,4 +1152,4 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
   },
-});
+}));

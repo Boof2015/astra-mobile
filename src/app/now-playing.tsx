@@ -31,10 +31,10 @@ import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import {
-  colors,
   radius,
-  spacing
+  spacing,
 } from '@/theme';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveNavigationArtist } from '@/library/artistGrouping';
@@ -264,6 +264,8 @@ function getNowPlayingLayout(
 }
 
 export default function NowPlayingScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -1059,7 +1061,7 @@ export default function NowPlayingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -1330,4 +1332,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.glassBg,
   },
-});
+}));

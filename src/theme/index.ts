@@ -1,9 +1,10 @@
-import { colors } from './colors';
 import { fonts, fontSize, lineHeight } from './typography';
 import { spacing, radius, layout, durations } from './spacing';
 
+// Colors are theme-resolved at runtime now — consume them via
+// `useColors()` / `createThemedStyles()` from '@/theme/themed'.
+// Palette types + base palettes live in '@/theme/palettes'.
 export const theme = {
-  colors,
   fonts,
   fontSize,
   lineHeight,
@@ -15,4 +16,4 @@ export const theme = {
 
 export type Theme = typeof theme;
 
-export { colors, fonts, fontSize, lineHeight, spacing, radius, layout, durations };
+export { fonts, fontSize, lineHeight, spacing, radius, layout, durations };
