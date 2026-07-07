@@ -2,6 +2,7 @@ import {
   getNotificationClickRedirectPath,
   isNotificationClickPath,
 } from '@/audio/notificationIntent';
+import { getEQPresetShareRedirectPath } from '@/audio/eqShareIntent';
 
 type RedirectSystemPathEvent = {
   path: string;
@@ -9,7 +10,10 @@ type RedirectSystemPathEvent = {
 };
 
 export async function redirectSystemPath({ path }: RedirectSystemPathEvent): Promise<string> {
-  if (!isNotificationClickPath(path)) return path;
+  if (isNotificationClickPath(path)) return getNotificationClickRedirectPath();
 
-  return getNotificationClickRedirectPath();
+  const eqShareRedirect = getEQPresetShareRedirectPath(path);
+  if (eqShareRedirect) return eqShareRedirect;
+
+  return path;
 }
