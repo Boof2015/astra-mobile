@@ -89,7 +89,8 @@ export default function EQScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const availableWidth = windowWidth - insets.left - insets.right;
-  const isWide = isWideWindow(availableWidth, windowHeight - insets.top - insets.bottom);
+  const availableHeight = windowHeight - insets.top - insets.bottom;
+  const isWide = isWideWindow(availableWidth, availableHeight);
   // Editing pane keeps a phone-ish width; the graph gets everything else.
   const sidePaneWidth = Math.min(360, Math.max(280, Math.round(availableWidth * 0.4)));
 
@@ -273,7 +274,7 @@ export default function EQScreen() {
   );
 
   const bottomBarEl = (
-    <View style={[styles.bottomBar, isWide && styles.bottomBarWide]}>
+    <View style={[styles.bottomBar, !isWide && styles.bottomBarNarrow, isWide && styles.bottomBarWide]}>
       <View style={styles.preamp}>
         <EQSlider
           label="Preamp"
@@ -660,7 +661,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   graphWrap: {
     flex: 1,
-    minHeight: 180,
+    minHeight: 168,
     marginHorizontal: spacing.lg,
   },
   section: {
@@ -696,6 +697,9 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  bottomBarNarrow: {
+    paddingTop: spacing.xs,
   },
   preamp: {
     flex: 1,

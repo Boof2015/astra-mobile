@@ -1064,7 +1064,7 @@ export default function NowPlayingScreen() {
 const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.bgPrimary,
   },
   content: {
     flex: 1,

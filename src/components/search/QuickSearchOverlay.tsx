@@ -75,6 +75,7 @@ const PLAYLIST_RESULT_LIMIT = 4;
 const EMPTY_RECENT_TRACKS_LIMIT = 3;
 const ALL_TRACK_RESULT_LIMIT = 120;
 const ALL_ENTITY_RESULT_LIMIT = 80;
+const QUEUED_FEEDBACK_MS = 1000;
 
 const NAV_ENTRIES: {
   id: string;
@@ -470,12 +471,14 @@ function ResultRow({
   result,
   query,
   active,
+  queued,
   onPress,
   onQueueTrack,
 }: {
   result: SearchResult;
   query: string;
   active: boolean;
+  queued: boolean;
   onPress: () => void;
   onQueueTrack: (track: DbTrack) => void;
 }) {
@@ -513,7 +516,7 @@ function ResultRow({
           accessibilityRole="button"
           accessibilityLabel={`Play ${result.track.title} next`}
         >
-          <Ionicons name="add" size={18} color={colors.accentTextStrong} />
+          <Ionicons name={queued ? 'checkmark' : 'add'} size={18} color={colors.accentTextStrong} />
         </Pressable>
       ) : result.kind === 'playlist' && result.playlist.remote ? (
         <Ionicons name="cloud" size={14} color={colors.accent} />
@@ -550,6 +553,8 @@ function QuickSearchPanel({
 
   const [query, setQuery] = useState(initialQuery);
   const [showAllLibrary, setShowAllLibrary] = useState(false);
+  const [queuedTrackPaths, setQueuedTrackPaths] = useState<Set<string>>(() => new Set());
+  const queuedFeedbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
 
@@ -557,6 +562,14 @@ function QuickSearchPanel({
     const timer = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(
+    () => () => {
+      queuedFeedbackTimers.current.forEach(clearTimeout);
+      queuedFeedbackTimers.current.clear();
+    },
+    []
+  );
 
   const updateQuery = (value: string) => {
     setQuery(value);
@@ -930,6 +943,27 @@ function QuickSearchPanel({
 
   const queueTrack = (track: DbTrack) => {
     commitHaptic();
+    const existingTimer = queuedFeedbackTimers.current.get(track.path);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    setQueuedTrackPaths((current) => {
+      if (current.has(track.path)) return current;
+      const next = new Set(current);
+      next.add(track.path);
+      return next;
+    });
+
+    const feedbackTimer = setTimeout(() => {
+      queuedFeedbackTimers.current.delete(track.path);
+      setQueuedTrackPaths((current) => {
+        if (!current.has(track.path)) return current;
+        const next = new Set(current);
+        next.delete(track.path);
+        return next;
+      });
+    }, QUEUED_FEEDBACK_MS);
+    queuedFeedbackTimers.current.set(track.path, feedbackTimer);
+
     void enqueueTop(dbTrackToTrack(track));
   };
 
@@ -1018,6 +1052,7 @@ function QuickSearchPanel({
                 result={item.result}
                 query={trimmedQuery}
                 active={item.result.kind === 'track' && item.result.track.path === currentPath}
+                queued={item.result.kind === 'track' && queuedTrackPaths.has(item.result.track.path)}
                 onPress={() => executeResult(item.result)}
                 onQueueTrack={queueTrack}
               />

@@ -11,7 +11,7 @@ export default function TabsLayout() {
   const colors = useColors();
   return (
     <Tabs
-      detachInactiveScreens
+      detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
         freezeOnBlur: false,
