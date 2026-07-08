@@ -47,6 +47,26 @@ export function artworkThumbUri(hash: string): string {
   return `file://${getArtworkThumbDir()}/${artworkThumbFileName(hash)}`;
 }
 
+/**
+ * Low-res thumbnail for a live artwork source. The player store's currentTrack
+ * (rebuilt from RNTP via `rntpToTrack`) only carries the full-size `artworkData`
+ * — `file://…/artwork/<hash>` for local tracks — not the hash. Recover the cached
+ * file name from the path and point at the generated thumb so callers can blur it
+ * down to pure color. Remote URLs and base64 data URLs have no local thumb, so
+ * they pass through unchanged.
+ */
+export function artworkThumbFromSource(source: string | null | undefined): string | null {
+  if (!source) return null;
+  if (!source.startsWith('file://')) return source;
+  const name = source.split('/').pop();
+  if (!name) return source;
+  try {
+    return artworkThumbUri(decodeURIComponent(name));
+  } catch {
+    return artworkThumbUri(name);
+  }
+}
+
 type TrackArtworkFields = Pick<
   DbTrack,
   'source_type' | 'source_id' | 'artwork_source_id' | 'artwork_hash'

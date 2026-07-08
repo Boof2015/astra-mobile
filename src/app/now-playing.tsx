@@ -23,6 +23,7 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { MarqueeText } from '@/components/MarqueeText';
+import { NowPlayingWash } from '@/components/NowPlayingWash';
 import { SeekBar } from '@/components/SeekBar';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
@@ -38,6 +39,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveNavigationArtist } from '@/library/artistGrouping';
+import { artworkThumbFromSource } from '@/library/artwork';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -314,6 +316,12 @@ export default function NowPlayingScreen() {
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
+  // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
+  // blur reads as pure colors — full-res art keeps its detail at any blur radius.
+  // currentTrack only carries the full-size artworkData, so derive the thumb from it.
+  const washArtworkUri = artworkThumbFromSource(
+    isDesktopTarget ? activePresentation.artworkUri : track?.artworkData ?? null
+  );
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
   const layout = getNowPlayingLayout(
@@ -496,6 +504,14 @@ export default function NowPlayingScreen() {
             },
           ]}
         >
+          <NowPlayingWash
+            artworkUri={washArtworkUri}
+            offset={{
+              top: -(insets.top + CONTENT_TOP_PADDING),
+              left: -(insets.left + layout.contentPadding),
+              right: -(insets.right + layout.contentPadding),
+            }}
+          />
           <View style={[styles.shell, { width: layout.contentWidth }]}>
             <View style={styles.header}>
               <View style={styles.headerSide}>
