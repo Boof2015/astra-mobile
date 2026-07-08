@@ -1080,12 +1080,17 @@ export default function NowPlayingScreen() {
 const useStyles = createThemedStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: colors.bgPrimary,
+    backgroundColor: 'transparent',
   },
   content: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
     alignItems: 'center',
+    // Clip the sheet to its own bounds. The NowPlayingWash bleeds up via negative
+    // offsets to reach the true screen edges — fine at rest (this box is full-screen),
+    // but while swiping the sheet down that overflow would spill above its top edge
+    // onto the screen behind. Clipping contains the wash to the sheet in both states.
+    overflow: 'hidden',
   },
   shell: {
     flex: 1,

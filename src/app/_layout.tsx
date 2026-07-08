@@ -363,7 +363,7 @@ export default function RootLayout() {
               presentation: 'transparentModal',
               animation: 'none',
               gestureEnabled: false,
-              contentStyle: { backgroundColor: theme.colors.bgPrimary },
+              contentStyle: { backgroundColor: 'transparent' },
             }}
           />
         </Stack>
