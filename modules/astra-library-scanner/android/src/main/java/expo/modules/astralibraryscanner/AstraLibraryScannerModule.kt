@@ -165,6 +165,20 @@ class AstraLibraryScannerModule : Module() {
         // Already released or never persisted — nothing to do.
       }
     }
+
+    // Foreground-service keepalive around a scan (see ScanForegroundService) so a big
+    // scan survives backgrounding / screen-off. Fire-and-forget; JS owns the lifecycle.
+    Function("startScanService") { title: String, text: String ->
+      ScanForegroundService.start(requireContext(), title, text)
+    }
+
+    Function("updateScanNotification") { title: String, text: String, subText: String?, current: Int, total: Int, indeterminate: Boolean ->
+      ScanForegroundService.update(title, text, subText, current, total, indeterminate)
+    }
+
+    Function("stopScanService") {
+      ScanForegroundService.stop(requireContext())
+    }
   }
 
   private fun requireContext(): Context =

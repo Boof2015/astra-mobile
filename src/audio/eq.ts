@@ -1,7 +1,7 @@
 // Parametric EQ math + helpers — ported from desktop `src/renderer/utils/eq.ts`.
-// The biquad cookbook (Audio EQ Cookbook) magnitude math drives the response curve
-// in the EQ screen. Coefficients themselves are computed natively (Kotlin) at the
-// real stream sample rate — here we only flatten band params for the native bridge.
+// Web Audio BiquadFilterNode-compatible math drives the response curve in the EQ
+// screen. Native playback computes matching coefficients in Kotlin at the real
+// stream sample rate — here we also flatten band params for the native bridge.
 
 import type { EQBand, EQBandType, EQMode, EQPreset } from '../types/audio';
 
@@ -86,6 +86,10 @@ export function normalizeEQBandType(value: unknown): EQBandType {
 
 export function isPassEQBandType(type: EQBandType): boolean {
   return type === 'highpass' || type === 'lowpass';
+}
+
+export function isShelfEQBandType(type: EQBandType): boolean {
+  return type === 'lowshelf' || type === 'highshelf';
 }
 
 /** Pass filters carry no gain — force it to 0. */
@@ -181,18 +185,49 @@ export function serializeEQPresetData(
 }
 
 // ---------------------------------------------------------------------------
-// Response curve magnitude (Audio EQ Cookbook) — for the Skia response curve.
+// Response curve magnitude (Web Audio BiquadFilterNode) — for the Skia response curve.
 // ---------------------------------------------------------------------------
 
-export function computeEQFilterMagnitude(band: EQBand, testFreq: number, sampleRate: number): number {
-  if (sampleRate <= 0) return 0;
+export interface EQFilterCoefficients {
+  b0: number;
+  b1: number;
+  b2: number;
+  a1: number;
+  a2: number;
+}
+
+const MIN_FILTER_Q = 0.0001;
+
+function normalizeCoefficientSet(
+  b0: number,
+  b1: number,
+  b2: number,
+  a0: number,
+  a1: number,
+  a2: number
+): EQFilterCoefficients {
+  const invA0 = 1 / a0;
+  return {
+    b0: b0 * invA0,
+    b1: b1 * invA0,
+    b2: b2 * invA0,
+    a1: a1 * invA0,
+    a2: a2 * invA0,
+  };
+}
+
+export function computeEQFilterCoefficients(band: EQBand, sampleRate: number): EQFilterCoefficients {
+  if (sampleRate <= 0) {
+    return { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
+  }
 
   const w0 = (2 * Math.PI * band.frequency) / sampleRate;
-  const w = (2 * Math.PI * testFreq) / sampleRate;
   const A = Math.pow(10, band.gain / 40);
   const sinW0 = Math.sin(w0);
   const cosW0 = Math.cos(w0);
-  const alpha = sinW0 / (2 * band.Q);
+  const alphaQ = sinW0 / (2 * Math.max(band.Q, MIN_FILTER_Q));
+  const alphaQDb = sinW0 / (2 * Math.pow(10, band.Q / 20));
+  const alphaShelf = (sinW0 / 2) * Math.SQRT2;
 
   let b0 = 1;
   let b1 = 0;
@@ -203,60 +238,68 @@ export function computeEQFilterMagnitude(band: EQBand, testFreq: number, sampleR
 
   switch (band.type) {
     case 'peaking':
-      b0 = 1 + alpha * A;
+      b0 = 1 + alphaQ * A;
       b1 = -2 * cosW0;
-      b2 = 1 - alpha * A;
-      a0 = 1 + alpha / A;
+      b2 = 1 - alphaQ * A;
+      a0 = 1 + alphaQ / A;
       a1 = -2 * cosW0;
-      a2 = 1 - alpha / A;
+      a2 = 1 - alphaQ / A;
       break;
     case 'lowshelf': {
       const sqrtA = Math.sqrt(A);
-      b0 = A * (A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alpha);
+      b0 = A * (A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaShelf);
       b1 = 2 * A * (A - 1 - (A + 1) * cosW0);
-      b2 = A * (A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alpha);
-      a0 = A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alpha;
+      b2 = A * (A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaShelf);
+      a0 = A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaShelf;
       a1 = -2 * (A - 1 + (A + 1) * cosW0);
-      a2 = A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alpha;
+      a2 = A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaShelf;
       break;
     }
     case 'highshelf': {
       const sqrtA = Math.sqrt(A);
-      b0 = A * (A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alpha);
+      b0 = A * (A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaShelf);
       b1 = -2 * A * (A - 1 + (A + 1) * cosW0);
-      b2 = A * (A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alpha);
-      a0 = A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alpha;
+      b2 = A * (A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaShelf);
+      a0 = A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaShelf;
       a1 = 2 * (A - 1 - (A + 1) * cosW0);
-      a2 = A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alpha;
+      a2 = A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaShelf;
       break;
     }
     case 'lowpass':
       b0 = (1 - cosW0) / 2;
       b1 = 1 - cosW0;
       b2 = (1 - cosW0) / 2;
-      a0 = 1 + alpha;
+      a0 = 1 + alphaQDb;
       a1 = -2 * cosW0;
-      a2 = 1 - alpha;
+      a2 = 1 - alphaQDb;
       break;
     case 'highpass':
       b0 = (1 + cosW0) / 2;
       b1 = -(1 + cosW0);
       b2 = (1 + cosW0) / 2;
-      a0 = 1 + alpha;
+      a0 = 1 + alphaQDb;
       a1 = -2 * cosW0;
-      a2 = 1 - alpha;
+      a2 = 1 - alphaQDb;
       break;
   }
 
+  return normalizeCoefficientSet(b0, b1, b2, a0, a1, a2);
+}
+
+export function computeEQFilterMagnitude(band: EQBand, testFreq: number, sampleRate: number): number {
+  if (sampleRate <= 0) return 0;
+
+  const w = (2 * Math.PI * testFreq) / sampleRate;
+  const { b0, b1, b2, a1, a2 } = computeEQFilterCoefficients(band, sampleRate);
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
   const cos2W = Math.cos(2 * w);
   const sin2W = Math.sin(2 * w);
 
-  const numReal = b0 / a0 + (b1 / a0) * cosW + (b2 / a0) * cos2W;
-  const numImag = -(b1 / a0) * sinW - (b2 / a0) * sin2W;
-  const denReal = 1 + (a1 / a0) * cosW + (a2 / a0) * cos2W;
-  const denImag = -(a1 / a0) * sinW - (a2 / a0) * sin2W;
+  const numReal = b0 + b1 * cosW + b2 * cos2W;
+  const numImag = -b1 * sinW - b2 * sin2W;
+  const denReal = 1 + a1 * cosW + a2 * cos2W;
+  const denImag = -a1 * sinW - a2 * sin2W;
 
   const numMag = Math.sqrt(numReal * numReal + numImag * numImag);
   const denMag = Math.sqrt(denReal * denReal + denImag * denImag);

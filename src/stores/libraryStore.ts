@@ -21,6 +21,7 @@ import {
   type ScanProgress,
   type ScanResult,
 } from '@/library/scanner';
+import { endScanService, reportScanProgress } from '@/library/scanService';
 import { ALBUM_SORT_LABELS, type AlbumSort } from '@/lib/albumSort';
 import { ARTIST_SORT_LABELS, type ArtistSort } from '@/lib/artistSort';
 import { TRACK_SORT_LABELS, type TrackSort } from '@/lib/trackSort';
@@ -114,7 +115,12 @@ interface LibraryStore {
 let initPromise: Promise<void> | null = null;
 
 export const useLibraryStore = create<LibraryStore>((set, get) => {
-  const onProgress = (progress: ScanProgress) => set({ scanProgress: progress });
+  const onProgress = (progress: ScanProgress) => {
+    set({ scanProgress: progress });
+    // Mirror progress into the foreground-service notification (starts it on the
+    // first tick) so a big scan keeps running + stays visible when backgrounded.
+    void reportScanProgress(progress);
+  };
 
   /** Shared scan wrapper: progress/error state + refresh, scans never overlap. */
   const runScan = async (scan: () => Promise<ScanResult | null>) => {
@@ -127,6 +133,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     } finally {
       await get().refresh();
       set({ isScanning: false, scanProgress: { ...IDLE_PROGRESS } });
+      endScanService();
     }
   };
 

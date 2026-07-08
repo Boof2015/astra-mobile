@@ -91,6 +91,23 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
   getPersistedTreeUris(): string[];
   takePersistableUriPermission(uri: string): Promise<boolean>;
   releasePersistedUriPermission(uri: string): Promise<void>;
+  /**
+   * Scan keepalive (Android). `startScanService` promotes a `dataSync` foreground
+   * service + partial wakelock so a JS-orchestrated scan keeps running when the app
+   * is backgrounded / the screen sleeps, and shows a progress notification;
+   * `updateScanNotification` refreshes it; `stopScanService` tears it down. The
+   * wakelock/keepalive work even if the notification itself is not permitted.
+   */
+  startScanService(title: string, text: string): void;
+  updateScanNotification(
+    title: string,
+    text: string,
+    subText: string | null,
+    current: number,
+    total: number,
+    indeterminate: boolean
+  ): void;
+  stopScanService(): void;
 }
 
 export const AstraLibraryScanner =

@@ -70,6 +70,7 @@
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/shared/sync/conflictPreview.test.mts",
     "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
+    "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

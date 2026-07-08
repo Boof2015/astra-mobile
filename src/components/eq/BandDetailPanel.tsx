@@ -18,7 +18,8 @@ import {
   EQ_MAX_Q,
   EQ_MIN_FREQUENCY,
   EQ_MIN_Q,
-  isPassEQBandType
+  isPassEQBandType,
+  isShelfEQBandType
 } from '@/audio/eq';
 import { EQSlider } from './EQSlider';
 import {
@@ -39,7 +40,7 @@ interface BandDetailPanelProps {
 
 export type EQEditableValue = 'frequency' | 'gain' | 'Q';
 
-/** "Band N" + type dropdown + On toggle + Frequency / Gain / Q sliders. */
+/** "Band N" + type dropdown + On toggle + audible parameter sliders. */
 export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEditValue }: BandDetailPanelProps) {
   const styles = useStyles();
   const colors = useColors();
@@ -54,6 +55,7 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
   }
 
   const isPass = isPassEQBandType(band.type);
+  const isShelf = isShelfEQBandType(band.type);
 
   return (
     <View style={styles.card}>
@@ -96,16 +98,18 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
         onValuePress={() => onEditValue('gain')}
         disabled={isPass}
       />
-      <EQSlider
-        label="Q"
-        value={band.Q}
-        min={EQ_MIN_Q}
-        max={EQ_MAX_Q}
-        log
-        format={(v) => v.toFixed(2)}
-        onChange={(v) => onUpdate({ Q: v })}
-        onValuePress={() => onEditValue('Q')}
-      />
+      {!isShelf ? (
+        <EQSlider
+          label="Q"
+          value={band.Q}
+          min={EQ_MIN_Q}
+          max={EQ_MAX_Q}
+          log
+          format={(v) => v.toFixed(2)}
+          onChange={(v) => onUpdate({ Q: v })}
+          onValuePress={() => onEditValue('Q')}
+        />
+      ) : null}
     </View>
   );
 }

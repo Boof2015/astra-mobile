@@ -6,17 +6,12 @@ import com.google.android.exoplayer2.audio.BaseAudioProcessor
 import expo.modules.astrascope.EqBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.pow
 import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Parametric EQ as an ExoPlayer AudioProcessor (M4). Reads raw band params from
- * [EqBridge] (set from JS) and computes Audio-EQ-Cookbook biquad coefficients at
- * the real stream sample rate — mirroring Web Audio's BiquadFilterNode on desktop.
+ * [EqBridge] (set from JS) and computes Web Audio BiquadFilterNode-compatible
+ * coefficients at the real stream sample rate, matching desktop Astra.
  * A cascade of transposed-direct-form-II biquads runs per channel after a preamp.
  *
  * Passthrough (bit-exact) when the EQ is disabled or has no active bands and unity
@@ -100,7 +95,7 @@ class EqAudioProcessor : BaseAudioProcessor() {
     var bi = 0
     for (i in 0 until total) {
       if (params[i * 5 + 4] == 0f) continue
-      computeCoeffs(
+      EqCoefficients.compute(
         params[i * 5].toInt(),
         params[i * 5 + 1],
         params[i * 5 + 2],
@@ -188,71 +183,4 @@ class EqAudioProcessor : BaseAudioProcessor() {
     }
   }
 
-  /**
-   * Audio-EQ-Cookbook biquad coefficients (a0-normalized) into out[off..off+4].
-   * Type ordinals match EQ_BAND_TYPE_ORDINAL in src/audio/eq.ts:
-   * 0 lowshelf, 1 peaking, 2 highshelf, 3 highpass, 4 lowpass.
-   */
-  private fun computeCoeffs(
-    type: Int,
-    freq: Float,
-    gainDb: Float,
-    q: Float,
-    sr: Float,
-    out: FloatArray,
-    off: Int
-  ) {
-    if (sr <= 0f) {
-      out[off] = 1f; out[off + 1] = 0f; out[off + 2] = 0f; out[off + 3] = 0f; out[off + 4] = 0f
-      return
-    }
-    val w0 = 2.0 * PI * freq / sr
-    val cosW0 = cos(w0)
-    val sinW0 = sin(w0)
-    val a = 10.0.pow(gainDb / 40.0)
-    val alpha = sinW0 / (2.0 * q.coerceAtLeast(0.0001f))
-
-    var b0 = 1.0; var b1 = 0.0; var b2 = 0.0
-    var a0 = 1.0; var a1 = 0.0; var a2 = 0.0
-
-    when (type) {
-      1 -> { // peaking
-        b0 = 1 + alpha * a; b1 = -2 * cosW0; b2 = 1 - alpha * a
-        a0 = 1 + alpha / a; a1 = -2 * cosW0; a2 = 1 - alpha / a
-      }
-      0 -> { // lowshelf
-        val sqrtA = sqrt(a)
-        b0 = a * (a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alpha)
-        b1 = 2 * a * (a - 1 - (a + 1) * cosW0)
-        b2 = a * (a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alpha)
-        a0 = a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alpha
-        a1 = -2 * (a - 1 + (a + 1) * cosW0)
-        a2 = a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alpha
-      }
-      2 -> { // highshelf
-        val sqrtA = sqrt(a)
-        b0 = a * (a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alpha)
-        b1 = -2 * a * (a - 1 + (a + 1) * cosW0)
-        b2 = a * (a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alpha)
-        a0 = a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alpha
-        a1 = 2 * (a - 1 - (a + 1) * cosW0)
-        a2 = a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alpha
-      }
-      4 -> { // lowpass
-        b0 = (1 - cosW0) / 2; b1 = 1 - cosW0; b2 = (1 - cosW0) / 2
-        a0 = 1 + alpha; a1 = -2 * cosW0; a2 = 1 - alpha
-      }
-      3 -> { // highpass
-        b0 = (1 + cosW0) / 2; b1 = -(1 + cosW0); b2 = (1 + cosW0) / 2
-        a0 = 1 + alpha; a1 = -2 * cosW0; a2 = 1 - alpha
-      }
-    }
-
-    val inv = 1.0 / a0
-    out[off] = (b0 * inv).toFloat()
-    out[off + 1] = (b1 * inv).toFloat()
-    out[off + 2] = (b2 * inv).toFloat()
-    out[off + 3] = (a1 * inv).toFloat()
-    out[off + 4] = (a2 * inv).toFloat()
-  }
 }

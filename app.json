@@ -3,6 +3,7 @@
     "name": "Astra",
     "slug": "astra-mobile",
     "version": "0.1.0",
+    "platforms": ["android"],
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "astra",

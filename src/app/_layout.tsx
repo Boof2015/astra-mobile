@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -41,6 +41,8 @@ import { fetchDesktopRemoteIdentity } from '@/services/desktopRemoteClient';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { SyncConflictPrompt } from '@/components/sync/SyncConflictPrompt';
 import { useThemeStore } from '@/stores/themeStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { useTheme } from '@/theme/themed';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route (the
@@ -280,8 +282,10 @@ export default function RootLayout() {
   // persisted theme (no flash). The failsafe path paints the default theme
   // and snaps once the SQLite read lands — accepted degradation.
   const themeLoaded = useThemeStore((s) => s.loaded);
+  const onboardingLoaded = useOnboardingStore((s) => s.loaded);
+  const onboardingComplete = useOnboardingStore((s) => s.onboardingComplete);
   const theme = useTheme();
-  const ready = (fontsLoaded && themeLoaded) || splashTimedOut;
+  const ready = (fontsLoaded && themeLoaded && onboardingLoaded) || splashTimedOut;
 
   useEffect(() => {
     if (ready) {
@@ -297,6 +301,10 @@ export default function RootLayout() {
       .getState()
       .load()
       .catch((err) => console.error('[theme] load failed', err));
+    useOnboardingStore
+      .getState()
+      .load()
+      .catch((err) => console.error('[onboarding] load failed', err));
     useLibraryStore
       .getState()
       .initialize()
@@ -326,14 +334,22 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.bgPrimary }}>
       <SafeAreaProvider>
         <StatusBar style={theme.statusBarStyle} />
-        <ThemeSystemSync />
-        <PlaybackSync />
-        <ScopeLifecycle />
-        <NormalizationSync />
-        <LastFmScrobbler />
-        <PlaybackTargetSync />
-        <DesktopRemoteMediaSessionSync />
-        <DesktopSyncAutoTrigger />
+        {/* The navigator stays mounted whatever the onboarding state (expo-router
+            needs a root navigator), but the playback/sync/desktop side-effects and
+            overlays are gated off during the wizard — no LAN-discovery bursts or
+            scrobbler running mid-onboarding. */}
+        {onboardingComplete ? (
+          <>
+            <ThemeSystemSync />
+            <PlaybackSync />
+            <ScopeLifecycle />
+            <NormalizationSync />
+            <LastFmScrobbler />
+            <PlaybackTargetSync />
+            <DesktopRemoteMediaSessionSync />
+            <DesktopSyncAutoTrigger />
+          </>
+        ) : null}
         <Stack
           screenOptions={{
             headerShown: false,
@@ -351,8 +367,22 @@ export default function RootLayout() {
             }}
           />
         </Stack>
-        <QuickSearchOverlay />
-        <SyncConflictPrompt />
+        {onboardingComplete ? (
+          <>
+            <QuickSearchOverlay />
+            <SyncConflictPrompt />
+          </>
+        ) : (
+          // First-run gate: opaque full-screen wizard over the (hidden) navigator.
+          // markComplete flips the flag → this unmounts, revealing the app.
+          <View style={StyleSheet.absoluteFill}>
+            <OnboardingFlow
+              onDone={() => {
+                void useOnboardingStore.getState().markComplete();
+              }}
+            />
+          </View>
+        )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
