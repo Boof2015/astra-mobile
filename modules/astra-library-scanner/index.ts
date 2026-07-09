@@ -51,6 +51,17 @@ export interface ReplayGainTags {
   albumPeak: number | null;
 }
 
+/** A `.xlrc`/`.lrc` file found next to the track. */
+export interface SidecarLyrics {
+  text: string;
+  format: 'xlrc' | 'lrc';
+}
+
+/** Embedded lyrics text read from container tags. */
+export interface EmbeddedLyrics {
+  text: string;
+}
+
 export interface ScanProgressEvent {
   phase: 'discovering';
   found: number;
@@ -85,6 +96,18 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    * are null when the tag is absent; the whole call is cheap (metadata only).
    */
   readReplayGain(uri: string): Promise<ReplayGainTags>;
+  /**
+   * Look for a sibling lyrics file next to the track (`<name>.xlrc` preferred, then
+   * `<name>.lrc`) and return its text + format, or null. Read fresh on demand so
+   * files authored after a scan are picked up.
+   */
+  readSidecarLyrics(uri: string): Promise<SidecarLyrics | null>;
+  /**
+   * Read embedded lyrics from container tags (Vorbis LYRICS/UNSYNCEDLYRICS for
+   * FLAC/Ogg/Opus, TXXX:LYRICS, MP4 lyric atoms) without decoding audio. Null when
+   * absent. ID3 USLT/SYLT are not covered (ExoPlayer leaves them undecoded).
+   */
+  readEmbeddedLyrics(uri: string): Promise<EmbeddedLyrics | null>;
   getArtworkDirPath(): string;
   getArtworkThumbDirPath(): string;
   ensureArtworkThumbnails(hashes: string[]): Promise<number>;

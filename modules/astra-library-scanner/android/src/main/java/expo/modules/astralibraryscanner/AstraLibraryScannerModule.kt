@@ -125,6 +125,21 @@ class AstraLibraryScannerModule : Module() {
       withContext(Dispatchers.IO) { readReplayGain(uri) }
     }
 
+    // Sidecar lyrics: a `<name>.xlrc` (preferred) or `<name>.lrc` next to the track.
+    // Returns { text, format } or null. Read fresh on demand so files authored after
+    // a scan are picked up.
+    AsyncFunction("readSidecarLyrics") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { readSidecarLyrics(uri) }
+    }
+
+    // Embedded lyrics from container tags (Vorbis LYRICS/UNSYNCEDLYRICS for
+    // FLAC/Ogg/Opus, plus TXXX/MP4 lyric atoms), metadata-only (no PCM decode).
+    // Returns { text } or null. ID3 USLT/SYLT are not decoded by ExoPlayer and are
+    // intentionally out of scope here.
+    AsyncFunction("readEmbeddedLyrics") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { readEmbeddedLyrics(uri) }
+    }
+
     Function("getArtworkDirPath") {
       artworkDir().absolutePath
     }
@@ -282,6 +297,90 @@ class AstraLibraryScannerModule : Module() {
   private fun parseR128(raw: String): Double? {
     val v = raw.trim().toIntOrNull() ?: return null
     return v / 256.0 + 5.0
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lyrics (v2 local sources)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Look for a sibling lyrics file next to the track: `<name>.xlrc` first, then
+   * `<name>.lrc`. Builds the sibling document URI by swapping the audio file's
+   * extension (the same tree grant covers it), so no directory listing is needed for
+   * the common case. Returns { text, format } or null.
+   */
+  private fun readSidecarLyrics(uriStr: String): Map<String, Any?>? {
+    return try {
+      val uri = Uri.parse(uriStr)
+      val docId = DocumentsContract.getDocumentId(uri) ?: return null
+      val stem = docId.substringBeforeLast('.', "")
+      if (stem.isEmpty()) return null
+      for ((ext, format) in listOf("xlrc" to "xlrc", "lrc" to "lrc")) {
+        val siblingUri = DocumentsContract.buildDocumentUriUsingTree(uri, "$stem.$ext")
+        val text = readTextOrNull(siblingUri) ?: continue
+        if (text.isBlank()) continue
+        return mapOf("text" to text, "format" to format)
+      }
+      null
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  private fun readTextOrNull(uri: Uri): String? {
+    return try {
+      requireContext().contentResolver.openInputStream(uri)?.use { input ->
+        input.bufferedReader(Charsets.UTF_8).readText()
+      }
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  private val embeddedLyricKeys = setOf("lyrics", "unsyncedlyrics", "unsynced_lyrics", "syncedlyrics")
+
+  /**
+   * Read embedded lyrics from container metadata via ExoPlayer's MetadataRetriever.
+   * Covers Vorbis LYRICS/UNSYNCEDLYRICS (FLAC/Ogg/Opus), TXXX:LYRICS (ID3), and MP4
+   * freeform lyric atoms — metadata only, no PCM decode. ID3 USLT/SYLT arrive as
+   * undecoded BinaryFrames and are out of scope. Returns { text } or null.
+   */
+  private fun readEmbeddedLyrics(uriStr: String): Map<String, Any?>? {
+    return try {
+      val mediaItem = MediaItem.fromUri(Uri.parse(uriStr))
+      val trackGroups = MetadataRetriever.retrieveMetadata(requireContext(), mediaItem)
+        .get(metadataTimeoutMs, TimeUnit.MILLISECONDS)
+
+      // Keep the longest lyric candidate (a full body beats a stray short tag).
+      var best: String? = null
+      fun consider(rawKey: String?, rawValue: String?) {
+        if (rawKey == null || rawValue == null) return
+        val key = rawKey.trim().lowercase()
+        val isLyricKey = key in embeddedLyricKeys || key.contains("lyric") || key == "©lyr"
+        if (!isLyricKey) return
+        val value = rawValue.trim()
+        if (value.isEmpty()) return
+        if (best == null || value.length > best!!.length) best = value
+      }
+
+      for (g in 0 until trackGroups.length) {
+        val group = trackGroups.get(g)
+        for (f in 0 until group.length) {
+          val metadata = group.getFormat(f).metadata ?: continue
+          for (i in 0 until metadata.length()) {
+            when (val entry = metadata.get(i)) {
+              is TextInformationFrame -> if (entry.id == "TXXX") consider(entry.description, entry.value)
+              is VorbisComment -> consider(entry.key, entry.value)
+              is InternalFrame -> consider(entry.description, entry.text)
+            }
+          }
+        }
+      }
+
+      best?.let { mapOf("text" to it) }
+    } catch (_: Throwable) {
+      null
+    }
   }
 
   // ---------------------------------------------------------------------------
