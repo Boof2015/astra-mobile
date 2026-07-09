@@ -15,6 +15,8 @@ import { SeekBar } from '@/components/SeekBar';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useLyricsStore } from '@/stores/lyricsStore';
+import { getLyricsPayloadSourceLabel } from '@/lyrics/presentation';
 import type { Track } from '@/types/audio';
 
 interface LyricsViewProps {
@@ -50,6 +52,8 @@ export function LyricsView({
 }: LyricsViewProps) {
   const styles = useStyles();
   const colors = useColors();
+  const result = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
+  const sourceLabel = result?.status === 'hit' ? getLyricsPayloadSourceLabel(result.lyrics) : null;
 
   return (
     <View style={styles.root}>
@@ -70,9 +74,16 @@ export function LyricsView({
           <MarqueeText variant="label" style={styles.stripTitle}>
             {track.title}
           </MarqueeText>
-          <Text variant="caption" numberOfLines={1} color={colors.textTertiary}>
-            {track.artist}
-          </Text>
+          <View style={styles.stripSubRow}>
+            <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
+              {track.artist}
+            </Text>
+            {sourceLabel ? (
+              <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
+                {sourceLabel}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         <Pressable
@@ -165,6 +176,22 @@ const useStyles = createThemedStyles((colors) => ({
   },
   stripTitle: {
     color: colors.textPrimary,
+  },
+  stripSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  stripArtist: {
+    flexShrink: 1,
+  },
+  sourceTag: {
+    flexShrink: 0,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.textTertiary,
   },
   controls: {
     paddingTop: spacing.sm,
