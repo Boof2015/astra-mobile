@@ -183,9 +183,10 @@ class QueuedAudioPlayer(
      */
     fun move(fromIndex: Int, toIndex: Int) {
         exoPlayer.moveMediaItem(fromIndex, toIndex)
-        val item = queue[fromIndex]
-        queue.removeAt(fromIndex)
-        queue.add(max(0, min(items.size, if (toIndex > fromIndex) toIndex else toIndex - 1)), item)
+        // Mirror ExoPlayer's remove-then-insert-at-toIndex semantics exactly, or this
+        // metadata list drifts from the timeline and events report the wrong track.
+        val item = queue.removeAt(fromIndex)
+        queue.add(max(0, min(queue.size, toIndex)), item)
     }
 
     /**
