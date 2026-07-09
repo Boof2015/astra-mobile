@@ -3,6 +3,7 @@
   "main": "index.js",
   "version": "0.1.0",
   "dependencies": {
+    "@boof2015/xlrc": "^0.2.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/ui": "~56.0.13",
@@ -71,6 +72,7 @@
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/shared/sync/conflictPreview.test.mts",
     "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
     "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
+    "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

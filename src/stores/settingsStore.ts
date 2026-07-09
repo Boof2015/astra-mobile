@@ -12,6 +12,7 @@ const ARTIST_GROUPING_KEY = 'artist_grouping_mode';
 const INCLUDE_SINGLES_KEY = 'album_include_singles';
 const SCOPE_MODE_KEY = 'scope_mode';
 const SCOPE_STAGE_VISIBLE_KEY = 'scope_stage_visible';
+const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -34,12 +35,15 @@ interface SettingsStore {
   includeSingles: boolean;
   scopeMode: ScopeMode;
   scopeStageVisible: boolean;
+  /** Whether the now-playing top half shows lyrics instead of art/scope. */
+  lyricsVisible: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
   setIncludeSingles: (include: boolean) => Promise<void>;
   setScopeMode: (mode: ScopeMode) => Promise<void>;
   setScopeStageVisible: (visible: boolean) => Promise<void>;
+  setLyricsVisible: (visible: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -47,22 +51,25 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   includeSingles: false,
   scopeMode: 'spectrum',
   scopeStageVisible: false,
+  lyricsVisible: false,
   loaded: false,
 
   load: async () => {
     if (get().loaded) return;
     const db = await openLibraryDb();
-    const [grouping, includeSingles, scope, scopeStageVisible] = await Promise.all([
+    const [grouping, includeSingles, scope, scopeStageVisible, lyricsVisible] = await Promise.all([
       getSetting(db, ARTIST_GROUPING_KEY),
       getSetting(db, INCLUDE_SINGLES_KEY),
       getSetting(db, SCOPE_MODE_KEY),
       getSetting(db, SCOPE_STAGE_VISIBLE_KEY),
+      getSetting(db, LYRICS_VISIBLE_KEY),
     ]);
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
       scopeMode: parseScopeMode(scope),
       scopeStageVisible: parseBoolean(scopeStageVisible),
+      lyricsVisible: parseBoolean(lyricsVisible),
       loaded: true,
     });
   },
@@ -93,5 +100,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ scopeStageVisible: visible });
     const db = await openLibraryDb();
     await setSetting(db, SCOPE_STAGE_VISIBLE_KEY, visible ? 'true' : 'false');
+  },
+
+  setLyricsVisible: async (visible) => {
+    if (get().lyricsVisible === visible) return;
+    set({ lyricsVisible: visible });
+    const db = await openLibraryDb();
+    await setSetting(db, LYRICS_VISIBLE_KEY, visible ? 'true' : 'false');
   },
 }));

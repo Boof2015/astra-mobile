@@ -28,11 +28,13 @@
 // v17 adds `playlist_sync_state` — the per-playlist (local, remote) updated_at baseline
 // from the last successful sync, which turns blind last-writer-wins into 3-way change
 // detection: only-one-side-changed syncs silently, both-changed surfaces a conflict
-// prompt (Steam-Cloud style) instead of silently dropping an edit.
+// prompt (Steam-Cloud style) instead of silently dropping an edit; v18 adds `lyrics_cache`
+// — LRC/XLRC results from online lookup (xlrcdb + lrclib), keyed by track_path with no FK
+// (survives folder re-grant like waveform_peaks) and invalidated by a metadata_signature.
 
 import type { LibraryDatabase } from './database';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 // One statement per entry — op-sqlite executes single statements.
 const MIGRATIONS: readonly (readonly string[])[] = [
@@ -324,6 +326,29 @@ const MIGRATIONS: readonly (readonly string[])[] = [
       local_updated_at INTEGER NOT NULL,
       remote_updated_at INTEGER NOT NULL
     )`,
+  ],
+  // v17 -> v18 — cached lyrics (LRC/XLRC) from online lookup (xlrcdb + lrclib).
+  // Keyed by track_path (SAF URI / remote identity), no FK — survives folder
+  // removal/re-grant like waveform_peaks. metadata_signature (sha1 of
+  // title/artist/album/duration) invalidates the row when the track's tags change;
+  // `status` distinguishes a real hit from a cached "no lyrics found" (so we don't
+  // re-hit the network every open); synced_lines_json is the parsed LyricsLine[] the
+  // renderer consumes. Non-ASCII lyric text stores via the op-sqlite UTF-8/Latin1
+  // param workaround (see database.ts). Local/embedded sources land in the v2 phase.
+  [
+    `CREATE TABLE IF NOT EXISTS lyrics_cache (
+      track_path TEXT PRIMARY KEY NOT NULL,
+      metadata_signature TEXT,
+      status TEXT NOT NULL,
+      source TEXT,
+      provider TEXT,
+      format TEXT,
+      plain_lyrics TEXT,
+      synced_lyrics TEXT,
+      synced_lines_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_lyrics_cache_updated ON lyrics_cache(updated_at)',
   ],
 ];
 

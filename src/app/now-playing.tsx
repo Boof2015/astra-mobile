@@ -27,6 +27,7 @@ import { NowPlayingWash } from '@/components/NowPlayingWash';
 import { SeekBar } from '@/components/SeekBar';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
+import { LyricsView } from '@/components/lyrics/LyricsView';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { QueueTray } from '@/components/queue/QueueTray';
@@ -279,6 +280,8 @@ export default function NowPlayingScreen() {
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
+  const lyricsVisible = useSettingsStore((s) => s.lyricsVisible);
+  const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -316,6 +319,9 @@ export default function NowPlayingScreen() {
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
+  // Lyrics mode takes over the whole phone-playback body (its own header + minimal
+  // controls); only for local playback, never the desktop-remote target.
+  const lyricsMode = !isDesktopTarget && !!track && lyricsVisible;
   // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
   // blur reads as pure colors — full-res art keeps its detail at any blur radius.
   // currentTrack only carries the full-size artworkData, so derive the thumb from it.
@@ -513,33 +519,66 @@ export default function NowPlayingScreen() {
             }}
           />
           <View style={[styles.shell, { width: layout.contentWidth }]}>
-            <View style={styles.header}>
-              <View style={styles.headerSide}>
-                <Pressable style={styles.headerBtn} onPress={() => dismissSheet()} hitSlop={12}>
-                  <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
-                </Pressable>
+            {!lyricsMode && (
+              <View style={styles.header}>
+                <View style={styles.headerSide}>
+                  <Pressable style={styles.headerBtn} onPress={() => dismissSheet()} hitSlop={12}>
+                    <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+                <View style={styles.headerMid}>
+                  <Text variant="caption" style={styles.eyebrow}>
+                    PLAYING FROM
+                  </Text>
+                  <Text variant="label" numberOfLines={1} style={styles.source}>
+                    {source}
+                  </Text>
+                </View>
+                <View style={[styles.headerSide, styles.headerActions]}>
+                  {!isDesktopTarget && track ? (
+                    <Pressable
+                      style={styles.headerBtn}
+                      onPress={() => void setLyricsVisible(!lyricsVisible)}
+                      hitSlop={12}
+                      accessibilityLabel={lyricsVisible ? 'Hide lyrics' : 'Show lyrics'}
+                      accessibilityState={{ selected: lyricsVisible }}
+                    >
+                      <MaterialCommunityIcons
+                        name="script-text-outline"
+                        size={20}
+                        color={lyricsVisible ? colors.accent : colors.textSecondary}
+                      />
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    style={styles.headerBtn}
+                    onPress={openMenu}
+                    hitSlop={12}
+                    accessibilityLabel="More options"
+                  >
+                    <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.headerMid}>
-                <Text variant="caption" style={styles.eyebrow}>
-                  PLAYING FROM
-                </Text>
-                <Text variant="label" numberOfLines={1} style={styles.source}>
-                  {source}
-                </Text>
-              </View>
-              <View style={[styles.headerSide, styles.headerActions]}>
-                <Pressable
-                  style={styles.headerBtn}
-                  onPress={openMenu}
-                  hitSlop={12}
-                  accessibilityLabel="More options"
-                >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-            </View>
+            )}
 
-            {isDesktopTarget ? (
+            {lyricsMode && track ? (
+              <LyricsView
+                track={track}
+                currentTime={currentTime}
+                duration={duration}
+                isPlaying={isPlaying}
+                isLoading={isLoading}
+                isFavorite={isFavorite}
+                onSeek={(seconds) => void seekTo(seconds)}
+                onPlayPause={togglePlay}
+                onNext={skipToNext}
+                onPrev={skipToPrevious}
+                onToggleFavorite={() => void toggleFavorite(track)}
+                onExitLyrics={() => void setLyricsVisible(false)}
+                onDismiss={() => dismissSheet()}
+              />
+            ) : isDesktopTarget ? (
               activeTrack ? (
                 <View style={[styles.player, layout.isWide && styles.playerWide]}>
                   <View
@@ -1108,7 +1147,7 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   headerSide: {
-    width: 48,
+    width: 68,
     flexDirection: 'row',
     alignItems: 'center',
   },
