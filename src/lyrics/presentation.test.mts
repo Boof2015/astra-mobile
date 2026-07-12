@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { LyricsLine, LyricsPayload } from './types.ts';
 import {
   findActiveSyncedLineIndex,
+  getActiveSyncedLyricsLine,
   getCompensatedLyricsTime,
   getLyricsLineSeekTimeSeconds,
   getLyricsMetaChipText,
@@ -48,6 +49,15 @@ test('a long instrumental gap inserts a synthetic gap row and neutralizes', () =
   const timing = resolveSyncedLyricsTiming(withGap, 6);
   assert.equal(timing.activeLineIndex, -1);
   assert.equal(timing.isNeutral, true);
+  assert.equal(getActiveSyncedLyricsLine(withGap, 6), null);
+});
+
+test('compact lyric peek resolves the raw active cue', () => {
+  assert.equal(getActiveSyncedLyricsLine(lines(), 1.2)?.text, 'B');
+  assert.equal(
+    getActiveSyncedLyricsLine([{ timestampMs: 5000, text: 'later' }], 1),
+    null
+  );
 });
 
 test('translation selection honors the language priority list', () => {

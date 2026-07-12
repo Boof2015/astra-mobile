@@ -7,6 +7,7 @@ import {
   vec
 } from '@shopify/react-native-skia';
 import { useColors } from '@/theme/themed';
+import { useReducedMotion } from 'react-native-reanimated';
 
 // A faint wash of the current cover art bleeding from the very top of the
 // now-playing sheet, fading back to the background before it reaches the
@@ -31,6 +32,7 @@ export function NowPlayingWash({
   offset: { top: number; left: number; right: number };
 }) {
   const colors = useColors();
+  const reduceMotion = useReducedMotion();
   const { width, height } = useWindowDimensions();
   if (!artworkUri) return null;
   const bandH = Math.round(height * REACH);
@@ -48,7 +50,7 @@ export function NowPlayingWash({
         style={[StyleSheet.absoluteFill, { opacity: ART_OPACITY }]}
         contentFit="cover"
         blurRadius={BLUR_RADIUS}
-        transition={null}
+        transition={reduceMotion ? null : 200}
       />
       <Canvas style={StyleSheet.absoluteFill}>
         <Rect x={0} y={0} width={bandW} height={bandH}>

@@ -24,9 +24,10 @@ import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
 
 interface RemoteQueueSheetProps {
   onClose: () => void;
+  embedded?: boolean;
 }
 
-export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
+export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheetProps) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -101,17 +102,8 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
     [playItem, colors, styles, ripple]
   );
 
-  return (
-    <BottomSheet
-      index={0}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      onClose={onClose}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheetBg}
-      handleIndicatorStyle={styles.handle}
-    >
+  const body = (
+    <>
       <View style={styles.headerRow}>
         <Text variant="heading">Desktop queue</Text>
         <Text variant="label" color={colors.textTertiary}>
@@ -121,7 +113,7 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
       <FlashList
         data={items}
         keyExtractor={(item) => item.queueId}
-        renderScrollComponent={renderFlashListScrollComponent}
+        renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -133,6 +125,25 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
           </View>
         }
       />
+    </>
+  );
+
+  if (embedded) {
+    return <View style={styles.embeddedRoot}>{body}</View>;
+  }
+
+  return (
+    <BottomSheet
+      index={0}
+      snapPoints={snapPoints}
+      enableDynamicSizing={false}
+      enablePanDownToClose
+      onClose={onClose}
+      backdropComponent={renderBackdrop}
+      backgroundStyle={styles.sheetBg}
+      handleIndicatorStyle={styles.handle}
+    >
+      {body}
     </BottomSheet>
   );
 }
@@ -144,6 +155,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   handle: {
     backgroundColor: colors.textTertiary,
+  },
+  embeddedRoot: {
+    flex: 1,
+    overflow: 'hidden',
   },
   headerRow: {
     flexDirection: 'row',

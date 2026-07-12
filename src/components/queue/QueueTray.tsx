@@ -149,11 +149,12 @@ function reconcileQueueEntries(
 
 interface QueueTrayProps {
   onClose: () => void;
+  embedded?: boolean;
 }
 
 // memo: the parent now-playing screen re-renders on store changes; the tray's
 // ~15-hook body shouldn't re-execute unless its own inputs change.
-export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
+export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: QueueTrayProps) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -168,11 +169,15 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
   // freeze. Clamping the list container to the window height caps the viewport
   // no matter what the sheet reports; both snap points stay unaffected.
   const listClampStyle = useMemo(() => ({ maxHeight: windowHeight }), [windowHeight]);
+  const embeddedListStyle = useMemo(
+    () => ({ maxHeight: windowHeight, flex: 1 }),
+    [windowHeight]
+  );
   // Same bug, milder symptom: a viewport measured during the open animation can
   // stick at the clamp height (taller than the sheet's real content area), which
   // silently shortens the scroll range — the last few rows become unreachable.
   // Mounting the list only after the sheet settles removes the bad window.
-  const [listReady, setListReady] = useState(false);
+  const [listReady, setListReady] = useState(embedded);
   const onSheetChange = useCallback((index: number) => {
     if (index >= 0) setListReady(true);
   }, []);
@@ -573,20 +578,8 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
   const selectedCount = visibleSelectedKeys.size;
   const canEdit = queueReady && entries.length > 0;
 
-  return (
-    <BottomSheet
-      index={0}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      enableContentPanningGesture={!editMode}
-      enableHandlePanningGesture
-      onChange={onSheetChange}
-      onClose={onClose}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheetBg}
-      handleIndicatorStyle={styles.handle}
-    >
+  const body = (
+    <>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text variant="heading" style={styles.headerTitle}>
@@ -638,23 +631,30 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
         <FlashList
           data={entries}
           scrollEnabled={!editMode}
-          style={listClampStyle}
+          style={embedded ? embeddedListStyle : listClampStyle}
           keyExtractor={(item) => item.key}
           drawDistance={QUEUE_ROW_HEIGHT * 12}
           maintainVisibleContentPosition={{ disabled: true }}
-          renderScrollComponent={renderFlashListScrollComponent}
+          renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
           renderItem={renderItem}
           extraData={listExtraData}
-          contentContainerStyle={
-            editMode && selectedCount > 0 ? listContentEditStyle : listContentStyle
-          }
+          contentContainerStyle={embedded
+            ? styles.embeddedListContent
+            : editMode && selectedCount > 0
+              ? listContentEditStyle
+              : listContentStyle}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderEmpty}
         />
       ) : null}
 
       {editMode && selectedCount > 0 ? (
-        <View style={[styles.actionBar, { paddingBottom: insets.bottom + spacing.sm }]}>
+        <View
+          style={[
+            styles.actionBar,
+            { paddingBottom: (embedded ? 0 : insets.bottom) + spacing.sm },
+          ]}
+        >
           <Pressable
             android_ripple={ripple.bounded}
             style={styles.actionBtn}
@@ -681,6 +681,28 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
           </Pressable>
         </View>
       ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return <View style={styles.embeddedRoot}>{body}</View>;
+  }
+
+  return (
+    <BottomSheet
+      index={0}
+      snapPoints={snapPoints}
+      enableDynamicSizing={false}
+      enablePanDownToClose
+      enableContentPanningGesture={!editMode}
+      enableHandlePanningGesture
+      onChange={onSheetChange}
+      onClose={onClose}
+      backdropComponent={renderBackdrop}
+      backgroundStyle={styles.sheetBg}
+      handleIndicatorStyle={styles.handle}
+    >
+      {body}
     </BottomSheet>
   );
 });
@@ -956,6 +978,14 @@ const useStyles = createThemedStyles((colors) => ({
   handle: {
     backgroundColor: colors.glassBorder,
     width: 38,
+  },
+  embeddedRoot: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  embeddedListContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.lg,
   },
   headerRow: {
     flexDirection: 'row',

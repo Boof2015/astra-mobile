@@ -65,19 +65,23 @@ export default function ArtistScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
-  const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
+  const { name = 'Artist', credit } = useLocalSearchParams<{
+    name: string;
+    credit?: string;
+  }>();
   const handleBack = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
   const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
+  const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, groupingMode),
-    [allTracks, name, groupingMode]
+    () => buildArtistDetail(allTracks, name, detailGroupingMode),
+    [allTracks, name, detailGroupingMode]
   );
 
   const listItems = useMemo(() => buildListItems(detail), [detail]);
@@ -96,7 +100,7 @@ export default function ArtistScreen() {
   const openSection = (target: ArtistSectionTarget) => {
     router.push({
       pathname: `/library/artist/[name]/${target}`,
-      params: { name },
+      params: { name, ...(credit === '1' ? { credit: '1' } : {}) },
     });
   };
 

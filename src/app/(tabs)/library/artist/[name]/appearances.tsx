@@ -26,15 +26,19 @@ export default function ArtistAppearancesScreen() {
   const colors = useColors();
   const ripple = useRipple();
   const router = useRouter();
-  const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
+  const { name = 'Artist', credit } = useLocalSearchParams<{
+    name: string;
+    credit?: string;
+  }>();
   const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
+  const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, groupingMode),
-    [allTracks, name, groupingMode]
+    () => buildArtistDetail(allTracks, name, detailGroupingMode),
+    [allTracks, name, detailGroupingMode]
   );
   const tracks = detail.appearanceTracks;
 

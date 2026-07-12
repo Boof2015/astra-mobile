@@ -12,6 +12,7 @@ import { Text } from '@/components/Text';
 import { MarqueeText } from '@/components/MarqueeText';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SeekBar } from '@/components/SeekBar';
+import { TactilePressable } from '@/components/player/TactilePressable';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -93,8 +94,10 @@ export function LyricsView({
           </View>
         </View>
 
-        <Pressable android_ripple={ripple.bounded}
+        <TactilePressable android_ripple={ripple.bounded}
           onPress={onToggleFavorite}
+          haptic="light"
+          confirmationScale={1.08}
           hitSlop={10}
           style={styles.stripBtn}
           accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -105,17 +108,18 @@ export function LyricsView({
             size={20}
             color={isFavorite ? colors.accent : colors.textTertiary}
           />
-        </Pressable>
+        </TactilePressable>
 
-        <Pressable android_ripple={ripple.bounded}
+        <TactilePressable android_ripple={ripple.bounded}
           onPress={onExitLyrics}
+          haptic="selection"
           hitSlop={10}
           style={styles.stripBtn}
           accessibilityLabel="Hide lyrics"
           accessibilityState={{ selected: true }}
         >
           <MaterialCommunityIcons name="script-text-outline" size={20} color={colors.accent} />
-        </Pressable>
+        </TactilePressable>
       </View>
 
       <LyricsBand
@@ -129,19 +133,19 @@ export function LyricsView({
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
-          <Pressable android_ripple={ripple.bounded} onPress={onPrev} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
+          <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="light" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} onPress={onPlayPause} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+          </TactilePressable>
+          <TactilePressable android_ripple={ripple.bounded} onPress={onPlayPause} haptic="light" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={28}
               color={colors.bgPrimary}
             />
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} onPress={onNext} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
+          </TactilePressable>
+          <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="light" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
-          </Pressable>
+          </TactilePressable>
         </View>
       </View>
     </View>

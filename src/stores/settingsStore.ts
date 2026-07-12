@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { openLibraryDb } from '@/db/database';
 import { getSetting, setSetting } from '@/db/queries';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
+import {
+  parseNowPlayingCompanion,
+  type NowPlayingCompanion,
+} from '@/components/player/nowPlayingPreferences';
 
 /**
  * Persisted app preferences. SQLite (settings table) is the source of truth — this
@@ -13,6 +17,7 @@ const INCLUDE_SINGLES_KEY = 'album_include_singles';
 const SCOPE_MODE_KEY = 'scope_mode';
 const SCOPE_STAGE_VISIBLE_KEY = 'scope_stage_visible';
 const LYRICS_VISIBLE_KEY = 'lyrics_visible';
+const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -37,6 +42,7 @@ interface SettingsStore {
   scopeStageVisible: boolean;
   /** Whether the now-playing top half shows lyrics instead of art/scope. */
   lyricsVisible: boolean;
+  nowPlayingCompanion: NowPlayingCompanion;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
@@ -44,6 +50,7 @@ interface SettingsStore {
   setScopeMode: (mode: ScopeMode) => Promise<void>;
   setScopeStageVisible: (visible: boolean) => Promise<void>;
   setLyricsVisible: (visible: boolean) => Promise<void>;
+  setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -52,17 +59,26 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   scopeMode: 'spectrum',
   scopeStageVisible: false,
   lyricsVisible: false,
+  nowPlayingCompanion: 'queue',
   loaded: false,
 
   load: async () => {
     if (get().loaded) return;
     const db = await openLibraryDb();
-    const [grouping, includeSingles, scope, scopeStageVisible, lyricsVisible] = await Promise.all([
+    const [
+      grouping,
+      includeSingles,
+      scope,
+      scopeStageVisible,
+      lyricsVisible,
+      nowPlayingCompanion,
+    ] = await Promise.all([
       getSetting(db, ARTIST_GROUPING_KEY),
       getSetting(db, INCLUDE_SINGLES_KEY),
       getSetting(db, SCOPE_MODE_KEY),
       getSetting(db, SCOPE_STAGE_VISIBLE_KEY),
       getSetting(db, LYRICS_VISIBLE_KEY),
+      getSetting(db, NOW_PLAYING_COMPANION_KEY),
     ]);
     set({
       artistGroupingMode: parseGroupingMode(grouping),
@@ -70,6 +86,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       scopeMode: parseScopeMode(scope),
       scopeStageVisible: parseBoolean(scopeStageVisible),
       lyricsVisible: parseBoolean(lyricsVisible),
+      nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
       loaded: true,
     });
   },
@@ -107,5 +124,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ lyricsVisible: visible });
     const db = await openLibraryDb();
     await setSetting(db, LYRICS_VISIBLE_KEY, visible ? 'true' : 'false');
+  },
+
+  setNowPlayingCompanion: async (companion) => {
+    if (get().nowPlayingCompanion === companion) return;
+    set({ nowPlayingCompanion: companion });
+    const db = await openLibraryDb();
+    await setSetting(db, NOW_PLAYING_COMPANION_KEY, companion);
   },
 }));

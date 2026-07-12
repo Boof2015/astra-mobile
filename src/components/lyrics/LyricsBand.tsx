@@ -18,6 +18,7 @@ import {
   getSyncedLyricsDisplayLines,
   getSyncedLyricsGapProgress,
   hasRenderableSyncedLines,
+  LYRICS_DISPLAY_LEAD_MS,
   resolveSyncedLyricsTiming,
 } from '@/lyrics/presentation';
 import { LyricsLine, type LyricsLineTier } from './LyricsLine';
@@ -29,7 +30,6 @@ const H_PADDING = 22;
 // The displayed active line lags the audio by a fixed pipeline delay (RNTP
 // position reporting + poll/smoothing) that the desktop doesn't have, so advance
 // the lyrics clock by this much. Tune to taste — bigger = earlier highlight.
-const LYRICS_LEAD_MS = 350;
 
 interface LyricsBandProps {
   track: Track;
@@ -61,7 +61,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
 
   const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
   // Lead the audio to counter display-pipeline lag (see LYRICS_LEAD_MS).
-  const lyricsTime = smoothTime + LYRICS_LEAD_MS / 1000;
+  const lyricsTime = smoothTime + LYRICS_DISPLAY_LEAD_MS / 1000;
   const result = entry?.result ?? null;
   const isLoading = entry?.loading ?? !entry;
 

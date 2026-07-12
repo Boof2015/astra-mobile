@@ -29,6 +29,8 @@ export function getLyricsPayloadSourceLabel(payload: LyricsPayload): string {
 
 export const LYRICS_INFERRED_GAP_THRESHOLD_MS = 10_000;
 export const LYRICS_POST_LINE_HOLD_MS = 4_000;
+/** Shared display compensation for the full lyrics view and compact lyric peek. */
+export const LYRICS_DISPLAY_LEAD_MS = 350;
 
 export interface RenderableSyncedLine {
   line: LyricsLine;
@@ -404,6 +406,18 @@ export function findActiveSyncedLineIndex(
   options: SyncedLyricsTimingOptions = {}
 ): number {
   return resolveSyncedLyricsTiming(lines, currentTimeSeconds, options).activeLineIndex;
+}
+
+/** The raw active lyric cue, or null while playback is in a neutral gap. */
+export function getActiveSyncedLyricsLine(
+  lines: LyricsLine[],
+  currentTimeSeconds: number,
+  options: SyncedLyricsTimingOptions = {}
+): LyricsLine | null {
+  const timing = resolveSyncedLyricsTiming(lines, currentTimeSeconds, options);
+  if (timing.isNeutral || timing.activeCueIndex < 0) return null;
+  const line = lines[timing.activeCueIndex] ?? null;
+  return line && isRenderableSyncedLine(line) ? line : null;
 }
 
 /**

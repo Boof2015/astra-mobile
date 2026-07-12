@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
   View,
@@ -14,6 +14,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming
@@ -32,15 +33,30 @@ import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
+import { TactilePressable } from '@/components/player/TactilePressable';
+import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
+import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
+import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
 import {
   radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
-import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
-import { resolveNavigationArtist } from '@/library/artistGrouping';
+import {
+  getNowPlayingLayout,
+  getTabletCompanionLayout,
+  NOW_PLAYING_CONTENT_BOTTOM_PADDING,
+  NOW_PLAYING_CONTENT_TOP_PADDING,
+  NOW_PLAYING_HEADER_HEIGHT,
+  NOW_PLAYING_PLAY_BUTTON_SIZE,
+  NOW_PLAYING_SUB_BUTTON_SIZE,
+  NOW_PLAYING_WAVEFORM_TOUCH_PADDING,
+  NOW_PLAYING_WIDE_PANE_GAP,
+} from '@/components/player/nowPlayingLayout';
+import { resolveNavigationArtist, splitCollaborators } from '@/library/artistGrouping';
+import { buildArtistNameTokens } from '@/shared/library/artistCredits';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
@@ -69,203 +85,24 @@ import {
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
 
-const MAX_CONTENT_WIDTH = 408;
-const CONTENT_SIDE_PADDING = spacing.lg;
-const NARROW_CONTENT_SIDE_PADDING = spacing.md;
-const MEDIA_AREA_MIN = 220;
-// Tablet-portrait tier: tall windows >= WIDE_MIN_WIDTH keep the single column but grow it.
-const TABLET_MAX_CONTENT_WIDTH = 520;
-const TABLET_ART_SIZE_MAX = 440;
-// Wide (landscape/desktop) tier: two panes, art left, controls right.
-const WIDE_MAX_CONTENT_WIDTH = 960;
-const WIDE_PANE_GAP = spacing.xxl;
-const WIDE_RIGHT_PANE_MIN = 300;
-const WIDE_RIGHT_PANE_MAX = MAX_CONTENT_WIDTH;
-const WIDE_ART_SIZE_MAX = 400;
-const WIDE_ART_SIZE_MIN = 160;
-const WIDE_COMPACT_HEIGHT = 480;
-const VISUALIZER_WIDTH_MAX = 448;
-const VISUALIZER_SIDE_PADDING = spacing.md;
-const VISUALIZER_TOP_GAP = spacing.lg;
-const VISUALIZER_BOTTOM_GAP = spacing.sm;
-const VISUALIZER_HEIGHT_MIN = 84;
-const VISUALIZER_HEIGHT_MAX = 108;
-const VISUALIZER_HEIGHT_RATIO = 0.28;
-const HEADER_HEIGHT = 32;
-const CONTENT_TOP_PADDING = spacing.sm;
-const CONTENT_BOTTOM_PADDING = spacing.lg;
-const MEDIA_TOP_MARGIN = spacing.lg;
-const MEDIA_BOTTOM_GAP = spacing.xl;
-const TRACK_INFO_ESTIMATE = 96;
-const WAVEFORM_HEIGHT = 58;
-const WAVEFORM_TOUCH_PADDING = spacing.md;
-const WAVEFORM_BLOCK_ESTIMATE = WAVEFORM_HEIGHT + WAVEFORM_TOUCH_PADDING * 2 + 24;
-const PLAY_BUTTON_SIZE = 68;
+const HEADER_HEIGHT = NOW_PLAYING_HEADER_HEIGHT;
+const CONTENT_TOP_PADDING = NOW_PLAYING_CONTENT_TOP_PADDING;
+const CONTENT_BOTTOM_PADDING = NOW_PLAYING_CONTENT_BOTTOM_PADDING;
+const WAVEFORM_TOUCH_PADDING = NOW_PLAYING_WAVEFORM_TOUCH_PADDING;
+const PLAY_BUTTON_SIZE = NOW_PLAYING_PLAY_BUTTON_SIZE;
 const SKIP_ICON_SIZE = 32;
 const PLAY_ICON_SIZE = 34;
-const TRANSPORT_TOP_MARGIN = spacing.lg;
-const SUB_BUTTON_SIZE = 40;
+const SUB_BUTTON_SIZE = NOW_PLAYING_SUB_BUTTON_SIZE;
 const SUB_ICON_SIZE = 20;
-const SUB_TOP_MARGIN = spacing.lg;
-const MIN_FLOATING_SPACE = spacing.sm;
 const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
-
-interface NowPlayingLayout {
-  isWide: boolean;
-  contentPadding: number;
-  contentWidth: number;
-  leftPaneWidth: number;
-  rightPaneWidth: number;
-  controlsGap: number;
-  trackInfoGap: number;
-  waveformHeight: number;
-  mediaStackHeight: number;
-  artSize: number;
-  scopeWidth: number;
-  scopeHeight: number;
-  visualizerTopGap: number;
-  visualizerBottomGap: number;
-  mediaTopMargin: number;
-  mediaBottomGap: number;
-}
 
 interface NowPlayingMenuItem {
   key: string;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getScopeHeight(scopeWidth: number): number {
-  return Math.round(
-    clamp(scopeWidth * VISUALIZER_HEIGHT_RATIO, VISUALIZER_HEIGHT_MIN, VISUALIZER_HEIGHT_MAX)
-  );
-}
-
-function getNowPlayingLayout(
-  availableWidth: number,
-  availableHeight: number,
-  showVisualizer: boolean
-): NowPlayingLayout {
-  const isWide = isWideWindow(availableWidth, availableHeight);
-
-  if (isWide) {
-    const contentPadding = CONTENT_SIDE_PADDING;
-    const contentWidth = Math.max(
-      0,
-      Math.min(availableWidth - contentPadding * 2, WIDE_MAX_CONTENT_WIDTH)
-    );
-    const rightPaneWidth = Math.round(
-      clamp(contentWidth * 0.46, WIDE_RIGHT_PANE_MIN, WIDE_RIGHT_PANE_MAX)
-    );
-    const leftPaneWidth = Math.max(0, contentWidth - WIDE_PANE_GAP - rightPaneWidth);
-    const scopeWidth = Math.min(leftPaneWidth, VISUALIZER_WIDTH_MAX);
-    const scopeHeight = getScopeHeight(scopeWidth);
-    const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;
-    const verticalBudget =
-      availableHeight - CONTENT_TOP_PADDING - CONTENT_BOTTOM_PADDING - HEADER_HEIGHT - spacing.md;
-    const artHeightBudget = verticalBudget - (showVisualizer ? scopeHeight + visualizerTopGap : 0);
-    const artSize = Math.round(
-      clamp(Math.min(leftPaneWidth, artHeightBudget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX)
-    );
-    const controlsGap = availableHeight < WIDE_COMPACT_HEIGHT ? spacing.sm : spacing.lg;
-    return {
-      isWide: true,
-      contentPadding,
-      contentWidth,
-      leftPaneWidth,
-      rightPaneWidth,
-      controlsGap,
-      trackInfoGap: spacing.md,
-      waveformHeight: WAVEFORM_HEIGHT,
-      mediaStackHeight: showVisualizer
-        ? artSize + visualizerTopGap + scopeHeight
-        : artSize,
-      artSize,
-      scopeWidth,
-      scopeHeight,
-      visualizerTopGap,
-      visualizerBottomGap: 0,
-      mediaTopMargin: 0,
-      mediaBottomGap: 0,
-    };
-  }
-
-  // Tall windows: single column. Tablet-width ones get a larger column and art cap.
-  const isTabletColumn = availableWidth >= WIDE_MIN_WIDTH;
-  const contentPadding =
-    availableWidth < 360 ? NARROW_CONTENT_SIDE_PADDING : CONTENT_SIDE_PADDING;
-  const maxContentWidth = isTabletColumn ? TABLET_MAX_CONTENT_WIDTH : MAX_CONTENT_WIDTH;
-  const contentWidth = Math.max(0, Math.min(availableWidth - contentPadding * 2, maxContentWidth));
-  const scopeWidth = Math.max(
-    0,
-    Math.min(availableWidth - VISUALIZER_SIDE_PADDING * 2, VISUALIZER_WIDTH_MAX)
-  );
-  const scopeHeight = getScopeHeight(scopeWidth);
-  // Art may grow to the full column width when the height budget allows it.
-  const mediaMax = Math.min(contentWidth, isTabletColumn ? TABLET_ART_SIZE_MAX : contentWidth);
-  const mediaMin = Math.min(mediaMax, MEDIA_AREA_MIN);
-  const mediaTopMargin = availableHeight < 680 ? spacing.md : MEDIA_TOP_MARGIN;
-  const defaultMediaBottomGap = availableHeight < 680 ? spacing.lg : MEDIA_BOTTOM_GAP;
-  const mediaBottomGap = defaultMediaBottomGap;
-  const fixedHeightBase =
-    CONTENT_TOP_PADDING +
-    CONTENT_BOTTOM_PADDING +
-    HEADER_HEIGHT +
-    mediaTopMargin +
-    TRACK_INFO_ESTIMATE +
-    WAVEFORM_BLOCK_ESTIMATE +
-    TRANSPORT_TOP_MARGIN +
-    PLAY_BUTTON_SIZE +
-    SUB_TOP_MARGIN +
-    SUB_BUTTON_SIZE +
-    MIN_FLOATING_SPACE;
-  // The Math.max(96, ...) floor lets art shrink below MEDIA_AREA_MIN in squat
-  // windows (split-screen halves) instead of pushing the controls off-screen.
-  const bound = availableHeight - fixedHeightBase - mediaBottomGap;
-  const scopeOffArt = Math.round(
-    clamp(bound, Math.min(mediaMin, Math.max(96, bound)), mediaMax)
-  );
-  // Roomy screens get a taller waveform; the rest of the spare space is
-  // distributed between the control rows by flex (space-between), so no
-  // height estimate error can pool as one gap above the controls.
-  const offSurplus = Math.max(0, bound - scopeOffArt);
-  const stretchUnit = Math.min(Math.floor(offSurplus / 5), spacing.md);
-  const waveformHeight = WAVEFORM_HEIGHT + stretchUnit * 2;
-  // The media stack keeps one locked height in both scope states — the scope
-  // steals its space from the art alone, so toggling it moves nothing else.
-  const scopeBlockHeight = VISUALIZER_TOP_GAP + scopeHeight + VISUALIZER_BOTTOM_GAP;
-  const mediaStackHeight = Math.max(scopeOffArt, 96 + scopeBlockHeight);
-  const scopeOnArt = mediaStackHeight - scopeBlockHeight;
-  const artSize = showVisualizer ? scopeOnArt : scopeOffArt;
-
-  const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;
-  const visualizerBottomGap = showVisualizer ? VISUALIZER_BOTTOM_GAP : 0;
-
-  return {
-    isWide: false,
-    contentPadding,
-    contentWidth,
-    leftPaneWidth: contentWidth,
-    rightPaneWidth: contentWidth,
-    controlsGap: TRANSPORT_TOP_MARGIN,
-    trackInfoGap: spacing.md,
-    waveformHeight,
-    mediaStackHeight,
-    artSize,
-    scopeWidth,
-    scopeHeight,
-    visualizerTopGap,
-    visualizerBottomGap,
-    mediaTopMargin,
-    mediaBottomGap,
-  };
 }
 
 export function NowPlayingOverlay() {
@@ -275,6 +112,7 @@ export function NowPlayingOverlay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const playerOpen = usePlayerUiStore((s) => s.playerOpen);
   const [queueOpen, setQueueOpen] = useState(false);
   // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
@@ -288,6 +126,8 @@ export function NowPlayingOverlay() {
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
   const lyricsVisible = useSettingsStore((s) => s.lyricsVisible);
   const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
+  const nowPlayingCompanion = useSettingsStore((s) => s.nowPlayingCompanion);
+  const setNowPlayingCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -319,11 +159,9 @@ export function NowPlayingOverlay() {
   });
   const isDesktopTarget = activePresentation.target === 'desktop';
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
+  const transitionTrackKey = isDesktopTarget ? activeTrack?.id ?? '' : track?.id ?? '';
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
-  // Lyrics mode takes over the whole phone-playback body (its own header + minimal
-  // controls); only for local playback, never the desktop-remote target.
-  const lyricsMode = !isDesktopTarget && !!track && lyricsVisible;
   // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
   // blur reads as pure colors — full-res art keeps its detail at any blur radius.
   // currentTrack only carries the full-size artworkData, so derive the thumb from it.
@@ -332,16 +170,30 @@ export function NowPlayingOverlay() {
   );
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
-  const layout = getNowPlayingLayout(
+  const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
     isDesktopTarget ? false : scopeStageVisible
   );
+  const tabletCompanionLayout = getTabletCompanionLayout(
+    effectiveWidth,
+    availableHeight,
+    isDesktopTarget ? false : scopeStageVisible
+  );
+  const hasTabletCompanion = tabletCompanionLayout !== null;
+  const lyricPeekEnabled = !isDesktopTarget && availableHeight >= 720;
+  const layout = tabletCompanionLayout?.playerLayout ?? standardLayout;
+  const contentPadding = tabletCompanionLayout ? spacing.lg : layout.contentPadding;
+  const shellWidth = tabletCompanionLayout?.shellWidth ?? layout.contentWidth;
+  // Lyrics takes over only on the phone. Roomy tablets keep the player visible
+  // and render lyrics in the companion rail.
+  const lyricsMode =
+    !hasTabletCompanion && !isDesktopTarget && !!track && lyricsVisible;
   const source = activePresentation.sourceLabel;
   const shellRight =
     insets.right +
-    layout.contentPadding +
-    Math.max(0, (effectiveWidth - layout.contentPadding * 2 - layout.contentWidth) / 2);
+    contentPadding +
+    Math.max(0, (effectiveWidth - contentPadding * 2 - shellWidth) / 2);
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
   const libraryTrack = useMemo(
     () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
@@ -353,15 +205,60 @@ export function NowPlayingOverlay() {
         artistGroupingMode
       )
     : '';
+  const artistCreditTokens = useMemo(() => {
+    if (!track) return [];
+    const collaborators = splitCollaborators(track.artist);
+    return buildArtistNameTokens(
+      collaborators.length > 0 ? collaborators : [track.artist]
+    );
+  }, [track]);
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 
-  const navigateToArtist = () => {
-    if (!artistName) return;
+  useEffect(() => {
+    if (!hasTabletCompanion || isDesktopTarget) return;
+    if (queueOpen) {
+      const frame = requestAnimationFrame(() => {
+        setQueueOpen(false);
+        void setNowPlayingCompanion('queue');
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    if (lyricsVisible) void setNowPlayingCompanion('lyrics');
+    return undefined;
+  }, [
+    isDesktopTarget,
+    lyricsVisible,
+    queueOpen,
+    setNowPlayingCompanion,
+    hasTabletCompanion,
+  ]);
+
+  const showLyrics = () => {
+    if (hasTabletCompanion) {
+      void setNowPlayingCompanion('lyrics');
+      return;
+    }
+    void setLyricsVisible(!lyricsVisible);
+  };
+
+  const showQueue = () => {
+    if (hasTabletCompanion) {
+      if (!isDesktopTarget) {
+        void setLyricsVisible(false);
+        void setNowPlayingCompanion('queue');
+      }
+      return;
+    }
+    setQueueOpen(true);
+  };
+
+  const navigateToArtist = (targetArtist = artistName, credit = false) => {
+    if (!targetArtist) return;
     // Slide the overlay away while the library detail loads underneath.
     dismissSheet();
     router.navigate({
       pathname: '/library/artist/[name]',
-      params: { name: artistName },
+      params: { name: targetArtist, ...(credit ? { credit: '1' } : {}) },
     });
   };
 
@@ -422,6 +319,13 @@ export function NowPlayingOverlay() {
   // sheet on the UI thread. Starts off-screen so a pre-warmed mount never flashes.
   const translateY = useSharedValue(windowHeight);
   const menuProgress = useSharedValue(0);
+  const trackProgress = useSharedValue(1);
+
+  useEffect(() => {
+    if (!transitionTrackKey) return;
+    trackProgress.value = 0;
+    trackProgress.value = withTiming(1, { ...motion.snap, duration: 200 });
+  }, [trackProgress, transitionTrackKey]);
   // Closing is a store toggle, not navigation. Reset the inner layers so a
   // reopen starts from the plain player (parity with the old per-open mount).
   const dismiss = () => {
@@ -530,6 +434,16 @@ export function NowPlayingOverlay() {
     transform: [{ translateY: MENU_ENTER_OFFSET_Y * (1 - menuProgress.value) }],
   }));
 
+  const artworkTransitionStyle = useAnimatedStyle(() => ({
+    opacity: 0.75 + trackProgress.value * 0.25,
+    transform: [{ scale: 0.985 + trackProgress.value * 0.015 }],
+  }));
+
+  const metadataTransitionStyle = useAnimatedStyle(() => ({
+    opacity: trackProgress.value,
+    transform: [{ translateY: 4 * (1 - trackProgress.value) }],
+  }));
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'auto' : 'none'}>
       <GestureDetector gesture={pan}>
@@ -538,8 +452,8 @@ export function NowPlayingOverlay() {
             styles.content,
             contentStyle,
             {
-              paddingLeft: insets.left + layout.contentPadding,
-              paddingRight: insets.right + layout.contentPadding,
+              paddingLeft: insets.left + contentPadding,
+              paddingRight: insets.right + contentPadding,
               paddingTop: insets.top + CONTENT_TOP_PADDING,
               paddingBottom: insets.bottom + CONTENT_BOTTOM_PADDING,
             },
@@ -549,11 +463,11 @@ export function NowPlayingOverlay() {
             artworkUri={washArtworkUri}
             offset={{
               top: -(insets.top + CONTENT_TOP_PADDING),
-              left: -(insets.left + layout.contentPadding),
-              right: -(insets.right + layout.contentPadding),
+              left: -(insets.left + contentPadding),
+              right: -(insets.right + contentPadding),
             }}
           />
-          <View style={[styles.shell, { width: layout.contentWidth }]}>
+          <View style={[styles.shell, { width: shellWidth }]}>
             {!lyricsMode && (
               <View style={styles.header}>
                 <View style={styles.headerSide}>
@@ -571,19 +485,46 @@ export function NowPlayingOverlay() {
                 </View>
                 <View style={[styles.headerSide, styles.headerActions]}>
                   {!isDesktopTarget && track ? (
-                    <Pressable
+                    <TactilePressable
                       style={styles.headerBtn} android_ripple={ripple.icon(22)}
-                      onPress={() => void setLyricsVisible(!lyricsVisible)}
+                      haptic="selection"
+                      onPress={showLyrics}
                       hitSlop={12}
-                      accessibilityLabel={lyricsVisible ? 'Hide lyrics' : 'Show lyrics'}
-                      accessibilityState={{ selected: lyricsVisible }}
+                      accessibilityLabel={
+                        hasTabletCompanion
+                          ? 'Show lyrics in companion'
+                          : lyricsVisible
+                            ? 'Hide lyrics'
+                            : 'Show lyrics'
+                      }
+                      accessibilityState={{
+                        selected: hasTabletCompanion
+                          ? nowPlayingCompanion === 'lyrics'
+                          : lyricsVisible,
+                      }}
                     >
-                      <MaterialCommunityIcons
-                        name="script-text-outline"
+                      <PlayerStateIcon
+                        selected={
+                          (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
+                          (!hasTabletCompanion && lyricsVisible)
+                        }
                         size={20}
-                        color={lyricsVisible ? colors.accent : colors.textSecondary}
+                        inactive={
+                          <MaterialCommunityIcons
+                            name="script-text-outline"
+                            size={20}
+                            color={colors.textSecondary}
+                          />
+                        }
+                        active={
+                          <MaterialCommunityIcons
+                            name="script-text-outline"
+                            size={20}
+                            color={colors.accent}
+                          />
+                        }
                       />
-                    </Pressable>
+                    </TactilePressable>
                   ) : null}
                   <Pressable
                     style={styles.headerBtn} android_ripple={ripple.icon(22)}
@@ -597,6 +538,19 @@ export function NowPlayingOverlay() {
               </View>
             )}
 
+            <View style={[styles.playerBody, hasTabletCompanion && styles.playerBodyTablet]}>
+              <View
+                style={[
+                  styles.playerRegion,
+                  hasTabletCompanion && styles.playerRegionTablet,
+                  tabletCompanionLayout
+                    ? {
+                        width: tabletCompanionLayout.playerRegionWidth,
+                      }
+                    : null,
+                ]}
+              >
+                <View style={[styles.playerCanvas, { width: layout.contentWidth }]}>
             {lyricsMode && track ? (
               <LyricsView
                 track={track}
@@ -627,9 +581,10 @@ export function NowPlayingOverlay() {
                           },
                     ]}
                   >
-                    <View
+                    <Animated.View
                       style={[
                         styles.artCard,
+                        artworkTransitionStyle,
                         {
                           width: layout.artSize,
                           height: layout.artSize,
@@ -638,15 +593,15 @@ export function NowPlayingOverlay() {
                     >
                       {activePresentation.artworkUri ? (
                         <Image
-                          key={activeTrack.id}
                           source={{ uri: activePresentation.artworkUri }}
                           style={styles.artImage}
                           contentFit="cover"
+                          transition={reduceMotion ? null : 200}
                         />
                       ) : (
                         <AstraLogo size={Math.round(layout.artSize * 0.4)} />
                       )}
-                    </View>
+                    </Animated.View>
                   </View>
 
                   <View
@@ -655,9 +610,16 @@ export function NowPlayingOverlay() {
                       layout.isWide
                         ? { width: layout.rightPaneWidth }
                         : styles.playerControlsFill,
-                    ]}
-                  >
-                    <View style={[styles.trackInfo, { marginBottom: layout.trackInfoGap }]}>
+                  ]}
+                >
+                    <View style={styles.primaryControls}>
+                    <Animated.View
+                      style={[
+                        styles.trackInfo,
+                        { marginBottom: layout.trackInfoGap },
+                        metadataTransitionStyle,
+                      ]}
+                    >
                       <View style={styles.trackTextStack}>
                         <MarqueeText
                           variant="heading"
@@ -670,20 +632,35 @@ export function NowPlayingOverlay() {
                           {activeTrack.artist || activeTrack.album || activePresentation.deviceLabel}
                         </MarqueeText>
                       </View>
-                      <Pressable
+                      <TactilePressable
                         hitSlop={10}
                         style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
+                        haptic="light"
+                        confirmationScale={1.08}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
                         accessibilityLabel={activeTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                         accessibilityState={{ selected: activeTrack.isFavorite }}
                       >
-                        <Ionicons
-                          name={activeTrack.isFavorite ? 'heart' : 'heart-outline'}
+                        <PlayerStateIcon
+                          selected={activeTrack.isFavorite}
                           size={SUB_ICON_SIZE + 4}
-                          color={activeTrack.isFavorite ? colors.accent : colors.textTertiary}
+                          inactive={
+                            <Ionicons
+                              name="heart-outline"
+                              size={SUB_ICON_SIZE + 4}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <Ionicons
+                              name="heart"
+                              size={SUB_ICON_SIZE + 4}
+                              color={colors.accent}
+                            />
+                          }
                         />
-                      </Pressable>
-                    </View>
+                      </TactilePressable>
+                    </Animated.View>
 
                     <SeekBar
                       currentTime={activePresentation.currentTime}
@@ -693,7 +670,7 @@ export function NowPlayingOverlay() {
                     />
 
                     <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
-                      <Pressable
+                      <TactilePressable
                         hitSlop={10}
                         android_ripple={ripple.icon(24)}
                         style={[
@@ -701,18 +678,25 @@ export function NowPlayingOverlay() {
                           desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
                         ]}
                         disabled={desktopSnapshot?.shuffle === undefined}
+                        haptic="selection"
                         onPress={() => void sendDesktopControl('toggle-shuffle')}
                         accessibilityLabel="Shuffle"
                         accessibilityState={{ selected: Boolean(desktopSnapshot?.shuffle) }}
                       >
-                        <Ionicons
-                          name="shuffle"
+                        <PlayerStateIcon
+                          selected={Boolean(desktopSnapshot?.shuffle)}
                           size={SUB_ICON_SIZE + 2}
-                          color={desktopSnapshot?.shuffle ? colors.accent : colors.textTertiary}
+                          inactive={
+                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                          }
+                          active={
+                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                          }
                         />
-                      </Pressable>
-                      <Pressable
+                      </TactilePressable>
+                      <TactilePressable
                         onPress={() => void sendDesktopControl('previous')}
+                        haptic="light"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Previous"
@@ -722,9 +706,11 @@ export function NowPlayingOverlay() {
                           size={SKIP_ICON_SIZE}
                           color={colors.textPrimary}
                         />
-                      </Pressable>
-                      <Pressable
+                      </TactilePressable>
+                      <TactilePressable
                         onPress={() => void sendDesktopControl(isPlaying ? 'pause' : 'play')}
+                        haptic="light"
+                        pressedScale={0.97}
                         hitSlop={12}
                         style={styles.playButton} android_ripple={ripple.onAccent()}
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
@@ -734,9 +720,10 @@ export function NowPlayingOverlay() {
                           size={PLAY_ICON_SIZE}
                           color={colors.bgPrimary}
                         />
-                      </Pressable>
-                      <Pressable
+                      </TactilePressable>
+                      <TactilePressable
                         onPress={() => void sendDesktopControl('next')}
+                        haptic="light"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Next"
@@ -746,8 +733,8 @@ export function NowPlayingOverlay() {
                           size={SKIP_ICON_SIZE}
                           color={colors.textPrimary}
                         />
-                      </Pressable>
-                      <Pressable
+                      </TactilePressable>
+                      <TactilePressable
                         hitSlop={10}
                         android_ripple={ripple.icon(24)}
                         style={[
@@ -755,27 +742,39 @@ export function NowPlayingOverlay() {
                           desktopSnapshot?.repeat === undefined && styles.controlDisabled,
                         ]}
                         disabled={desktopSnapshot?.repeat === undefined}
+                        haptic="selection"
                         onPress={() => void sendDesktopControl('toggle-repeat')}
                         accessibilityLabel="Repeat"
                         accessibilityState={{ selected: desktopSnapshot?.repeat !== 'none' }}
                       >
-                        {desktopSnapshot?.repeat === 'one' ? (
-                          <MaterialCommunityIcons
-                            name="repeat-once"
-                            size={SUB_ICON_SIZE + 2}
-                            color={colors.accent}
-                          />
-                        ) : (
-                          <Ionicons
-                            name="repeat"
-                            size={SUB_ICON_SIZE + 2}
-                            color={desktopSnapshot?.repeat === 'all' ? colors.accent : colors.textTertiary}
-                          />
-                        )}
-                      </Pressable>
+                        <PlayerStateIcon
+                          selected={desktopSnapshot?.repeat !== 'none'}
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                          }
+                          active={desktopSnapshot?.repeat === 'one' ? (
+                            <MaterialCommunityIcons
+                              name="repeat-once"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          ) : (
+                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                          )}
+                        />
+                      </TactilePressable>
+                    </View>
                     </View>
 
-                    <View style={[styles.subRow, { marginTop: layout.controlsGap }]}>
+                    <View
+                      style={[
+                        styles.subRow,
+                        layout.isWide
+                          ? { marginTop: layout.controlsGap }
+                          : styles.utilityFooter,
+                      ]}
+                    >
                       <View style={styles.statusPill}>
                         <View
                           style={[
@@ -800,23 +799,24 @@ export function NowPlayingOverlay() {
                           (desktopConnection ? hostFromBaseUrl(desktopConnection.baseUrl) : '')}
                       </Text>
                       <View style={styles.subActions}>
-                        <Pressable
+                        <TactilePressable
                           hitSlop={10}
                           style={styles.subBtn} android_ripple={ripple.icon(20)}
                           onPress={() => void reconnectDesktop()}
                           accessibilityLabel="Reconnect to desktop"
                         >
                           <Ionicons name="refresh" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                        </Pressable>
+                        </TactilePressable>
                         {desktopQueue ? (
-                          <Pressable
+                          <TactilePressable
                             hitSlop={10}
                             style={styles.subBtn} android_ripple={ripple.icon(20)}
-                            onPress={() => setQueueOpen(true)}
+                            haptic="selection"
+                            onPress={showQueue}
                             accessibilityLabel="Desktop queue"
                           >
                             <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                          </Pressable>
+                          </TactilePressable>
                         ) : null}
                       </View>
                     </View>
@@ -865,9 +865,10 @@ export function NowPlayingOverlay() {
                         },
                   ]}
                 >
-                  <View
+                  <Animated.View
                     style={[
                       styles.artButton,
+                      artworkTransitionStyle,
                       {
                         width: layout.artSize,
                         height: layout.artSize,
@@ -885,16 +886,16 @@ export function NowPlayingOverlay() {
                     >
                       {track.artworkData ? (
                         <Image
-                          key={track.id}
                           source={{ uri: track.artworkData }}
                           style={styles.artImage}
                           contentFit="cover"
+                          transition={reduceMotion ? null : 200}
                         />
                       ) : (
                         <AstraLogo size={Math.round(layout.artSize * 0.4)} />
                       )}
                     </View>
-                  </View>
+                  </Animated.View>
 
                   {scopeStageVisible && (
                     <View
@@ -917,12 +918,13 @@ export function NowPlayingOverlay() {
                         edgeFade
                         paused={!playerOpen || queueOpen}
                       />
-                      <Pressable
+                      <TactilePressable
                         onPress={() =>
                           useSettingsStore
                             .getState()
                             .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum')
                         }
+                        haptic="selection"
                         hitSlop={12}
                         style={styles.scopeSwap} android_ripple={ripple.icon(24)}
                         accessibilityRole="button"
@@ -934,7 +936,7 @@ export function NowPlayingOverlay() {
                           {scopeMode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
                         </Text>
                         <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
-                      </Pressable>
+                      </TactilePressable>
                     </View>
                   )}
                 </View>
@@ -947,141 +949,228 @@ export function NowPlayingOverlay() {
                       : styles.playerControlsFill,
                   ]}
                 >
-                  <View style={[styles.trackInfo, { marginBottom: layout.trackInfoGap }]}>
-                    <View style={styles.trackTextStack}>
-                      <MarqueeText
-                        variant="heading"
-                        containerStyle={styles.trackTitle}
-                        style={styles.trackTitleText}
-                      >
-                        {track.title}
-                      </MarqueeText>
-                      <View style={styles.trackMetaRow}>
-                        <Pressable
-                          onPress={navigateToArtist}
-                          hitSlop={6}
-                          style={styles.artistButton} android_ripple={ripple.bounded}
-                          accessibilityRole="link"
-                          accessibilityLabel={`View artist ${track.artist}`}
+                  <View style={styles.primaryControls}>
+                    {lyricPeekEnabled ? (
+                      <CachedLyricPeek
+                        track={track}
+                        active={playerOpen && !queueOpen}
+                        hidden={
+                          hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                        }
+                        onOpenLyrics={showLyrics}
+                      />
+                    ) : null}
+                    <Animated.View
+                      style={[
+                        styles.trackInfo,
+                        { marginBottom: layout.trackInfoGap },
+                        metadataTransitionStyle,
+                      ]}
+                    >
+                      <View style={styles.trackTextStack}>
+                        <MarqueeText
+                          variant="heading"
+                          containerStyle={styles.trackTitle}
+                          style={styles.trackTitleText}
                         >
-                          <MarqueeText variant="body" style={styles.artist}>
-                            {track.artist}
-                          </MarqueeText>
-                        </Pressable>
+                          {track.title}
+                        </MarqueeText>
+                        <View style={styles.trackMetaRow}>
+                          {artistCreditTokens.map(({ artist, separator }) => (
+                            <Fragment key={artist}>
+                              <Pressable
+                                onPress={() => navigateToArtist(artist, true)}
+                                hitSlop={4}
+                                style={styles.artistCreditButton}
+                                android_ripple={ripple.bounded}
+                                accessibilityRole="link"
+                                accessibilityLabel={`View artist ${artist}`}
+                              >
+                                <Text variant="body" style={styles.artist}>
+                                  {artist}
+                                </Text>
+                              </Pressable>
+                              {separator ? (
+                                <Text variant="body" style={styles.artistSeparator}>
+                                  {separator}
+                                </Text>
+                              ) : null}
+                            </Fragment>
+                          ))}
+                        </View>
                       </View>
-                    </View>
-                    <Pressable
-                      hitSlop={10}
-                      style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
-                      onPress={() => void toggleFavorite(track)}
-                      accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                      accessibilityState={{ selected: isFavorite }}
-                    >
-                      <Ionicons
-                        name={isFavorite ? 'heart' : 'heart-outline'}
-                        size={SUB_ICON_SIZE + 4}
-                        color={isFavorite ? colors.accent : colors.textTertiary}
-                      />
-                    </Pressable>
-                  </View>
-
-                  <WaveformSeekBar
-                    active={playerOpen}
-                    height={layout.waveformHeight}
-                    touchPadding={WAVEFORM_TOUCH_PADDING}
-                    trackPath={track.path}
-                    onSeek={(seconds) => void seekTo(seconds)}
-                  />
-
-                  <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
-                    <Pressable
-                      hitSlop={10}
-                      style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
-                      onPress={() => void toggleShuffle()}
-                      accessibilityLabel="Shuffle"
-                      accessibilityState={{ selected: shuffle }}
-                    >
-                      <Ionicons
-                        name="shuffle"
-                        size={SUB_ICON_SIZE + 2}
-                        color={shuffle ? colors.accent : colors.textTertiary}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={skipToPrevious}
-                      hitSlop={12}
-                      style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
-                    >
-                      <Ionicons
-                        name="play-skip-back"
-                        size={SKIP_ICON_SIZE}
-                        color={colors.textPrimary}
-                      />
-                    </Pressable>
-                    <Pressable onPress={togglePlay} hitSlop={12} style={styles.playButton} android_ripple={ripple.onAccent()}>
-                      <Ionicons
-                        name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                        size={PLAY_ICON_SIZE}
-                        color={colors.bgPrimary}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={skipToNext}
-                      hitSlop={12}
-                      style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
-                    >
-                      <Ionicons
-                        name="play-skip-forward"
-                        size={SKIP_ICON_SIZE}
-                        color={colors.textPrimary}
-                      />
-                    </Pressable>
-                    <Pressable
-                      hitSlop={10}
-                      style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
-                      onPress={() => void cycleRepeat()}
-                      accessibilityLabel="Repeat"
-                      accessibilityState={{ selected: repeat !== 'none' }}
-                    >
-                      {repeat === 'one' ? (
-                        <MaterialCommunityIcons
-                          name="repeat-once"
-                          size={SUB_ICON_SIZE + 2}
-                          color={colors.accent}
+                      <TactilePressable
+                        hitSlop={10}
+                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
+                        haptic="light"
+                        confirmationScale={1.08}
+                        onPress={() => void toggleFavorite(track)}
+                        accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        accessibilityState={{ selected: isFavorite }}
+                      >
+                        <PlayerStateIcon
+                          selected={isFavorite}
+                          size={SUB_ICON_SIZE + 4}
+                          inactive={
+                            <Ionicons
+                              name="heart-outline"
+                              size={SUB_ICON_SIZE + 4}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <Ionicons
+                              name="heart"
+                              size={SUB_ICON_SIZE + 4}
+                              color={colors.accent}
+                            />
+                          }
                         />
-                      ) : (
+                      </TactilePressable>
+                    </Animated.View>
+
+                    <WaveformSeekBar
+                      active={playerOpen}
+                      height={layout.waveformHeight}
+                      touchPadding={WAVEFORM_TOUCH_PADDING}
+                      trackPath={track.path}
+                      onSeek={(seconds) => void seekTo(seconds)}
+                    />
+
+                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                      <TactilePressable
+                        hitSlop={10}
+                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        haptic="selection"
+                        onPress={() => void toggleShuffle()}
+                        accessibilityLabel="Shuffle"
+                        accessibilityState={{ selected: shuffle }}
+                      >
+                        <PlayerStateIcon
+                          selected={shuffle}
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                          }
+                          active={
+                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                          }
+                        />
+                      </TactilePressable>
+                      <TactilePressable
+                        onPress={skipToPrevious}
+                        haptic="light"
+                        hitSlop={12}
+                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        accessibilityLabel="Previous"
+                      >
                         <Ionicons
-                          name="repeat"
-                          size={SUB_ICON_SIZE + 2}
-                          color={repeat === 'all' ? colors.accent : colors.textTertiary}
+                          name="play-skip-back"
+                          size={SKIP_ICON_SIZE}
+                          color={colors.textPrimary}
                         />
-                      )}
-                    </Pressable>
+                      </TactilePressable>
+                      <TactilePressable
+                        onPress={togglePlay}
+                        haptic="light"
+                        pressedScale={0.97}
+                        hitSlop={12}
+                        style={styles.playButton}
+                        android_ripple={ripple.onAccent()}
+                        accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+                      >
+                        <Ionicons
+                          name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+                          size={PLAY_ICON_SIZE}
+                          color={colors.bgPrimary}
+                        />
+                      </TactilePressable>
+                      <TactilePressable
+                        onPress={skipToNext}
+                        haptic="light"
+                        hitSlop={12}
+                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        accessibilityLabel="Next"
+                      >
+                        <Ionicons
+                          name="play-skip-forward"
+                          size={SKIP_ICON_SIZE}
+                          color={colors.textPrimary}
+                        />
+                      </TactilePressable>
+                      <TactilePressable
+                        hitSlop={10}
+                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        haptic="selection"
+                        onPress={() => void cycleRepeat()}
+                        accessibilityLabel="Repeat"
+                        accessibilityState={{ selected: repeat !== 'none' }}
+                      >
+                        <PlayerStateIcon
+                          selected={repeat !== 'none'}
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                          }
+                          active={repeat === 'one' ? (
+                            <MaterialCommunityIcons
+                              name="repeat-once"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          ) : (
+                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                          )}
+                        />
+                      </TactilePressable>
+                    </View>
                   </View>
 
-                  <View style={[styles.subRow, { marginTop: layout.controlsGap }]}>
+                  <View
+                    style={[
+                      styles.subRow,
+                      layout.isWide
+                        ? { marginTop: layout.controlsGap }
+                        : styles.utilityFooter,
+                    ]}
+                  >
                     <View style={styles.subBadges}>
                       <RemoteSourceBadge sourceType={track.sourceType} />
-                      <FormatBadges track={track} wrap={false} />
+                      <FormatBadges track={track} wrap={false} variant="plain" />
                     </View>
                     <View style={styles.subActions}>
-                      <Pressable
+                      <TactilePressable
                         hitSlop={10}
                         style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        haptic="selection"
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
                         accessibilityState={{ selected: scopeStageVisible }}
                       >
-                        <MaterialCommunityIcons
-                          name="sine-wave"
+                        <PlayerStateIcon
+                          selected={scopeStageVisible}
                           size={SUB_ICON_SIZE + 2}
-                          color={scopeStageVisible ? colors.accent : colors.textTertiary}
+                          inactive={
+                            <MaterialCommunityIcons
+                              name="sine-wave"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <MaterialCommunityIcons
+                              name="sine-wave"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          }
                         />
-                      </Pressable>
-                      <Pressable
+                      </TactilePressable>
+                      <TactilePressable
                         hitSlop={10}
                         style={styles.subBtn} android_ripple={ripple.icon(20)}
-                        onPress={() => setQueueOpen(true)}
+                        haptic="selection"
+                        onPress={showQueue}
                         accessibilityLabel="Queue"
                       >
                         <Ionicons
@@ -1089,7 +1178,7 @@ export function NowPlayingOverlay() {
                           size={SUB_ICON_SIZE + 2}
                           color={colors.textTertiary}
                         />
-                      </Pressable>
+                      </TactilePressable>
                     </View>
                   </View>
                 </View>
@@ -1102,6 +1191,23 @@ export function NowPlayingOverlay() {
                 </Text>
               </View>
             )}
+                </View>
+              </View>
+              {tabletCompanionLayout ? (
+                <View
+                  style={[
+                    styles.companionRegion,
+                    { width: tabletCompanionLayout.companionWidth },
+                  ]}
+                >
+                  <NowPlayingCompanionPane
+                    active={playerOpen}
+                    desktopTarget={isDesktopTarget}
+                    track={track}
+                  />
+                </View>
+              ) : null}
+            </View>
           </View>
         </Animated.View>
       </GestureDetector>
@@ -1141,7 +1247,7 @@ export function NowPlayingOverlay() {
         initialStep="pickPlaylist"
         onClose={() => setPlaylistActionTrack(null)}
       />
-      {queueOpen && (
+      {queueOpen && !hasTabletCompanion && (
         isDesktopTarget ? (
           <RemoteQueueSheet onClose={closeQueue} />
         ) : (
@@ -1169,6 +1275,39 @@ const useStyles = createThemedStyles((colors) => ({
   },
   shell: {
     flex: 1,
+  },
+  playerBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  playerBodyTablet: {
+    position: 'relative',
+  },
+  playerRegion: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  playerRegionTablet: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  playerCanvas: {
+    flex: 1,
+    minHeight: 0,
+  },
+  companionRegion: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 0,
   },
   header: {
     height: HEADER_HEIGHT,
@@ -1248,7 +1387,7 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    columnGap: WIDE_PANE_GAP,
+    columnGap: NOW_PLAYING_WIDE_PANE_GAP,
   },
   middleStack: {
     width: '100%',
@@ -1313,14 +1452,15 @@ const useStyles = createThemedStyles((colors) => ({
   trackMetaRow: {
     alignSelf: 'stretch',
     flexDirection: 'row',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  artistButton: {
-    flex: 1,
-    minWidth: 0,
+  artistCreditButton: {
+    alignSelf: 'flex-start',
+  },
+  artistSeparator: {
+    color: colors.textTertiary,
   },
   centered: {
     textAlign: 'center',
@@ -1333,7 +1473,13 @@ const useStyles = createThemedStyles((colors) => ({
   },
   playerControlsFill: {
     flex: 1,
-    justifyContent: 'space-between',
+  },
+  primaryControls: {
+    width: '100%',
+  },
+  utilityFooter: {
+    marginTop: 'auto',
+    paddingTop: spacing.lg,
   },
   transport: {
     flexDirection: 'row',
