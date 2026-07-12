@@ -16,6 +16,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 
 export function AppSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const styles = useStyles();
@@ -95,12 +96,14 @@ export function AppSheetItem({
 }: AppSheetItemProps) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const tint = destructive ? colors.warning : selected ? colors.accentTextStrong : colors.textPrimary;
 
   return (
     <View style={styles.itemRow}>
       <Pressable
-        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+        android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        style={styles.item}
         onPress={onPress}
         accessibilityRole="button"
       >
@@ -155,9 +158,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
-  },
-  itemPressed: {
-    opacity: 0.6,
   },
   itemLabel: {
     flex: 1,

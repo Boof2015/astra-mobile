@@ -11,14 +11,16 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () => void }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const artUri = albumArtworkSource(album);
   return (
-    <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.item} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {artUri ? (
           <Image

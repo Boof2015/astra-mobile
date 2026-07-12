@@ -36,6 +36,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
@@ -60,6 +61,7 @@ function FolderRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const { node, depth, isExpanded } = row;
 
   const play = (event: GestureResponderEvent) => {
@@ -73,7 +75,8 @@ function FolderRow({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.folderRow, pressed && styles.rowPressed]}
+      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={styles.folderRow}
       onPress={() => onToggle(node.id)}
       onLongPress={() => onOpenActions(node)}
       accessibilityRole="button"
@@ -104,7 +107,8 @@ function FolderRow({
         {node.totalTrackCount}
       </Text>
       <Pressable
-        style={({ pressed }) => [styles.folderButton, pressed && styles.folderButtonPressed]}
+        android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        style={styles.folderButton}
         onPress={play}
         hitSlop={6}
         accessibilityRole="button"
@@ -113,7 +117,8 @@ function FolderRow({
         <Ionicons name="play" size={16} color={colors.accent} />
       </Pressable>
       <Pressable
-        style={({ pressed }) => [styles.folderButton, pressed && styles.folderButtonPressed]}
+        android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        style={styles.folderButton}
         onPress={shuffle}
         hitSlop={6}
         accessibilityRole="button"
@@ -136,6 +141,7 @@ function FolderTrackRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
 
   const playFolderTrack = () => {
@@ -148,11 +154,8 @@ function FolderTrackRow({
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.trackRow,
-        active && styles.trackRowActive,
-        pressed && styles.rowPressed,
-      ]}
+      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={[styles.trackRow, active && styles.trackRowActive]}
       onPress={playFolderTrack}
       onLongPress={onOpenActions}
       accessibilityRole="button"
@@ -171,7 +174,8 @@ function FolderTrackRow({
         {formatDuration(row.track.duration)}
       </Text>
       <Pressable
-        style={({ pressed }) => [styles.actionsButton, pressed && styles.actionsButtonPressed]}
+        android_ripple={ripple.icon(21)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        style={styles.actionsButton}
         onPress={openActions}
         hitSlop={8}
         accessibilityRole="button"
@@ -347,9 +351,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  folderButtonPressed: {
-    backgroundColor: colors.glassBg,
-  },
   trackRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -361,9 +362,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   trackRowActive: {
     backgroundColor: colors.accentGlow,
-  },
-  rowPressed: {
-    opacity: 0.72,
   },
   trackMeta: {
     flex: 1,
@@ -389,9 +387,6 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionsButtonPressed: {
-    backgroundColor: colors.glassBg,
   },
   empty: {
     flex: 1,

@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore, type PlaybackTarget } from '@/stores/playbackTargetStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -118,9 +119,11 @@ function TargetRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      android_ripple={ripple.bounded}
+      style={styles.row}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
@@ -175,9 +178,6 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  rowPressed: {
-    opacity: 0.65,
   },
   iconWrap: {
     width: 40,

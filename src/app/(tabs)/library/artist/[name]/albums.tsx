@@ -12,12 +12,14 @@ import { Text } from '@/components/Text';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildArtistDetail } from '@/library/artistDetail';
 
 export default function ArtistAlbumsScreen() {
   const colors = useColors();
+  const ripple = useRipple();
   const router = useRouter();
   const { name = 'Artist' } = useLocalSearchParams<{ name: string }>();
   const allTracks = useLibraryStore((s) => s.tracks);
@@ -30,7 +32,7 @@ export default function ArtistAlbumsScreen() {
 
   return (
     <Screen>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
           {name}

@@ -10,9 +10,11 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 
 export function EmptyLibrary() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
 
@@ -25,7 +27,7 @@ export function EmptyLibrary() {
       <Text variant="body" color={colors.textSecondary} style={styles.body}>
         Pick a folder on this device and Astra will scan it into your library.
       </Text>
-      <Pressable style={styles.cta} onPress={() => router.push('/settings')} accessibilityRole="button">
+      <Pressable android_ripple={ripple.bounded} style={styles.cta} onPress={() => router.push('/settings')} accessibilityRole="button">
         <Ionicons name="folder-open-outline" size={18} color={colors.bgPrimary} />
         <Text variant="body" style={styles.ctaLabel}>
           Folder settings

@@ -17,6 +17,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { formatDuration } from '@/lib/format';
 import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -60,6 +61,7 @@ export function TrackRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   // Key the artwork by hash (local) or identity path (remote) so the error fallback
   // and FlashList recycling work for both.
   const artKey = track.source_type !== 'local' ? track.path : track.artwork_hash;
@@ -74,6 +76,7 @@ export function TrackRow({
 
   const row = (
     <Pressable
+      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.row, selectionMode && selected && styles.rowSelected]}
       onPress={selectionMode ? onToggleSelect : onPress}
       onLongPress={selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions)}
@@ -143,7 +146,8 @@ export function TrackRow({
 
       {onOpenActions && !selectionMode ? (
         <Pressable
-          style={({ pressed }) => [styles.actionsButton, pressed && styles.actionsButtonPressed]}
+          android_ripple={ripple.icon(ACTIONS_BUTTON / 2 + 4)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          style={styles.actionsButton}
           onPress={openActions}
           hitSlop={8}
           accessibilityRole="button"
@@ -256,8 +260,5 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionsButtonPressed: {
-    backgroundColor: colors.glassBg,
   },
 }));

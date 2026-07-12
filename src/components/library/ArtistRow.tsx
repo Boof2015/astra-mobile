@@ -11,14 +11,16 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { artworkUri } from '@/library/artwork';
 import type { Artist } from '@/types/library';
 
 export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
-    <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {artist.artwork_hash ? (
           <Image

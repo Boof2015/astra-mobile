@@ -16,6 +16,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { requestLastFmFlush } from '@/services/lastfm';
 import type { LastFmProfileStatus } from '@/types/lastFm';
@@ -45,6 +46,7 @@ function customStatusLine(profile: LastFmProfileStatus): { text: string; tone: '
 
 export default function LastFmScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const status = useLastFmSettingsStore((s) => s.status);
@@ -125,7 +127,7 @@ export default function LastFmScreen() {
                 {profile.username}
               </Text>
             ) : null}
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               onPress={() => confirmDisconnect(profile)}
               hitSlop={8}
               accessibilityLabel="Disconnect Last.fm"
@@ -134,7 +136,7 @@ export default function LastFmScreen() {
             </Pressable>
           </View>
         ) : (
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             style={styles.connectButton}
             onPress={() => connectOfficial(profile)}
             accessibilityRole="button"
@@ -152,7 +154,7 @@ export default function LastFmScreen() {
   const renderCustom = (profile: LastFmProfileStatus) => {
     const line = customStatusLine(profile);
     return (
-      <Pressable
+      <Pressable android_ripple={ripple.bounded}
         key={profile.id}
         style={styles.row}
         onPress={() => router.push({ pathname: '/lastfm/edit', params: { id: profile.id } })}
@@ -195,13 +197,13 @@ export default function LastFmScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Settings
           </Text>
         </Pressable>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           onPress={() => router.push('/lastfm/edit')}
           hitSlop={8}
           accessibilityLabel="Add destination"
@@ -249,7 +251,7 @@ export default function LastFmScreen() {
         ) : null}
 
         {status && status.pendingScrobbles > 0 ? (
-          <Pressable style={styles.retryButton} onPress={() => requestLastFmFlush()}>
+          <Pressable android_ripple={ripple.bounded} style={styles.retryButton} onPress={() => requestLastFmFlush()}>
             <Ionicons name="sync" size={16} color={colors.accentText} />
             <Text variant="label" color={colors.accentText}>
               Retry {status.pendingScrobbles} queued now
@@ -271,7 +273,7 @@ export default function LastFmScreen() {
           )}
         </View>
 
-        <Pressable style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
+        <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
           <Ionicons name="add" size={18} color={colors.accentTextStrong} />
           <Text variant="body" color={colors.accentTextStrong}>
             Add destination

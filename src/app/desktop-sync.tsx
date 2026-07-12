@@ -20,6 +20,7 @@ import { Text } from '@/components/Text';
 import { SyncConflictDetails } from '@/components/sync/SyncConflictDetails';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { formatRelativeTime } from '@/lib/format';
 import { getDesktopRemoteConnection } from '@/services/desktopRemoteCredentials';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
@@ -67,6 +68,7 @@ function ConflictCard({
   onResolve: (resolution: DesktopSyncConflictResolution) => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const [selectedResolution, setSelectedResolution] = useState<DesktopSyncConflictResolution | null>(null);
   const desktopSnapshot = syncPlaylistToSnapshot(conflict.remote);
@@ -85,7 +87,7 @@ function ConflictCard({
       </Text>
       <View style={styles.conflictActions}>
         {options.map((resolution) => (
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             key={resolution}
             style={[
               styles.conflictBtn,
@@ -114,7 +116,7 @@ function ConflictCard({
         previewResolution={selectedResolution}
       />
       <View style={styles.conflictConfirmRow}>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
           disabled={!selectedResolution || busy}
           onPress={() => selectedResolution ? onResolve(selectedResolution) : undefined}
@@ -130,6 +132,7 @@ function ConflictCard({
 
 export default function DesktopSyncScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const status = useDesktopSyncStore((s) => s.status);
@@ -172,7 +175,7 @@ export default function DesktopSyncScreen() {
   return (
     <Screen>
       <View style={styles.topBar}>
-        <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Settings
@@ -201,7 +204,7 @@ export default function DesktopSyncScreen() {
               Sync uses the same pairing as the Desktop Remote. Pair this phone with Astra Desktop
               once and both features work.
             </Text>
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               style={styles.primaryButton}
               onPress={() => router.push('/desktop-remote' as never)}
             >
@@ -225,7 +228,7 @@ export default function DesktopSyncScreen() {
                         : 'Not synced yet'}
                   </Text>
                 </View>
-                <Pressable
+                <Pressable android_ripple={ripple.bounded}
                   style={[styles.primaryButton, syncing && styles.disabled]}
                   disabled={syncing}
                   onPress={() => void syncNow()}

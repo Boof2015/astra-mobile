@@ -13,6 +13,7 @@ import { router, usePathname } from 'expo-router';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { formatRelativeTime } from '@/lib/format';
 import {
   buildSyncConflictResolutionPreview,
@@ -64,6 +65,7 @@ function diffLine(desktop: SyncPlaylistSnapshot, phone: SyncPlaylistSnapshot): s
 
 export function SyncConflictPrompt() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const conflicts = useDesktopSyncStore((s) => s.conflicts);
   const status = useDesktopSyncStore((s) => s.status);
@@ -158,7 +160,7 @@ export function SyncConflictPrompt() {
             </Text>
             <View style={styles.choiceList}>
               {options.map((resolution) => (
-                <Pressable
+                <Pressable android_ripple={ripple.bounded}
                   key={resolution}
                   style={[
                     styles.choiceRow,
@@ -183,7 +185,7 @@ export function SyncConflictPrompt() {
               </Text>
             </View>
             {count > 1 ? (
-              <Pressable onPress={review} style={styles.reviewLink}>
+              <Pressable android_ripple={ripple.bounded} onPress={review} style={styles.reviewLink}>
                 <Text variant="caption" color={colors.accent}>
                   Review all {count} conflicts
                 </Text>
@@ -191,12 +193,12 @@ export function SyncConflictPrompt() {
             ) : null}
           </ScrollView>
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={dismissConflictPrompt}>
+            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={dismissConflictPrompt}>
               <Text variant="body" color={colors.textSecondary}>
                 Not now
               </Text>
             </Pressable>
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
               disabled={!selectedResolution || busy}
               onPress={confirm}

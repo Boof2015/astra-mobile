@@ -17,6 +17,7 @@ import {
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
+import { NowPlayingHost } from '@/components/player/NowPlayingHost';
 import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -45,10 +46,12 @@ import { useOnboardingStore } from '@/stores/onboardingStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { useTheme } from '@/theme/themed';
 
-// Anchor the root stack at the tabs so a deep link straight to a top-level route (the
-// widget/notification opening `now-playing`, or `recently-played`) builds `[(tabs), route]`
-// instead of just `[route]`. Without this, dismissing the now-playing modal pops to an empty
-// stack → blank screen. Only affects deep-link/launch ordering; normal nav is unchanged.
+// Anchor the root stack at the tabs so a deep link straight to a top-level route
+// (the widget's `recently-played`, the notification-click redirect) builds
+// `[(tabs), route]` instead of just `[route]` — backing out of a deep-linked
+// route must never land on an empty stack. Only affects deep-link/launch
+// ordering; normal nav is unchanged. (Now-playing itself is no longer a route —
+// it's the store-gated NowPlayingHost overlay.)
 export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
@@ -357,18 +360,12 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="now-playing"
-            options={{
-              presentation: 'transparentModal',
-              animation: 'none',
-              gestureEnabled: false,
-              contentStyle: { backgroundColor: 'transparent' },
-            }}
-          />
         </Stack>
         {onboardingComplete ? (
           <>
+            {/* Always-mounted player overlay (store-gated); open/close is a pure
+                UI-thread slide with zero mount cost after the first mount. */}
+            <NowPlayingHost />
             <QuickSearchOverlay />
             <SyncConflictPrompt />
           </>

@@ -43,6 +43,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { dragArmHaptic, tickHaptic } from '@/lib/haptics';
@@ -155,6 +156,7 @@ interface QueueTrayProps {
 export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const snapPoints = useMemo(() => ['58%', '100%'], []);
@@ -595,7 +597,7 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
           </Text>
         </View>
         {canEdit ? (
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             hitSlop={10}
             onPress={() => (editMode ? exitEdit() : setEditMode(true))}
             accessibilityRole="button"
@@ -654,7 +656,8 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
       {editMode && selectedCount > 0 ? (
         <View style={[styles.actionBar, { paddingBottom: insets.bottom + spacing.sm }]}>
           <Pressable
-            style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+            android_ripple={ripple.bounded}
+            style={styles.actionBtn}
             onPress={groupPlayNext}
             accessibilityRole="button"
             accessibilityLabel={`Play ${selectedCount} selected songs next`}
@@ -665,7 +668,8 @@ export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
             </Text>
           </Pressable>
           <Pressable
-            style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+            android_ripple={ripple.bounded}
+            style={styles.actionBtn}
             onPress={groupRemove}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${selectedCount} selected songs from queue`}
@@ -751,6 +755,7 @@ const QueueRow = memo(function QueueRow({
 }: QueueRowProps) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const entryKey = entry.key;
   const title = trackTitle(entry.track);
   const artist = trackArtist(entry.track);
@@ -848,7 +853,7 @@ const QueueRow = memo(function QueueRow({
   const rowContent = (
     <Animated.View style={[styles.row, rowSurfaceStyle]}>
       {editMode ? (
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           hitSlop={8}
           onPress={onToggleSelect}
           style={styles.checkbox}
@@ -891,7 +896,8 @@ const QueueRow = memo(function QueueRow({
       <Animated.View style={[styles.rowOuter, rowMotionStyle]}>
         <Pressable
           onPress={onJump}
-          style={({ pressed }) => [styles.rowPressable, pressed && styles.rowPressed]}
+          android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          style={styles.rowPressable}
           accessibilityRole="button"
           accessibilityLabel={`Play ${title}`}
           accessibilityHint="Opens this song in the queue"
@@ -907,7 +913,8 @@ const QueueRow = memo(function QueueRow({
       <Animated.View style={[styles.rowOuter, rowMotionStyle]}>
         <Pressable
           onPress={onToggleSelect}
-          style={({ pressed }) => [styles.rowPressable, pressed && styles.rowPressed]}
+          android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          style={styles.rowPressable}
           accessibilityRole="button"
           accessibilityState={{ selected }}
           accessibilityLabel={`${selected ? 'Deselect' : 'Select'} ${title}`}
@@ -927,7 +934,8 @@ const QueueRow = memo(function QueueRow({
       >
         <Pressable
           onPress={onJump}
-          style={({ pressed }) => [styles.rowPressable, pressed && styles.rowPressed]}
+          android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          style={styles.rowPressable}
           accessibilityRole="button"
           accessibilityLabel={`Play ${title}`}
           accessibilityHint="Opens this song in the queue"
@@ -1023,9 +1031,6 @@ const useStyles = createThemedStyles((colors) => ({
   rowPressable: {
     height: QUEUE_ROW_HEIGHT,
   },
-  rowPressed: {
-    opacity: 0.72,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1089,9 +1094,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.md,
-  },
-  actionBtnPressed: {
-    opacity: 0.7,
   },
   actionText: {
     color: colors.accent,

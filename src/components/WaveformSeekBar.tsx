@@ -36,6 +36,11 @@ interface WaveformSeekBarProps {
   touchPadding?: number;
   /** Track file URI used to load/cache the offline waveform peaks. */
   trackPath?: string;
+  /**
+   * False while the bar is mounted but hidden (the now-playing overlay stays
+   * mounted when closed): pins progress and stops the smooth-time rAF loop.
+   */
+  active?: boolean;
 }
 
 const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
@@ -54,12 +59,13 @@ export function WaveformSeekBar({
   height = CANVAS_HEIGHT,
   touchPadding = spacing.md,
   trackPath,
+  active = true,
 }: WaveformSeekBarProps) {
   const styles = useStyles();
   const colors = useColors();
-  const currentTime = usePlayerStore((s) => s.currentTime);
+  const currentTime = usePlayerStore((s) => (active ? s.currentTime : 0));
   const duration = usePlayerStore((s) => s.duration);
-  const isPlaying = usePlayerStore((s) => s.playbackState === 'playing');
+  const isPlaying = usePlayerStore((s) => active && s.playbackState === 'playing');
   const [scrubFraction, setScrubFraction] = useState<number | null>(null);
   const [barWidth, setBarWidth] = useState(0);
   const pendingSeek = usePlayerStore((s) => s.pendingSeek);

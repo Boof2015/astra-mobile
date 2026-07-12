@@ -14,6 +14,7 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 
 export type SettingsIconName = keyof typeof Ionicons.glyphMap;
 
@@ -26,12 +27,18 @@ export function SettingsSectionScreen({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const router = useRouter();
 
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <Pressable
+          android_ripple={ripple.bounded}
+          style={styles.back}
+          onPress={() => router.back()}
+          hitSlop={8}
+        >
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Settings
@@ -98,8 +105,9 @@ export function SettingsNavRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
-    <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.rowIcon}>
         <Ionicons name={icon} size={20} color={colors.accent} />
       </View>

@@ -18,6 +18,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceType } from '@/types/remote';
 
@@ -84,6 +85,7 @@ function Field({
 
 export default function SourceEditScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -187,7 +189,7 @@ export default function SourceEditScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable style={styles.back} onPress={goBack} hitSlop={8}>
+          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goBack} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               {backLabel}
@@ -206,7 +208,7 @@ export default function SourceEditScreen() {
 
             <View style={styles.typeCards}>
               {TYPE_OPTIONS.map((option) => (
-                <Pressable
+                <Pressable android_ripple={ripple.bounded}
                   key={option.type}
                   style={styles.typeCard}
                   onPress={() => chooseType(option.type)}
@@ -274,7 +276,7 @@ export default function SourceEditScreen() {
             ) : null}
 
             <View style={styles.actions}>
-              <Pressable
+              <Pressable android_ripple={ripple.bounded}
                 style={[styles.button, styles.secondaryButton, busy ? styles.buttonDisabled : null]}
                 onPress={() => void onTest()}
                 disabled={!!busy}
@@ -287,7 +289,7 @@ export default function SourceEditScreen() {
                   </Text>
                 )}
               </Pressable>
-              <Pressable
+              <Pressable android_ripple={ripple.bounded}
                 style={[
                   styles.button,
                   styles.primaryButton,

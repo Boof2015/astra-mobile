@@ -27,6 +27,7 @@ import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks, shuffleTracks } from '@/audio/playbackController';
@@ -54,9 +55,10 @@ function basename(path: string): string {
 
 function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongPress: () => void }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable style={styles.missingRow} onLongPress={onLongPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.missingRow} onLongPress={onLongPress} accessibilityRole="button">
       <View style={styles.missingMeta}>
         <Text variant="body" numberOfLines={1} color={colors.textTertiary}>
           {entry.fallback_title ?? basename(entry.track_path)}
@@ -74,6 +76,7 @@ type Prompt = { kind: 'rename'; playlist: Playlist } | null;
 
 export default function PlaylistScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -283,7 +286,7 @@ export default function PlaylistScreen() {
         heroMeta={<Text variant="label">{meta}</Text>}
         heroExtra={
           isDynamic && playlistId != null ? (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.editRules}
               onPress={() =>
                 router.push({

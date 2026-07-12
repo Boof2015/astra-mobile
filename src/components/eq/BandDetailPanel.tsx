@@ -11,6 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import type { EQBand } from '@/types/audio';
 import {
   EQ_MAX_FREQUENCY,
@@ -43,6 +44,7 @@ export type EQEditableValue = 'frequency' | 'gain' | 'Q';
 /** "Band N" + type dropdown + On toggle + audible parameter sliders. */
 export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEditValue }: BandDetailPanelProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   if (!band) {
     return (
@@ -61,7 +63,7 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
     <View style={styles.card}>
       <View style={styles.header}>
         <Text variant="heading">Band {bandNumber}</Text>
-        <Pressable style={styles.typeButton} onPress={onEditType}>
+        <Pressable android_ripple={ripple.bounded} style={styles.typeButton} onPress={onEditType}>
           <Text variant="label" color={colors.textPrimary}>
             {BAND_TYPE_LABEL[band.type]}
           </Text>

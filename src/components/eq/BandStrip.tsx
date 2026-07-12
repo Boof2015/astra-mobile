@@ -10,6 +10,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import type { EQBand } from '@/types/audio';
 import {
   formatFreq,
@@ -28,6 +29,7 @@ interface BandStripProps {
 /** Horizontal strip of per-band cells (freq + gain) + a trailing "+" add cell. */
 export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: BandStripProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
     <ScrollView
@@ -38,7 +40,7 @@ export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: Band
       {bands.map((band) => {
         const isActive = band.id === activeBandId;
         return (
-          <Pressable
+          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
             key={band.id}
             onPress={() => onSelect(band.id)}
             style={[styles.cell, isActive && styles.cellActive]}
@@ -56,7 +58,7 @@ export function BandStrip({ bands, activeBandId, canAdd, onSelect, onAdd }: Band
         );
       })}
       {canAdd ? (
-        <Pressable onPress={onAdd} style={[styles.cell, styles.addCell]} accessibilityLabel="Add band">
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onAdd} style={[styles.cell, styles.addCell]} accessibilityLabel="Add band">
           <Ionicons name="add" size={22} color={colors.accentText} />
         </Pressable>
       ) : null}

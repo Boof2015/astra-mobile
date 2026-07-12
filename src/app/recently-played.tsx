@@ -13,6 +13,7 @@ import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playTracks } from '@/audio/playbackController';
@@ -37,6 +38,7 @@ function EmptyList() {
 
 export default function RecentlyPlayedScreen() {
   const colors = useColors();
+  const ripple = useRipple();
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -49,7 +51,7 @@ export default function RecentlyPlayedScreen() {
 
   return (
     <Screen>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
         <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         <Text variant="body" color={colors.textSecondary}>
           Home

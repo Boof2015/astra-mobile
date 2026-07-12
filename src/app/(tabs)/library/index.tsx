@@ -39,6 +39,7 @@ import {
 } from '@/components/search/PullSearchGesture';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -77,6 +78,7 @@ const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
 
 export default function LibraryScreen() {
   const colors = useColors();
+  const ripple = useRipple();
   const router = useRouter();
   const viewMode = useLibraryStore((s) => s.viewMode);
   const setViewMode = useLibraryStore((s) => s.setViewMode);
@@ -244,7 +246,7 @@ export default function LibraryScreen() {
             Library
           </Text>
           {!isEmpty ? (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               hitSlop={8}
               onPress={() => openQuickSearch()}
               accessibilityRole="button"
@@ -281,14 +283,14 @@ export default function LibraryScreen() {
                 <Text variant="label">
                   {selectedIds.size} selected
                 </Text>
-                <Pressable onPress={exitSelection} hitSlop={8} accessibilityRole="button">
+                <Pressable android_ripple={ripple.bounded} onPress={exitSelection} hitSlop={8} accessibilityRole="button">
                   <Text variant="label" color={colors.accentText}>
                     Cancel
                   </Text>
                 </Pressable>
               </View>
             ) : sortable ? (
-              <Pressable
+              <Pressable android_ripple={ripple.bounded}
                 style={styles.sortTrigger}
                 onPress={() => setSortSheetOpen(true)}
                 accessibilityRole="button"

@@ -27,8 +27,10 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { isWideWindow, WIDE_MIN_WIDTH } from '@/theme/adaptive';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 import type { DesktopRemoteDiscoveredDesktop } from '@/types/desktopRemote';
 
 // Layout mirrors now-playing's adaptive pattern (minus the scope stage): a
@@ -189,9 +191,10 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
   disabled: boolean;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable
+    <Pressable android_ripple={ripple.bounded}
       style={[styles.discoveredRow, disabled && styles.buttonDisabled]}
       onPress={() => onPair(desktop)}
       disabled={disabled}
@@ -219,6 +222,7 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
 
 export default function DesktopRemoteScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { pair } = useLocalSearchParams<{ pair?: string }>();
@@ -390,7 +394,7 @@ export default function DesktopRemoteScreen() {
               maxLength={6}
               textContentType="oneTimeCode"
             />
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               style={[
                 styles.primaryButton,
                 (normalizedPinInput.length !== 6 || !pinPairingActive) && styles.buttonDisabled,
@@ -416,7 +420,7 @@ export default function DesktopRemoteScreen() {
           Open Astra Desktop settings, enable Phone Remote, then scan or paste the pairing link.
         </Text>
         <View style={styles.actionRow}>
-          <Pressable style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
+          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
             <Ionicons name="scan" size={18} color={colors.accentTextStrong} />
             <Text variant="body" color={colors.accentTextStrong}>
               Scan QR
@@ -433,7 +437,7 @@ export default function DesktopRemoteScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           style={[styles.secondaryButton, !pairingLink.trim() && styles.buttonDisabled]}
           disabled={!pairingLink.trim()}
           onPress={() => void pairFromInput(pairingLink)}
@@ -470,7 +474,7 @@ export default function DesktopRemoteScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           style={[
             styles.secondaryButton,
             (!manualBaseUrl.trim() || !manualTicket.trim()) && styles.buttonDisabled,
@@ -523,7 +527,7 @@ export default function DesktopRemoteScreen() {
     >
       <View style={[styles.remoteShell, { width: remoteLayout.contentWidth }]}>
         <View style={styles.remoteNowHeader}>
-          <Pressable style={styles.headerBtn} onPress={() => router.back()} hitSlop={12}>
+          <Pressable android_ripple={ripple.bounded} style={styles.headerBtn} onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
           </Pressable>
           <View style={styles.headerMid}>
@@ -534,7 +538,7 @@ export default function DesktopRemoteScreen() {
               {remoteSource}
             </Text>
           </View>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             style={styles.headerBtn}
             onPress={() => void reconnect()}
             hitSlop={12}
@@ -582,20 +586,26 @@ export default function DesktopRemoteScreen() {
           </View>
 
           <View style={styles.manageActions}>
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               style={styles.primaryButton}
-              onPress={() => router.replace('/now-playing' as never)}
+              onPress={() => {
+                // The player is an overlay, not a route: open it and pop this
+                // screen so it slides in above wherever the user came from.
+                usePlayerUiStore.getState().openPlayer();
+                if (router.canGoBack()) router.back();
+                else router.replace('/');
+              }}
             >
               <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Open Now Playing
               </Text>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={() => void reconnect()}>
+            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={() => void reconnect()}>
               <Ionicons name="refresh" size={18} color={colors.textPrimary} />
               <Text variant="body">Reconnect</Text>
             </Pressable>
-            <Pressable style={styles.dangerButton} onPress={confirmForget}>
+            <Pressable android_ripple={ripple.bounded} style={styles.dangerButton} onPress={confirmForget}>
               <Ionicons name="trash-outline" size={18} color={colors.warning} />
               <Text variant="body" color={colors.warning}>
                 Forget desktop
@@ -630,7 +640,7 @@ export default function DesktopRemoteScreen() {
         ) : (
           <>
             <View style={styles.topBar}>
-              <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+              <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
                 <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
                 <Text variant="body" color={colors.textSecondary}>
                   Settings

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getNotificationClickRedirectPath } from '@/audio/notificationIntent';
+import { resolveNotificationClick } from '@/audio/notificationIntent';
 import { createThemedStyles } from '@/theme/themed';
 
 export default function NotificationClickRoute() {
@@ -11,7 +11,7 @@ export default function NotificationClickRoute() {
   useEffect(() => {
     let cancelled = false;
 
-    getNotificationClickRedirectPath()
+    resolveNotificationClick()
       .then((href) => {
         if (!cancelled) router.replace(href);
       })

@@ -9,6 +9,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import type { EQPreset } from '@/types/audio';
 import { EqSheet } from './EqSheet';
 import { formatGain } from './format';
@@ -29,6 +30,7 @@ export function EQPresetPreviewSheet({
   onClose,
 }: EQPresetPreviewSheetProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const enabledBands = preset.bands.filter((band) => band.enabled).length;
   const modeLabel = preset.mode === 'graphic' ? 'Graphic' : 'Parametric';
@@ -68,12 +70,12 @@ export function EQPresetPreviewSheet({
         </View>
       </View>
       <View style={styles.actions}>
-        <Pressable style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
         </Pressable>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           style={[styles.btn, styles.primary]}
           onPress={() => {
             onConfirm();

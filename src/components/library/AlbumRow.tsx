@@ -11,6 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
@@ -18,9 +19,10 @@ import type { Album } from '@/types/library';
 export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const artUri = albumArtworkSource(album);
   return (
-    <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {artUri ? (
           <Image

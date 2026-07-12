@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { usePathname, useRouter } from 'expo-router';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
 import { SpectrumCurve } from './SpectrumCurve';
@@ -16,6 +16,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -72,8 +73,8 @@ function PhoneMiniProgress({ isPlaying }: { isPlaying: boolean }) {
 export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const styles = useStyles();
   const colors = useColors();
-  const router = useRouter();
-  const pathname = usePathname();
+  const ripple = useRipple();
+  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
@@ -107,9 +108,9 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const isDesktop = presentation.target === 'desktop';
   const isPlaying = presentation.playbackState === 'playing';
   const isLoading = presentation.playbackState === 'loading';
-  // The pill sits underneath the now-playing transparentModal; don't burn a
-  // second live-scope frame loop while it's fully occluded.
-  const liveScopeActive = visible && scopeActive && !isDesktop && pathname !== '/now-playing';
+  // The pill sits underneath the now-playing overlay; don't burn a second
+  // live-scope frame loop while it's fully occluded.
+  const liveScopeActive = visible && scopeActive && !isDesktop && !playerOpen;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
   const onTogglePlay = () => {
@@ -135,8 +136,9 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
     <>
       <Pressable
         pointerEvents={visible ? 'auto' : 'none'}
+        android_ripple={ripple.bounded}
         style={[styles.pill, !visible && styles.hidden]}
-        onPress={() => router.push('/now-playing')}
+        onPress={() => usePlayerUiStore.getState().openPlayer()}
         onLayout={onLayout}
       >
         {liveScopeActive && pillWidth > 0 && (
@@ -183,6 +185,7 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
           {isDesktop ? (
             <Pressable
               hitSlop={10}
+              android_ripple={ripple.icon(22)}
               onPress={() => setTargetPickerOpen(true)}
               style={styles.control}
               accessibilityLabel="Choose output device"
@@ -190,14 +193,14 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
               <Ionicons name="desktop-outline" size={21} color={colors.textSecondary} />
             </Pressable>
           ) : null}
-          <Pressable hitSlop={10} onPress={onTogglePlay} style={styles.control}>
+          <Pressable hitSlop={10} android_ripple={ripple.icon(22)} onPress={onTogglePlay} style={styles.control}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={24}
               color={colors.accent}
             />
           </Pressable>
-          <Pressable hitSlop={10} onPress={onSkipNext} style={styles.control}>
+          <Pressable hitSlop={10} android_ripple={ripple.icon(22)} onPress={onSkipNext} style={styles.control}>
             <Ionicons name="play-skip-forward" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>

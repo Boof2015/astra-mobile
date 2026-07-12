@@ -17,6 +17,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { DbTrack } from '@/types/library';
 
@@ -41,6 +42,7 @@ export function PlaylistPickerSheet({
   onAdded,
 }: PlaylistPickerSheetProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const [step, setStep] = useState<'pick' | 'create'>('pick');
   const [playlistName, setPlaylistName] = useState('');
@@ -82,12 +84,12 @@ export function PlaylistPickerSheet({
           selectionColor={colors.accent}
         />
         <View style={styles.actions}>
-          <Pressable style={[styles.btn, styles.cancel]} onPress={() => setStep('pick')}>
+          <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={() => setStep('pick')}>
             <Text variant="label" color={colors.textSecondary}>
               Back
             </Text>
           </Pressable>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             style={[styles.btn, styles.create, !trimmedPlaylistName && styles.createDisabled]}
             disabled={!trimmedPlaylistName}
             onPress={addToNewPlaylist}

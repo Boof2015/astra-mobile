@@ -28,10 +28,12 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
 import {
   playTracks,
@@ -93,6 +95,7 @@ function SectionHeader({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleGroup}>
@@ -106,7 +109,7 @@ function SectionHeader({
         ) : null}
       </View>
       {onActionPress && actionLabel ? (
-        <Pressable style={styles.seeAllButton} onPress={onActionPress} accessibilityRole="button">
+        <Pressable style={styles.seeAllButton} android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             {actionLabel}
           </Text>
@@ -160,6 +163,7 @@ function NowPlayingCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
   const scopeActive = useScopeActive();
@@ -194,7 +198,7 @@ function NowPlayingCard({
       {scopeActive && cardSize.width > 0 ? (
         <View pointerEvents="none" style={styles.playerSpectrumVeil} />
       ) : null}
-      <Pressable style={styles.playerArt} onPress={onOpen} accessibilityRole="button">
+      <Pressable style={styles.playerArt} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen} accessibilityRole="button">
         {track.artworkData ? (
           <Image source={{ uri: track.artworkData }} style={styles.image} contentFit="cover" />
         ) : (
@@ -213,20 +217,20 @@ function NowPlayingCard({
         </Text>
         <NowPlayingSeekStrip />
         <View style={styles.placeholderControls}>
-          <Pressable hitSlop={10} onPress={() => void skipToPrevious()}>
+          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={() => void skipToPrevious()}>
             <Ionicons name="play-skip-back" size={22} color={colors.textSecondary} />
           </Pressable>
-          <Pressable hitSlop={10} onPress={() => void togglePlay()} style={styles.playCircle}>
+          <Pressable hitSlop={10} onPress={() => void togglePlay()} style={styles.playCircle} android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={18}
               color={colors.bgPrimary}
             />
           </Pressable>
-          <Pressable hitSlop={10} onPress={() => void skipToNext()}>
+          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={() => void skipToNext()}>
             <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
           </Pressable>
-          <Pressable hitSlop={10} onPress={onOpen}>
+          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen}>
             <Ionicons name="expand-outline" size={21} color={colors.textTertiary} />
           </Pressable>
         </View>
@@ -243,8 +247,9 @@ function RecentlyAddedAlbum({
   onPress: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   return (
-    <Pressable style={styles.recentAlbum} onPress={onPress} accessibilityRole="button">
+    <Pressable style={styles.recentAlbum} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
       <AlbumCover album={album} size={112} />
       <Text variant="body" numberOfLines={1} style={styles.recentAlbumTitle}>
         {album.album}
@@ -273,11 +278,12 @@ function RandomAlbumCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const disabled = tracks.length === 0;
 
   return (
     <View style={styles.randomCard}>
-      <Pressable style={styles.randomMain} onPress={onOpen} accessibilityRole="button">
+      <Pressable style={styles.randomMain} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen} accessibilityRole="button">
         <AlbumCover album={album} size={96} />
         <View style={styles.randomMeta}>
           <Text variant="label" color={colors.textTertiary}>
@@ -294,7 +300,7 @@ function RandomAlbumCard({
           </Text>
         </View>
         <Pressable
-          style={styles.reroll}
+          style={styles.reroll} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={onReroll}
           hitSlop={8}
           accessibilityRole="button"
@@ -306,6 +312,7 @@ function RandomAlbumCard({
 
       <View style={styles.randomActions}>
         <Pressable
+          android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={[styles.primaryButton, disabled && styles.buttonDisabled]}
           disabled={disabled}
           onPress={onPlay}
@@ -317,6 +324,7 @@ function RandomAlbumCard({
           </Text>
         </Pressable>
         <Pressable
+          android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={[styles.secondaryButton, disabled && styles.buttonDisabled]}
           disabled={disabled}
           onPress={onShuffle}
@@ -341,6 +349,7 @@ function EmptyHomeCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
     <View style={styles.emptyCard}>
       <Ionicons name="folder-open-outline" size={34} color={colors.textTertiary} />
@@ -356,6 +365,7 @@ function EmptyHomeCard({
         ) : null}
       </View>
       <Pressable
+        android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.primaryButton}
         onPress={onManageFolders}
         accessibilityRole="button"
@@ -486,7 +496,7 @@ export default function HomeScreen() {
                 <NowPlayingCard
                   track={currentTrack}
                   playbackState={playbackState}
-                  onOpen={() => router.push('/now-playing')}
+                  onOpen={() => usePlayerUiStore.getState().openPlayer()}
                 />
               </View>
             ) : null}
@@ -502,7 +512,7 @@ export default function HomeScreen() {
                 <NowPlayingCard
                   track={currentTrack}
                   playbackState={playbackState}
-                  onOpen={() => router.push('/now-playing')}
+                  onOpen={() => usePlayerUiStore.getState().openPlayer()}
                 />
               ) : randomAlbum ? (
                 <RandomAlbumCard

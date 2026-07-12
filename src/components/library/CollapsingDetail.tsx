@@ -34,6 +34,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 
 // Collapsing detail header. An absolute container whose height shrinks with the
 // scroll and clips its faded content, so the track list (padded to the expanded
@@ -155,6 +156,7 @@ export function CollapsingHeader({
   onHeroBlockLayout: (e: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: W } = useWindowDimensions();
@@ -246,7 +248,7 @@ export function CollapsingHeader({
         {heroMeta}
         {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
             onPress={onPlay}
             disabled={disabled}
@@ -257,7 +259,7 @@ export function CollapsingHeader({
               Play
             </Text>
           </Pressable>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
             onPress={onShuffle}
             disabled={disabled}
@@ -271,7 +273,7 @@ export function CollapsingHeader({
         </Animated.View>
       </Animated.View>
 
-      <Pressable
+      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
         onPress={onBack}
         hitSlop={8}
         style={[styles.chevron, { top: barCenterY - 12, left: spacing.md }]}
@@ -299,16 +301,16 @@ export function CollapsingHeader({
         style={[styles.barIcons, { top: barCenterY - 16, right: onMore ? spacing.md + 40 : spacing.md }, barIconsStyle]}
         pointerEvents={collapsed ? 'auto' : 'none'}
       >
-        <Pressable onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="play" size={20} color={colors.accent} />
         </Pressable>
-        <Pressable onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="shuffle" size={20} color={colors.accent} />
         </Pressable>
       </Animated.View>
 
       {onMore ? (
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={onMore}
           hitSlop={8}
           style={[styles.moreButton, { top: barCenterY - 16, right: spacing.md }]}

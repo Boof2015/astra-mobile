@@ -28,6 +28,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { enqueueTop, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -483,6 +484,7 @@ function ResultRow({
   onQueueTrack: (track: DbTrack) => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const isTrack = result.kind === 'track';
   const isShowMode = result.kind === 'show-all' || result.kind === 'show-top';
@@ -494,7 +496,7 @@ function ResultRow({
   };
 
   return (
-    <Pressable
+    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.resultRow, active && styles.resultRowActive, isShowMode && styles.showModeRow]}
       onPress={onPress}
       accessibilityRole="button"
@@ -509,7 +511,7 @@ function ResultRow({
         </Text>
       </View>
       {isTrack ? (
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.queueButton}
           onPress={queueTrack}
           hitSlop={8}
@@ -535,6 +537,7 @@ function QuickSearchPanel({
   onClose: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -1005,7 +1008,7 @@ function QuickSearchPanel({
           style={styles.input}
         />
         {query.length > 0 ? (
-          <Pressable
+          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
             onPress={() => updateQuery('')}
             hitSlop={8}
             accessibilityRole="button"
@@ -1014,7 +1017,7 @@ function QuickSearchPanel({
             <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
           </Pressable>
         ) : null}
-        <Pressable onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
           <Ionicons name="close" size={20} color={colors.textSecondary} />
         </Pressable>
       </View>
@@ -1066,6 +1069,7 @@ function QuickSearchPanel({
 
 export function QuickSearchOverlay() {
   const styles = useStyles();
+  const ripple = useRipple();
   const isOpen = useSearchStore((s) => s.isQuickSearchOpen);
   const initialQuery = useSearchStore((s) => s.initialQuery);
   const openVersion = useSearchStore((s) => s.openVersion);
@@ -1085,7 +1089,7 @@ export function QuickSearchOverlay() {
       onRequestClose={close}
     >
       <View style={styles.modalRoot}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
         {isOpen ? (
           <QuickSearchPanel key={openVersion} initialQuery={initialQuery} onClose={close} />
         ) : null}

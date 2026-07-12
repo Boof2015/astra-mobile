@@ -1,5 +1,6 @@
 import TrackPlayer from 'react-native-track-player';
 import { usePlayerStore } from '@/stores/playerStore';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 
 const NOTIFICATION_CLICK_TARGETS = new Set([
   'trackplayer://notification.click',
@@ -8,8 +9,6 @@ const NOTIFICATION_CLICK_TARGETS = new Set([
   '/notification.click',
   'notification.click',
 ]);
-
-export type NotificationClickRedirectPath = '/' | '/now-playing';
 
 export function isNotificationClickPath(path: string): boolean {
   const cleanPath = path.trim();
@@ -31,8 +30,14 @@ export function isNotificationClickPath(path: string): boolean {
   }
 }
 
-export async function getNotificationClickRedirectPath(): Promise<NotificationClickRedirectPath> {
-  return (await hasLoadedTrack()) ? '/now-playing' : '/';
+/**
+ * Notification/widget tap: land on the tabs and, when a track is loaded, open
+ * the now-playing overlay above them (the player is a store-gated overlay, not
+ * a route). Returns the route to navigate to.
+ */
+export async function resolveNotificationClick(): Promise<'/'> {
+  if (await hasLoadedTrack()) usePlayerUiStore.getState().openPlayer();
+  return '/';
 }
 
 async function hasLoadedTrack(): Promise<boolean> {

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/Text';
 import { useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import {
@@ -44,6 +45,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: LyricsBandProps) {
   const colors = useColors();
+  const ripple = useRipple();
   const entry = useLyricsStore((s) => s.byPath[track.path]);
   const loadForTrack = useLyricsStore((s) => s.loadForTrack);
 
@@ -228,7 +230,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
       </ScrollView>
 
       {followPaused ? (
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={recenter}
           hitSlop={10}
           style={{

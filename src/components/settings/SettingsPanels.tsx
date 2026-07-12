@@ -16,6 +16,7 @@ import {
 } from '@/components/settings/SettingsSectionScaffold';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import type { ReplayGainMode } from '@/audio/normalization';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 import type { BaseThemeId, PreferredDark } from '@/theme/resolve';
@@ -81,6 +82,7 @@ export function themeOptionTitle(id: BaseThemeId): string {
 
 export function AppearanceSettingsPanel() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const preferredDark = useThemeStore((s) => s.preferredDark);
@@ -102,7 +104,7 @@ export function AppearanceSettingsPanel() {
         {options.map((option) => {
           const selected = option.id === baseTheme;
           return (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.id}
               style={[styles.option, selected && styles.optionSelected]}
               onPress={() => void setBaseTheme(option.id)}
@@ -159,6 +161,7 @@ function LibraryFolderSettingsRow({
   onRemove: (folder: FolderWithCount) => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.folderSettingsRow}>
@@ -181,7 +184,7 @@ function LibraryFolderSettingsRow({
             : 'Access lost. Remove and add again.'}
         </Text>
       </View>
-      <Pressable
+      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
         hitSlop={8}
         disabled={disabled}
         onPress={() => onRemove(folder)}
@@ -197,6 +200,7 @@ function LibraryFolderSettingsRow({
 
 function LibraryFoldersSettings() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const isScanning = useLibraryStore((s) => s.isScanning);
@@ -230,7 +234,7 @@ function LibraryFoldersSettings() {
               : `${formatFolderCount(folders.length)} / ${formatTrackCount(totalTracks)}`}
           </Text>
         </View>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={[styles.folderPrimaryAction, isScanning && styles.actionDisabled]}
           disabled={isScanning}
           onPress={() => void addFolder()}
@@ -245,7 +249,7 @@ function LibraryFoldersSettings() {
 
       {folders.length > 0 ? (
         <View style={styles.folderSettingsActions}>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.folderSecondaryAction, isScanning && styles.actionDisabled]}
             disabled={isScanning}
             onPress={() => void rescan()}
@@ -291,6 +295,7 @@ function LibraryFoldersSettings() {
 
 export function LibrarySettingsPanel() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
@@ -314,7 +319,7 @@ export function LibrarySettingsPanel() {
         {ARTIST_GROUPING_OPTIONS.map((option) => {
           const selected = option.mode === groupingMode;
           return (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.mode}
               style={[styles.option, selected && styles.optionSelected]}
               onPress={() => void setArtistGroupingMode(option.mode)}
@@ -353,6 +358,7 @@ export function LibrarySettingsPanel() {
 
 export function AudioSettingsPanel() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
   const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
@@ -400,7 +406,7 @@ export function AudioSettingsPanel() {
             {REPLAYGAIN_MODES.map((m) => {
               const selected = m.mode === replayGainMode;
               return (
-                <Pressable
+                <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
                   key={m.mode}
                   style={[styles.modePill, selected && styles.modePillSelected]}
                   onPress={() => void setReplayGainMode(m.mode)}

@@ -38,6 +38,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
@@ -75,6 +76,7 @@ const BAND_TYPES: EQBandType[] = ['lowshelf', 'peaking', 'highshelf', 'highpass'
 
 export default function EQScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const eq = useEQStore();
@@ -217,7 +219,7 @@ export default function EQScreen() {
   };
 
   const presetRowEl = (
-    <Pressable
+    <Pressable android_ripple={ripple.bounded}
       style={[styles.presetRow, isWide && styles.sideItem]}
       onPress={() => setSheet('preset')}
     >
@@ -285,7 +287,7 @@ export default function EQScreen() {
           onChange={eq.setPreamp}
         />
       </View>
-      <Pressable
+      <Pressable android_ripple={ripple.bounded}
         style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
         onPress={eq.toggleEnabled}
       >
@@ -321,10 +323,10 @@ export default function EQScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
+          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
             <Ionicons name="save-outline" size={20} color={colors.textSecondary} />
           </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
+          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
             <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
           </Pressable>
         </View>

@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   View,
   Pressable,
   StyleSheet,
@@ -11,7 +12,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  SlideInDown,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -37,6 +37,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { WIDE_MIN_WIDTH, isWideWindow } from '@/theme/adaptive';
 import { motion } from '@/theme/motion';
 import { resolveNavigationArtist } from '@/library/artistGrouping';
@@ -46,6 +47,7 @@ import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { DbTrack } from '@/types/library';
 import {
@@ -266,12 +268,14 @@ function getNowPlayingLayout(
   };
 }
 
-export default function NowPlayingScreen() {
+export function NowPlayingOverlay() {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
   const [queueOpen, setQueueOpen] = useState(false);
   // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
   const closeQueue = useCallback(() => setQueueOpen(false), []);
@@ -353,7 +357,9 @@ export default function NowPlayingScreen() {
 
   const navigateToArtist = () => {
     if (!artistName) return;
-    router.dismissTo({
+    // Slide the overlay away while the library detail loads underneath.
+    dismissSheet();
+    router.navigate({
       pathname: '/library/artist/[name]',
       params: { name: artistName },
     });
@@ -361,7 +367,8 @@ export default function NowPlayingScreen() {
 
   const navigateToAlbum = () => {
     if (!albumKey) return;
-    router.dismissTo({
+    dismissSheet();
+    router.navigate({
       pathname: '/library/album/[key]',
       params: { key: albumKey },
     });
@@ -411,18 +418,16 @@ export default function NowPlayingScreen() {
     });
   }
 
-  // Swipe down to minimize. The stack transition is disabled for this route, so
-  // the sheet owns one continuous enter/exit animation instead of handing off to
-  // a second native modal animation after release.
-  const translateY = useSharedValue(0);
+  // The overlay stays mounted; open/close is this one shared value sliding the
+  // sheet on the UI thread. Starts off-screen so a pre-warmed mount never flashes.
+  const translateY = useSharedValue(windowHeight);
   const menuProgress = useSharedValue(0);
-  // Belt-and-suspenders for deep-link entry (widget/notification → now-playing with no
-  // history): `(tabs)` is the stack anchor (see root _layout unstable_settings), so back()
-  // returns there; if somehow there's nothing to go back to, replace to the tabs home so
-  // dismissing can never land on a blank screen.
+  // Closing is a store toggle, not navigation. Reset the inner layers so a
+  // reopen starts from the plain player (parity with the old per-open mount).
   const dismiss = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
+    setMenuOpen(false);
+    setQueueOpen(false);
+    usePlayerUiStore.getState().closePlayer();
   };
   const finishCloseMenu = () => setMenuOpen(false);
 
@@ -480,6 +485,39 @@ export default function NowPlayingScreen() {
       }
     });
 
+  // Open animation (close normally animates via dismissSheet's spring first;
+  // the else branch covers direct closePlayer calls and keeps the resting
+  // offset pinned to the current window height across rotation). NOTE: this
+  // effect must stay BELOW every direct `translateY.value` write — the react
+  // compiler forbids mutations after an effect that depends on the value.
+  useEffect(() => {
+    if (playerOpen) {
+      translateY.value = withTiming(0, { duration: 240 });
+    } else {
+      translateY.value = withTiming(windowHeight, { duration: 200 });
+    }
+  }, [playerOpen, windowHeight, translateY]);
+
+  // Hardware back, innermost layer first: menu → queue tray → player. Registered
+  // only while open, so it sits above the focused screen's own handlers (LIFO)
+  // — e.g. the library-detail back interceptor underneath.
+  useEffect(() => {
+    if (!playerOpen) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (menuOpen) {
+        closeMenu();
+        return true;
+      }
+      if (queueOpen) {
+        setQueueOpen(false);
+        return true;
+      }
+      dismissSheet();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
   const contentStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
@@ -493,10 +531,9 @@ export default function NowPlayingScreen() {
   }));
 
   return (
-    <View style={styles.backdrop}>
+    <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'auto' : 'none'}>
       <GestureDetector gesture={pan}>
         <Animated.View
-          entering={SlideInDown.duration(240)}
           style={[
             styles.content,
             contentStyle,
@@ -520,7 +557,7 @@ export default function NowPlayingScreen() {
             {!lyricsMode && (
               <View style={styles.header}>
                 <View style={styles.headerSide}>
-                  <Pressable style={styles.headerBtn} onPress={() => dismissSheet()} hitSlop={12}>
+                  <Pressable style={styles.headerBtn} android_ripple={ripple.icon(22)} onPress={() => dismissSheet()} hitSlop={12}>
                     <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
                   </Pressable>
                 </View>
@@ -535,7 +572,7 @@ export default function NowPlayingScreen() {
                 <View style={[styles.headerSide, styles.headerActions]}>
                   {!isDesktopTarget && track ? (
                     <Pressable
-                      style={styles.headerBtn}
+                      style={styles.headerBtn} android_ripple={ripple.icon(22)}
                       onPress={() => void setLyricsVisible(!lyricsVisible)}
                       hitSlop={12}
                       accessibilityLabel={lyricsVisible ? 'Hide lyrics' : 'Show lyrics'}
@@ -549,7 +586,7 @@ export default function NowPlayingScreen() {
                     </Pressable>
                   ) : null}
                   <Pressable
-                    style={styles.headerBtn}
+                    style={styles.headerBtn} android_ripple={ripple.icon(22)}
                     onPress={openMenu}
                     hitSlop={12}
                     accessibilityLabel="More options"
@@ -563,6 +600,7 @@ export default function NowPlayingScreen() {
             {lyricsMode && track ? (
               <LyricsView
                 track={track}
+                active={playerOpen}
                 isPlaying={isPlaying}
                 isLoading={isLoading}
                 isFavorite={isFavorite}
@@ -634,7 +672,7 @@ export default function NowPlayingScreen() {
                       </View>
                       <Pressable
                         hitSlop={10}
-                        style={styles.inlineActionBtn}
+                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
                         accessibilityLabel={activeTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                         accessibilityState={{ selected: activeTrack.isFavorite }}
@@ -657,6 +695,7 @@ export default function NowPlayingScreen() {
                     <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
                       <Pressable
                         hitSlop={10}
+                        android_ripple={ripple.icon(24)}
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
@@ -675,7 +714,7 @@ export default function NowPlayingScreen() {
                       <Pressable
                         onPress={() => void sendDesktopControl('previous')}
                         hitSlop={12}
-                        style={styles.transportMainBtn}
+                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Previous"
                       >
                         <Ionicons
@@ -687,7 +726,7 @@ export default function NowPlayingScreen() {
                       <Pressable
                         onPress={() => void sendDesktopControl(isPlaying ? 'pause' : 'play')}
                         hitSlop={12}
-                        style={styles.playButton}
+                        style={styles.playButton} android_ripple={ripple.onAccent()}
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
                       >
                         <Ionicons
@@ -699,7 +738,7 @@ export default function NowPlayingScreen() {
                       <Pressable
                         onPress={() => void sendDesktopControl('next')}
                         hitSlop={12}
-                        style={styles.transportMainBtn}
+                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Next"
                       >
                         <Ionicons
@@ -710,6 +749,7 @@ export default function NowPlayingScreen() {
                       </Pressable>
                       <Pressable
                         hitSlop={10}
+                        android_ripple={ripple.icon(24)}
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.repeat === undefined && styles.controlDisabled,
@@ -762,7 +802,7 @@ export default function NowPlayingScreen() {
                       <View style={styles.subActions}>
                         <Pressable
                           hitSlop={10}
-                          style={styles.subBtn}
+                          style={styles.subBtn} android_ripple={ripple.icon(20)}
                           onPress={() => void reconnectDesktop()}
                           accessibilityLabel="Reconnect to desktop"
                         >
@@ -771,7 +811,7 @@ export default function NowPlayingScreen() {
                         {desktopQueue ? (
                           <Pressable
                             hitSlop={10}
-                            style={styles.subBtn}
+                            style={styles.subBtn} android_ripple={ripple.icon(20)}
                             onPress={() => setQueueOpen(true)}
                             accessibilityLabel="Desktop queue"
                           >
@@ -794,12 +834,16 @@ export default function NowPlayingScreen() {
                       : 'Pair with Astra Desktop to control it here.'}
                   </Text>
                   <Pressable
-                    style={styles.emptyAction}
-                    onPress={() =>
-                      desktopConnection
-                        ? void reconnectDesktop()
-                        : router.push('/desktop-remote' as never)
-                    }
+                    style={styles.emptyAction} android_ripple={ripple.bounded}
+                    onPress={() => {
+                      if (desktopConnection) {
+                        void reconnectDesktop();
+                        return;
+                      }
+                      // Route change happens under the overlay; slide it away.
+                      dismissSheet();
+                      router.push('/desktop-remote' as never);
+                    }}
                   >
                     <Text variant="label" color={colors.accentTextStrong}>
                       {desktopConnection ? 'Reconnect' : 'Pair desktop'}
@@ -871,7 +915,7 @@ export default function NowPlayingScreen() {
                         showChrome={false}
                         mode={scopeMode}
                         edgeFade
-                        paused={queueOpen}
+                        paused={!playerOpen || queueOpen}
                       />
                       <Pressable
                         onPress={() =>
@@ -880,7 +924,7 @@ export default function NowPlayingScreen() {
                             .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum')
                         }
                         hitSlop={12}
-                        style={styles.scopeSwap}
+                        style={styles.scopeSwap} android_ripple={ripple.icon(24)}
                         accessibilityRole="button"
                         accessibilityLabel={`Showing ${
                           scopeMode === 'spectrum' ? 'spectrum' : 'oscilloscope'
@@ -916,7 +960,7 @@ export default function NowPlayingScreen() {
                         <Pressable
                           onPress={navigateToArtist}
                           hitSlop={6}
-                          style={styles.artistButton}
+                          style={styles.artistButton} android_ripple={ripple.bounded}
                           accessibilityRole="link"
                           accessibilityLabel={`View artist ${track.artist}`}
                         >
@@ -928,7 +972,7 @@ export default function NowPlayingScreen() {
                     </View>
                     <Pressable
                       hitSlop={10}
-                      style={styles.inlineActionBtn}
+                      style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
                       onPress={() => void toggleFavorite(track)}
                       accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                       accessibilityState={{ selected: isFavorite }}
@@ -942,6 +986,7 @@ export default function NowPlayingScreen() {
                   </View>
 
                   <WaveformSeekBar
+                    active={playerOpen}
                     height={layout.waveformHeight}
                     touchPadding={WAVEFORM_TOUCH_PADDING}
                     trackPath={track.path}
@@ -951,7 +996,7 @@ export default function NowPlayingScreen() {
                   <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
                     <Pressable
                       hitSlop={10}
-                      style={styles.transportSideBtn}
+                      style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
                       onPress={() => void toggleShuffle()}
                       accessibilityLabel="Shuffle"
                       accessibilityState={{ selected: shuffle }}
@@ -965,7 +1010,7 @@ export default function NowPlayingScreen() {
                     <Pressable
                       onPress={skipToPrevious}
                       hitSlop={12}
-                      style={styles.transportMainBtn}
+                      style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                     >
                       <Ionicons
                         name="play-skip-back"
@@ -973,7 +1018,7 @@ export default function NowPlayingScreen() {
                         color={colors.textPrimary}
                       />
                     </Pressable>
-                    <Pressable onPress={togglePlay} hitSlop={12} style={styles.playButton}>
+                    <Pressable onPress={togglePlay} hitSlop={12} style={styles.playButton} android_ripple={ripple.onAccent()}>
                       <Ionicons
                         name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
                         size={PLAY_ICON_SIZE}
@@ -983,7 +1028,7 @@ export default function NowPlayingScreen() {
                     <Pressable
                       onPress={skipToNext}
                       hitSlop={12}
-                      style={styles.transportMainBtn}
+                      style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                     >
                       <Ionicons
                         name="play-skip-forward"
@@ -993,7 +1038,7 @@ export default function NowPlayingScreen() {
                     </Pressable>
                     <Pressable
                       hitSlop={10}
-                      style={styles.transportSideBtn}
+                      style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
                       onPress={() => void cycleRepeat()}
                       accessibilityLabel="Repeat"
                       accessibilityState={{ selected: repeat !== 'none' }}
@@ -1022,7 +1067,7 @@ export default function NowPlayingScreen() {
                     <View style={styles.subActions}>
                       <Pressable
                         hitSlop={10}
-                        style={styles.subBtn}
+                        style={styles.subBtn} android_ripple={ripple.icon(20)}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
                         accessibilityState={{ selected: scopeStageVisible }}
@@ -1035,7 +1080,7 @@ export default function NowPlayingScreen() {
                       </Pressable>
                       <Pressable
                         hitSlop={10}
-                        style={styles.subBtn}
+                        style={styles.subBtn} android_ripple={ripple.icon(20)}
                         onPress={() => setQueueOpen(true)}
                         accessibilityLabel="Queue"
                       >
@@ -1077,7 +1122,8 @@ export default function NowPlayingScreen() {
             {menuItems.map((item) => (
               <Pressable
                 key={item.key}
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                android_ripple={ripple.bounded}
+                style={styles.menuItem}
                 onPress={item.onPress}
                 accessibilityRole="button"
               >
@@ -1111,10 +1157,6 @@ export default function NowPlayingScreen() {
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
   content: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -1195,9 +1237,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-  },
-  menuItemPressed: {
-    opacity: 0.6,
   },
   menuItemLabel: {
     flex: 1,

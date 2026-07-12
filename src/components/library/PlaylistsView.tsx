@@ -24,6 +24,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
 
@@ -47,6 +48,7 @@ export function PlaylistsView({
   scrollEventThrottle?: number;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -205,7 +207,7 @@ export function PlaylistsView({
       />
 
       <View style={styles.addBar}>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.addButton}
           onPress={() => setAddSheetOpen(true)}
           accessibilityRole="button"

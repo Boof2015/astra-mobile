@@ -12,6 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 
 export interface ActionSheetItem {
   key: string;
@@ -39,6 +40,7 @@ export function ActionSheet({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const insets = useSafeAreaInsets();
 
   return (
@@ -60,7 +62,8 @@ export function ActionSheet({
           {items.map((item) => (
             <Pressable
               key={item.key}
-              style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+              android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+              style={styles.item}
               onPress={item.onPress}
               accessibilityRole="button"
             >
@@ -121,9 +124,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
-  },
-  itemPressed: {
-    opacity: 0.6,
   },
   itemLabel: {
     flex: 1,

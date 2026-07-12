@@ -12,6 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { EqSheet } from './EqSheet';
 
 interface EQPresetNameSheetProps {
@@ -28,6 +29,7 @@ export function EQPresetNameSheet({
   onClose,
 }: EQPresetNameSheetProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const [name, setName] = useState(defaultName);
   const trimmed = name.trim();
@@ -56,12 +58,12 @@ export function EQPresetNameSheet({
         onSubmitEditing={submit}
       />
       <View style={styles.actions}>
-        <Pressable style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
         </Pressable>
-        <Pressable style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
+        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
           <Text variant="label" color={colors.accentTextStrong}>
             {actionLabel}
           </Text>

@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import type { EQPreset } from '@/types/audio';
 import {
   EqSheet,
@@ -37,6 +38,7 @@ export function PresetSheet({
   onClose,
 }: PresetSheetProps) {
   const colors = useColors();
+  const ripple = useRipple();
   const builtIn = presets.filter((p) => !p.isCustom);
   const custom = presets.filter((p) => p.isCustom);
 
@@ -76,7 +78,7 @@ export function PresetSheet({
               onClose();
             }}
             trailing={
-              <Pressable
+              <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
                 hitSlop={10}
                 onPress={() => onDelete(p.id)}
                 style={styles.delete}

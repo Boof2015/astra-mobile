@@ -17,6 +17,7 @@ import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
@@ -28,6 +29,7 @@ interface RemoteQueueSheetProps {
 export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const queue = useDesktopRemoteStore((s) => s.queue);
   const snapPoints = useMemo(() => ['58%', '100%'], []);
   const renderFlashListScrollComponent = useBottomSheetScrollableCreator();
@@ -66,7 +68,8 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<DesktopRemoteQueueItem>) => (
       <Pressable
-        style={({ pressed }) => [styles.row, pressed && !item.isCurrent && styles.rowPressed]}
+        android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        style={styles.row}
         onPress={() => playItem(item)}
         disabled={item.isCurrent}
         accessibilityRole="button"
@@ -95,7 +98,7 @@ export function RemoteQueueSheet({ onClose }: RemoteQueueSheetProps) {
         ) : null}
       </Pressable>
     ),
-    [playItem, colors, styles]
+    [playItem, colors, styles, ripple]
   );
 
   return (
@@ -158,9 +161,6 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  rowPressed: {
-    opacity: 0.6,
   },
   rowText: {
     flex: 1,

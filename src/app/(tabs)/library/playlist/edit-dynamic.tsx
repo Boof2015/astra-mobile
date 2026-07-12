@@ -27,6 +27,7 @@ import {
 } from '@/components/sheets/AppSheet';
 import { fonts, fontSize, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import {
   DYNAMIC_PLAYLIST_PRESETS,
@@ -327,15 +328,16 @@ function DraftActions({
   onApply: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.sheetActions}>
-      <Pressable style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
+      <Pressable android_ripple={ripple.bounded} style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
         <Text variant="label" color={colors.textSecondary}>
           Cancel
         </Text>
       </Pressable>
-      <Pressable
+      <Pressable android_ripple={ripple.bounded}
         style={[styles.sheetButton, styles.applyButton, disabled && styles.applyDisabled]}
         disabled={disabled}
         onPress={onApply}
@@ -529,6 +531,7 @@ function ConditionEditorSheet({
   onApply: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const draft = target.draft;
   const error = validateCondition(draft);
@@ -536,7 +539,7 @@ function ConditionEditorSheet({
   return (
     <AppSheet onClose={onCancel}>
       <AppSheetTitle title={target.mode === 'new' ? 'Add filter' : 'Edit filter'} />
-      <Pressable style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
+      <Pressable android_ripple={ripple.bounded} style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
         <View style={styles.sheetSelectText}>
           <Text variant="caption" color={colors.textTertiary}>
             FIELD
@@ -568,7 +571,7 @@ function ConditionEditorSheet({
 
       <View style={styles.conditionSheetFooter}>
         {target.mode === 'edit' ? (
-          <Pressable style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
+          <Pressable android_ripple={ripple.bounded} style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
             <Ionicons name="trash-outline" size={17} color={colors.warning} />
             <Text variant="label" color={colors.warning}>
               Remove
@@ -713,11 +716,12 @@ function FilterCard({
   onRemove: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const option = fieldOptionForKey(getConditionFieldKey(condition));
 
   return (
-    <Pressable style={styles.ruleCard} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.bounded} style={styles.ruleCard} onPress={onPress} accessibilityRole="button">
       <View style={styles.cardIcon}>
         <Ionicons name={option?.icon ?? 'options-outline'} size={18} color={colors.accent} />
       </View>
@@ -729,7 +733,7 @@ function FilterCard({
           {fieldGroupLabel(condition)}
         </Text>
       </View>
-      <Pressable
+      <Pressable android_ripple={ripple.bounded}
         style={styles.cardRemove}
         onPress={onRemove}
         hitSlop={8}
@@ -744,6 +748,7 @@ function FilterCard({
 
 export default function DynamicPlaylistEditorScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -1036,7 +1041,7 @@ export default function DynamicPlaylistEditorScreen() {
     >
       <Screen padded={false}>
         <View style={styles.header}>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             onPress={() => router.back()}
             hitSlop={8}
             style={styles.headerButton}
@@ -1080,7 +1085,7 @@ export default function DynamicPlaylistEditorScreen() {
               contentContainerStyle={styles.presetRow}
             >
               {DYNAMIC_PLAYLIST_PRESETS.map((preset) => (
-                <Pressable
+                <Pressable android_ripple={ripple.bounded}
                   key={preset.id}
                   style={styles.presetChip}
                   onPress={() => applyPreset(preset.rules)}
@@ -1100,7 +1105,7 @@ export default function DynamicPlaylistEditorScreen() {
               <Text variant="caption" style={styles.sectionLabel}>
                 FILTERS
               </Text>
-              <Pressable style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
+              <Pressable android_ripple={ripple.bounded} style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
                 <Ionicons name="add" size={16} color={colors.accent} />
                 <Text variant="label" color={colors.accent}>
                   Add filter
@@ -1133,7 +1138,7 @@ export default function DynamicPlaylistEditorScreen() {
             <Text variant="caption" style={styles.sectionLabel}>
               ORDER
             </Text>
-            <Pressable style={styles.sortCard} onPress={openSortSheet} accessibilityRole="button">
+            <Pressable android_ripple={ripple.bounded} style={styles.sortCard} onPress={openSortSheet} accessibilityRole="button">
               <View style={styles.cardIcon}>
                 <Ionicons name="swap-vertical" size={18} color={colors.accent} />
               </View>
@@ -1161,7 +1166,7 @@ export default function DynamicPlaylistEditorScreen() {
               {status.label}
             </Text>
           </View>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             style={[styles.previewButton, normalizedRulesError !== null && styles.disabled]}
             disabled={normalizedRulesError !== null}
             onPress={() => setSheet({ kind: 'preview' })}
@@ -1172,7 +1177,7 @@ export default function DynamicPlaylistEditorScreen() {
               Preview
             </Text>
           </Pressable>
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             style={[styles.saveButton, saveDisabled && styles.disabled]}
             disabled={saveDisabled}
             onPress={save}

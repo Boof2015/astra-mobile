@@ -11,6 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { artworkUri } from '@/library/artwork';
 
 export function PlaylistRow({
@@ -39,8 +40,10 @@ export function PlaylistRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
     <Pressable
+      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.row}
       onPress={onPress}
       onLongPress={onLongPress}

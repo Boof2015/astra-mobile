@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 
 interface SelectionActionBarProps {
   count: number;
@@ -66,13 +67,11 @@ function BarButton({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.button,
-        pressed && styles.buttonPressed,
-        disabled && styles.buttonDisabled,
-      ]}
+      android_ripple={ripple.bounded}
+      style={[styles.button, disabled && styles.buttonDisabled]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -100,9 +99,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     gap: spacing.xs,
     paddingVertical: spacing.md,
-  },
-  buttonPressed: {
-    opacity: 0.7,
   },
   buttonDisabled: {
     opacity: 0.4,

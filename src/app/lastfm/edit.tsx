@@ -19,6 +19,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import type { LastFmScrobbleProtocol } from '@/types/lastFm';
 
@@ -103,6 +104,7 @@ function Field({
 
 export default function LastFmEditScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -200,7 +202,7 @@ export default function LastFmEditScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable style={styles.back} onPress={goBack} hitSlop={8}>
+          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goBack} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               {backLabel}
@@ -219,7 +221,7 @@ export default function LastFmEditScreen() {
 
             <View style={styles.typeCards}>
               {PROTOCOL_OPTIONS.map((option) => (
-                <Pressable
+                <Pressable android_ripple={ripple.bounded}
                   key={option.protocol}
                   style={styles.typeCard}
                   onPress={() => chooseProtocol(option.protocol)}
@@ -293,7 +295,7 @@ export default function LastFmEditScreen() {
               </Text>
             ) : null}
 
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               style={[styles.saveButton, !canSubmit || busy ? styles.buttonDisabled : null]}
               onPress={() => void onSave()}
               disabled={!canSubmit || busy}
@@ -308,7 +310,7 @@ export default function LastFmEditScreen() {
             </Pressable>
 
             {editing ? (
-              <Pressable style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
+              <Pressable android_ripple={ripple.bounded} style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
                 <Ionicons name="trash-outline" size={18} color={colors.warning} />
                 <Text variant="body" color={colors.warning}>
                   Remove destination

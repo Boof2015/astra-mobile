@@ -4,6 +4,7 @@ import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { ACCENTS, ACCENT_IDS, type AccentId } from '@/theme/accents';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 
 const SWATCH_SIZE = 36;
 
@@ -15,6 +16,7 @@ interface AccentSwatchRowProps {
 /** Circular accent swatches; the selected one gets a ring + checkmark. */
 export function AccentSwatchRow({ value, onChange }: AccentSwatchRowProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.wrap}>
@@ -22,7 +24,7 @@ export function AccentSwatchRow({ value, onChange }: AccentSwatchRowProps) {
         {ACCENT_IDS.map((id) => {
           const selected = id === value;
           return (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               key={id}
               onPress={() => onChange(id)}
               accessibilityRole="radio"

@@ -15,6 +15,7 @@ import { SeekBar } from '@/components/SeekBar';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { getLyricsPayloadSourceLabel } from '@/lyrics/presentation';
@@ -22,6 +23,8 @@ import type { Track } from '@/types/audio';
 
 interface LyricsViewProps {
   track: Track;
+  /** False while mounted but hidden (closed now-playing overlay): pins progress, stops rAF loops. */
+  active?: boolean;
   isPlaying: boolean;
   isLoading: boolean;
   isFavorite: boolean;
@@ -36,6 +39,7 @@ interface LyricsViewProps {
 
 export function LyricsView({
   track,
+  active = true,
   isPlaying,
   isLoading,
   isFavorite,
@@ -48,10 +52,12 @@ export function LyricsView({
   onDismiss,
 }: LyricsViewProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   // Lyrics mode is phone-target only, so progress comes straight from the
   // player store — the 2Hz tick re-renders this takeover, not the whole screen.
-  const currentTime = usePlayerStore((s) => s.currentTime);
+  // While inactive the selector pins to 0 so hidden ticks don't re-render.
+  const currentTime = usePlayerStore((s) => (active ? s.currentTime : 0));
   const duration = usePlayerStore((s) => s.duration);
   const result = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
   const sourceLabel = result?.status === 'hit' ? getLyricsPayloadSourceLabel(result.lyrics) : null;
@@ -59,7 +65,7 @@ export function LyricsView({
   return (
     <View style={styles.root}>
       <View style={styles.strip}>
-        <Pressable onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
+        <Pressable android_ripple={ripple.bounded} onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
           <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
         </Pressable>
 
@@ -87,7 +93,7 @@ export function LyricsView({
           </View>
         </View>
 
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           onPress={onToggleFavorite}
           hitSlop={10}
           style={styles.stripBtn}
@@ -101,7 +107,7 @@ export function LyricsView({
           />
         </Pressable>
 
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           onPress={onExitLyrics}
           hitSlop={10}
           style={styles.stripBtn}
@@ -116,24 +122,24 @@ export function LyricsView({
         track={track}
         currentTime={currentTime}
         duration={duration}
-        isPlaying={isPlaying}
+        isPlaying={isPlaying && active}
         onSeek={onSeek}
       />
 
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
-          <Pressable onPress={onPrev} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
+          <Pressable android_ripple={ripple.bounded} onPress={onPrev} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
           </Pressable>
-          <Pressable onPress={onPlayPause} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+          <Pressable android_ripple={ripple.bounded} onPress={onPlayPause} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={28}
               color={colors.bgPrimary}
             />
           </Pressable>
-          <Pressable onPress={onNext} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
+          <Pressable android_ripple={ripple.bounded} onPress={onNext} hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
           </Pressable>
         </View>

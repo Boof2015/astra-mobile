@@ -11,6 +11,7 @@ import {
   radius,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { artworkUri } from '@/library/artwork';
 import type { Artist } from '@/types/library';
 
@@ -18,6 +19,7 @@ import type { Artist } from '@/types/library';
 export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const useMosaic = artist.artwork_hashes.length >= 4;
   const hashes = useMosaic ? artist.artwork_hashes.slice(0, 4) : artist.artwork_hashes.slice(0, 1);
 
@@ -25,7 +27,7 @@ export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: (
   const tracks = `${artist.track_count} ${artist.track_count === 1 ? 'track' : 'tracks'}`;
 
   return (
-    <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
+    <Pressable android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.item} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {hashes.length === 0 ? (
           <Ionicons name="person" size={44} color={colors.textTertiary} />

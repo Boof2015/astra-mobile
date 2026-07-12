@@ -16,6 +16,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceRow, RemoteSyncProgress } from '@/types/remote';
 
@@ -39,6 +40,7 @@ function statusLine(
 
 export default function SourcesScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const sources = useRemoteSourcesStore((s) => s.sources);
@@ -103,7 +105,7 @@ export default function SourcesScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Settings
@@ -111,11 +113,11 @@ export default function SourcesScreen() {
         </Pressable>
         <View style={styles.headerActions}>
           {sources.length > 0 ? (
-            <Pressable onPress={() => void syncAll()} hitSlop={8} accessibilityLabel="Sync all">
+            <Pressable android_ripple={ripple.bounded} onPress={() => void syncAll()} hitSlop={8} accessibilityLabel="Sync all">
               <Ionicons name="sync" size={20} color={colors.textSecondary} />
             </Pressable>
           ) : null}
-          <Pressable
+          <Pressable android_ripple={ripple.bounded}
             onPress={() => router.push('/sources/edit')}
             hitSlop={8}
             accessibilityLabel="Add server"
@@ -137,7 +139,7 @@ export default function SourcesScreen() {
               No servers yet. Add a Subsonic or Jellyfin server to stream and browse your
               self-hosted library.
             </Text>
-            <Pressable style={styles.addButton} onPress={() => router.push('/sources/edit')}>
+            <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/sources/edit')}>
               <Ionicons name="add" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Add server
@@ -148,7 +150,7 @@ export default function SourcesScreen() {
           sources.map((source) => {
             const status = statusLine(source, progressById[source.id] ?? null);
             return (
-              <Pressable
+              <Pressable android_ripple={ripple.bounded}
                 key={source.id}
                 style={styles.row}
                 onPress={() => setActionFor(source)}

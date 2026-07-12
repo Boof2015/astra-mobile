@@ -20,6 +20,7 @@ import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { getPreferredLyricsTranslation } from '@/lyrics/presentation';
 import type { LyricsFurigana, LyricsLine as LyricsLineData } from '@/lyrics/types';
 
@@ -68,6 +69,7 @@ function buildSegments(text: string, furigana: LyricsFurigana[] | undefined): Se
 
 function LyricsLineComponent({ line, tier, baseSize, translationPriority, onSeek, onLayout }: LyricsLineProps) {
   const colors = useColors();
+  const ripple = useRipple();
   const target = TIER[tier];
   // Uniform metrics for every line (the whole point — no wrap/reflow between tiers).
   const size = baseSize;
@@ -100,7 +102,7 @@ function LyricsLineComponent({ line, tier, baseSize, translationPriority, onSeek
 
   return (
     <Animated.View onLayout={onLayout} style={[{ width: '100%', transformOrigin: 'left center' }, animatedStyle]}>
-      <Pressable onPress={onSeek} style={{ paddingVertical: 7 }}>
+      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: 7 }}>
         <View style={{ alignItems: 'flex-start' }}>
           {hasFurigana ? (
             <View

@@ -12,6 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {
@@ -23,6 +24,7 @@ interface SavePresetSheetProps {
 /** Name + save a custom preset from the current bands/preamp. */
 export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetSheetProps) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const [name, setName] = useState(defaultName);
   const trimmed = name.trim();
@@ -50,12 +52,12 @@ export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetShee
         }}
       />
       <View style={styles.actions}>
-        <Pressable style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
         </Pressable>
-        <Pressable
+        <Pressable android_ripple={ripple.bounded}
           style={[styles.btn, styles.save, !trimmed && styles.saveDisabled]}
           disabled={!trimmed}
           onPress={() => {

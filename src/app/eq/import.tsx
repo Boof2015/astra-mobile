@@ -10,10 +10,12 @@ import { genEqId } from '@/audio/eqPresets';
 import { useEQStore } from '@/stores/eqStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import type { EQPreset } from '@/types/audio';
 
 export default function EQPresetImportScreen() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const importPreset = useEQStore((state) => state.importPreset);
@@ -34,7 +36,7 @@ export default function EQPresetImportScreen() {
     return (
       <Screen>
         <View style={styles.header}>
-          <Pressable style={styles.back} onPress={goToEq} hitSlop={8}>
+          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goToEq} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               Equalizer
@@ -44,7 +46,7 @@ export default function EQPresetImportScreen() {
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={28} color={colors.warning} />
           <Text variant="body">This link does not contain a valid Astra EQ preset.</Text>
-          <Pressable style={styles.primaryButton} onPress={goToEq}>
+          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={goToEq}>
             <Text variant="body" color={colors.accentTextStrong}>
               Go to Equalizer
             </Text>

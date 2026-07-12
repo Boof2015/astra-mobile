@@ -16,6 +16,7 @@ import {
   radius,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 
 const THUMB_INSET = 3;
@@ -89,6 +90,7 @@ function SegmentButton({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   // 0 = inactive, 1 = active; drives the label colour cross-fade.
   const progress = useSharedValue(focused ? 1 : 0);
 
@@ -106,7 +108,8 @@ function SegmentButton({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.segment, pressed && styles.segmentPressed]}
+      android_ripple={ripple.bounded}
+      style={styles.segment}
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
@@ -142,9 +145,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 7,
-  },
-  segmentPressed: {
-    opacity: 0.72,
   },
   label: {
     fontSize: 12,

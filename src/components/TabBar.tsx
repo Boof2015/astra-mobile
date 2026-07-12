@@ -20,6 +20,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -161,6 +162,7 @@ interface TabButtonProps {
 function TabButton({ meta, focused, onPress }: TabButtonProps) {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   // 0 = inactive, 1 = active. Drives the accent fill, label colour, and bloom.
   const progress = useSharedValue(focused ? 1 : 0);
   // 0 = at rest, 1 = finger down.
@@ -184,6 +186,7 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
 
   return (
     <Pressable
+      android_ripple={ripple.icon(26)}
       style={styles.tab}
       onPress={onPress}
       onPressIn={() => {

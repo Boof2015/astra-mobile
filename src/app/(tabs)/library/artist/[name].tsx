@@ -26,6 +26,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import type { Palette } from '@/theme/palettes';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -291,6 +292,7 @@ function SectionHeader({
   onPress?: () => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
@@ -303,7 +305,7 @@ function SectionHeader({
         </Text>
       </View>
       {onPress ? (
-        <Pressable style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             See all
           </Text>
@@ -322,6 +324,7 @@ function AlbumRail({
   onAlbumPress: (album: ArtistAlbum) => void;
 }) {
   const styles = useStyles();
+  const ripple = useRipple();
   return (
     <ScrollView
       horizontal
@@ -329,7 +332,7 @@ function AlbumRail({
       contentContainerStyle={styles.albumRail}
     >
       {albums.map((album) => (
-        <Pressable
+        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           key={album.identity_key}
           style={styles.albumCard}
           onPress={() => onAlbumPress(album)}

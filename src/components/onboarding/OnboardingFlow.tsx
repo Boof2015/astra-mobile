@@ -26,6 +26,7 @@ import { formatFolderCount, formatTrackCount } from '@/components/settings/Setti
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { useRipple } from '@/theme/ripple';
 import type { BaseThemeId } from '@/theme/resolve';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -51,6 +52,7 @@ const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
  */
 export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -124,7 +126,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           </View>
           <View style={styles.navRow}>
             {canGoBack ? (
-              <Pressable
+              <Pressable android_ripple={ripple.bounded}
                 onPress={goBack}
                 style={styles.secondaryButton}
                 accessibilityRole="button"
@@ -135,7 +137,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
                 </Text>
               </Pressable>
             ) : null}
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               onPress={goNext}
               style={styles.primaryButton}
               accessibilityRole="button"
@@ -174,6 +176,7 @@ function WelcomeStep() {
 
 function LibraryStep() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
@@ -187,7 +190,7 @@ function LibraryStep() {
         title="Add your music"
         subtitle="Point Astra at the folders where your music lives. It scans them into your library — files on disk are never modified."
       />
-      <Pressable
+      <Pressable android_ripple={ripple.bounded}
         style={[styles.choiceButton, isScanning && styles.disabled]}
         disabled={isScanning}
         onPress={() => void addFolder()}
@@ -224,6 +227,7 @@ function LibraryStep() {
 
 function ThemeStep() {
   const styles = useStyles();
+  const ripple = useRipple();
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
@@ -248,7 +252,7 @@ function ThemeStep() {
         {options.map((option) => {
           const selected = option.id === baseTheme;
           return (
-            <Pressable
+            <Pressable android_ripple={ripple.bounded}
               key={option.id}
               onPress={() => void setBaseTheme(option.id)}
               style={[styles.themePill, selected && styles.themePillSelected]}
