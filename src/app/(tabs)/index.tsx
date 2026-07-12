@@ -136,24 +136,32 @@ function AlbumCover({ album, size }: { album: Album; size: number }) {
   );
 }
 
+/** Progress strip subscribes here so the 2Hz tick skips the card and screen. */
+function NowPlayingSeekStrip() {
+  const styles = useStyles();
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  return (
+    <View style={styles.seekTrack}>
+      <View style={[styles.seekFill, { width: `${progress * 100}%` }]} />
+    </View>
+  );
+}
+
 function NowPlayingCard({
   track,
   playbackState,
-  currentTime,
-  duration,
   onOpen,
 }: {
   track: Track;
   playbackState: PlaybackState;
-  currentTime: number;
-  duration: number;
   onOpen: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
   const isPlaying = playbackState === 'playing';
   const isLoading = playbackState === 'loading';
-  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const scopeActive = useScopeActive();
   const [cardSize, setCardSize] = useState({ width: 0, height: PLAYER_CARD_MIN_HEIGHT });
 
@@ -171,7 +179,6 @@ function NowPlayingCard({
           <SpectrumCurve
             active={scopeActive}
             pointCount={CURVE_POINTS}
-            analysisFrameMs={0}
             dbMin={-84}
             dbMax={-20}
             width={cardSize.width}
@@ -204,9 +211,7 @@ function NowPlayingCard({
         <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
           {track.album ? `${track.artist} / ${track.album}` : track.artist}
         </Text>
-        <View style={styles.seekTrack}>
-          <View style={[styles.seekFill, { width: `${progress * 100}%` }]} />
-        </View>
+        <NowPlayingSeekStrip />
         <View style={styles.placeholderControls}>
           <Pressable hitSlop={10} onPress={() => void skipToPrevious()}>
             <Ionicons name="play-skip-back" size={22} color={colors.textSecondary} />
@@ -377,8 +382,6 @@ export default function HomeScreen() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const currentPath = currentTrack?.path;
   const playbackState = usePlayerStore((s) => s.playbackState);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
 
   const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
@@ -483,8 +486,6 @@ export default function HomeScreen() {
                 <NowPlayingCard
                   track={currentTrack}
                   playbackState={playbackState}
-                  currentTime={currentTime}
-                  duration={duration}
                   onOpen={() => router.push('/now-playing')}
                 />
               </View>
@@ -501,8 +502,6 @@ export default function HomeScreen() {
                 <NowPlayingCard
                   track={currentTrack}
                   playbackState={playbackState}
-                  currentTime={currentTime}
-                  duration={duration}
                   onOpen={() => router.push('/now-playing')}
                 />
               ) : randomAlbum ? (

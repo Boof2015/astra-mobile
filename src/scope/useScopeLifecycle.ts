@@ -14,10 +14,15 @@ export function useScopeLifecycle(): void {
   useEffect(() => {
     let reduceMotion = false;
     let appActive = AppState.currentState === 'active';
+    // recompute runs on every playerStore change (incl. 2Hz progress writes);
+    // only touch the native tap + store when the gate actually flips.
+    let lastOn: boolean | null = null;
 
     const recompute = () => {
       const playing = usePlayerStore.getState().playbackState === 'playing';
       const on = playing && appActive && !reduceMotion;
+      if (on === lastOn) return;
+      lastOn = on;
       AstraScope.setActive(on);
       useScopeStore.getState().setActive(on);
     };

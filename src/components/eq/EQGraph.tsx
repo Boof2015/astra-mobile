@@ -151,7 +151,7 @@ export function EQGraph({
               active={spectrumActive}
               width={width}
               height={height}
-              frameMs={0}
+              frameMs={16}
               color={colors.accent}
               lineOpacity={0.22}
               fillOpacity={0.5}

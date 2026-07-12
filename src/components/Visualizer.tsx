@@ -12,7 +12,9 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useScopeActive } from '@/scope/scopeStore';
 
 const CANVAS_HEIGHT = 96;
-const STAGE_FRAME_MS = 0; // display-sync
+// 60fps cap: display-sync (0) pinned the JS thread at 120Hz on high-refresh
+// devices and starved every other animation.
+const STAGE_FRAME_MS = 16;
 
 type Mode = 'spectrum' | 'scope';
 
@@ -23,6 +25,8 @@ interface VisualizerProps {
   showChrome?: boolean;
   mode?: Mode;
   edgeFade?: boolean;
+  /** Freeze the live scopes without unmounting (e.g. while occluded by an overlay). */
+  paused?: boolean;
 }
 
 /**
@@ -37,12 +41,13 @@ export function Visualizer({
   showChrome = true,
   mode: controlledMode,
   edgeFade = false,
+  paused = false,
 }: VisualizerProps) {
   const styles = useStyles();
   const colors = useColors();
   const [uncontrolledMode, setUncontrolledMode] = useState<Mode>('spectrum');
   const mode = controlledMode ?? uncontrolledMode;
-  const scopeActive = useScopeActive();
+  const scopeActive = useScopeActive() && !paused;
   const spectrumActive = scopeActive && mode === 'spectrum';
   const scopeWaveActive = scopeActive && mode === 'scope';
 
@@ -75,6 +80,7 @@ export function Visualizer({
         ) : (
           <OscilloscopeWave
             active={scopeWaveActive}
+            frameMs={STAGE_FRAME_MS}
             width={width}
             height={height}
             glow

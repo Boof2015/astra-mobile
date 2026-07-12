@@ -10,9 +10,14 @@ import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player'
  * native indices trail absolute (mirror) indices by `headRemaining`.
  */
 
-const FIRST_CHUNK = 50;
-const CHUNK = 200;
-const YIELD_MS = 24;
+// The first chunk's setQueue lands on the Android main thread at the exact
+// moment of the play tap, so it stays tiny. Each background add() also occupies
+// the main thread (= the UI thread) for time proportional to its size, so the
+// chunks stay small with generous yields — a longer total fill is invisible,
+// per-chunk frame drops are not.
+const FIRST_CHUNK = 12;
+const CHUNK = 50;
+const YIELD_MS = 64;
 
 interface QueueLoad {
   generation: number;

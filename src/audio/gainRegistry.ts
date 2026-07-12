@@ -39,8 +39,14 @@ import { setFallbackGainNative, setTrackGainsNative } from '@/audio/eqNative';
 /** Persisted fallback gain (dB) — pushed before the stats aggregate on cold start. */
 const FALLBACK_DB_KEY = 'normalization_fallback_db';
 
-/** The queue can change rapidly (drag-reorder); coalesce re-registrations. */
-const REGISTER_DEBOUNCE_MS = 250;
+/**
+ * The queue can change rapidly (drag-reorder); coalesce re-registrations. Kept
+ * past the start-of-playback transition: registering a large queue marshals a
+ * big IN() query + one large JSI map, and nothing needs it that early — the
+ * current track's gain is activated explicitly and the next few are prefetched;
+ * the whole-queue map only matters for far jumps (fallback covers the gap).
+ */
+const REGISTER_DEBOUNCE_MS = 500;
 
 let started = false;
 let generation = 0;

@@ -31,9 +31,6 @@ const MIN_BAR = 0.05; // floor so silent/idle sections still show a sliver
 type WaveformQuality = 'preview' | 'accurate';
 
 interface WaveformSeekBarProps {
-  currentTime: number;
-  duration: number;
-  isPlaying?: boolean;
   onSeek: (seconds: number) => void;
   height?: number;
   touchPadding?: number;
@@ -48,11 +45,11 @@ const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
  * played/unplayed split, draggable playhead) on Skia, while keeping SeekBar's
  * tap/drag + pending-seek "hold" state machine verbatim so seeking behaves
  * identically. Peaks load offline (getWaveform) and fall back to flat bars.
+ *
+ * Phone-target only: progress comes straight from the player store so the 2Hz
+ * tick re-renders this leaf, not the whole now-playing tree.
  */
 export function WaveformSeekBar({
-  currentTime,
-  duration,
-  isPlaying = false,
   onSeek,
   height = CANVAS_HEIGHT,
   touchPadding = spacing.md,
@@ -60,6 +57,9 @@ export function WaveformSeekBar({
 }: WaveformSeekBarProps) {
   const styles = useStyles();
   const colors = useColors();
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+  const isPlaying = usePlayerStore((s) => s.playbackState === 'playing');
   const [scrubFraction, setScrubFraction] = useState<number | null>(null);
   const [barWidth, setBarWidth] = useState(0);
   const pendingSeek = usePlayerStore((s) => s.pendingSeek);

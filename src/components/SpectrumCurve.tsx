@@ -10,6 +10,7 @@ import {
   StrokeCap,
   StrokeJoin,
   TileMode,
+  type SkPath,
   type SkPicture
 } from '@shopify/react-native-skia';
 import { AstraScope, SPECTRUM_BINS } from '../../modules/astra-scope';
@@ -119,10 +120,18 @@ function makeFadePaint(color: string, startAlpha: number, endAlpha: number, x0: 
   return paint;
 }
 
-function buildPaths(values: ArrayLike<number>, width: number, height: number, pad: number) {
-  const line = Skia.Path.Make();
+function writePaths(
+  values: ArrayLike<number>,
+  width: number,
+  height: number,
+  pad: number,
+  line: SkPath,
+  fill: SkPath
+) {
+  line.reset();
+  fill.reset();
   const n = values.length;
-  if (n < 2 || width <= 0 || height <= 0) return { line, fill: line.copy() };
+  if (n < 2 || width <= 0 || height <= 0) return;
 
   const usableH = height - pad * 2;
   const xAt = (i: number) => (i / (n - 1)) * width;
@@ -139,11 +148,16 @@ function buildPaths(values: ArrayLike<number>, width: number, height: number, pa
   }
   line.lineTo(xAt(n - 1), yAt(n - 1));
 
-  const fill = line.copy();
+  fill.addPath(line);
   fill.lineTo(width, height);
   fill.lineTo(0, height);
   fill.close();
+}
 
+function buildPaths(values: ArrayLike<number>, width: number, height: number, pad: number) {
+  const line = Skia.Path.Make();
+  const fill = Skia.Path.Make();
+  writePaths(values, width, height, pad, line, fill);
   return { line, fill };
 }
 
@@ -319,7 +333,9 @@ export function SpectrumCurve({
   const color = colorProp ?? themeColors.accent;
   const edgeFadeColor = edgeFadeColorProp ?? themeColors.bgPrimary;
   const viewRef = useRef<SkiaPictureView | null>(null);
-  const activePointCount = Math.max(2, Math.floor(width));
+  // Half a point per pixel, capped: the quadTo midpoint smoothing makes denser
+  // sampling visually indistinguishable while doubling per-frame path cost.
+  const activePointCount = Math.min(160, Math.max(96, Math.floor(width / 2)));
   const resolvedPointCount = pointCount ?? values?.length ?? (active ? activePointCount : DEFAULT_POINTS);
   const staticValues = useMemo(
     () => values ?? new Float32Array(resolvedPointCount),
@@ -374,22 +390,37 @@ export function SpectrumCurve({
     const renderValues = new Float32Array(resolvedPointCount);
     const pointOptions = { dbMin, dbMax, tiltDbPerOctave };
 
+    // Paints, shaders, and paths live for the whole effect run: allocating them
+    // (and the gradient shaders) per frame was measurable GC/JSI churn at 60fps.
+    const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
+    const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, glowOpacity) : null;
+    const fillPaint = makeFillPaint(color, height, fillOpacity);
+    const fadeWidth = Math.min(edgeFadeWidth, width * 0.5);
+    const fade =
+      edgeFade && fadeWidth > 0
+        ? {
+            leftRect: Skia.XYWHRect(0, 0, fadeWidth, height),
+            leftPaint: makeFadePaint(edgeFadeColor, 1, 0, 0, fadeWidth),
+            rightRect: Skia.XYWHRect(width - fadeWidth, 0, fadeWidth, height),
+            rightPaint: makeFadePaint(edgeFadeColor, 0, 1, width - fadeWidth, width),
+          }
+        : null;
+    const bounds = Skia.XYWHRect(0, 0, width, height);
+    const linePath = Skia.Path.Make();
+    const fillPath = Skia.Path.Make();
+
     const draw = () => {
-      const picture = buildPicture(
-        renderValues,
-        width,
-        height,
-        color,
-        lineWidth,
-        lineOpacity,
-        fillOpacity,
-        glow,
-        glowOpacity,
-        edgeFade,
-        edgeFadeColor,
-        edgeFadeWidth
-      );
-      api.setJsiProperty(view.nativeId, 'picture', picture);
+      writePaths(renderValues, width, height, lineWidth, linePath, fillPath);
+      const recorder = Skia.PictureRecorder();
+      const canvas = recorder.beginRecording(bounds);
+      canvas.drawPath(fillPath, fillPaint);
+      if (glowPaint) canvas.drawPath(linePath, glowPaint);
+      canvas.drawPath(linePath, strokePaint);
+      if (fade) {
+        canvas.drawRect(fade.leftRect, fade.leftPaint);
+        canvas.drawRect(fade.rightRect, fade.rightPaint);
+      }
+      api.setJsiProperty(view.nativeId, 'picture', recorder.finishRecordingAsPicture());
       api.requestRedraw(view.nativeId);
     };
 

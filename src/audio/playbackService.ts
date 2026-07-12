@@ -24,35 +24,58 @@ export async function PlaybackService(): Promise<void> {
       syncCarNowPlayingFromTrackPlayer(),
     ]);
 
+  // A seek/skip fires 2-3 events back-to-back (track change, buffering, playing),
+  // and each sync is TrackPlayer getter round-trips + widget RemoteViews/Binder +
+  // car MediaSession pushes on the main thread — landing exactly during the
+  // transition the user is watching. Trailing-coalesce the burst into one sync
+  // with the settled values; 150ms of extra latency on Auto/widget metadata is
+  // imperceptible.
+  let syncTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSync = () => {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      void syncNowPlaying();
+    }, 150);
+  };
+
+  // Deferred past the transition frame like the UI hook's recompute: the track
+  // already plays at its natively-registered (or fallback) gain from sample
+  // zero; this only late-corrects unanalyzed tracks. Rapid skips coalesce.
+  let normalizeTimer: ReturnType<typeof setTimeout> | null = null;
   TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, () => {
-    void syncNowPlaying();
+    scheduleSync();
     // Apply normalization here too (not just in the UI hook) so playback started from
     // Android Auto / Bluetooth with the app closed is still normalized.
-    void applyNormalizationForActiveTrack();
+    if (normalizeTimer) clearTimeout(normalizeTimer);
+    normalizeTimer = setTimeout(() => {
+      normalizeTimer = null;
+      void applyNormalizationForActiveTrack();
+    }, 300);
   });
   TrackPlayer.addEventListener(Event.PlaybackState, () => {
-    void syncNowPlaying();
+    scheduleSync();
   });
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
-    void TrackPlayer.play().finally(() => syncNowPlaying());
+    void TrackPlayer.play().finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemotePause, () => {
-    void TrackPlayer.pause().finally(() => syncNowPlaying());
+    void TrackPlayer.pause().finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
-    void TrackPlayer.stop().finally(() => syncNowPlaying());
+    void TrackPlayer.stop().finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemoteNext, () => {
     void TrackPlayer.skipToNext()
       .catch(() => {})
-      .finally(() => syncNowPlaying());
+      .finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemotePrevious, () => {
     void TrackPlayer.skipToPrevious()
       .catch(() => {})
-      .finally(() => syncNowPlaying());
+      .finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemoteSeek, ({ position }) =>
-    TrackPlayer.seekTo(position).finally(() => syncNowPlaying()),
+    TrackPlayer.seekTo(position).finally(scheduleSync),
   );
 }

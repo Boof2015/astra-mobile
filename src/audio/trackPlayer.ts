@@ -25,6 +25,21 @@ async function doSetup(options: { allowBackgroundSetup?: boolean }): Promise<voi
   try {
     await TrackPlayer.setupPlayer({
       autoHandleInterruptions: true,
+      // IMPORTANT: pass the WHOLE buffer set. Android reads absent keys as 0
+      // (Bundle.getDouble default) and then rejects setup on the
+      // `minBuffer >= playBuffer` validation — a partial set silently kills
+      // playback entirely. min/max are the ExoPlayer defaults spelled out.
+      minBuffer: 50,
+      maxBuffer: 50,
+      // Start/resume playback once 0.5s is buffered (rebuffer resume = 2×
+      // that). ExoPlayer's defaults are 2.5s/5s — waiting for 5s of buffered
+      // media was the audible gap after backward seeks. Local files fill 0.5s
+      // in milliseconds; LAN streams keep well ahead of it.
+      playBuffer: 0.5,
+      // Retain 30s behind the playhead so short backward seeks never rebuffer
+      // at all (the ExoPlayer default is 0 — ANY backward seek discarded the
+      // buffer and re-fetched from the source).
+      backBuffer: 30,
       ...(options.allowBackgroundSetup
         ? { android: { allowBackgroundSetup: true } }
         : {}),

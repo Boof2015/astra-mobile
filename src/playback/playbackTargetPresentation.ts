@@ -67,13 +67,16 @@ export function hostFromBaseUrl(baseUrl: string): string {
 export function getPhonePlaybackPresentation({
   track,
   playbackState,
-  currentTime,
-  duration,
+  // Live progress is subscribed by leaf components (MiniProgress, seek bars) so
+  // parents don't re-render on the 2Hz tick; only the desktop presentation
+  // carries snapshot-fed progress through here.
+  currentTime = 0,
+  duration = 0,
 }: {
   track: Track | null;
   playbackState: PlaybackState;
-  currentTime: number;
-  duration: number;
+  currentTime?: number;
+  duration?: number;
 }): PlaybackPresentation {
   return {
     target: 'phone',

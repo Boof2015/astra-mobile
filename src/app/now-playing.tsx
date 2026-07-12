@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Pressable,
@@ -273,6 +273,8 @@ export default function NowPlayingScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [queueOpen, setQueueOpen] = useState(false);
+  // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
+  const closeQueue = useCallback(() => setQueueOpen(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
@@ -286,8 +288,6 @@ export default function NowPlayingScreen() {
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
   const isFavorite = usePlaylistStore((s) => (track ? s.favoritePaths.has(track.path) : false));
@@ -302,8 +302,6 @@ export default function NowPlayingScreen() {
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
-    currentTime,
-    duration,
   });
   const desktopPresentation = getDesktopPlaybackPresentation({
     connection: desktopConnection,
@@ -565,8 +563,6 @@ export default function NowPlayingScreen() {
             {lyricsMode && track ? (
               <LyricsView
                 track={track}
-                currentTime={currentTime}
-                duration={duration}
                 isPlaying={isPlaying}
                 isLoading={isLoading}
                 isFavorite={isFavorite}
@@ -875,6 +871,7 @@ export default function NowPlayingScreen() {
                         showChrome={false}
                         mode={scopeMode}
                         edgeFade
+                        paused={queueOpen}
                       />
                       <Pressable
                         onPress={() =>
@@ -945,9 +942,6 @@ export default function NowPlayingScreen() {
                   </View>
 
                   <WaveformSeekBar
-                    currentTime={currentTime}
-                    duration={duration}
-                    isPlaying={isPlaying}
                     height={layout.waveformHeight}
                     touchPadding={WAVEFORM_TOUCH_PADDING}
                     trackPath={track.path}
@@ -1103,9 +1097,9 @@ export default function NowPlayingScreen() {
       />
       {queueOpen && (
         isDesktopTarget ? (
-          <RemoteQueueSheet onClose={() => setQueueOpen(false)} />
+          <RemoteQueueSheet onClose={closeQueue} />
         ) : (
-          <QueueTray onClose={() => setQueueOpen(false)} />
+          <QueueTray onClose={closeQueue} />
         )
       )}
       <PlaybackTargetPicker

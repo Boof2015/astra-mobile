@@ -23,7 +23,9 @@ import { commitHaptic, tickHaptic } from '@/lib/haptics';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 const SWIPE_ACTIVE_OFFSET_X = 10;
-const SWIPE_FAIL_OFFSET_Y = 30;
+// Scroll-slop-sized: at 30 every vertical drag starting on a row had to travel
+// 30px before the pan failed and the surrounding scrollable could win.
+const SWIPE_FAIL_OFFSET_Y = 12;
 
 export interface SwipeAction {
   icon: IconName;

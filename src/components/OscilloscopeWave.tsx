@@ -9,6 +9,7 @@ import {
   SkiaPictureView,
   StrokeCap,
   StrokeJoin,
+  type SkPath,
   type SkPicture
 } from '@shopify/react-native-skia';
 import { AstraScope, OSCILLOSCOPE_POINTS } from '../../modules/astra-scope';
@@ -20,6 +21,8 @@ interface OscilloscopeWaveProps {
   active: boolean;
   width: number;
   height: number;
+  /** Live render cadence; 0 means display-sync. */
+  frameMs?: number;
   color?: string;
   lineWidth?: number;
   glow?: boolean;
@@ -56,6 +59,37 @@ function makeStrokePaint(color: string, width: number, alpha = 1) {
   return paint;
 }
 
+function writeWavePath(
+  samples: Float32Array,
+  sampleCount: number,
+  width: number,
+  height: number,
+  lineWidth: number,
+  gain: number,
+  path: SkPath
+) {
+  path.reset();
+  const n = Math.min(sampleCount, samples.length);
+  if (n < 2 || width <= 0 || height <= 0) return;
+
+  const mid = height / 2;
+  const amp = mid - lineWidth;
+  const xAt = (i: number) => (i / (n - 1)) * width;
+  const yAt = (i: number) => {
+    let v = samples[i] * gain;
+    // Per-track gain targets ~85% of full scale, so this only catches the rare
+    // intra-track peak that runs a touch hotter than the analyzed sample peak.
+    if (v < -1) v = -1;
+    else if (v > 1) v = 1;
+    return mid - v * amp;
+  };
+
+  path.moveTo(0, yAt(0));
+  for (let i = 1; i < n; i++) {
+    path.lineTo(xAt(i), yAt(i));
+  }
+}
+
 function buildPicture(
   samples: Float32Array,
   sampleCount: number,
@@ -68,32 +102,13 @@ function buildPicture(
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
-  const n = Math.min(sampleCount, samples.length);
+  const path = Skia.Path.Make();
+  writeWavePath(samples, sampleCount, width, height, lineWidth, gain, path);
 
-  if (n >= 2 && width > 0 && height > 0) {
-    const path = Skia.Path.Make();
-    const mid = height / 2;
-    const amp = mid - lineWidth;
-    const xAt = (i: number) => (i / (n - 1)) * width;
-    const yAt = (i: number) => {
-      let v = samples[i] * gain;
-      // Per-track gain targets ~85% of full scale, so this only catches the rare
-      // intra-track peak that runs a touch hotter than the analyzed sample peak.
-      if (v < -1) v = -1;
-      else if (v > 1) v = 1;
-      return mid - v * amp;
-    };
-
-    path.moveTo(0, yAt(0));
-    for (let i = 1; i < n; i++) {
-      path.lineTo(xAt(i), yAt(i));
-    }
-
-    if (glow) {
-      canvas.drawPath(path, makeStrokePaint(color, lineWidth * 3, 0.18));
-    }
-    canvas.drawPath(path, makeStrokePaint(color, lineWidth));
+  if (glow) {
+    canvas.drawPath(path, makeStrokePaint(color, lineWidth * 3, 0.18));
   }
+  canvas.drawPath(path, makeStrokePaint(color, lineWidth));
 
   return recorder.finishRecordingAsPicture();
 }
@@ -111,6 +126,7 @@ export function OscilloscopeWave({
   active,
   width,
   height,
+  frameMs = 16,
   color: colorProp,
   lineWidth = 2,
   glow = false,
@@ -141,24 +157,42 @@ export function OscilloscopeWave({
 
     let mounted = true;
     let raf = 0;
+    let lastDraw = 0;
+    const drawThreshold = frameMs > 0 ? Math.max(0, frameMs - 0.5) : 0;
+
+    // Paints and the path live for the whole effect run; per-frame allocation
+    // was measurable GC/JSI churn at 60fps.
+    const strokePaint = makeStrokePaint(color, lineWidth);
+    const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, 0.18) : null;
+    const bounds = Skia.XYWHRect(0, 0, width, height);
+    const path = Skia.Path.Make();
 
     const draw = (sampleCount: number) => {
       const gain = useScopeStore.getState().oscGain;
-      const picture = buildPicture(values, sampleCount, width, height, color, lineWidth, glow, gain);
-      api.setJsiProperty(view.nativeId, 'picture', picture);
+      writeWavePath(values, sampleCount, width, height, lineWidth, gain, path);
+      const recorder = Skia.PictureRecorder();
+      const canvas = recorder.beginRecording(bounds);
+      if (glowPaint) canvas.drawPath(path, glowPaint);
+      canvas.drawPath(path, strokePaint);
+      api.setJsiProperty(view.nativeId, 'picture', recorder.finishRecordingAsPicture());
       api.requestRedraw(view.nativeId);
     };
 
     values.fill(0);
     draw(values.length);
+    // Inactive: leave the flat line and schedule nothing instead of idling a rAF.
+    if (!active) return;
 
-    const tick = () => {
+    const tick = (t: number) => {
       if (!mounted) return;
       raf = requestAnimationFrame(tick);
-      if (!active) return;
+      if (drawThreshold > 0 && t - lastDraw < drawThreshold) return;
 
       const n = AstraScope.getOscilloscopeFrame(values);
-      if (n > 0) draw(n);
+      if (n > 0) {
+        lastDraw = t;
+        draw(n);
+      }
     };
 
     raf = requestAnimationFrame(tick);
@@ -166,7 +200,7 @@ export function OscilloscopeWave({
       mounted = false;
       cancelAnimationFrame(raf);
     };
-  }, [active, color, glow, height, lineWidth, width]);
+  }, [active, color, frameMs, glow, height, lineWidth, width]);
 
   if (width <= 0 || height <= 0) return null;
   return <SkiaPictureView ref={viewRef} picture={initialPicture} style={{ width, height }} />;

@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
 import { SpectrumCurve } from './SpectrumCurve';
@@ -21,6 +21,7 @@ import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
+import { artworkThumbFromSource } from '@/library/artwork';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { PlaybackTargetPicker } from './PlaybackTargetPicker';
 import {
@@ -56,6 +57,13 @@ function MiniProgress({
   );
 }
 
+/** Phone-target progress: subscribes here so the 2Hz tick skips the whole pill. */
+function PhoneMiniProgress({ isPlaying }: { isPlaying: boolean }) {
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+  return <MiniProgress currentTime={currentTime} duration={duration} isPlaying={isPlaying} />;
+}
+
 /**
  * Persistent floating mini-player (M3 redesign): a rounded pill above the tab
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
@@ -65,11 +73,10 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
+  const pathname = usePathname();
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
   const desktopConnection = useDesktopRemoteStore((s) => s.connection);
   const desktopConnectionState = useDesktopRemoteStore((s) => s.connectionState);
   const desktopSnapshot = useDesktopRemoteStore((s) => s.snapshot);
@@ -83,8 +90,6 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
-    currentTime,
-    duration,
   });
   const desktopPresentation = getDesktopPlaybackPresentation({
     connection: desktopConnection,
@@ -102,7 +107,9 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const isDesktop = presentation.target === 'desktop';
   const isPlaying = presentation.playbackState === 'playing';
   const isLoading = presentation.playbackState === 'loading';
-  const liveScopeActive = visible && scopeActive && !isDesktop;
+  // The pill sits underneath the now-playing transparentModal; don't burn a
+  // second live-scope frame loop while it's fully occluded.
+  const liveScopeActive = visible && scopeActive && !isDesktop && pathname !== '/now-playing';
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
   const onTogglePlay = () => {
@@ -137,7 +144,6 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
             <SpectrumCurve
               active={liveScopeActive}
               pointCount={CURVE_POINTS}
-              analysisFrameMs={0}
               dbMin={-84}
               dbMax={-20}
               width={pillWidth}
@@ -155,7 +161,11 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
         <View style={styles.row}>
           <View style={styles.art}>
             {presentation.artworkUri ? (
-              <Image source={{ uri: presentation.artworkUri }} style={styles.artImage} contentFit="cover" />
+              <Image
+                source={{ uri: artworkThumbFromSource(presentation.artworkUri) ?? presentation.artworkUri }}
+                style={styles.artImage}
+                contentFit="cover"
+              />
             ) : (
               <AstraLogo size={20} />
             )}
@@ -193,11 +203,15 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
         </View>
 
         {presentation.hasTrack ? (
-          <MiniProgress
-            currentTime={presentation.currentTime}
-            duration={presentation.duration}
-            isPlaying={isPlaying}
-          />
+          isDesktop ? (
+            <MiniProgress
+              currentTime={presentation.currentTime}
+              duration={presentation.duration}
+              isPlaying={isPlaying}
+            />
+          ) : (
+            <PhoneMiniProgress isPlaying={isPlaying} />
+          )
         ) : null}
       </Pressable>
       <PlaybackTargetPicker

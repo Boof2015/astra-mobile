@@ -44,6 +44,7 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
+import { artworkThumbFromSource } from '@/library/artwork';
 import { dragArmHaptic, tickHaptic } from '@/lib/haptics';
 import { useQueueStore } from '@/stores/queueStore';
 import {
@@ -86,7 +87,9 @@ function trackArtist(track: RntpTrack): string {
 }
 
 function artworkUri(track: RntpTrack): string | undefined {
-  return typeof track.artwork === 'string' ? track.artwork : undefined;
+  // RNTP tracks carry the full-size cover; 42px rows want the generated thumb.
+  if (typeof track.artwork !== 'string') return undefined;
+  return artworkThumbFromSource(track.artwork) ?? undefined;
 }
 
 function queueCountLabel(count: number): string {
@@ -130,7 +133,12 @@ function reconcileQueueEntries(
   return tracks.map((track) => {
     const identity = rntpKey(track);
     const reused = available.get(identity)?.shift();
-    if (reused) return { ...reused, track, identity };
+    if (reused) {
+      // Same track object → same entry object, so memo'd rows bail out when
+      // only other parts of the queue changed (e.g. a track advance).
+      if (reused.track === track) return reused;
+      return { ...reused, track, identity };
+    }
 
     const key = `${identity}:${nextSerial.current}`;
     nextSerial.current += 1;
@@ -142,7 +150,9 @@ interface QueueTrayProps {
   onClose: () => void;
 }
 
-export function QueueTray({ onClose }: QueueTrayProps) {
+// memo: the parent now-playing screen re-renders on store changes; the tray's
+// ~15-hook body shouldn't re-execute unless its own inputs change.
+export const QueueTray = memo(function QueueTray({ onClose }: QueueTrayProps) {
   const styles = useStyles();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -156,6 +166,24 @@ export function QueueTray({ onClose }: QueueTrayProps) {
   // freeze. Clamping the list container to the window height caps the viewport
   // no matter what the sheet reports; both snap points stay unaffected.
   const listClampStyle = useMemo(() => ({ maxHeight: windowHeight }), [windowHeight]);
+  // Same bug, milder symptom: a viewport measured during the open animation can
+  // stick at the clamp height (taller than the sheet's real content area), which
+  // silently shortens the scroll range — the last few rows become unreachable.
+  // Mounting the list only after the sheet settles removes the bad window.
+  const [listReady, setListReady] = useState(false);
+  const onSheetChange = useCallback((index: number) => {
+    if (index >= 0) setListReady(true);
+  }, []);
+  // Bottom padding clears the gesture-nav inset so the last row is fully
+  // scrollable into view at the 100% snap.
+  const listContentStyle = useMemo(
+    () => [styles.listContent, { paddingBottom: spacing.xxl + insets.bottom }],
+    [styles, insets.bottom]
+  );
+  const listContentEditStyle = useMemo(
+    () => [styles.listContent, { paddingBottom: spacing.xxl * 2 + insets.bottom }],
+    [styles, insets.bottom]
+  );
 
   const { tracks, activeIndex, hasSnapshot, refresh } = useQueue(true);
   const currentTrack = activeIndex >= 0 ? tracks[activeIndex] : undefined;
@@ -551,6 +579,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
       enablePanDownToClose
       enableContentPanningGesture={!editMode}
       enableHandlePanningGesture
+      onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBg}
@@ -603,23 +632,24 @@ export function QueueTray({ onClose }: QueueTrayProps) {
         Up next
       </Text>
 
-      <FlashList
-        data={entries}
-        scrollEnabled={!editMode}
-        style={listClampStyle}
-        keyExtractor={(item) => item.key}
-        drawDistance={QUEUE_ROW_HEIGHT * 12}
-        maintainVisibleContentPosition={{ disabled: true }}
-        renderScrollComponent={renderFlashListScrollComponent}
-        renderItem={renderItem}
-        extraData={listExtraData}
-        contentContainerStyle={[
-          styles.listContent,
-          editMode && selectedCount > 0 ? styles.listContentWithActionBar : null,
-        ]}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
-      />
+      {listReady ? (
+        <FlashList
+          data={entries}
+          scrollEnabled={!editMode}
+          style={listClampStyle}
+          keyExtractor={(item) => item.key}
+          drawDistance={QUEUE_ROW_HEIGHT * 12}
+          maintainVisibleContentPosition={{ disabled: true }}
+          renderScrollComponent={renderFlashListScrollComponent}
+          renderItem={renderItem}
+          extraData={listExtraData}
+          contentContainerStyle={
+            editMode && selectedCount > 0 ? listContentEditStyle : listContentStyle
+          }
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderEmpty}
+        />
+      ) : null}
 
       {editMode && selectedCount > 0 ? (
         <View style={[styles.actionBar, { paddingBottom: insets.bottom + spacing.sm }]}>
@@ -649,7 +679,7 @@ export function QueueTray({ onClose }: QueueTrayProps) {
       ) : null}
     </BottomSheet>
   );
-}
+});
 
 const Artwork = memo(function Artwork({ uri, title }: { uri?: string; title?: string }) {
   const styles = useStyles();
@@ -967,11 +997,7 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
   },
   listContent: {
-    paddingBottom: spacing.xxl,
     flexGrow: 1,
-  },
-  listContentWithActionBar: {
-    paddingBottom: spacing.xxl * 2,
   },
   empty: {
     alignItems: 'center',

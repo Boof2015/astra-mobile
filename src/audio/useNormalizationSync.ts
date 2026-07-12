@@ -132,8 +132,19 @@ export function useNormalizationSync(): void {
       }, 250);
     }
 
+    // Deferred past the transition frame: the track already plays at its
+    // natively-registered (or fallback) gain from sample zero, so recompute
+    // only late-corrects unanalyzed tracks — no need to compete with the
+    // skip/play burst. Rapid skips coalesce into one recompute.
+    let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
     const unsubTrack = usePlayerStore.subscribe((state, prev) => {
-      if (state.currentTrack?.path !== prev.currentTrack?.path) void recompute();
+      if (state.currentTrack?.path !== prev.currentTrack?.path) {
+        if (recomputeTimer) clearTimeout(recomputeTimer);
+        recomputeTimer = setTimeout(() => {
+          recomputeTimer = null;
+          void recompute();
+        }, 300);
+      }
     });
     const unsubQueue = useQueueStore.subscribe((state, prev) => {
       // Re-warm when the upcoming order changes (reorder, add-next, remove, advance).
@@ -159,6 +170,7 @@ export function useNormalizationSync(): void {
     return () => {
       cancelled = true;
       if (prefetchTimer) clearTimeout(prefetchTimer);
+      if (recomputeTimer) clearTimeout(recomputeTimer);
       unsubTrack();
       unsubQueue();
       unsubSettings();

@@ -15,14 +15,13 @@ import { SeekBar } from '@/components/SeekBar';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { usePlayerStore } from '@/stores/playerStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { getLyricsPayloadSourceLabel } from '@/lyrics/presentation';
 import type { Track } from '@/types/audio';
 
 interface LyricsViewProps {
   track: Track;
-  currentTime: number;
-  duration: number;
   isPlaying: boolean;
   isLoading: boolean;
   isFavorite: boolean;
@@ -37,8 +36,6 @@ interface LyricsViewProps {
 
 export function LyricsView({
   track,
-  currentTime,
-  duration,
   isPlaying,
   isLoading,
   isFavorite,
@@ -52,6 +49,10 @@ export function LyricsView({
 }: LyricsViewProps) {
   const styles = useStyles();
   const colors = useColors();
+  // Lyrics mode is phone-target only, so progress comes straight from the
+  // player store — the 2Hz tick re-renders this takeover, not the whole screen.
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
   const result = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
   const sourceLabel = result?.status === 'hit' ? getLyricsPayloadSourceLabel(result.lyrics) : null;
 

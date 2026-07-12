@@ -7,7 +7,7 @@ import {
 } from 'react-native-track-player';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLibraryStore } from '@/stores/libraryStore';
-import type { PlaybackState } from '@/types/audio';
+import type { PlaybackState, Track } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
 
@@ -40,6 +40,33 @@ function mapState(state?: State): PlaybackState {
     default:
       return 'stopped'; // None, Stopped, Ended, Error
   }
+}
+
+/**
+ * Field-exact equality over everything `rntpToTrack` emits. Both the optimistic
+ * controller write and the RNTP confirmation build tracks through it, so a
+ * match means the confirmation carries nothing new.
+ */
+function sameTrack(a: Track | null, b: Track | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.path === b.path &&
+    a.title === b.title &&
+    a.artist === b.artist &&
+    a.album === b.album &&
+    a.duration === b.duration &&
+    a.artworkData === b.artworkData &&
+    a.format === b.format &&
+    a.sampleRate === b.sampleRate &&
+    a.bitDepth === b.bitDepth &&
+    a.bitrate === b.bitrate &&
+    a.sourceType === b.sourceType &&
+    a.sourceId === b.sourceId &&
+    a.sourceTrackId === b.sourceTrackId &&
+    a.artworkSourceId === b.artworkSourceId
+  );
 }
 
 function resolveTransientLoading(
@@ -86,9 +113,14 @@ export function usePlaybackSync(): void {
 
   useEffect(() => {
     const nextTrack = activeTrack ? rntpToTrack(activeTrack) : null;
-    if (usePlayerStore.getState().currentTrack?.path !== nextTrack?.path) {
+    const prevTrack = usePlayerStore.getState().currentTrack;
+    if (prevTrack?.path !== nextTrack?.path) {
       usePlayerStore.getState().clearPendingSeek();
     }
+    // RNTP usually just confirms the optimistic track the controller already
+    // wrote; skip the redundant store write (a full re-render wave of every
+    // currentTrack subscriber) when nothing actually changed.
+    if (sameTrack(prevTrack, nextTrack)) return;
     setCurrentTrack(nextTrack);
   }, [activeTrack, setCurrentTrack]);
 
@@ -110,6 +142,18 @@ export function usePlaybackSync(): void {
       activeTrackPath,
       stablePlayback.current
     );
+    if (
+      mappedPlaybackState === 'loading' &&
+      (stablePlayback.current.state === 'playing' || stablePlayback.current.state === 'paused')
+    ) {
+      // Cross-track loading (skip/advance): local transitions resolve almost
+      // instantly, so surfacing 'loading' immediately just flaps the play icon
+      // and re-renders every playbackState subscriber twice per skip. Hold the
+      // previous state and only show the spinner if the load actually drags
+      // (e.g. a slow remote stream). Cleanup cancels on the next state event.
+      const timer = setTimeout(() => setPlaybackState('loading'), 250);
+      return () => clearTimeout(timer);
+    }
     setPlaybackState(mappedPlaybackState);
     if (mappedPlaybackState !== 'loading') {
       stablePlayback.current = {
