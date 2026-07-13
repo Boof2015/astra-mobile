@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -45,6 +45,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { useTheme } from '@/theme/themed';
+import { SessionLifecycle } from '@/session/SessionLifecycle';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -288,13 +289,17 @@ export default function RootLayout() {
   const onboardingLoaded = useOnboardingStore((s) => s.loaded);
   const onboardingComplete = useOnboardingStore((s) => s.onboardingComplete);
   const theme = useTheme();
-  const ready = (fontsLoaded && themeLoaded && onboardingLoaded) || splashTimedOut;
+  const renderReady = (fontsLoaded && themeLoaded && onboardingLoaded) || splashTimedOut;
+  const [sessionReady, setSessionReady] = useState(false);
+  const handleSessionReady = useCallback(() => setSessionReady(true), []);
+  const splashReady = renderReady
+    && (!onboardingComplete || sessionReady || splashTimedOut);
 
   useEffect(() => {
-    if (ready) {
+    if (splashReady) {
       void SplashScreen.hideAsync().catch(() => {});
     }
-  }, [ready]);
+  }, [splashReady]);
 
   // Eager library init: SQLite open + initial reads are tens of ms, and the
   // Library tab + playback adapters get data immediately. EQ + audio settings load
@@ -331,7 +336,7 @@ export default function RootLayout() {
       .catch((err) => console.error('[lastfm] init failed', err));
   }, []);
 
-  if (!ready) return null;
+  if (!renderReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.bgPrimary }}>
@@ -361,6 +366,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(tabs)" />
         </Stack>
+        {onboardingComplete ? <SessionLifecycle onReady={handleSessionReady} /> : null}
         {onboardingComplete ? (
           <>
             {/* Always-mounted player overlay (store-gated); open/close is a pure

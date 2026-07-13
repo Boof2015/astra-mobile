@@ -76,6 +76,7 @@
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts",
     "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts",
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
+    "test:session": "node --experimental-strip-types --test src/session/sessionState.test.mts src/session/playbackMaterialization.test.mts",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

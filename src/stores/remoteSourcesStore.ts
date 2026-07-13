@@ -127,23 +127,33 @@ interface RemoteSourcesStore {
   syncAll: () => Promise<void>;
 }
 
+let initPromise: Promise<void> | null = null;
+
 export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   sources: [],
   initialized: false,
   progressById: {},
 
-  init: async () => {
-    if (get().initialized) return;
-    const db = await openLibraryDb();
-    const sources = await getRemoteSources(db);
-    // Populate the URL registry from cached config/token (no network on launch).
-    await Promise.all(sources.filter((s) => s.enabled).map((s) => hydrateRegistry(s)));
-    set({ sources, initialized: true });
-    // The library's initial refresh may have run before the registry was hydrated,
-    // leaving remote artwork URLs unresolved — refresh once more now that it's ready.
-    if (sources.length > 0) {
-      await useLibraryStore.getState().refresh();
+  init: () => {
+    if (get().initialized) return Promise.resolve();
+    if (!initPromise) {
+      initPromise = (async () => {
+        const db = await openLibraryDb();
+        const sources = await getRemoteSources(db);
+        // Populate the URL registry from cached config/token (no network on launch).
+        await Promise.all(sources.filter((s) => s.enabled).map((s) => hydrateRegistry(s)));
+        set({ sources, initialized: true });
+        // The library's initial refresh may have run before the registry was hydrated,
+        // leaving remote artwork URLs unresolved — refresh once more now that it's ready.
+        if (sources.length > 0) {
+          await useLibraryStore.getState().refresh();
+        }
+      })().catch((error) => {
+        initPromise = null;
+        throw error;
+      });
     }
+    return initPromise;
   },
 
   refresh: async () => {

@@ -7,6 +7,11 @@ import type { PlaybackState, Track } from '@/types/audio';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
+import type {
+  PlaybackSessionSnapshotV1,
+  ResolvedPlaybackSession,
+} from '@/session/sessionState';
+import { materializePlaybackQueue } from '@/session/playbackMaterialization';
 import { setupPlayer } from './trackPlayer';
 import { SAMPLE_TRACKS, rntpToTrack, toRntpTrack } from './sampleTracks';
 import {
@@ -33,6 +38,7 @@ setQueueLoadErrorHandler(() => {
 // off and the upcoming tail restored to its original sequence (mirrors desktop's
 // autoQueue + shuffledAutoIndices split, but over RNTP's flat native queue).
 let originalOrder: string[] | null = null;
+let restoredMaterializationPromise: Promise<void> | null = null;
 
 const NEXT_REPEAT: Record<RepeatModeStr, RepeatModeStr> = {
   none: 'all',
@@ -70,6 +76,10 @@ function rntpTrackId(track: RntpTrack): string {
   return String(track.id ?? track.url);
 }
 
+function rntpTrackPath(track: RntpTrack): string {
+  return typeof track.astraPath === 'string' ? track.astraPath : String(track.url);
+}
+
 function setOptimisticTrack(track: RntpTrack | undefined, playbackState?: PlaybackState): void {
   if (!track) return;
   const current = rntpToTrack(track);
@@ -101,6 +111,9 @@ async function getQueueSnapshot(): Promise<{ queue: RntpTrack[]; activeIndex: nu
   const store = useQueueStore.getState();
 
   if (store.hasSnapshot) {
+    if (usePlayerStore.getState().restoredSessionPending) {
+      return { queue: store.tracks, activeIndex: store.activeIndex };
+    }
     await store.refreshActiveIndex();
     const { tracks, activeIndex } = useQueueStore.getState();
     return { queue: tracks, activeIndex };
@@ -119,6 +132,22 @@ function syncOriginalOrderFromMirrorIfUnshuffled(): void {
   if (usePlayerStore.getState().shuffle) return;
   const { tracks, hasSnapshot } = useQueueStore.getState();
   if (hasSnapshot) originalOrder = tracks.map(rntpTrackId);
+}
+
+function pruneOriginalOrderToMirror(): void {
+  if (!originalOrder) return;
+  const remaining = new Map<string, number>();
+  for (const track of useQueueStore.getState().tracks) {
+    const id = rntpTrackId(track);
+    remaining.set(id, (remaining.get(id) ?? 0) + 1);
+  }
+  originalOrder = originalOrder.filter((id) => {
+    const count = remaining.get(id) ?? 0;
+    if (count <= 0) return false;
+    if (count === 1) remaining.delete(id);
+    else remaining.set(id, count - 1);
+    return true;
+  });
 }
 
 function selectPhonePlaybackTarget(): void {
@@ -142,9 +171,127 @@ function shuffleArray<T>(items: readonly T[]): T[] {
  * foreground. The stored repeat mode is re-applied after a (re)setup so a
  * deferred init keeps the user's choice.
  */
-async function ensurePlayerReady(options: { allowBackgroundSetup?: boolean } = {}): Promise<void> {
+async function materializeRestoredSession(): Promise<void> {
+  if (!usePlayerStore.getState().restoredSessionPending) return;
+  if (restoredMaterializationPromise) return restoredMaterializationPromise;
+
+  restoredMaterializationPromise = (async () => {
+    const queue = useQueueStore.getState();
+    if (queue.tracks.length === 0 || queue.activeIndex < 0) {
+      usePlayerStore.getState().setRestoredSessionPending(false);
+      return;
+    }
+
+    const player = usePlayerStore.getState();
+    // Remote stream URLs can expire or the server can move between relaunch and
+    // Play. Rebuild every RNTP row from its stable Astra identity at the lazy
+    // materialization boundary so URL resolution is fresh.
+    const materializedTracks = queue.tracks.map((track) => toRntpTrack(rntpToTrack(track)));
+    useQueueStore.getState().setSnapshot(materializedTracks, queue.activeIndex);
+    if (player.currentTime > 0) player.setPendingSeek(player.currentTime);
+    await materializePlaybackQueue(
+      {
+        tracks: materializedTracks,
+        activeIndex: queue.activeIndex,
+        position: player.currentTime,
+        repeat: player.repeat,
+      },
+      {
+        loadQueue: loadQueueChunked,
+        setRepeat: async (repeat) => {
+          await TrackPlayer.setRepeatMode(toRntpRepeat(repeat));
+        },
+        seek: (position) => TrackPlayer.seekTo(position),
+      }
+    );
+    usePlayerStore.getState().setRestoredSessionPending(false);
+  })();
+
+  try {
+    await restoredMaterializationPromise;
+  } finally {
+    restoredMaterializationPromise = null;
+  }
+}
+
+async function ensurePlayerReady(
+  options: { allowBackgroundSetup?: boolean; materializeRestored?: boolean } = {}
+): Promise<void> {
   await setupPlayer(options);
+  if (options.materializeRestored !== false) await materializeRestoredSession();
   await TrackPlayer.setRepeatMode(toRntpRepeat(usePlayerStore.getState().repeat));
+}
+
+function discardPendingRestoredSession(): void {
+  usePlayerStore.getState().setRestoredSessionPending(false);
+}
+
+export function getPlaybackSessionSnapshot(): PlaybackSessionSnapshotV1 | null {
+  const queue = useQueueStore.getState();
+  if (!queue.hasSnapshot || queue.tracks.length === 0) return null;
+
+  const player = usePlayerStore.getState();
+  const queuePaths = queue.tracks.map(rntpTrackPath);
+  let activeIndex = queue.activeIndex;
+  if (activeIndex < 0 || activeIndex >= queuePaths.length) {
+    const currentPath = player.currentTrack?.path;
+    activeIndex = currentPath ? queuePaths.indexOf(currentPath) : -1;
+    if (activeIndex < 0) activeIndex = 0;
+  }
+
+  const pathById = new Map(queue.tracks.map((track) => [rntpTrackId(track), rntpTrackPath(track)]));
+  const originalOrderPaths = originalOrder
+    ?.map((id) => pathById.get(id))
+    .filter((path): path is string => Boolean(path));
+
+  return {
+    queuePaths,
+    activeIndex,
+    position: player.currentTime,
+    shuffle: player.shuffle,
+    repeat: player.repeat,
+    originalOrderPaths: originalOrderPaths?.length === queuePaths.length
+      ? originalOrderPaths
+      : [...queuePaths],
+  };
+}
+
+export function restorePlaybackSession(
+  session: ResolvedPlaybackSession<Track> | null
+): void {
+  const player = usePlayerStore.getState();
+  if (!session || session.tracks.length === 0) {
+    originalOrder = null;
+    useQueueStore.getState().setSnapshot([], -1);
+    player.reset();
+    player.setShuffle(false);
+    player.setRepeat('none');
+    return;
+  }
+
+  const queueTracks = session.tracks.map(toRntpTrack);
+  const activeTrack = session.tracks[session.activeIndex];
+  const idByPath = new Map(session.tracks.map((track) => [track.path, track.id]));
+  originalOrder = session.originalOrderPaths
+    .map((path) => idByPath.get(path))
+    .filter((id): id is string => Boolean(id));
+  useQueueStore.getState().setSnapshot(queueTracks, session.activeIndex);
+  player.setCurrentTrack(activeTrack);
+  player.setProgress(session.position, activeTrack.duration);
+  player.clearPendingSeek();
+  player.setShuffle(session.shuffle);
+  player.setRepeat(session.repeat);
+  player.setPlaybackState('paused');
+  player.setRestoredSessionPending(true);
+}
+
+/** A live RNTP session (for example Android Auto) wins over an older disk snapshot. */
+export async function hasActiveNativePlaybackSession(): Promise<boolean> {
+  try {
+    return Boolean(await TrackPlayer.getActiveTrack());
+  } catch {
+    return false;
+  }
 }
 
 /** Replace the queue with the given tracks and start playing at startIndex. */
@@ -164,7 +311,8 @@ async function playTracksInternal(
 ): Promise<void> {
   if (tracks.length === 0) return;
   selectPhonePlaybackTarget();
-  await ensurePlayerReady(options);
+  discardPendingRestoredSession();
+  await ensurePlayerReady({ ...options, materializeRestored: false });
   originalOrder = tracks.map((t) => t.id);
   // Honor an already-on shuffle by scrambling the upcoming tail of the new
   // context up front, so the whole queue is loaded natively in a single pass.
@@ -189,7 +337,8 @@ async function playTracksInternal(
 export async function shuffleTracks(tracks: Track[]): Promise<void> {
   if (tracks.length === 0) return;
   selectPhonePlaybackTarget();
-  await ensurePlayerReady();
+  discardPendingRestoredSession();
+  await ensurePlayerReady({ materializeRestored: false });
   originalOrder = tracks.map((t) => t.id);
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
@@ -208,7 +357,8 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
 /** M0 demo entry point: load the streamed sample queue if nothing is queued. */
 export async function playSample(): Promise<void> {
   selectPhonePlaybackTarget();
-  await ensurePlayerReady();
+  discardPendingRestoredSession();
+  await ensurePlayerReady({ materializeRestored: false });
   await queueLoadSettled();
   const queue = await TrackPlayer.getQueue();
   if (queue.length === 0) {
@@ -256,6 +406,7 @@ export async function pause(): Promise<void> {
 }
 
 export async function seekTo(seconds: number): Promise<void> {
+  await ensurePlayerReady();
   const duration = usePlayerStore.getState().duration;
   usePlayerStore.getState().setPendingSeek(seconds);
   usePlayerStore.getState().setProgress(seconds, duration);
@@ -279,6 +430,7 @@ export async function togglePlay(): Promise<void> {
 }
 
 export async function skipToNext(): Promise<void> {
+  await ensurePlayerReady();
   const { tracks, activeIndex } = useQueueStore.getState();
   const nextIndex = activeIndex >= 0 ? activeIndex + 1 : -1;
   if (nextIndex >= 0 && nextIndex < tracks.length) {
@@ -295,6 +447,7 @@ export async function skipToNext(): Promise<void> {
 }
 
 export async function skipToPrevious(): Promise<void> {
+  await ensurePlayerReady();
   const { tracks, activeIndex } = useQueueStore.getState();
   const previousIndex = activeIndex > 0 ? activeIndex - 1 : -1;
   if (previousIndex >= 0 && previousIndex < tracks.length) {
@@ -445,6 +598,7 @@ interface QueueRemoveOptions {
 
 /** Replace everything after the current track with `upcoming` (in order). */
 export async function setUpcoming(upcoming: RntpTrack[]): Promise<void> {
+  await ensurePlayerReady();
   await queueLoadSettled();
   await TrackPlayer.removeUpcomingTracks();
   useQueueStore.getState().replaceUpcoming(upcoming);
@@ -458,6 +612,7 @@ export async function setUpcoming(upcoming: RntpTrack[]): Promise<void> {
 /** Move a queued item by absolute RNTP queue index. */
 export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: number): Promise<void> {
   if (fromAbsoluteIndex === toAbsoluteIndex) return;
+  await ensurePlayerReady();
   await queueLoadSettled();
   await TrackPlayer.move(fromAbsoluteIndex, toAbsoluteIndex);
   useQueueStore.getState().moveItem(fromAbsoluteIndex, toAbsoluteIndex);
@@ -467,6 +622,7 @@ export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: 
 /** Jump to (and play) an absolute queue index. */
 export async function jumpToQueueIndex(index: number): Promise<void> {
   selectPhonePlaybackTarget();
+  await ensurePlayerReady();
   // Mid-fill, the tapped row may not be in the native queue yet (or may sit at
   // a shifted native index while the head is still prepending) — translate,
   // waiting out the fill only when the target isn't loaded.
@@ -519,12 +675,13 @@ export async function removeFromQueue(
   absoluteIndex: number,
   options: QueueRemoveOptions = {}
 ): Promise<void> {
+  await ensurePlayerReady();
   await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndex);
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices([absoluteIndex]);
   }
-  syncOriginalOrderFromMirrorIfUnshuffled();
+  pruneOriginalOrderToMirror();
 }
 
 /** Remove a group of tracks at absolute queue indices. */
@@ -533,10 +690,11 @@ export async function removeManyFromQueue(
   options: QueueRemoveOptions = {}
 ): Promise<void> {
   if (absoluteIndices.length === 0) return;
+  await ensurePlayerReady();
   await queueLoadSettled();
   await TrackPlayer.remove(absoluteIndices);
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices(absoluteIndices);
   }
-  syncOriginalOrderFromMirrorIfUnshuffled();
+  pruneOriginalOrderToMirror();
 }

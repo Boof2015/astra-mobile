@@ -7,6 +7,7 @@ import {
 } from 'react-native-track-player';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { useQueueStore } from '@/stores/queueStore';
 import type { PlaybackState, Track } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
@@ -103,7 +104,10 @@ export function usePlaybackSync(): void {
     path: null,
     state: 'stopped',
   });
+  const restoredPlaybackSyncHeld = useRef(false);
   const rawPlaybackState = mapState(playbackState.state);
+  const restoredSessionPending = usePlayerStore((s) => s.restoredSessionPending);
+  const restoredTrack = usePlayerStore((s) => s.currentTrack);
 
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setProgress = usePlayerStore((s) => s.setProgress);
@@ -112,6 +116,7 @@ export function usePlaybackSync(): void {
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
 
   useEffect(() => {
+    if (restoredSessionPending && !activeTrack) return;
     const nextTrack = activeTrack ? rntpToTrack(activeTrack) : null;
     const prevTrack = usePlayerStore.getState().currentTrack;
     if (prevTrack?.path !== nextTrack?.path) {
@@ -122,9 +127,10 @@ export function usePlaybackSync(): void {
     // currentTrack subscriber) when nothing actually changed.
     if (sameTrack(prevTrack, nextTrack)) return;
     setCurrentTrack(nextTrack);
-  }, [activeTrack, setCurrentTrack]);
+  }, [activeTrack, restoredSessionPending, setCurrentTrack]);
 
   useEffect(() => {
+    if (restoredSessionPending) return;
     const pendingSeek = usePlayerStore.getState().pendingSeek;
     if (pendingSeek) {
       const acknowledged = Math.abs(progress.position - pendingSeek.target) <= SEEK_ACK_EPS;
@@ -133,9 +139,20 @@ export function usePlaybackSync(): void {
       usePlayerStore.getState().clearPendingSeek();
     }
     setProgress(progress.position, progress.duration);
-  }, [progress.position, progress.duration, setProgress]);
+  }, [progress.position, progress.duration, restoredSessionPending, setProgress]);
 
   useEffect(() => {
+    if (restoredSessionPending) {
+      restoredPlaybackSyncHeld.current = true;
+      return;
+    }
+    // The Zustand pending flag can clear one render before RNTP's Ready event
+    // reaches the playback hook. Ignore that one stale native snapshot so it
+    // cannot turn the freshly restored paused session into stopped.
+    if (restoredPlaybackSyncHeld.current) {
+      restoredPlaybackSyncHeld.current = false;
+      return;
+    }
     const activeTrackPath = activeTrack ? rntpToTrack(activeTrack).path : null;
     const mappedPlaybackState = resolveTransientLoading(
       rawPlaybackState,
@@ -161,7 +178,17 @@ export function usePlaybackSync(): void {
         state: mappedPlaybackState,
       };
     }
-  }, [activeTrack, rawPlaybackState, setPlaybackState]);
+  }, [activeTrack, rawPlaybackState, restoredSessionPending, setPlaybackState]);
+
+  // Natural advances and headless Android Auto playback do not pass through the
+  // UI controller helpers. Reconcile the mirror's active index (and cold queue)
+  // whenever RNTP reports a new active track so the next session save is exact.
+  useEffect(() => {
+    if (!activeTrack || restoredSessionPending) return;
+    const queue = useQueueStore.getState();
+    if (queue.hasSnapshot) void queue.refreshActiveIndex();
+    else void queue.refreshFromNative();
+  }, [activeTrack, restoredSessionPending]);
 
   // Push the widget now-playing (incl. the recents list) on track/state/recents change only
   // — NOT on every 500ms progress tick. The widget shows no position, so per-tick updates
@@ -171,9 +198,13 @@ export function usePlaybackSync(): void {
   // which re-syncs it (with a fresh position) on RNTP track/state events — so it isn't
   // pushed from here at all (the MediaSession extrapolates position between those events).
   useEffect(() => {
-    const track = activeTrack ? rntpToTrack(activeTrack) : null;
+    const track = activeTrack
+      ? rntpToTrack(activeTrack)
+      : restoredSessionPending
+        ? restoredTrack
+        : null;
     const mappedPlaybackState = resolveTransientLoading(
-      rawPlaybackState,
+      restoredSessionPending ? 'paused' : rawPlaybackState,
       track?.path ?? null,
       stablePlayback.current
     );
@@ -182,9 +213,10 @@ export function usePlaybackSync(): void {
       mappedPlaybackState,
       buildWidgetRecentItems(recentlyPlayedTracks, track?.path),
     );
-  }, [activeTrack, rawPlaybackState, recentlyPlayedTracks]);
+  }, [activeTrack, rawPlaybackState, recentlyPlayedTracks, restoredSessionPending, restoredTrack]);
 
   useEffect(() => {
+    if (restoredSessionPending) return;
     // Use the identity path (subsonic://|jellyfin:// for remote; the file URI for
     // local) so history matches `tracks.path` — activeTrack.url is the stream URL.
     const path = activeTrack ? rntpToTrack(activeTrack).path : null;
@@ -232,5 +264,5 @@ export function usePlaybackSync(): void {
     void recordTrackPlayed(path).catch((err) => {
       console.warn('[library] playback history update failed', err);
     });
-  }, [activeTrack, rawPlaybackState, progress.position, recordTrackPlayed]);
+  }, [activeTrack, rawPlaybackState, progress.position, recordTrackPlayed, restoredSessionPending]);
 }

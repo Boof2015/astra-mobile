@@ -25,6 +25,8 @@ interface PlayerStore {
   // Field names mirror desktop playerStore so queue/transport logic stays consistent.
   shuffle: boolean;
   repeat: RepeatMode;
+  /** Restored JS queue exists but has not been loaded into RNTP yet. */
+  restoredSessionPending: boolean;
 
   setCurrentTrack: (track: Track | null) => void;
   setPlaybackState: (state: PlaybackState) => void;
@@ -35,6 +37,7 @@ interface PlayerStore {
   setMuted: (isMuted: boolean) => void;
   setShuffle: (shuffle: boolean) => void;
   setRepeat: (repeat: RepeatMode) => void;
+  setRestoredSessionPending: (pending: boolean) => void;
   reset: () => void;
 }
 
@@ -48,6 +51,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   isMuted: false,
   shuffle: false,
   repeat: 'none',
+  restoredSessionPending: false,
 
   setCurrentTrack: (currentTrack) => set({ currentTrack }),
   setPlaybackState: (playbackState) => set({ playbackState }),
@@ -58,6 +62,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setMuted: (isMuted) => set({ isMuted }),
   setShuffle: (shuffle) => set({ shuffle }),
   setRepeat: (repeat) => set({ repeat }),
+  setRestoredSessionPending: (restoredSessionPending) => set({ restoredSessionPending }),
   reset: () =>
     set({
       currentTrack: null,
@@ -65,5 +70,6 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       currentTime: 0,
       duration: 0,
       pendingSeek: null,
+      restoredSessionPending: false,
     }),
 }));
