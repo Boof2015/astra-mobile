@@ -22,6 +22,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
+import { TAB_TRANSITION_SETTLE_MS } from '@/navigation/tabTransition';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -29,8 +30,6 @@ import { playHaptic } from '@/lib/haptics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type MiniPlayerPhase = 'hidden' | 'reserved' | 'visible';
-
-const TAB_TRANSITION_MS = 160;
 
 export const TAB_META: Record<string, { label: string; icon: IconName }> = {
   index: { label: 'Home', icon: 'home' },
@@ -85,7 +84,10 @@ export function TabBar({ items, onPress }: TabBarProps) {
       return;
     }
 
-    const timer = setTimeout(() => setSettledHomeFocused(homeFocused), TAB_TRANSITION_MS);
+    const timer = setTimeout(
+      () => setSettledHomeFocused(homeFocused),
+      TAB_TRANSITION_SETTLE_MS
+    );
     return () => clearTimeout(timer);
   }, [homeFocused, settledHomeFocused]);
 

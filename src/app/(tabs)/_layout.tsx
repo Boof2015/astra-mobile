@@ -1,13 +1,11 @@
 import { useMemo, useRef } from 'react';
 import { Tabs } from 'expo-router';
-// RN's Easing (not reanimated): the bottom-tabs scene transition runs on legacy
-// Animated.timing and may use the native driver, so the easing must be serializable.
-import { Easing } from 'react-native';
 import { TabBar, type TabItem } from '@/components/TabBar';
+import {
+  TAB_TRANSITION_SETTLE_MS,
+  TAB_TRANSITION_SPEC,
+} from '@/navigation/tabTransition';
 import { useColors } from '@/theme/themed';
-
-const TAB_TRANSITION_MS = 160;
-const TAB_EASING = Easing.out(Easing.cubic);
 
 export default function TabsLayout() {
   const colors = useColors();
@@ -22,10 +20,7 @@ export default function TabsLayout() {
       sceneStyle: { backgroundColor: colors.bgPrimary },
       // Directional slide + cross-fade between tabs, following tab order.
       animation: 'shift' as const,
-      transitionSpec: {
-        animation: 'timing' as const,
-        config: { duration: TAB_TRANSITION_MS, easing: TAB_EASING },
-      },
+      transitionSpec: TAB_TRANSITION_SPEC,
     }),
     [colors.bgPrimary]
   );
@@ -45,7 +40,7 @@ export default function TabsLayout() {
           // completion frame and leave the incoming scene invisible; swallow
           // taps until the current transition has finished.
           const now = Date.now();
-          if (now - lastSwitchAt.current < TAB_TRANSITION_MS + 30) return;
+          if (now - lastSwitchAt.current < TAB_TRANSITION_SETTLE_MS + 30) return;
           const event = navigation.emit({
             type: 'tabPress',
             target: item.key,
