@@ -152,12 +152,13 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   // momentarily fail to constrain the list, so FlashList measures its viewport
   // as the full CONTENT height (~100k dp for a long queue), believes every row
   // is visible, and mounts thousands of views — a multi-second main-thread
-  // freeze. Clamping the list container to the window height caps the viewport
-  // no matter what the sheet reports; both snap points stay unaffected.
-  const listClampStyle = useMemo(() => ({ maxHeight: windowHeight }), [windowHeight]);
-  const embeddedListStyle = useMemo(
-    () => ({ maxHeight: windowHeight, flex: 1 }),
-    [windowHeight]
+  // freeze. Clamping the list area to the window height caps the viewport no
+  // matter what the sheet reports; both snap points stay unaffected. The flex
+  // matches FlashList's own root default, so the wrapper reproduces the exact
+  // box the list had when the clamp sat on it directly.
+  const listAreaStyle = useMemo(
+    () => [styles.listArea, { maxHeight: windowHeight }],
+    [styles, windowHeight]
   );
   // Same bug, milder symptom: a viewport measured during the open animation can
   // stick at the clamp height (taller than the sheet's real content area), which
@@ -167,6 +168,14 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const onSheetChange = useCallback((index: number) => {
     if (index >= 0) setListReady(true);
   }, []);
+  // The gate leaves the list area blank while the sheet opens (plus FlashList's
+  // first-layout frame), which reads as content popping in. A static,
+  // pixel-identical preview of the first screenful of rows fills the slot from
+  // the tray's first frame and unmounts once the real list has painted (onLoad
+  // fires a frame after first layout completes, so rows are already underneath).
+  const [listPainted, setListPainted] = useState(false);
+  const onListLoad = useCallback(() => setListPainted(true), []);
+  const previewCount = Math.ceil(windowHeight / QUEUE_ROW_HEIGHT);
   // Bottom padding clears the gesture-nav inset so the last row is fully
   // scrollable into view at the 100% snap.
   const listContentStyle = useMemo(
@@ -706,26 +715,35 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
         Up next
       </Text>
 
-      {listReady ? (
-        <FlashList
-          data={entries}
-          scrollEnabled
-          style={embedded ? embeddedListStyle : listClampStyle}
-          keyExtractor={(item) => item.key}
-          drawDistance={QUEUE_ROW_HEIGHT * 12}
-          maintainVisibleContentPosition={{ disabled: true }}
-          renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
-          renderItem={renderItem}
-          extraData={listExtraData}
-          contentContainerStyle={embedded
-            ? styles.embeddedListContent
-            : editMode && selectedCount > 0
-              ? listContentEditStyle
-              : listContentStyle}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={renderEmpty}
-        />
-      ) : null}
+      <View style={listAreaStyle}>
+        {listReady ? (
+          <FlashList
+            data={entries}
+            scrollEnabled
+            keyExtractor={(item) => item.key}
+            drawDistance={QUEUE_ROW_HEIGHT * 12}
+            maintainVisibleContentPosition={{ disabled: true }}
+            renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
+            renderItem={renderItem}
+            extraData={listExtraData}
+            onLoad={onListLoad}
+            contentContainerStyle={embedded
+              ? styles.embeddedListContent
+              : editMode && selectedCount > 0
+                ? listContentEditStyle
+                : listContentStyle}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={renderEmpty}
+          />
+        ) : null}
+        {!listPainted && entries.length > 0 ? (
+          <View style={styles.listPreview} pointerEvents="none">
+            {entries.slice(0, previewCount).map((entry) => (
+              <QueuePreviewRow key={entry.key} entry={entry} />
+            ))}
+          </View>
+        ) : null}
+      </View>
 
       {editMode && selectedCount > 0 ? (
         <View
@@ -804,6 +822,33 @@ const Artwork = memo(function Artwork({ uri, title }: { uri?: string; title?: st
       ) : (
         <AstraLogo size={16} />
       )}
+    </View>
+  );
+});
+
+// Static stand-in for QueueRow while the real list is gated/painting: identical
+// geometry and visuals (idle rows carry no transforms), no worklets, gestures,
+// or press feedback — it exists only to be looked at for a few frames.
+const QueuePreviewRow = memo(function QueuePreviewRow({ entry }: { entry: QueueEntry }) {
+  const styles = useStyles();
+  const colors = useColors();
+  const title = trackTitle(entry.track);
+  return (
+    <View style={styles.rowOuter}>
+      <View style={[styles.row, styles.rowRest]}>
+        <Artwork uri={artworkUri(entry.track)} title={title} />
+        <View style={styles.meta}>
+          <Text variant="body" numberOfLines={1} style={styles.title}>
+            {title}
+          </Text>
+          <Text variant="label" numberOfLines={1}>
+            {trackArtist(entry.track)}
+          </Text>
+        </View>
+        <View style={styles.dragHandle}>
+          <Ionicons name="reorder-three" size={24} color={colors.textTertiary} />
+        </View>
+      </View>
     </View>
   );
 });
@@ -1095,8 +1140,24 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: colors.glassBg,
   },
+  listArea: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  listPreview: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   listContent: {
     flexGrow: 1,
+  },
+  // Matches the idle rowSurfaceStyle background the real rows get from their
+  // worklet; the preview has no worklets so it carries the color statically.
+  rowRest: {
+    backgroundColor: colors.bgSecondary,
   },
   empty: {
     alignItems: 'center',

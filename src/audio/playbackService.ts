@@ -4,6 +4,8 @@ import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
 import { ensureGainRegistryStarted } from './gainRegistry';
 import { ensureEQRouteSyncStarted } from './eqRouteSync';
+import { nativeIndexToAbsolute } from './queueLoader';
+import { useQueueStore } from '@/stores/queueStore';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -43,7 +45,20 @@ export async function PlaybackService(): Promise<void> {
   // already plays at its natively-registered (or fallback) gain from sample
   // zero; this only late-corrects unanalyzed tracks. Rapid skips coalesce.
   let normalizeTimer: ReturnType<typeof setTimeout> | null = null;
-  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, () => {
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
+    // Keep the queue mirror's active index fresh while the tray is unmounted.
+    // Natural track advances otherwise leave it stale, and the tray's
+    // synchronous first paint would show the old head for a frame before its
+    // refreshActiveIndex correction lands (visible flicker on open). Skips and
+    // jumps already update it via playbackController; this covers the rest.
+    // Cheap: the event carries the index, no queue marshal. Skipped while the
+    // mirror is cold so a headless Auto/Bluetooth session never pays for it.
+    const queueStore = useQueueStore.getState();
+    if (queueStore.hasSnapshot) {
+      queueStore.setActiveIndex(
+        event.index != null ? nativeIndexToAbsolute(event.index) : -1
+      );
+    }
     scheduleSync();
     // Apply normalization here too (not just in the UI hook) so playback started from
     // Android Auto / Bluetooth with the app closed is still normalized.
