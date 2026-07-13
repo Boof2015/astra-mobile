@@ -12,7 +12,6 @@ import {
   fetchDesktopRemoteNowPlaying,
   fetchDesktopRemotePairingStatus,
   fetchDesktopRemoteQueue,
-  parseDesktopRemoteManualInput,
   parseDesktopRemotePairingInput,
   requestDesktopRemotePinPairing,
   sendDesktopRemoteControl,
@@ -22,14 +21,18 @@ import {
 import { normalizeDesktopRemotePinInput } from '@/services/desktopRemotePairing';
 import {
   clearDesktopRemotePairing,
+  clearDesktopRemoteSecurityUpgradeNotice,
+  getDesktopRemoteCredentials,
   getDesktopRemoteConnection,
-  getDesktopRemoteToken,
+  getDesktopRemoteSecurityUpgradeNotice,
   setDesktopRemoteConnection,
-  setDesktopRemoteToken,
+  setDesktopRemoteCredentials,
 } from '@/services/desktopRemoteCredentials';
 import { openLibraryDb } from '@/db/database';
 import { clearPlaylistSyncBaselines } from '@/db/desktopSyncQueries';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
+import { identityMatchesPinnedConnection } from '@/services/desktopSyncPolicy';
+import { ensureDesktopRemoteCredentialsFresh } from '@/services/desktopRemoteSession';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import type {
   DesktopRemoteConnection,
@@ -58,11 +61,14 @@ interface PairingAttempt {
   baseUrl: string;
   pollToken: string;
   expiresAt: number;
+  certificateFingerprint: string;
+  endpointUuid: string;
 }
 
 interface PinPairingAttempt {
   baseUrl: string;
   requestId: string;
+  attemptId: string;
   expiresAt: number;
   desktopName: string | null;
 }
@@ -89,7 +95,7 @@ interface DesktopRemoteStore {
   requestPinPairing: (baseUrl: string) => Promise<void>;
   confirmPinPairing: (pin: string) => Promise<void>;
   pairFromInput: (input: string) => Promise<void>;
-  pairManual: (baseUrl: string, ticket: string) => Promise<void>;
+  pairManual: (baseUrl: string) => Promise<void>;
   connect: () => Promise<boolean>;
   reconnect: () => Promise<void>;
   disconnect: () => void;
@@ -148,6 +154,13 @@ function errorMessage(error: unknown): string {
   return 'Desktop remote request failed.';
 }
 
+function isDesktopCertificateError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('certificate changed') ||
+    message.includes('certificate mismatch') ||
+    message.includes('pinning failure');
+}
+
 function mergeSnapshotArtwork(
   previous: DesktopRemoteNowPlayingSnapshot | null,
   next: DesktopRemoteNowPlayingSnapshot
@@ -168,25 +181,39 @@ function mergeSnapshotArtwork(
 
 async function persistConnectedDesktop(
   baseUrl: string,
-  token: string,
+  credentials: { controlToken: string; syncToken: string; issuedAt: number },
+  certificateFingerprint: string,
   deviceId: string | null,
-  identity: DesktopRemoteIdentity | null
+  identity: DesktopRemoteIdentity | null,
+  expectedEndpointUuid?: string
 ): Promise<DesktopRemoteConnection> {
-  const resolvedIdentity = identity ?? (await fetchDesktopRemoteIdentity(baseUrl));
+  const resolvedIdentity = identity ?? (await fetchDesktopRemoteIdentity(baseUrl, certificateFingerprint));
+  if (!resolvedIdentity || resolvedIdentity.protocolVersion !== 3) {
+    throw new Error('Desktop does not support secure protocol v3.');
+  }
+  if (expectedEndpointUuid && resolvedIdentity.endpointUuid !== expectedEndpointUuid) {
+    throw new Error('Desktop identity does not match the pairing QR.');
+  }
   const now = Date.now();
   const connection: DesktopRemoteConnection = {
     id: stableConnectionId(resolvedIdentity, baseUrl),
     baseUrl,
+    certificateFingerprint,
+    scopes: ['control', 'sync'],
+    credentialIssuedAt: credentials.issuedAt,
+    credentialRotatedAt: credentials.issuedAt,
+    securityUpgradeState: 'none',
     endpointUuid: resolvedIdentity?.endpointUuid ?? null,
     desktopName: displayName(resolvedIdentity, baseUrl),
-    protocolVersion: resolvedIdentity?.protocolVersion ?? 1,
+    protocolVersion: 3,
     deviceId,
     pairedAt: now,
     lastConnectedAt: now,
   };
   await Promise.all([
     setDesktopRemoteConnection(connection),
-    setDesktopRemoteToken(token),
+    setDesktopRemoteCredentials(credentials),
+    clearDesktopRemoteSecurityUpgradeNotice(),
   ]);
   return connection;
 }
@@ -199,7 +226,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     const requestKey = `${connection.id}:${track.id}`;
     if (inlineArtworkRequestKey === requestKey) return;
     inlineArtworkRequestKey = requestKey;
-    void fetchDesktopRemoteNowPlaying(connection.baseUrl, token, true).then(
+    void fetchDesktopRemoteNowPlaying(connection.baseUrl, token, connection.certificateFingerprint, true).then(
       (inlineSnapshot) => {
         inlineArtworkRequestKey = null;
         set((state) => ({
@@ -219,7 +246,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     snapshotPollTimer = setInterval(() => {
       const { connection, token, connectionState } = get();
       if (!connection || !token || connectionState === 'connecting') return;
-      void fetchDesktopRemoteNowPlaying(connection.baseUrl, token).then(
+      void fetchDesktopRemoteNowPlaying(connection.baseUrl, token, connection.certificateFingerprint).then(
         (snapshot) => {
           const wasConnected = get().connectionState === 'connected';
           set((state) => ({
@@ -233,6 +260,10 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           refreshInlineArtwork();
         },
         (error) => {
+          if (isDesktopCertificateError(error)) {
+            void get().forget().then(() => set({ errorMessage: 'Desktop certificate changed—pair again.' }));
+            return;
+          }
           if (error instanceof DesktopRemoteHttpError && error.status === 401) {
             void get().forget();
             set({ errorMessage: 'Desktop pairing was revoked.' });
@@ -262,18 +293,26 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     const pairing = get().pairing;
     if (!pairing) return;
     try {
-      const status = await fetchDesktopRemotePairingStatus(pairing.baseUrl, pairing.pollToken);
-      if (status.state === 'approved' && status.token?.trim()) {
+      const status = await fetchDesktopRemotePairingStatus(
+        pairing.baseUrl,
+        pairing.pollToken,
+        pairing.certificateFingerprint
+      );
+      const controlToken = status.controlToken?.trim() || status.token?.trim();
+      const syncToken = status.syncToken?.trim();
+      if (status.state === 'approved' && controlToken && syncToken) {
         clearPairingPoll();
         const connection = await persistConnectedDesktop(
           pairing.baseUrl,
-          status.token.trim(),
+          { controlToken, syncToken, issuedAt: status.issuedAt ?? Date.now() },
+          pairing.certificateFingerprint,
           status.deviceId ?? null,
-          status.identity ?? null
+          status.identity ?? null,
+          pairing.endpointUuid
         );
         set({
           connection,
-          token: status.token.trim(),
+          token: controlToken,
           pairing: null,
           pinPairing: null,
           connectionState: 'connecting',
@@ -321,7 +360,12 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     }
   };
 
-  const claimPairing = async (baseUrl: string, ticket: string) => {
+  const claimPairing = async (
+    baseUrl: string,
+    ticket: string,
+    certificateFingerprint: string,
+    endpointUuid: string
+  ) => {
     clearPairingPoll();
     stopRealtime();
     set({
@@ -336,6 +380,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       const claim = await claimDesktopRemotePairingTicket(
         baseUrl,
         ticket,
+        certificateFingerprint,
         defaultDesktopRemoteDeviceName()
       );
       if (!claim.pollToken) throw new Error('Desktop did not return a pairing poll token.');
@@ -345,6 +390,8 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           baseUrl,
           pollToken: claim.pollToken,
           expiresAt: claim.expiresAt,
+          certificateFingerprint,
+          endpointUuid,
         },
         message: 'Approve this phone in Astra on desktop.',
       });
@@ -380,6 +427,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
         pinPairing: {
           baseUrl,
           requestId: request.requestId,
+          attemptId: request.attemptId,
           expiresAt: request.expiresAt,
           desktopName,
         },
@@ -406,19 +454,22 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     }
     set({ connectionState: 'pairing', message: 'Confirming PIN...', errorMessage: '' });
     try {
-      const status = await confirmDesktopRemotePinPairing(attempt.baseUrl, attempt.requestId, normalizedPin);
-      if (status.state !== 'approved' || !status.token?.trim()) {
+      const status = await confirmDesktopRemotePinPairing(attempt.attemptId, normalizedPin);
+      const controlToken = status.controlToken?.trim() || status.token?.trim();
+      const syncToken = status.syncToken?.trim();
+      if (status.state !== 'approved' || !controlToken || !syncToken || !status.certificateFingerprint) {
         throw new Error('Desktop did not approve this PIN pairing.');
       }
       const connection = await persistConnectedDesktop(
         attempt.baseUrl,
-        status.token.trim(),
+        { controlToken, syncToken, issuedAt: status.issuedAt ?? Date.now() },
+        status.certificateFingerprint,
         status.deviceId ?? null,
         status.identity ?? null
       );
       set({
         connection,
-        token: status.token.trim(),
+        token: controlToken,
         pairing: null,
         pinPairing: null,
         connectionState: 'connecting',
@@ -428,7 +479,10 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       void usePlaybackTargetStore.getState().setTarget('desktop');
       void get().connect();
     } catch (error) {
-      if (error instanceof DesktopRemoteHttpError && error.status === 401) {
+      if (
+        (error instanceof DesktopRemoteHttpError && error.status === 401) ||
+        errorMessage(error).toLowerCase().includes('wrong pin')
+      ) {
         set({
           connectionState: 'pinEntry',
           message: `Enter the PIN shown on ${attempt.desktopName || 'Astra Desktop'}.`,
@@ -462,15 +516,20 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
 
     init: async () => {
       if (get().initialized) return;
-      const [connection, token] = await Promise.all([
+      const [connection, credentials, securityUpgradeLabel] = await Promise.all([
         getDesktopRemoteConnection(),
-        getDesktopRemoteToken(),
+        getDesktopRemoteCredentials(),
+        getDesktopRemoteSecurityUpgradeNotice(),
       ]);
+      const token = credentials?.controlToken ?? null;
       set({
         initialized: true,
         connection,
         token,
         connectionState: connection && token ? 'connecting' : 'unpaired',
+        errorMessage: securityUpgradeLabel
+          ? `Security upgrade required—pair again. Previously paired: ${securityUpgradeLabel}.`
+          : '',
       });
       if (connection && token) void get().connect();
     },
@@ -489,6 +548,22 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
                 ),
               };
             });
+            const connection = get().connection;
+            if (
+              connection?.endpointUuid && desktop.endpointUuid === connection.endpointUuid &&
+              desktop.baseUrl !== connection.baseUrl
+            ) {
+              void fetchDesktopRemoteIdentity(desktop.baseUrl, connection.certificateFingerprint).then(async (identity) => {
+                if (!identity || !identityMatchesPinnedConnection(
+                  connection.endpointUuid,
+                  identity.protocolVersion,
+                  identity.endpointUuid
+                )) return;
+                const nextConnection = { ...connection, baseUrl: desktop.baseUrl };
+                await setDesktopRemoteConnection(nextConnection);
+                set({ connection: nextConnection });
+              });
+            }
           }),
           AstraDesktopDiscovery.addListener('onDesktopRemoteLost', (event) => {
             set((state) => ({
@@ -520,23 +595,27 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
         });
         return;
       }
-      await claimPairing(parsed.baseUrl, parsed.ticket);
+      await claimPairing(
+        parsed.baseUrl,
+        parsed.ticket,
+        parsed.certificateFingerprint,
+        parsed.endpointUuid
+      );
     },
 
-    pairManual: async (baseUrl: string, ticket: string) => {
-      const parsed = parseDesktopRemoteManualInput(baseUrl, ticket);
-      if (!parsed) {
+    pairManual: async (baseUrl: string) => {
+      if (!baseUrl.trim().toLowerCase().startsWith('https://')) {
         set({
           connectionState: 'error',
-          errorMessage: 'Enter a valid desktop URL and pairing code.',
+          errorMessage: 'Enter the HTTPS desktop URL shown by Astra.',
         });
         return;
       }
-      await claimPairing(parsed.baseUrl, parsed.ticket);
+      await requestPinPairing(baseUrl.trim().replace(/\/+$/, ''));
     },
 
     connect: async () => {
-      const { connection, token } = get();
+      let { connection, token } = get();
       if (!connection || !token) {
         set({ connectionState: 'unpaired' });
         return false;
@@ -544,18 +623,33 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       stopRealtime();
       set({ connectionState: 'connecting', message: 'Connecting to desktop...', errorMessage: '' });
       try {
-        const snapshot = await fetchDesktopRemoteNowPlaying(connection.baseUrl, token, true);
+        const storedCredentials = await getDesktopRemoteCredentials();
+        if (!storedCredentials) throw new Error('Desktop credentials are unavailable. Pair again.');
+        const fresh = await ensureDesktopRemoteCredentialsFresh(connection, storedCredentials);
+        connection = fresh.connection;
+        token = fresh.credentials.controlToken;
+        const snapshot = await fetchDesktopRemoteNowPlaying(
+          connection.baseUrl,
+          token,
+          connection.certificateFingerprint,
+          true
+        );
         const nextConnection = { ...connection, lastConnectedAt: Date.now() };
         await setDesktopRemoteConnection(nextConnection);
         set({
           connection: nextConnection,
+          token,
           snapshot,
           connectionState: 'connected',
           message: '',
           errorMessage: '',
         });
         useDesktopSyncStore.getState().maybeAutoSync('connected');
-        stopEventStream = startDesktopRemoteEventStream(connection.baseUrl, token, {
+        stopEventStream = startDesktopRemoteEventStream(
+          connection.baseUrl,
+          token,
+          connection.certificateFingerprint,
+          {
           onSnapshot: (nextSnapshot) => {
             const wasConnected = get().connectionState === 'connected';
             set((state) => ({
@@ -583,11 +677,17 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
           onError: () => {
             scheduleSnapshotPoll();
           },
-        });
+          }
+        );
         scheduleSnapshotPoll();
         void get().refreshQueue();
         return true;
       } catch (error) {
+        if (isDesktopCertificateError(error)) {
+          await get().forget();
+          set({ errorMessage: 'Desktop certificate changed—pair again.' });
+          return false;
+        }
         if (error instanceof DesktopRemoteHttpError && error.status === 401) {
           await get().forget();
           set({ errorMessage: 'Desktop pairing was revoked.' });
@@ -638,7 +738,13 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       const { connection, token } = get();
       if (!connection || !token) return;
       try {
-        await sendDesktopRemoteControl(connection.baseUrl, token, command, time);
+        await sendDesktopRemoteControl(
+          connection.baseUrl,
+          token,
+          connection.certificateFingerprint,
+          command,
+          time
+        );
         set({ errorMessage: '' });
         if (command === 'seek' && typeof time === 'number') {
           set((state) => state.snapshot
@@ -646,6 +752,11 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
             : {});
         }
       } catch (error) {
+        if (isDesktopCertificateError(error)) {
+          await get().forget();
+          set({ errorMessage: 'Desktop certificate changed—pair again.' });
+          return;
+        }
         if (error instanceof DesktopRemoteHttpError && error.status === 401) {
           await get().forget();
           set({ errorMessage: 'Desktop pairing was revoked.' });
@@ -659,9 +770,17 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       const { connection, token } = get();
       if (!connection || !token) return;
       try {
-        const queue = await fetchDesktopRemoteQueue(connection.baseUrl, token);
+        const queue = await fetchDesktopRemoteQueue(
+          connection.baseUrl,
+          token,
+          connection.certificateFingerprint
+        );
         set({ queue });
-      } catch {
+      } catch (error) {
+        if (isDesktopCertificateError(error)) {
+          await get().forget();
+          set({ errorMessage: 'Desktop certificate changed—pair again.' });
+        }
         // Protocol-1 desktops 404 here; the queue UI simply stays hidden.
       }
     },
@@ -670,9 +789,19 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       const { connection, token } = get();
       if (!connection || !token) return;
       try {
-        await sendDesktopRemotePlayQueueItem(connection.baseUrl, token, queueId);
+        await sendDesktopRemotePlayQueueItem(
+          connection.baseUrl,
+          token,
+          connection.certificateFingerprint,
+          queueId
+        );
         set({ errorMessage: '' });
       } catch (error) {
+        if (isDesktopCertificateError(error)) {
+          await get().forget();
+          set({ errorMessage: 'Desktop certificate changed—pair again.' });
+          return;
+        }
         if (error instanceof DesktopRemoteHttpError && error.status === 401) {
           await get().forget();
           set({ errorMessage: 'Desktop pairing was revoked.' });

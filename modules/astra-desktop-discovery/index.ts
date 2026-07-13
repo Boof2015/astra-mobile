@@ -4,6 +4,8 @@ export interface AstraDesktopDiscoveryItem {
   endpointUuid: string | null;
   desktopName: string | null;
   protocolVersion: number;
+  certificateFingerprint: string;
+  transport: 'https';
   name: string;
   baseUrl: string;
   address: string;

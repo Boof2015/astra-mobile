@@ -15,6 +15,7 @@ import {
 } from '@/services/desktopSync';
 import { getDesktopRemoteConnection } from '@/services/desktopRemoteCredentials';
 import { fetchDesktopRemoteIdentity } from '@/services/desktopRemoteClient';
+import { canStartDesktopSync, decideDesktopSyncEnabled } from '@/services/desktopSyncPolicy';
 import type {
   DesktopSyncConflictResolution,
   DesktopSyncPlaylistConflict,
@@ -23,13 +24,15 @@ import type {
 
 const AUTO_SYNC_DEBOUNCE_MS = 5_000;
 const AUTO_SYNC_MIN_INTERVAL_MS = 15 * 60_000;
-const AUTO_SYNC_SETTING_KEY = 'desktop_sync_auto';
+const DESKTOP_SYNC_ENABLED_SETTING_KEY = 'desktop_sync_enabled_v1';
+const LEGACY_AUTO_SYNC_SETTING_KEY = 'desktop_sync_auto';
 
 export type DesktopSyncStatus = 'idle' | 'syncing' | 'error';
 
 export type DesktopSyncAutoReason = 'discovery' | 'connected' | 'foreground';
 
 interface DesktopSyncStore {
+  hydrated: boolean;
   status: DesktopSyncStatus;
   /** Wall-clock ms of the last successful sync with the paired desktop. */
   lastSyncAt: number | null;
@@ -42,14 +45,13 @@ interface DesktopSyncStore {
   errorMessage: string;
   /** False once the paired desktop reported a pre-sync protocol version. */
   supported: boolean;
-  /** Automatic syncing (foreground/discovery). Manual + desktop-requested
-   *  syncs run regardless. */
-  autoSyncEnabled: boolean;
+  /** Master gate for every desktop library-sync trigger. Remote playback is independent. */
+  desktopSyncEnabled: boolean;
 
   hydrate: () => Promise<void>;
   syncNow: () => Promise<void>;
   dismissConflictPrompt: () => void;
-  setAutoSyncEnabled: (enabled: boolean) => Promise<void>;
+  setDesktopSyncEnabled: (enabled: boolean) => Promise<void>;
   resolveConflict: (
     conflict: DesktopSyncPlaylistConflict,
     resolution: DesktopSyncConflictResolution
@@ -66,6 +68,7 @@ let autoSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const promptedConflictUids = new Set<string>();
 
 export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
+  hydrated: false,
   status: 'idle',
   lastSyncAt: null,
   lastSummary: null,
@@ -73,39 +76,49 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
   conflictPromptVisible: false,
   errorMessage: '',
   supported: true,
-  autoSyncEnabled: true,
+  desktopSyncEnabled: false,
 
   hydrate: async () => {
     try {
       const db = await openLibraryDb();
-      const autoSetting = await getSetting(db, AUTO_SYNC_SETTING_KEY);
-      if (autoSetting !== null) {
-        set({ autoSyncEnabled: autoSetting !== '0' });
+      const masterSetting = await getSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY);
+      const legacySetting = await getSetting(db, LEGACY_AUTO_SYNC_SETTING_KEY);
+      const enabled = decideDesktopSyncEnabled(masterSetting, legacySetting);
+      set({ desktopSyncEnabled: enabled });
+      if (masterSetting === null) {
+        await setSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
       }
       const connection = await getDesktopRemoteConnection();
-      if (!connection) return;
-      const stored = await getSetting(db, desktopSyncSettingKey(connection));
-      const lastSyncAt = stored ? Number(stored) : NaN;
-      if (Number.isFinite(lastSyncAt) && lastSyncAt > 0) {
-        set({ lastSyncAt });
+      if (connection) {
+        const stored = await getSetting(db, desktopSyncSettingKey(connection));
+        const lastSyncAt = stored ? Number(stored) : NaN;
+        if (Number.isFinite(lastSyncAt) && lastSyncAt > 0) {
+          set({ lastSyncAt });
+        }
       }
     } catch {
       // Hydration is best-effort; the first sync will set lastSyncAt.
+    } finally {
+      set({ hydrated: true });
     }
   },
 
-  setAutoSyncEnabled: async (enabled) => {
-    set({ autoSyncEnabled: enabled });
+  setDesktopSyncEnabled: async (enabled) => {
+    if (!enabled && autoSyncDebounceTimer !== null) {
+      clearTimeout(autoSyncDebounceTimer);
+      autoSyncDebounceTimer = null;
+    }
+    set({ desktopSyncEnabled: enabled });
     try {
       const db = await openLibraryDb();
-      await setSetting(db, AUTO_SYNC_SETTING_KEY, enabled ? '1' : '0');
+      await setSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
     } catch {
       // The in-memory value still applies for this session.
     }
   },
 
   syncNow: async () => {
-    if (get().status === 'syncing') return;
+    if (!canStartDesktopSync(get().desktopSyncEnabled, get().status)) return;
     set({ status: 'syncing', errorMessage: '' });
     try {
       const summary = await runDesktopSync();
@@ -138,7 +151,7 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
   },
 
   resolveConflict: async (conflict, resolution) => {
-    if (get().status === 'syncing') return;
+    if (!canStartDesktopSync(get().desktopSyncEnabled, get().status)) return;
     try {
       await applyDesktopSyncConflictResolution(conflict, resolution);
     } catch (error) {
@@ -163,14 +176,14 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
   },
 
   handleSyncRequest: () => {
-    const { status } = get();
-    if (status === 'syncing') return;
+    const { status, desktopSyncEnabled } = get();
+    if (!canStartDesktopSync(desktopSyncEnabled, status)) return;
     void get().syncNow();
   },
 
   maybeAutoSync: (reason) => {
-    const { status, lastSyncAt, supported, autoSyncEnabled } = get();
-    if (!supported || !autoSyncEnabled) return;
+    const { status, lastSyncAt, supported, desktopSyncEnabled } = get();
+    if (!supported || !desktopSyncEnabled) return;
     if (status === 'syncing') return;
     if (AppState.currentState !== 'active') return;
     if (lastSyncAt !== null && Date.now() - lastSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return;
@@ -181,6 +194,7 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
       autoSyncDebounceTimer = null;
       void (async () => {
         const state = useDesktopSyncStore.getState();
+        if (!state.desktopSyncEnabled) return;
         if (state.status === 'syncing') return;
         if (AppState.currentState !== 'active') return;
         if (state.lastSyncAt !== null && Date.now() - state.lastSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return;
@@ -189,7 +203,10 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
         // user never asked for.
         const connection = await getDesktopRemoteConnection();
         if (!connection) return;
-        const identity = await fetchDesktopRemoteIdentity(connection.baseUrl);
+        const identity = await fetchDesktopRemoteIdentity(
+          connection.baseUrl,
+          connection.certificateFingerprint
+        );
         if (!identity) return;
         void state.syncNow();
       })();

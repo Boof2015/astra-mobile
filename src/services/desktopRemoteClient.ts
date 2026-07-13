@@ -1,4 +1,8 @@
 import * as Device from 'expo-device';
+import {
+  AstraDesktopTransport,
+  desktopPinnedTransportAvailable,
+} from '../../modules/astra-desktop-transport';
 import type {
   DesktopRemoteControlCommand,
   DesktopRemoteIdentity,
@@ -26,7 +30,7 @@ interface JsonRequestOptions {
   token?: string | null;
   body?: unknown;
   timeoutMs?: number;
-  signal?: AbortSignal;
+  fingerprint: string;
 }
 
 export class DesktopRemoteHttpError extends Error {
@@ -40,52 +44,26 @@ export class DesktopRemoteHttpError extends Error {
   }
 }
 
-function timeoutSignal(timeoutMs: number, parentSignal?: AbortSignal): AbortSignal {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  const abort = () => controller.abort();
-  if (parentSignal) {
-    if (parentSignal.aborted) controller.abort();
-    else parentSignal.addEventListener('abort', abort, { once: true });
-  }
-
-  controller.signal.addEventListener(
-    'abort',
-    () => {
-      clearTimeout(timer);
-      parentSignal?.removeEventListener('abort', abort);
-    },
-    { once: true }
-  );
-
-  return controller.signal;
-}
-
 async function fetchJson<T>(
   baseUrl: string,
   path: string,
-  options: JsonRequestOptions = {}
+  options: JsonRequestOptions
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-  };
-  let body: string | undefined;
-  if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json; charset=utf-8';
-    body = JSON.stringify(options.body);
+  if (!desktopPinnedTransportAvailable || !AstraDesktopTransport) {
+    throw new Error('Secure Desktop Remote transport is unavailable on this device.');
   }
-  if (options.token) headers.Authorization = `Bearer ${options.token}`;
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method ?? (body ? 'POST' : 'GET'),
-    headers,
+  const body = options.body === undefined ? null : JSON.stringify(options.body);
+  const response = await AstraDesktopTransport.requestJson(
+    baseUrl,
+    path,
+    options.method ?? (body ? 'POST' : 'GET'),
     body,
-    cache: 'no-store',
-    signal: timeoutSignal(options.timeoutMs ?? REQUEST_TIMEOUT_MS, options.signal),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
+    options.token ?? null,
+    options.fingerprint,
+    options.timeoutMs ?? REQUEST_TIMEOUT_MS
+  );
+  const payload = response.body ? JSON.parse(response.body) as unknown : null;
+  if (response.status < 200 || response.status >= 300) {
     const message =
       payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
         ? payload.error
@@ -127,9 +105,12 @@ export function defaultDesktopRemoteDeviceName(): string {
   return model ? `${model} Remote` : 'Astra Mobile Remote';
 }
 
-export async function fetchDesktopRemoteIdentity(baseUrl: string): Promise<DesktopRemoteIdentity | null> {
+export async function fetchDesktopRemoteIdentity(
+  baseUrl: string,
+  certificateFingerprint: string
+): Promise<DesktopRemoteIdentity | null> {
   try {
-    const payload = await fetchJson<unknown>(baseUrl, '/v1/identity');
+    const payload = await fetchJson<unknown>(baseUrl, '/v1/identity', { fingerprint: certificateFingerprint });
     return normalizeIdentity(payload);
   } catch {
     return null;
@@ -139,9 +120,11 @@ export async function fetchDesktopRemoteIdentity(baseUrl: string): Promise<Deskt
 export async function claimDesktopRemotePairingTicket(
   baseUrl: string,
   ticket: string,
+  certificateFingerprint: string,
   deviceName: string = defaultDesktopRemoteDeviceName()
 ): Promise<DesktopRemotePairingClaim> {
   const payload = await fetchJson<Record<string, unknown>>(baseUrl, '/v1/pairing/claim', {
+    fingerprint: certificateFingerprint,
     method: 'POST',
     body: {
       ticket,
@@ -163,58 +146,67 @@ export async function requestDesktopRemotePinPairing(
   baseUrl: string,
   deviceName: string = defaultDesktopRemoteDeviceName()
 ): Promise<DesktopRemotePinPairingRequest> {
-  const payload = await fetchJson<Record<string, unknown>>(baseUrl, '/v1/pairing/pin-request', {
-    method: 'POST',
-    body: {
-      deviceName,
-      clientLabel: clientLabel(),
-    },
-  });
+  if (!desktopPinnedTransportAvailable || !AstraDesktopTransport) {
+    throw new Error('Secure Desktop Remote transport is unavailable on this device.');
+  }
+  const payload = await AstraDesktopTransport.beginPinPairing(baseUrl, deviceName, clientLabel());
   return {
-    requestId: String(payload.requestId ?? ''),
-    pollToken: String(payload.pollToken ?? ''),
-    expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : 0,
-    deviceName: String(payload.deviceName ?? deviceName),
-    clientLabel: String(payload.clientLabel ?? clientLabel()),
-    identity: normalizeIdentity(payload.identity ?? payload),
+    attemptId: payload.attemptId,
+    requestId: payload.requestId,
+    pollToken: '',
+    expiresAt: payload.expiresAt,
+    deviceName,
+    clientLabel: clientLabel(),
+    identity: { endpointUuid: null, desktopName: payload.desktopName, protocolVersion: 3 },
+    certificateFingerprint: payload.certificateFingerprint,
+    protocolVersion: 3,
   };
 }
 
 export async function confirmDesktopRemotePinPairing(
-  baseUrl: string,
-  requestId: string,
+  attemptId: string,
   pin: string
 ): Promise<DesktopRemotePairingStatus> {
-  const payload = await fetchJson<Record<string, unknown>>(baseUrl, '/v1/pairing/pin-confirm', {
-    method: 'POST',
-    body: {
-      requestId,
-      pin,
-    },
-  });
-  const state = typeof payload.state === 'string' ? payload.state : 'approved';
+  if (!desktopPinnedTransportAvailable || !AstraDesktopTransport) {
+    throw new Error('Secure Desktop Remote transport is unavailable on this device.');
+  }
+  const payload = await AstraDesktopTransport.confirmPinPairing(attemptId, pin);
   return {
-    state: state as DesktopRemotePairingStatus['state'],
-    expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : 0,
-    token: typeof payload.token === 'string' ? payload.token : undefined,
-    deviceId: typeof payload.deviceId === 'string' ? payload.deviceId : null,
-    identity: normalizeIdentity(payload.identity ?? payload),
+    state: 'approved',
+    expiresAt: 0,
+    token: payload.controlToken,
+    controlToken: payload.controlToken,
+    syncToken: payload.syncToken,
+    issuedAt: payload.issuedAt,
+    scopes: ['control', 'sync'],
+    certificateFingerprint: payload.certificateFingerprint,
+    deviceId: payload.deviceId,
+    identity: normalizeIdentity(JSON.parse(payload.identityJson)),
   };
 }
 
 export async function fetchDesktopRemotePairingStatus(
   baseUrl: string,
-  pollToken: string
+  pollToken: string,
+  certificateFingerprint: string
 ): Promise<DesktopRemotePairingStatus> {
   const payload = await fetchJson<Record<string, unknown>>(
     baseUrl,
-    `/v1/pairing/status?pollToken=${encodeURIComponent(pollToken)}`
+    `/v1/pairing/status?pollToken=${encodeURIComponent(pollToken)}`,
+    { fingerprint: certificateFingerprint }
   );
   const state = typeof payload.state === 'string' ? payload.state : 'pending';
   return {
     state: state as DesktopRemotePairingStatus['state'],
     expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : 0,
     token: typeof payload.token === 'string' ? payload.token : undefined,
+    controlToken: typeof payload.controlToken === 'string' ? payload.controlToken : undefined,
+    syncToken: typeof payload.syncToken === 'string' ? payload.syncToken : undefined,
+    issuedAt: typeof payload.issuedAt === 'number' ? payload.issuedAt : undefined,
+    scopes: Array.isArray(payload.scopes)
+      ? payload.scopes.filter((scope): scope is 'control' | 'sync' => scope === 'control' || scope === 'sync')
+      : undefined,
+    certificateFingerprint: typeof payload.certificateFingerprint === 'string' ? payload.certificateFingerprint : undefined,
     deviceId: typeof payload.deviceId === 'string' ? payload.deviceId : null,
     identity: normalizeIdentity(payload.identity ?? payload),
   };
@@ -223,24 +215,27 @@ export async function fetchDesktopRemotePairingStatus(
 export async function fetchDesktopRemoteNowPlaying(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   inlineArtwork = false
 ): Promise<DesktopRemoteNowPlayingSnapshot> {
   return fetchJson<DesktopRemoteNowPlayingSnapshot>(
     baseUrl,
     `/v1/now-playing${inlineArtwork ? '?inlineArtwork=1' : ''}`,
-    { token }
+    { token, fingerprint: certificateFingerprint }
   );
 }
 
 export async function sendDesktopRemoteControl(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   command: DesktopRemoteControlCommand,
   time?: number
 ): Promise<void> {
   await fetchJson<{ ok: true }>(baseUrl, '/v1/control', {
     method: 'POST',
     token,
+    fingerprint: certificateFingerprint,
     body: command === 'seek' ? { command, time } : { command },
   });
 }
@@ -248,38 +243,87 @@ export async function sendDesktopRemoteControl(
 export async function sendDesktopRemotePlayQueueItem(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   queueId: string
 ): Promise<void> {
   await fetchJson<{ ok: true }>(baseUrl, '/v1/control', {
     method: 'POST',
     token,
+    fingerprint: certificateFingerprint,
     body: { command: 'play-queue-item', queueId },
   });
 }
 
 export async function fetchDesktopRemoteQueue(
   baseUrl: string,
-  token: string
+  token: string,
+  certificateFingerprint: string
 ): Promise<DesktopRemoteQueueSnapshot> {
-  return fetchJson<DesktopRemoteQueueSnapshot>(baseUrl, '/v1/queue', { token });
+  return fetchJson<DesktopRemoteQueueSnapshot>(baseUrl, '/v1/queue', { token, fingerprint: certificateFingerprint });
+}
+
+export interface DesktopRemoteSessionInfo {
+  deviceId: string;
+  scopes: ('control' | 'sync')[];
+  issuedAt: number;
+  rotatedAt: number;
+  rotateAfter: number;
+  rotateRequiredAt: number;
+  expiresAt: number;
+  rotationRequired: boolean;
+  usingPreviousCredential: boolean;
+}
+
+export interface DesktopRemoteRotatedCredentials {
+  controlToken: string;
+  syncToken: string;
+  issuedAt: number;
+  previousValidUntil: number;
+  rotateAfter: number;
+}
+
+export async function inspectDesktopRemoteSession(
+  baseUrl: string,
+  controlToken: string,
+  certificateFingerprint: string
+): Promise<DesktopRemoteSessionInfo> {
+  return fetchJson<DesktopRemoteSessionInfo>(baseUrl, '/v1/session', {
+    token: controlToken,
+    fingerprint: certificateFingerprint,
+  });
+}
+
+export async function rotateDesktopRemoteCredentials(
+  baseUrl: string,
+  controlToken: string,
+  certificateFingerprint: string
+): Promise<DesktopRemoteRotatedCredentials> {
+  return fetchJson<DesktopRemoteRotatedCredentials>(baseUrl, '/v1/session/rotate', {
+    method: 'POST',
+    token: controlToken,
+    fingerprint: certificateFingerprint,
+    body: {},
+  });
 }
 
 // ── Favorites/playlists LAN sync (protocolVersion >= 2) ──────────────────────
 // Sync payloads can carry thousands of favorites/playlist entries, so both
 // calls get generous timeouts compared to the 8 s control default.
 
-export async function fetchDesktopSyncState(baseUrl: string, token: string): Promise<DesktopSyncState> {
-  return fetchJson<DesktopSyncState>(baseUrl, '/v1/sync/state', { token, timeoutMs: 30_000 });
+export async function fetchDesktopSyncState(baseUrl: string, token: string, certificateFingerprint: string): Promise<DesktopSyncState> {
+  return fetchJson<DesktopSyncState>(baseUrl, '/v1/sync/state', { token, fingerprint: certificateFingerprint, timeoutMs: 30_000 });
 }
 
 export async function postDesktopSyncApply(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   payload: DesktopSyncApplyPayload
 ): Promise<DesktopSyncApplyResult> {
   return fetchJson<DesktopSyncApplyResult>(baseUrl, '/v1/sync/apply', {
     method: 'POST',
     token,
+    fingerprint: certificateFingerprint,
     body: payload,
     timeoutMs: 60_000,
   });
@@ -288,11 +332,13 @@ export async function postDesktopSyncApply(
 export async function postDesktopSyncConflicts(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   payload: DesktopSyncConflictReportPayload
 ): Promise<void> {
   await fetchJson<{ ok: true }>(baseUrl, '/v1/sync/conflicts', {
     method: 'POST',
     token,
+    fingerprint: certificateFingerprint,
     body: payload,
   });
 }
@@ -307,103 +353,53 @@ export type DesktopRemoteSseHandlers = {
   onError?: (error: unknown) => void;
 };
 
-function processSseChunk(
-  buffer: { value: string },
-  chunk: string,
-  onSnapshot: (snapshot: DesktopRemoteNowPlayingSnapshot) => void,
-  onQueue?: (queue: DesktopRemoteQueueSnapshot) => void,
-  onSyncRequest?: () => void
-): void {
-  buffer.value += chunk.replace(/\r/g, '');
-  let boundary = buffer.value.indexOf('\n\n');
-  while (boundary !== -1) {
-    const raw = buffer.value.slice(0, boundary);
-    buffer.value = buffer.value.slice(boundary + 2);
-    let eventName = 'message';
-    const data: string[] = [];
-    for (const line of raw.split('\n')) {
-      if (!line || line.startsWith(':')) continue;
-      if (line.startsWith('event:')) {
-        eventName = line.slice(6).trim();
-        continue;
-      }
-      if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-    }
-    if (eventName === 'now-playing' && data.length > 0) {
-      try {
-        onSnapshot(JSON.parse(data.join('\n')) as DesktopRemoteNowPlayingSnapshot);
-      } catch {
-        // Ignore a malformed event; polling/reconnect will correct the UI.
-      }
-    } else if (eventName === 'queue' && data.length > 0 && onQueue) {
-      try {
-        onQueue(JSON.parse(data.join('\n')) as DesktopRemoteQueueSnapshot);
-      } catch {
-        // Ignore a malformed event; the on-demand queue fetch will correct it.
-      }
-    } else if (eventName === 'sync-request' && onSyncRequest) {
-      onSyncRequest();
-    }
-    boundary = buffer.value.indexOf('\n\n');
-  }
-}
-
 export function startDesktopRemoteEventStream(
   baseUrl: string,
   token: string,
+  certificateFingerprint: string,
   handlers: DesktopRemoteSseHandlers
 ): () => void {
-  const controller = new AbortController();
   let closed = false;
+  let streamId: string | null = null;
+  const transport = AstraDesktopTransport;
+  if (!transport) {
+    handlers.onError?.(new Error('Secure Desktop Remote transport is unavailable on this device.'));
+    return () => {};
+  }
 
-  void (async () => {
-    try {
-      const response = await fetch(`${baseUrl}/v1/events`, {
-        headers: {
-          Accept: 'text/event-stream',
-          Authorization: `Bearer ${token}`,
-        },
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      if (response.status === 401) {
-        handlers.onUnauthorized();
-        return;
-      }
-      const body = response.body as unknown as {
-        getReader?: () => {
-          read: () => Promise<{ done: boolean; value?: Uint8Array }>;
-        };
-      } | null;
-      if (!response.ok || !body?.getReader) throw new Error(`SSE unavailable (${response.status})`);
-
-      const reader = body.getReader();
-      const decoder = new TextDecoder();
-      const buffer = { value: '' };
-      while (!closed) {
-        const next = await reader.read();
-        if (next.done) break;
-        if (next.value) {
-          processSseChunk(
-            buffer,
-            decoder.decode(next.value, { stream: true }),
-            handlers.onSnapshot,
-            handlers.onQueue,
-            handlers.onSyncRequest
-          );
-        }
-      }
-      processSseChunk(buffer, decoder.decode(), handlers.onSnapshot, handlers.onQueue, handlers.onSyncRequest);
-      if (!closed) handlers.onDisconnect();
-    } catch (error) {
-      if (closed || controller.signal.aborted) return;
-      handlers.onError?.(error);
+  const eventSubscription = transport.addListener('onDesktopTransportSse', (event) => {
+    if (closed || !streamId || event.streamId !== streamId) return;
+    if (event.event === 'now-playing') {
+      try { handlers.onSnapshot(JSON.parse(event.data) as DesktopRemoteNowPlayingSnapshot); } catch { /* ignore */ }
+    } else if (event.event === 'queue' && handlers.onQueue) {
+      try { handlers.onQueue(JSON.parse(event.data) as DesktopRemoteQueueSnapshot); } catch { /* ignore */ }
+    } else if (event.event === 'sync-request') {
+      handlers.onSyncRequest?.();
+    }
+  });
+  const closedSubscription = transport.addListener('onDesktopTransportClosed', (event) => {
+    if (closed || !streamId || event.streamId !== streamId) return;
+    if (event.unauthorized) handlers.onUnauthorized();
+    else if (event.message) {
+      handlers.onError?.(new Error(event.message));
       handlers.onDisconnect();
     }
-  })();
+  });
+
+  void transport.startEventStream(baseUrl, token, certificateFingerprint).then((id) => {
+    streamId = id;
+    if (closed) transport.stopEventStream(id);
+  }).catch((error) => {
+    if (closed) return;
+    handlers.onError?.(error);
+    handlers.onDisconnect();
+  });
 
   return () => {
+    if (closed) return;
     closed = true;
-    controller.abort();
+    eventSubscription.remove();
+    closedSubscription.remove();
+    if (streamId) transport.stopEventStream(streamId);
   };
 }

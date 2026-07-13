@@ -140,9 +140,9 @@ export default function DesktopSyncScreen() {
   const lastSummary = useDesktopSyncStore((s) => s.lastSummary);
   const conflicts = useDesktopSyncStore((s) => s.conflicts);
   const errorMessage = useDesktopSyncStore((s) => s.errorMessage);
-  const autoSyncEnabled = useDesktopSyncStore((s) => s.autoSyncEnabled);
+  const desktopSyncEnabled = useDesktopSyncStore((s) => s.desktopSyncEnabled);
   const syncNow = useDesktopSyncStore((s) => s.syncNow);
-  const setAutoSyncEnabled = useDesktopSyncStore((s) => s.setAutoSyncEnabled);
+  const setDesktopSyncEnabled = useDesktopSyncStore((s) => s.setDesktopSyncEnabled);
   const resolveConflict = useDesktopSyncStore((s) => s.resolveConflict);
 
   const [connection, setConnection] = useState<DesktopRemoteConnection | null>(null);
@@ -229,8 +229,8 @@ export default function DesktopSyncScreen() {
                   </Text>
                 </View>
                 <Pressable android_ripple={ripple.bounded}
-                  style={[styles.primaryButton, syncing && styles.disabled]}
-                  disabled={syncing}
+                  style={[styles.primaryButton, (syncing || !desktopSyncEnabled) && styles.disabled]}
+                  disabled={syncing || !desktopSyncEnabled}
                   onPress={() => void syncNow()}
                   accessibilityLabel="Sync favorites and playlists now"
                 >
@@ -259,15 +259,15 @@ export default function DesktopSyncScreen() {
             <View style={styles.card}>
               <View style={styles.toggleRow}>
                 <View style={styles.toggleText}>
-                  <Text variant="body">Sync automatically</Text>
+                  <Text variant="body">Desktop Sync</Text>
                   <Text variant="caption" color={colors.textSecondary} style={styles.cardCopy}>
-                    Sync when this desktop appears on the network or the app returns to the
-                    foreground. Manual and desktop-requested syncs always work.
+                    Allow favorites and playlists to sync securely with this desktop on any
+                    network. Turn this off to suppress every sync trigger without forgetting it.
                   </Text>
                 </View>
                 <HapticSwitch
-                  value={autoSyncEnabled}
-                  onValueChange={(value) => void setAutoSyncEnabled(value)}
+                  value={desktopSyncEnabled}
+                  onValueChange={(value) => void setDesktopSyncEnabled(value)}
                   trackColor={{ false: colors.glassBorder, true: colors.accent }}
                   thumbColor={colors.textPrimary}
                 />

@@ -93,12 +93,17 @@ class AstraDesktopDiscoveryModule : Module() {
           val endpointUuid = txt(resolved, "endpoint_uuid")
           val desktopName = txt(resolved, "name")
           val protocolVersion = txt(resolved, "protocol_version")?.toIntOrNull() ?: 1
+          val transport = txt(resolved, "transport")
+          val certificateFingerprint = txt(resolved, "certificate_fingerprint")
+          if (protocolVersion != 3 || transport != "https" || certificateFingerprint.isNullOrBlank()) return
           val payload = mapOf(
             "endpointUuid" to endpointUuid,
             "desktopName" to desktopName,
             "protocolVersion" to protocolVersion,
+            "certificateFingerprint" to certificateFingerprint,
+            "transport" to "https",
             "name" to (desktopName ?: resolved.serviceName),
-            "baseUrl" to "http://$address:$port",
+            "baseUrl" to "https://$address:$port",
             "address" to address,
             "port" to port,
             "lastSeenAt" to System.currentTimeMillis(),

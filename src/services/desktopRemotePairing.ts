@@ -8,11 +8,17 @@ function normalizeBaseUrl(value: string): string | null {
   if (!trimmed) return null;
   try {
     const parsed = new URL(trimmed);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.protocol !== 'https:') return null;
     return parsed.origin;
   } catch {
     return null;
   }
+}
+
+function normalizeFingerprint(value: string): string | null {
+  const compact = value.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
+  if (!/^[0-9A-F]{64}$/.test(compact)) return null;
+  return compact.match(/.{2}/g)?.join(':') ?? null;
 }
 
 function extractPairFromUrl(url: URL): string {
@@ -31,22 +37,46 @@ export function parseDesktopRemotePairingInput(rawInput: string): DesktopRemoteP
     if (parsed.protocol === 'astra:') {
       const baseUrl = normalizeBaseUrl(parsed.searchParams.get('baseUrl') ?? '');
       const ticket = parsed.searchParams.get('ticket')?.trim() ?? parsed.searchParams.get('pair')?.trim() ?? '';
-      return baseUrl && PAIRING_TICKET_PATTERN.test(ticket) ? { baseUrl, ticket } : null;
+      const endpointUuid = parsed.searchParams.get('endpointUuid')?.trim() ?? '';
+      const fingerprint = normalizeFingerprint(parsed.searchParams.get('fingerprint') ?? '');
+      const protocolVersion = Number(parsed.searchParams.get('protocolVersion'));
+      return baseUrl && endpointUuid && fingerprint && protocolVersion === 3 && PAIRING_TICKET_PATTERN.test(ticket)
+        ? { baseUrl, ticket, endpointUuid, protocolVersion: 3, certificateFingerprint: fingerprint }
+        : null;
     }
 
     const ticket = extractPairFromUrl(parsed);
     const baseUrl = normalizeBaseUrl(parsed.origin);
-    return baseUrl && PAIRING_TICKET_PATTERN.test(ticket) ? { baseUrl, ticket } : null;
+    const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+    const endpointUuid = hashParams.get('endpointUuid')?.trim() ?? parsed.searchParams.get('endpointUuid')?.trim() ?? '';
+    const fingerprint = normalizeFingerprint(hashParams.get('fingerprint') ?? parsed.searchParams.get('fingerprint') ?? '');
+    const protocolVersion = Number(hashParams.get('protocolVersion') ?? parsed.searchParams.get('protocolVersion'));
+    return baseUrl && endpointUuid && fingerprint && protocolVersion === 3 && PAIRING_TICKET_PATTERN.test(ticket)
+      ? { baseUrl, ticket, endpointUuid, protocolVersion: 3, certificateFingerprint: fingerprint }
+      : null;
   } catch {
-    return PAIRING_TICKET_PATTERN.test(input) ? { baseUrl: '', ticket: input } : null;
+    return null;
   }
 }
 
-export function parseDesktopRemoteManualInput(baseUrl: string, ticket: string): DesktopRemotePairingInput | null {
+export function parseDesktopRemoteManualInput(
+  baseUrl: string,
+  ticket: string,
+  endpointUuid: string,
+  certificateFingerprint: string
+): DesktopRemotePairingInput | null {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedTicket = ticket.trim();
-  if (!normalizedBaseUrl || !PAIRING_TICKET_PATTERN.test(normalizedTicket)) return null;
-  return { baseUrl: normalizedBaseUrl, ticket: normalizedTicket };
+  const normalizedEndpointUuid = endpointUuid.trim();
+  const normalizedFingerprint = normalizeFingerprint(certificateFingerprint);
+  if (!normalizedBaseUrl || !normalizedEndpointUuid || !normalizedFingerprint || !PAIRING_TICKET_PATTERN.test(normalizedTicket)) return null;
+  return {
+    baseUrl: normalizedBaseUrl,
+    ticket: normalizedTicket,
+    endpointUuid: normalizedEndpointUuid,
+    protocolVersion: 3,
+    certificateFingerprint: normalizedFingerprint,
+  };
 }
 
 export function normalizeDesktopRemotePinInput(pin: string): string | null {

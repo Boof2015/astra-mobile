@@ -9,7 +9,7 @@
 export const DESKTOP_SYNC_FORMAT = 1;
 
 /** Desktop protocol version that introduced /v1/sync/* (and queue/shuffle). */
-export const DESKTOP_SYNC_MIN_PROTOCOL_VERSION = 2;
+export const DESKTOP_SYNC_MIN_PROTOCOL_VERSION = 3;
 
 export interface SyncFavorite {
   key: string;

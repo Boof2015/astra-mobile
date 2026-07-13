@@ -34,6 +34,7 @@ import {
   setDesktopRemoteMediaSession,
   subscribeDesktopRemoteMediaSessionCommands,
 } from '@/services/desktopRemoteMediaSession';
+import { identityMatchesPinnedConnection } from '@/services/desktopSyncPolicy';
 import {
   getDesktopRemoteConnection,
   setDesktopRemoteConnection,
@@ -170,6 +171,8 @@ const DESKTOP_SYNC_REQUEST_POLL_MS = 60_000;
 function DesktopSyncAutoTrigger() {
   const connectionState = useDesktopRemoteStore((s) => s.connectionState);
   const discovered = useDesktopRemoteStore((s) => s.discovered);
+  const desktopSyncHydrated = useDesktopSyncStore((s) => s.hydrated);
+  const desktopSyncEnabled = useDesktopSyncStore((s) => s.desktopSyncEnabled);
 
   useEffect(() => {
     void useDesktopSyncStore.getState().hydrate();
@@ -182,6 +185,8 @@ function DesktopSyncAutoTrigger() {
     let startupRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const onActive = () => {
       void (async () => {
+        const sync = useDesktopSyncStore.getState();
+        if (!sync.hydrated || !sync.desktopSyncEnabled) return;
         const connection = await getDesktopRemoteConnection();
         if (!connection) return;
         useDesktopSyncStore.getState().maybeAutoSync('foreground');
@@ -210,31 +215,41 @@ function DesktopSyncAutoTrigger() {
       subscription.remove();
       if (burstTimer !== null) clearTimeout(burstTimer);
       if (startupRetryTimer !== null) clearTimeout(startupRetryTimer);
+      if (!useDesktopSyncStore.getState().desktopSyncEnabled) {
+        void useDesktopRemoteStore.getState().stopDiscovery();
+      }
     };
-  }, []);
+  }, [desktopSyncEnabled, desktopSyncHydrated]);
 
   // Desktop-initiated "Sync now" pickup: a cheap identity poll while
   // foregrounded (the SSE nudge only reaches us while the remote screen's
   // stream happens to be connected). fetchDesktopRemoteIdentity swallows
   // errors, so a powered-off desktop costs one timed-out request per minute.
   useEffect(() => {
+    if (!desktopSyncHydrated || !desktopSyncEnabled) return;
     const timer = setInterval(() => {
       if (AppState.currentState !== 'active') return;
       void (async () => {
+        const sync = useDesktopSyncStore.getState();
+        if (!sync.hydrated || !sync.desktopSyncEnabled) return;
         const connection = await getDesktopRemoteConnection();
         if (!connection) return;
-        const identity = await fetchDesktopRemoteIdentity(connection.baseUrl);
+        const identity = await fetchDesktopRemoteIdentity(
+          connection.baseUrl,
+          connection.certificateFingerprint
+        );
         if (identity?.syncRequestedAt) {
           useDesktopSyncStore.getState().handleSyncRequest();
         }
       })();
     }, DESKTOP_SYNC_REQUEST_POLL_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [desktopSyncEnabled, desktopSyncHydrated]);
 
   // Paired desktop spotted on the LAN: refresh a stale baseUrl (DHCP moves)
   // and trigger a sync.
   useEffect(() => {
+    if (!desktopSyncHydrated || !desktopSyncEnabled) return;
     if (discovered.length === 0) return;
     void (async () => {
       const connection = await getDesktopRemoteConnection();
@@ -242,6 +257,15 @@ function DesktopSyncAutoTrigger() {
       const match = discovered.find((desktop) => desktop.endpointUuid === connection.endpointUuid);
       if (!match) return;
       if (match.baseUrl && match.baseUrl !== connection.baseUrl) {
+        const identity = await fetchDesktopRemoteIdentity(
+          match.baseUrl,
+          connection.certificateFingerprint
+        );
+        if (!identity || !identityMatchesPinnedConnection(
+          connection.endpointUuid,
+          identity.protocolVersion,
+          identity.endpointUuid
+        )) return;
         const updated = { ...connection, baseUrl: match.baseUrl };
         await setDesktopRemoteConnection(updated);
         if (useDesktopRemoteStore.getState().connection) {
@@ -250,14 +274,14 @@ function DesktopSyncAutoTrigger() {
       }
       useDesktopSyncStore.getState().maybeAutoSync('discovery');
     })();
-  }, [discovered]);
+  }, [desktopSyncEnabled, desktopSyncHydrated, discovered]);
 
   // The remote screen connected — the desktop is definitely reachable.
   useEffect(() => {
-    if (connectionState === 'connected') {
+    if (desktopSyncHydrated && desktopSyncEnabled && connectionState === 'connected') {
       useDesktopSyncStore.getState().maybeAutoSync('connected');
     }
-  }, [connectionState]);
+  }, [desktopSyncEnabled, desktopSyncHydrated, connectionState]);
 
   return null;
 }

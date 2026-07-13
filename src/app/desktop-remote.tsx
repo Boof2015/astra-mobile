@@ -225,7 +225,20 @@ export default function DesktopRemoteScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
-  const { pair } = useLocalSearchParams<{ pair?: string }>();
+  const pairingParams = useLocalSearchParams<{
+    pair?: string;
+    baseUrl?: string;
+    ticket?: string;
+    endpointUuid?: string;
+    fingerprint?: string;
+    protocolVersion?: string;
+  }>();
+  const pairingRoutePair = pairingParams.pair;
+  const pairingRouteBaseUrl = pairingParams.baseUrl;
+  const pairingRouteTicket = pairingParams.ticket;
+  const pairingRouteEndpointUuid = pairingParams.endpointUuid;
+  const pairingRouteFingerprint = pairingParams.fingerprint;
+  const pairingRouteProtocolVersion = pairingParams.protocolVersion;
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const initialized = useDesktopRemoteStore((s) => s.initialized);
@@ -253,7 +266,6 @@ export default function DesktopRemoteScreen() {
   const [pinInput, setPinInput] = useState('');
   const [pinClock, setPinClock] = useState(() => Date.now());
   const [manualBaseUrl, setManualBaseUrl] = useState('');
-  const [manualTicket, setManualTicket] = useState('');
 
   useEffect(() => {
     void init();
@@ -267,11 +279,35 @@ export default function DesktopRemoteScreen() {
   }, [startDiscovery, stopDiscovery]);
 
   useEffect(() => {
-    if (typeof pair === 'string' && pair.trim()) {
-      void pairFromInput(pair);
+    if (typeof pairingRoutePair === 'string' && pairingRoutePair.trim()) {
+      void pairFromInput(pairingRoutePair);
       router.setParams({ pair: undefined });
+      return;
     }
-  }, [pair, pairFromInput, router]);
+    if (
+      typeof pairingRouteBaseUrl === 'string' && typeof pairingRouteTicket === 'string' &&
+      typeof pairingRouteEndpointUuid === 'string' && typeof pairingRouteFingerprint === 'string' &&
+      pairingRouteProtocolVersion === '3'
+    ) {
+      const url = new URL('astra://desktop-remote');
+      url.searchParams.set('baseUrl', pairingRouteBaseUrl);
+      url.searchParams.set('ticket', pairingRouteTicket);
+      url.searchParams.set('endpointUuid', pairingRouteEndpointUuid);
+      url.searchParams.set('fingerprint', pairingRouteFingerprint);
+      url.searchParams.set('protocolVersion', '3');
+      void pairFromInput(url.toString());
+      router.setParams({ baseUrl: undefined, ticket: undefined, endpointUuid: undefined, fingerprint: undefined, protocolVersion: undefined });
+    }
+  }, [
+    pairFromInput,
+    pairingRouteBaseUrl,
+    pairingRouteEndpointUuid,
+    pairingRouteFingerprint,
+    pairingRoutePair,
+    pairingRouteProtocolVersion,
+    pairingRouteTicket,
+    router,
+  ]);
 
   useEffect(() => {
     if (!pinPairing) return undefined;
@@ -453,40 +489,31 @@ export default function DesktopRemoteScreen() {
           <Text variant="body">Manual fallback</Text>
         </View>
         <Text variant="caption" color={colors.textSecondary} style={styles.cardCopy}>
-          Enter the desktop URL and pairing code from Astra Desktop.
+          Enter the Astra Desktop HTTPS URL, then compare the six-digit code shown on both devices.
         </Text>
         <TextInput
           style={styles.input}
           value={manualBaseUrl}
           onChangeText={setManualBaseUrl}
-          placeholder="http://desktop-ip:38402"
+          placeholder="https://desktop-ip:38402"
           placeholderTextColor={colors.textTertiary}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
         />
-        <TextInput
-          style={styles.input}
-          value={manualTicket}
-          onChangeText={setManualTicket}
-          placeholder="Pairing code"
-          placeholderTextColor={colors.textTertiary}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
         <Pressable android_ripple={ripple.bounded}
           style={[
             styles.secondaryButton,
-            (!manualBaseUrl.trim() || !manualTicket.trim()) && styles.buttonDisabled,
+            !manualBaseUrl.trim() && styles.buttonDisabled,
           ]}
-          disabled={!manualBaseUrl.trim() || !manualTicket.trim()}
-          onPress={() => void pairManual(manualBaseUrl, manualTicket)}
+          disabled={!manualBaseUrl.trim()}
+          onPress={() => void pairManual(manualBaseUrl)}
         >
           <Text
             variant="body"
-            color={manualBaseUrl.trim() && manualTicket.trim() ? colors.textPrimary : colors.textTertiary}
+            color={manualBaseUrl.trim() ? colors.textPrimary : colors.textTertiary}
           >
-            Pair manually
+            Request secure PIN
           </Text>
         </Pressable>
       </View>

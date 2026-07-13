@@ -62,10 +62,11 @@ import {
   postDesktopSyncConflicts,
 } from './desktopRemoteClient';
 import {
+  getDesktopRemoteCredentials,
   getDesktopRemoteConnection,
-  getDesktopRemoteToken,
-  setDesktopRemoteConnection,
+  getDesktopRemoteSyncToken,
 } from './desktopRemoteCredentials';
+import { ensureDesktopRemoteCredentialsFresh } from './desktopRemoteSession';
 
 const CLOCK_SKEW_WARN_MS = 5 * 60_000;
 
@@ -160,10 +161,10 @@ export async function runDesktopSync(): Promise<DesktopSyncSummary> {
 
   // Report remaining conflicts (best-effort — older desktops 404 here).
   const connection = await getDesktopRemoteConnection();
-  const token = await getDesktopRemoteToken();
+  const token = await getDesktopRemoteSyncToken();
   if (connection && token) {
     try {
-      await postDesktopSyncConflicts(connection.baseUrl, token, {
+      await postDesktopSyncConflicts(connection.baseUrl, token, connection.certificateFingerprint, {
         syncFormat: DESKTOP_SYNC_FORMAT,
         conflicts: summary.conflicts.map((conflict) => ({
           kind: conflict.kind,
@@ -194,22 +195,22 @@ async function runDesktopSyncOnce(): Promise<{
   pendingResolutions: DesktopSyncPendingResolution[];
 }> {
   const startedAt = Date.now();
-  const connection = await getDesktopRemoteConnection();
-  const token = await getDesktopRemoteToken();
-  if (!connection || !token) {
+  let connection = await getDesktopRemoteConnection();
+  const credentials = await getDesktopRemoteCredentials();
+  if (!connection || !credentials) {
     throw new Error('No paired desktop.');
   }
+  const fresh = await ensureDesktopRemoteCredentialsFresh(connection, credentials);
+  connection = fresh.connection;
+  const token = fresh.credentials.syncToken;
 
   // The stored protocolVersion predates any desktop upgrade — re-check live and
   // persist the refreshed value before gating.
-  const identity = await fetchDesktopRemoteIdentity(connection.baseUrl);
+  const identity = await fetchDesktopRemoteIdentity(connection.baseUrl, connection.certificateFingerprint);
   if (!identity) {
     throw new Error('Desktop is unreachable.');
   }
-  if (identity.protocolVersion !== connection.protocolVersion) {
-    await setDesktopRemoteConnection({ ...connection, protocolVersion: identity.protocolVersion });
-  }
-  if (identity.protocolVersion < DESKTOP_SYNC_MIN_PROTOCOL_VERSION) {
+  if (identity.protocolVersion !== DESKTOP_SYNC_MIN_PROTOCOL_VERSION || identity.endpointUuid !== connection.endpointUuid) {
     throw new DesktopSyncUnsupportedError();
   }
 
@@ -218,7 +219,7 @@ async function runDesktopSyncOnce(): Promise<{
   const index = buildImportIndex(await getAllTracks(db));
   await resolvePendingFavorites(db, index);
   const local = await getLocalSyncState(db);
-  const remote = await fetchDesktopSyncState(connection.baseUrl, token);
+  const remote = await fetchDesktopSyncState(connection.baseUrl, token, connection.certificateFingerprint);
   if (remote.syncFormat !== DESKTOP_SYNC_FORMAT) {
     throw new DesktopSyncUnsupportedError();
   }
@@ -556,7 +557,12 @@ async function runDesktopSyncOnce(): Promise<{
     payload.playlistUpserts.length > 0 ||
     payload.playlistDeletes.length > 0;
   if (hasDiff) {
-    const result = await postDesktopSyncApply(connection.baseUrl, token, payload);
+    const result = await postDesktopSyncApply(
+      connection.baseUrl,
+      token,
+      connection.certificateFingerprint,
+      payload
+    );
     summary.pushedToDesktop = true;
     summary.favoritesAdded += result.favorites.added;
     summary.favoritesPending += result.favorites.pending;
