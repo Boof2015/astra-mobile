@@ -59,8 +59,11 @@ import {
 } from '@/audio/playbackController';
 import { useQueue } from './useQueue';
 import {
+  indexQueueEntriesByKey,
+  moveQueueEntry,
   removeQueueEntryAt,
   resolveSelectedQueueAction,
+  type QueueIndexByKey,
 } from './queueActions';
 
 const QUEUE_ROW_HEIGHT = 64;
@@ -72,8 +75,6 @@ interface QueueEntry {
   identity: string;
   track: RntpTrack;
 }
-
-type QueueIndexByKey = Record<string, number>;
 
 function rntpKey(track: RntpTrack): string {
   return String(track.id ?? track.url);
@@ -97,21 +98,6 @@ function queueCountLabel(count: number): string {
   if (count === 0) return 'No songs next';
   if (count === 1) return '1 song next';
   return `${count} songs next`;
-}
-
-function arrayMove<T>(items: readonly T[], from: number, to: number): T[] {
-  const out = [...items];
-  const [moved] = out.splice(from, 1);
-  out.splice(to, 0, moved);
-  return out;
-}
-
-function indexByEntryKey(entries: readonly QueueEntry[]): QueueIndexByKey {
-  const out: QueueIndexByKey = {};
-  entries.forEach((entry, index) => {
-    out[entry.key] = index;
-  });
-  return out;
 }
 
 function clampLocal(value: number, len: number): number {
@@ -262,7 +248,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const setVisibleEntries = useCallback((nextEntries: QueueEntry[]) => {
     entriesRef.current = nextEntries;
-    if (dragInFlightRef.current) updateDragIndexMap(indexByEntryKey(nextEntries));
+    if (dragInFlightRef.current) updateDragIndexMap(indexQueueEntriesByKey(nextEntries));
     setEntries(nextEntries);
   }, [updateDragIndexMap]);
 
@@ -280,9 +266,6 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
     frame = requestAnimationFrame(() => {
       if (cancelled) return;
-      setEditMode(false);
-      setSelectedKeys(new Set());
-
       setEntries((previous) => {
         const next = hasSnapshot
           ? reconcileQueueEntries(
@@ -292,7 +275,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
             )
           : [];
         entriesRef.current = next;
-        if (dragInFlightRef.current) updateDragIndexMap(indexByEntryKey(next));
+        if (dragInFlightRef.current) updateDragIndexMap(indexQueueEntriesByKey(next));
         return next;
       });
     });
@@ -301,7 +284,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       cancelled = true;
       if (frame != null) cancelAnimationFrame(frame);
     };
-  }, [hasSnapshot, setVisibleEntries, upcomingTracks, updateDragIndexMap]);
+  }, [hasSnapshot, upcomingTracks, updateDragIndexMap]);
 
   const visibleSelectedKeys = useMemo(() => {
     if (selectedKeys.size === 0) return EMPTY_KEY_SET;
@@ -330,10 +313,11 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     (from: number, to: number) => {
       const snapshot = entriesRef.current;
       if (from === to || from < 0 || to < 0 || from >= snapshot.length || to >= snapshot.length) {
+        clearDragState();
         return;
       }
 
-      const nextEntries = arrayMove(snapshot, from, to);
+      const nextEntries = moveQueueEntry(snapshot, from, to);
       playHaptic('queueDrop');
       setVisibleEntries(nextEntries);
       clearDragAfterReorderCommit();
@@ -343,13 +327,37 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
         nextEntries.map((entry) => entry.track)
       );
     },
-    [baseOffset, clearDragAfterReorderCommit, commitNativeMove, setVisibleEntries]
+    [baseOffset, clearDragAfterReorderCommit, clearDragState, commitNativeMove, setVisibleEntries]
   );
 
-  const onDragArm = useCallback(() => {
-    dragInFlightRef.current = true;
-    playHaptic('queueLift');
-  }, []);
+  const onDragArm = useCallback(
+    (entryKey: string) => {
+      dragInFlightRef.current = true;
+      const indexMap = indexQueueEntriesByKey(entriesRef.current);
+      const currentIndex = indexMap[entryKey] ?? -1;
+
+      runOnUI(
+        (
+          active: SharedValue<boolean>,
+          key: SharedValue<string>,
+          start: SharedValue<number>,
+          target: SharedValue<number>,
+          sharedIndexMap: SharedValue<QueueIndexByKey>,
+          armedKey: string,
+          armedIndex: number,
+          nextIndexMap: QueueIndexByKey
+        ) => {
+          'worklet';
+          if (!active.value || key.value !== armedKey) return;
+          sharedIndexMap.value = nextIndexMap;
+          start.value = armedIndex;
+          target.value = armedIndex;
+        }
+      )(dActive, dKey, dStart, dTarget, dIndexByKey, entryKey, currentIndex, indexMap);
+      playHaptic('queueLift');
+    },
+    [dActive, dIndexByKey, dKey, dStart, dTarget]
+  );
 
   const onDragAbort = useCallback(() => {
     dragInFlightRef.current = false;
@@ -357,24 +365,23 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const makeDragGesture = useCallback(
     (
-      localIndex: number,
       longPress: boolean,
       entryKey: string,
       entryCount: number
     ): GestureType => {
       const gesture = Gesture.Pan()
         .onStart(() => {
-          const currentIndex = dIndexByKey.value[entryKey] ?? localIndex;
-          dStart.value = currentIndex;
-          dTarget.value = currentIndex;
+          dStart.value = -1;
+          dTarget.value = -1;
           dTy.value = 0;
           dKey.value = entryKey;
           dSettling.value = false;
           dActive.value = true;
-          runOnJS(onDragArm)();
+          runOnJS(onDragArm)(entryKey);
         })
         .onUpdate((event) => {
           dTy.value = event.translationY;
+          if (dStart.value < 0) return;
           const nextTarget = clampLocal(
             Math.round(dStart.value + event.translationY / QUEUE_ROW_HEIGHT),
             entryCount
@@ -407,9 +414,20 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
             dSettling.value = true;
             runOnJS(finishDrag)(from, to);
           });
+        })
+        .onFinalize((_event, success) => {
+          if (success || dKey.value !== entryKey) return;
+          dActive.value = false;
+          dTy.value = 0;
+          dStart.value = -1;
+          dTarget.value = -1;
+          dSettling.value = false;
+          dKey.value = '';
+          dIndexByKey.value = {};
+          runOnJS(onDragAbort)();
         });
 
-      return longPress ? gesture.activateAfterLongPress(250) : gesture;
+      return longPress ? gesture.activateAfterLongPress(250) : gesture.minDistance(1);
     },
     [dActive, dIndexByKey, dKey, dSettling, dStart, dTarget, dTy, finishDrag, onDragAbort, onDragArm]
   );
@@ -430,7 +448,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const playNext = useCallback(
     (localIndex: number) => {
-      const nextEntries = arrayMove(entriesRef.current, localIndex, 0);
+      const nextEntries = moveQueueEntry(entriesRef.current, localIndex, 0);
       setOptimisticEntries(nextEntries);
       runAndRefresh(requeueToTop(baseOffset + localIndex));
     },
@@ -462,29 +480,37 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     setSelectedKeys(new Set());
   }, []);
 
+  const clearSelection = useCallback(() => {
+    setSelectedKeys(new Set());
+  }, []);
+
+  useEffect(() => {
+    if (editMode && hasSnapshot && entries.length === 0) exitEdit();
+  }, [editMode, entries.length, exitEdit, hasSnapshot]);
+
   const groupPlayNext = useCallback(() => {
     const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
     if (action.absoluteIndices.length === 0) {
-      exitEdit();
+      clearSelection();
       return;
     }
 
     setOptimisticEntries(action.entriesWithSelectedFirst);
     runAndRefresh(requeueManyToTop(action.absoluteIndices));
-    exitEdit();
-  }, [baseOffset, exitEdit, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
+    clearSelection();
+  }, [baseOffset, clearSelection, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
 
   const groupRemove = useCallback(() => {
     const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
     if (action.absoluteIndices.length === 0) {
-      exitEdit();
+      clearSelection();
       return;
     }
 
     setOptimisticEntries(action.entriesWithoutSelected);
     runAndRefresh(removeManyFromQueue(action.absoluteIndices, { updateMirror: false }));
-    exitEdit();
-  }, [baseOffset, exitEdit, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
+    clearSelection();
+  }, [baseOffset, clearSelection, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -631,7 +657,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       {listReady ? (
         <FlashList
           data={entries}
-          scrollEnabled={!editMode}
+          scrollEnabled
           style={embedded ? embeddedListStyle : listClampStyle}
           keyExtractor={(item) => item.key}
           drawDistance={QUEUE_ROW_HEIGHT * 12}
@@ -738,7 +764,6 @@ interface QueueRowProps {
   editMode: boolean;
   selected: boolean;
   makeDragGesture: (
-    localIndex: number,
     longPress: boolean,
     entryKey: string,
     entryCount: number
@@ -784,8 +809,8 @@ const QueueRow = memo(function QueueRow({
   const artist = trackArtist(entry.track);
 
   const gesture = useMemo(
-    () => makeDragGesture(localIndex, !editMode, entryKey, entryCount),
-    [editMode, entryCount, entryKey, localIndex, makeDragGesture]
+    () => makeDragGesture(!editMode, entryKey, entryCount),
+    [editMode, entryCount, entryKey, makeDragGesture]
   );
 
   const onJump = useCallback(() => onJumpIndex(localIndex), [localIndex, onJumpIndex]);
@@ -800,7 +825,7 @@ const QueueRow = memo(function QueueRow({
   );
 
   const rowMotionStyle = useAnimatedStyle(() => {
-    if (!dActive.value) {
+    if (!dActive.value || dStart.value < 0) {
       return {
         transform: [
           { translateY: withTiming(0, motion.quick) },

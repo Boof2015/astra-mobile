@@ -2,6 +2,8 @@ export interface KeyedQueueEntry {
   key: string;
 }
 
+export type QueueIndexByKey = Record<string, number>;
+
 export interface QueueItemRemoveAction<T extends KeyedQueueEntry> {
   absoluteIndex: number;
   nextEntries: T[];
@@ -11,6 +13,33 @@ export interface SelectedQueueAction<T extends KeyedQueueEntry> {
   absoluteIndices: number[];
   entriesWithSelectedFirst: T[];
   entriesWithoutSelected: T[];
+}
+
+export function indexQueueEntriesByKey<T extends KeyedQueueEntry>(
+  entries: readonly T[]
+): QueueIndexByKey {
+  const out: QueueIndexByKey = {};
+  entries.forEach((entry, index) => {
+    out[entry.key] = index;
+  });
+  return out;
+}
+
+export function moveQueueEntry<T>(entries: readonly T[], from: number, to: number): T[] {
+  const nextEntries = [...entries];
+  if (
+    from === to ||
+    from < 0 ||
+    to < 0 ||
+    from >= nextEntries.length ||
+    to >= nextEntries.length
+  ) {
+    return nextEntries;
+  }
+
+  const [moved] = nextEntries.splice(from, 1);
+  nextEntries.splice(to, 0, moved);
+  return nextEntries;
 }
 
 export function removeQueueEntryAt<T extends KeyedQueueEntry>(

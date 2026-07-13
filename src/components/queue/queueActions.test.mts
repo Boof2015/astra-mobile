@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  indexQueueEntriesByKey,
+  moveQueueEntry,
   removeQueueEntryAt,
   resolveSelectedQueueAction,
   type KeyedQueueEntry,
@@ -13,6 +15,19 @@ function keyed(keys: string[]): KeyedQueueEntry[] {
 function entryKeys(entries: readonly KeyedQueueEntry[]): string[] {
   return entries.map((entry) => entry.key);
 }
+
+test('resolves each drag from the latest keyed queue order', () => {
+  let upcoming = keyed(['A', 'B', 'C', 'D']);
+
+  let currentIndices = indexQueueEntriesByKey(upcoming);
+  upcoming = moveQueueEntry(upcoming, currentIndices.B, 3);
+  assert.deepEqual(entryKeys(upcoming), ['A', 'C', 'D', 'B']);
+
+  currentIndices = indexQueueEntriesByKey(upcoming);
+  assert.equal(currentIndices.B, 3);
+  upcoming = moveQueueEntry(upcoming, currentIndices.B, 1);
+  assert.deepEqual(entryKeys(upcoming), ['A', 'B', 'C', 'D']);
+});
 
 test('resolves swipe remove before the optimistic mirror mutation', () => {
   const upcoming = keyed(['A', 'B', 'C']);
