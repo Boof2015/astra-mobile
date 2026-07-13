@@ -22,6 +22,7 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { Text } from '@/components/Text';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
+import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
 import { formatFolderCount, formatTrackCount } from '@/components/settings/SettingsPanels';
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
@@ -29,12 +30,13 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type { BaseThemeId } from '@/theme/resolve';
 import { useLibraryStore } from '@/stores/libraryStore';
+import { useSettingsStore, type NowPlayingScopeStyle } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
-type StepId = 'welcome' | 'library' | 'theme' | 'done';
+type StepId = 'welcome' | 'library' | 'theme' | 'player' | 'done';
 
-const STEP_ORDER: StepId[] = ['welcome', 'library', 'theme', 'done'];
+const STEP_ORDER: StepId[] = ['welcome', 'library', 'theme', 'player', 'done'];
 
 const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
   { id: 'system', title: 'System' },
@@ -60,6 +62,13 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const step = STEP_ORDER[stepIndex];
   const foldersCount = useLibraryStore((s) => s.folders.length);
   const isScanning = useLibraryStore((s) => s.isScanning);
+  // Deliberately unset until tapped: preselecting a card would bias the
+  // pre-release style feedback. Skipping through keeps the store default.
+  const [scopeStyleChoice, setScopeStyleChoice] = useState<NowPlayingScopeStyle | null>(null);
+  const chooseScopeStyle = (style: NowPlayingScopeStyle) => {
+    setScopeStyleChoice(style);
+    void useSettingsStore.getState().setNowPlayingScopeStyle(style);
+  };
 
   const goNext = () => {
     if (stepIndex < STEP_ORDER.length - 1) setStepIndex((i) => i + 1);
@@ -67,7 +76,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   };
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
-  const canGoBack = step === 'library' || step === 'theme';
+  const canGoBack = step === 'library' || step === 'theme' || step === 'player';
   const primaryLabel =
     step === 'welcome'
       ? 'Get started'
@@ -78,7 +87,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           foldersCount > 0 || isScanning
           ? 'Continue'
           : 'Skip for now'
-        : step === 'theme'
+        : step === 'theme' || step === 'player'
           ? 'Continue'
           : 'Start listening';
 
@@ -114,6 +123,9 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
             {step === 'welcome' ? <WelcomeStep /> : null}
             {step === 'library' ? <LibraryStep /> : null}
             {step === 'theme' ? <ThemeStep /> : null}
+            {step === 'player' ? (
+              <PlayerStep choice={scopeStyleChoice} onChoose={chooseScopeStyle} />
+            ) : null}
             {step === 'done' ? <DoneStep /> : null}
           </Animated.View>
         </ScrollView>
@@ -274,6 +286,26 @@ function ThemeStep() {
           <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function PlayerStep({
+  choice,
+  onChoose,
+}: {
+  choice: NowPlayingScopeStyle | null;
+  onChoose: (style: NowPlayingScopeStyle) => void;
+}) {
+  const styles = useStyles();
+  return (
+    <View style={styles.stepBody}>
+      <StepHeader
+        icon="pulse-outline"
+        title="Pick your player look"
+        subtitle="The player can show live scopes of the music. Choose where they live — you can change this anytime in Settings."
+      />
+      <ScopeStyleCards value={choice} onChange={onChoose} />
     </View>
   );
 }

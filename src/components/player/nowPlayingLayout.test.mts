@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getNowPlayingLayout,
+  getScopeHeight,
   getTabletCompanionLayout,
 } from './nowPlayingLayout.ts';
 
@@ -86,6 +87,35 @@ test('adds the companion only to roomy tablet canvases', () => {
       layout.shellWidth
     );
   }
+});
+
+test('returns both art sizes, state-independent, matching the resolved size', () => {
+  for (const [width, height] of [
+    [320, 568],
+    [360, 640],
+    [393, 852],
+    [412, 915],
+    [600, 840],
+    [800, 600],
+  ]) {
+    const hidden = getNowPlayingLayout(width, height, false);
+    const visible = getNowPlayingLayout(width, height, true);
+    // The pair is the same regardless of the current toggle state...
+    assert.equal(hidden.artSizeScopeOn, visible.artSizeScopeOn);
+    assert.equal(hidden.artSizeScopeOff, visible.artSizeScopeOff);
+    // ...and the state-resolved artSize picks the matching member.
+    assert.equal(hidden.artSize, hidden.artSizeScopeOff);
+    assert.equal(visible.artSize, visible.artSizeScopeOn);
+    assert.ok(hidden.artSizeScopeOn <= hidden.artSizeScopeOff);
+  }
+});
+
+test('clamps scope strip height to its band across widths', () => {
+  assert.equal(getScopeHeight(0), 84);
+  assert.equal(getScopeHeight(300), 84);
+  assert.equal(getScopeHeight(336), Math.round(336 * 0.28));
+  assert.equal(getScopeHeight(448), 108);
+  assert.equal(getScopeHeight(10000), 108);
 });
 
 test('keeps calculated dimensions finite and non-negative', () => {

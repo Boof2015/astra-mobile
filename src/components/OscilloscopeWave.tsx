@@ -3,12 +3,14 @@ import {
   useMemo,
   useRef
 } from 'react';
+import { useReducedMotion } from 'react-native-reanimated';
 import {
   PaintStyle,
   Skia,
   SkiaPictureView,
   StrokeCap,
   StrokeJoin,
+  TileMode,
   type SkPath,
   type SkPicture
 } from '@shopify/react-native-skia';
@@ -27,6 +29,7 @@ interface OscilloscopeWaveProps {
   lineWidth?: number;
   glow?: boolean;
   edgeFade?: boolean;
+  edgeFadeWidth?: number;
 }
 
 type SkiaViewApiShape = {
@@ -35,6 +38,11 @@ type SkiaViewApiShape = {
 };
 
 const values = new Float32Array(OSCILLOSCOPE_POINTS);
+
+// Deactivation decay: pull the last live frame toward the rest line over
+// ~250ms instead of snapping flat, so pausing reads as powering down.
+const DECAY_PER_FRAME = 0.72;
+const REST_EPSILON = 0.004;
 
 function skiaViewApi(): SkiaViewApiShape | null {
   const globalWithSkia = globalThis as typeof globalThis & { SkiaViewApi?: SkiaViewApiShape };
@@ -57,6 +65,34 @@ function makeStrokePaint(color: string, width: number, alpha = 1) {
   paint.setStrokeCap(StrokeCap.Round);
   paint.setStrokeJoin(StrokeJoin.Round);
   return paint;
+}
+
+const EDGE_FADE_WIDTH = 28;
+
+/**
+ * Edge fade baked into the stroke paint: a horizontal gradient shader whose
+ * alpha ramps in from transparent at both ends, so the trace dissolves at its
+ * edges over any background — solid screen or blurred artwork.
+ */
+function makeFadedStrokeShader(
+  color: string,
+  alpha: number,
+  width: number,
+  fadeWidth: number
+) {
+  const f = Math.min(fadeWidth, width * 0.5);
+  return Skia.Shader.MakeLinearGradient(
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    [
+      Skia.Color(withAlpha(color, 0)),
+      Skia.Color(withAlpha(color, alpha)),
+      Skia.Color(withAlpha(color, alpha)),
+      Skia.Color(withAlpha(color, 0)),
+    ],
+    [0, f / width, 1 - f / width, 1],
+    TileMode.Clamp
+  );
 }
 
 function writeWavePath(
@@ -98,7 +134,9 @@ function buildPicture(
   color: string,
   lineWidth: number,
   glow: boolean,
-  gain: number
+  gain: number,
+  edgeFade: boolean,
+  edgeFadeWidth: number
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
@@ -106,9 +144,17 @@ function buildPicture(
   writeWavePath(samples, sampleCount, width, height, lineWidth, gain, path);
 
   if (glow) {
-    canvas.drawPath(path, makeStrokePaint(color, lineWidth * 3, 0.18));
+    const glowPaint = makeStrokePaint(color, lineWidth * 3, 0.18);
+    if (edgeFade) {
+      glowPaint.setShader(makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth));
+    }
+    canvas.drawPath(path, glowPaint);
   }
-  canvas.drawPath(path, makeStrokePaint(color, lineWidth));
+  const strokePaint = makeStrokePaint(color, lineWidth);
+  if (edgeFade) {
+    strokePaint.setShader(makeFadedStrokeShader(color, 1, width, edgeFadeWidth));
+  }
+  canvas.drawPath(path, strokePaint);
 
   return recorder.finishRecordingAsPicture();
 }
@@ -130,10 +176,12 @@ export function OscilloscopeWave({
   color: colorProp,
   lineWidth = 2,
   glow = false,
-  edgeFade: _edgeFade = false,
+  edgeFade = false,
+  edgeFadeWidth = EDGE_FADE_WIDTH,
 }: OscilloscopeWaveProps) {
   const themeColors = useColors();
   const color = colorProp ?? themeColors.accent;
+  const reduceMotion = useReducedMotion();
   const viewRef = useRef<SkiaPictureView | null>(null);
   const initialPicture = useMemo(
     () =>
@@ -145,9 +193,11 @@ export function OscilloscopeWave({
         color,
         lineWidth,
         glow,
-        DEFAULT_OSC_GAIN
+        DEFAULT_OSC_GAIN,
+        edgeFade,
+        edgeFadeWidth
       ),
-    [color, glow, height, lineWidth, width]
+    [color, edgeFade, edgeFadeWidth, glow, height, lineWidth, width]
   );
 
   useEffect(() => {
@@ -164,6 +214,10 @@ export function OscilloscopeWave({
     // was measurable GC/JSI churn at 60fps.
     const strokePaint = makeStrokePaint(color, lineWidth);
     const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, 0.18) : null;
+    if (edgeFade) {
+      strokePaint.setShader(makeFadedStrokeShader(color, 1, width, edgeFadeWidth));
+      glowPaint?.setShader(makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth));
+    }
     const bounds = Skia.XYWHRect(0, 0, width, height);
     const path = Skia.Path.Make();
 
@@ -178,10 +232,52 @@ export function OscilloscopeWave({
       api.requestRedraw(view.nativeId);
     };
 
+    const cleanup = () => {
+      mounted = false;
+      cancelAnimationFrame(raf);
+    };
+
+    if (!active) {
+      // Deactivation (pause, occlusion): decay whatever the tap last wrote
+      // toward the rest line, then settle flat and schedule nothing.
+      let peak = 0;
+      for (let i = 0; i < values.length; i++) {
+        const a = Math.abs(values[i]);
+        if (a > peak) peak = a;
+      }
+      if (reduceMotion || peak < REST_EPSILON) {
+        values.fill(0);
+        draw(values.length);
+        return cleanup;
+      }
+      const decayTick = (t: number) => {
+        if (!mounted) return;
+        if (drawThreshold > 0 && t - lastDraw < drawThreshold) {
+          raf = requestAnimationFrame(decayTick);
+          return;
+        }
+        lastDraw = t;
+        let max = 0;
+        for (let i = 0; i < values.length; i++) {
+          const v = values[i] * DECAY_PER_FRAME;
+          values[i] = v;
+          const a = Math.abs(v);
+          if (a > max) max = a;
+        }
+        if (max < REST_EPSILON) {
+          values.fill(0);
+          draw(values.length);
+          return;
+        }
+        draw(values.length);
+        raf = requestAnimationFrame(decayTick);
+      };
+      raf = requestAnimationFrame(decayTick);
+      return cleanup;
+    }
+
     values.fill(0);
     draw(values.length);
-    // Inactive: leave the flat line and schedule nothing instead of idling a rAF.
-    if (!active) return;
 
     const tick = (t: number) => {
       if (!mounted) return;
@@ -196,11 +292,19 @@ export function OscilloscopeWave({
     };
 
     raf = requestAnimationFrame(tick);
-    return () => {
-      mounted = false;
-      cancelAnimationFrame(raf);
-    };
-  }, [active, color, frameMs, glow, height, lineWidth, width]);
+    return cleanup;
+  }, [
+    active,
+    color,
+    edgeFade,
+    edgeFadeWidth,
+    frameMs,
+    glow,
+    height,
+    lineWidth,
+    reduceMotion,
+    width,
+  ]);
 
   if (width <= 0 || height <= 0) return null;
   return <SkiaPictureView ref={viewRef} picture={initialPicture} style={{ width, height }} />;

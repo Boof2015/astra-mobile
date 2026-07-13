@@ -16,11 +16,19 @@ const ARTIST_GROUPING_KEY = 'artist_grouping_mode';
 const INCLUDE_SINGLES_KEY = 'album_include_singles';
 const SCOPE_MODE_KEY = 'scope_mode';
 const SCOPE_STAGE_VISIBLE_KEY = 'scope_stage_visible';
+const SCOPE_STYLE_KEY = 'now_playing_scope_style';
 const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
+
+/**
+ * Where the now-playing scopes live: 'rail' keeps a strip below the artwork
+ * (art shrinks to fit), 'rack' flips the art card's face to both scopes
+ * stacked over a dimmed artwork backdrop (art size never changes).
+ */
+export type NowPlayingScopeStyle = 'rail' | 'rack';
 
 function parseGroupingMode(value: string | null): ArtistGroupingMode {
   return value === 'fileTags' ? 'fileTags' : 'astra';
@@ -28,6 +36,10 @@ function parseGroupingMode(value: string | null): ArtistGroupingMode {
 
 function parseScopeMode(value: string | null): ScopeMode {
   return value === 'scope' ? 'scope' : 'spectrum';
+}
+
+function parseScopeStyle(value: string | null): NowPlayingScopeStyle {
+  return value === 'rack' ? 'rack' : 'rail';
 }
 
 function parseBoolean(value: string | null): boolean {
@@ -40,6 +52,7 @@ interface SettingsStore {
   includeSingles: boolean;
   scopeMode: ScopeMode;
   scopeStageVisible: boolean;
+  nowPlayingScopeStyle: NowPlayingScopeStyle;
   /** Whether the now-playing top half shows lyrics instead of art/scope. */
   lyricsVisible: boolean;
   nowPlayingCompanion: NowPlayingCompanion;
@@ -49,6 +62,7 @@ interface SettingsStore {
   setIncludeSingles: (include: boolean) => Promise<void>;
   setScopeMode: (mode: ScopeMode) => Promise<void>;
   setScopeStageVisible: (visible: boolean) => Promise<void>;
+  setNowPlayingScopeStyle: (style: NowPlayingScopeStyle) => Promise<void>;
   setLyricsVisible: (visible: boolean) => Promise<void>;
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
 }
@@ -58,6 +72,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   includeSingles: false,
   scopeMode: 'spectrum',
   scopeStageVisible: false,
+  nowPlayingScopeStyle: 'rail',
   lyricsVisible: false,
   nowPlayingCompanion: 'queue',
   loaded: false,
@@ -70,6 +85,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       includeSingles,
       scope,
       scopeStageVisible,
+      scopeStyle,
       lyricsVisible,
       nowPlayingCompanion,
     ] = await Promise.all([
@@ -77,6 +93,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       getSetting(db, INCLUDE_SINGLES_KEY),
       getSetting(db, SCOPE_MODE_KEY),
       getSetting(db, SCOPE_STAGE_VISIBLE_KEY),
+      getSetting(db, SCOPE_STYLE_KEY),
       getSetting(db, LYRICS_VISIBLE_KEY),
       getSetting(db, NOW_PLAYING_COMPANION_KEY),
     ]);
@@ -85,6 +102,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       includeSingles: parseBoolean(includeSingles),
       scopeMode: parseScopeMode(scope),
       scopeStageVisible: parseBoolean(scopeStageVisible),
+      nowPlayingScopeStyle: parseScopeStyle(scopeStyle),
       lyricsVisible: parseBoolean(lyricsVisible),
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
       loaded: true,
@@ -117,6 +135,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ scopeStageVisible: visible });
     const db = await openLibraryDb();
     await setSetting(db, SCOPE_STAGE_VISIBLE_KEY, visible ? 'true' : 'false');
+  },
+
+  setNowPlayingScopeStyle: async (style) => {
+    if (get().nowPlayingScopeStyle === style) return;
+    set({ nowPlayingScopeStyle: style });
+    const db = await openLibraryDb();
+    await setSetting(db, SCOPE_STYLE_KEY, style);
   },
 
   setLyricsVisible: async (visible) => {

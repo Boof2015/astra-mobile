@@ -9,6 +9,7 @@ import { EQSlider } from '@/components/eq/EQSlider';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
+import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
 import {
   SettingsCard,
   SettingsSectionLabel,
@@ -97,6 +98,8 @@ export function AppearanceSettingsPanel() {
     (option) => option.id !== 'materialYou' || materialYouAvailable
   );
   const accentApplies = !resolvedId.startsWith('materialYou');
+  const nowPlayingScopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
+  const setNowPlayingScopeStyle = useSettingsStore((s) => s.setNowPlayingScopeStyle);
 
   return (
     <>
@@ -147,6 +150,12 @@ export function AppearanceSettingsPanel() {
           <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
         </View>
       ) : null}
+
+      <SettingsSectionLabel spaced>NOW PLAYING SCOPES</SettingsSectionLabel>
+      <ScopeStyleCards
+        value={nowPlayingScopeStyle}
+        onChange={(style) => void setNowPlayingScopeStyle(style)}
+      />
     </>
   );
 }

@@ -16,6 +16,8 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withDelay,
+  withSequence,
   withSpring,
   withTiming
 } from 'react-native-reanimated';
@@ -34,6 +36,7 @@ import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { TactilePressable } from '@/components/player/TactilePressable';
+import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
@@ -51,6 +54,7 @@ import {
   NOW_PLAYING_CONTENT_TOP_PADDING,
   NOW_PLAYING_HEADER_HEIGHT,
   NOW_PLAYING_PLAY_BUTTON_SIZE,
+  NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
   NOW_PLAYING_SUB_BUTTON_SIZE,
   NOW_PLAYING_WAVEFORM_TOUCH_PADDING,
   NOW_PLAYING_WIDE_PANE_GAP,
@@ -64,7 +68,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
@@ -124,6 +128,7 @@ export function NowPlayingOverlay() {
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
+  const scopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
   const lyricsVisible = useSettingsStore((s) => s.lyricsVisible);
   const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
   const nowPlayingCompanion = useSettingsStore((s) => s.nowPlayingCompanion);
@@ -170,15 +175,19 @@ export function NowPlayingOverlay() {
   );
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
+  // The rack style swaps the art card's face in place, so only the rail style
+  // reserves stage height for a scope strip below the art.
+  const railStyle = scopeStyle === 'rail';
+  const layoutScopeVisible = isDesktopTarget ? false : scopeStageVisible && railStyle;
   const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
-    isDesktopTarget ? false : scopeStageVisible
+    layoutScopeVisible
   );
   const tabletCompanionLayout = getTabletCompanionLayout(
     effectiveWidth,
     availableHeight,
-    isDesktopTarget ? false : scopeStageVisible
+    layoutScopeVisible
   );
   const hasTabletCompanion = tabletCompanionLayout !== null;
   const lyricPeekEnabled = !isDesktopTarget && availableHeight >= 720;
@@ -255,6 +264,11 @@ export function NowPlayingOverlay() {
     setQueueOpen(true);
   };
 
+  const swapScopeMode = () =>
+    useSettingsStore
+      .getState()
+      .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum');
+
   const navigateToArtist = (targetArtist = artistName, credit = false) => {
     if (!targetArtist) return;
     // Slide the overlay away while the library detail loads underneath.
@@ -323,12 +337,21 @@ export function NowPlayingOverlay() {
   const translateY = useSharedValue(windowHeight);
   const menuProgress = useSharedValue(0);
   const trackProgress = useSharedValue(1);
+  // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
+  // rack = art face crossfading to the instrument rack. The scope surface stays
+  // mounted either way (its frame loops idle while hidden), so visibility is
+  // purely this value — no mount state to juggle.
+  const stageProgress = useSharedValue(scopeStageVisible ? 1 : 0);
 
   useEffect(() => {
     if (!transitionTrackKey) return;
     trackProgress.value = 0;
     trackProgress.value = withTiming(1, { ...motion.snap, duration: 200 });
   }, [trackProgress, transitionTrackKey]);
+
+  useEffect(() => {
+    stageProgress.value = withTiming(scopeStageVisible ? 1 : 0, motion.snap);
+  }, [scopeStageVisible, stageProgress]);
   // Closing is a store toggle, not navigation. Reset the inner layers so a
   // reopen starts from the plain player (parity with the old per-open mount).
   const dismiss = () => {
@@ -446,6 +469,51 @@ export function NowPlayingOverlay() {
     opacity: trackProgress.value,
     transform: [{ translateY: 4 * (1 - trackProgress.value) }],
   }));
+
+  // Rail choreography (standard presentation only): the art box is laid out at
+  // its scope-off size and driven to the scope-on size/position by
+  // stageProgress, so the ∿ toggle animates as one move instead of snapping
+  // layout. Wide windows keep the in-flow snap — their stage height is
+  // state-dependent by design.
+  const railChoreographed = railStyle && !layout.isWide && !isDesktopTarget;
+  const artBoxSize = railChoreographed ? layout.artSizeScopeOff : layout.artSize;
+  const railArtScale =
+    railChoreographed && layout.artSizeScopeOff > 0
+      ? layout.artSizeScopeOn / layout.artSizeScopeOff
+      : 1;
+  const railArtShift = railChoreographed
+    ? layout.artSizeScopeOn / 2 - layout.mediaStackHeight / 2
+    : 0;
+  const artStageTransitionStyle = useAnimatedStyle(() => ({
+    opacity: 0.75 + trackProgress.value * 0.25,
+    transform: [
+      { translateY: stageProgress.value * railArtShift },
+      {
+        scale:
+          (0.985 + trackProgress.value * 0.015) *
+          (1 + stageProgress.value * (railArtScale - 1)),
+      },
+    ],
+  }));
+  const railSurfaceStyle = useAnimatedStyle(() => ({
+    opacity: stageProgress.value,
+    transform: [{ translateY: (1 - stageProgress.value) * 10 }],
+  }));
+  // Rack face flip: the art face fades out while the instrument rack settles in.
+  const rackFaceStyle = useAnimatedStyle(() => ({
+    opacity: stageProgress.value,
+    transform: [{ scale: 0.98 + stageProgress.value * 0.02 }],
+  }));
+  // Always write the artwork opacity. Removing an animated style after Rack
+  // faded it to zero leaves that native value behind until the view remounts.
+  // Rail therefore explicitly restores the face instead of relying on the
+  // absence of Rack's fade style.
+  const artFaceStyle = useAnimatedStyle(
+    () => ({
+      opacity: railStyle ? 1 : 1 - stageProgress.value,
+    }),
+    [railStyle]
+  );
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'auto' : 'none'}>
@@ -860,7 +928,7 @@ export function NowPlayingOverlay() {
                 <View
                   style={[
                     styles.middleStack,
-                    !layout.isWide && !scopeStageVisible && styles.middleStackCentered,
+                    !layout.isWide && styles.middleStackCentered,
                     layout.isWide
                       ? { width: layout.leftPaneWidth, justifyContent: 'center' }
                       : {
@@ -873,19 +941,20 @@ export function NowPlayingOverlay() {
                   <Animated.View
                     style={[
                       styles.artButton,
-                      artworkTransitionStyle,
+                      artStageTransitionStyle,
                       {
-                        width: layout.artSize,
-                        height: layout.artSize,
+                        width: artBoxSize,
+                        height: artBoxSize,
                       },
                     ]}
                   >
-                    <View
+                    <Animated.View
                       style={[
                         styles.artCard,
+                        artFaceStyle,
                         {
-                          width: layout.artSize,
-                          height: layout.artSize,
+                          width: artBoxSize,
+                          height: artBoxSize,
                         },
                       ]}
                     >
@@ -897,12 +966,48 @@ export function NowPlayingOverlay() {
                           transition={reduceMotion ? null : 200}
                         />
                       ) : (
-                        <AstraLogo size={Math.round(layout.artSize * 0.4)} />
+                        <AstraLogo size={Math.round(artBoxSize * 0.4)} />
                       )}
-                    </View>
+                    </Animated.View>
+                    {!railStyle && (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[styles.rackFace, rackFaceStyle]}
+                      >
+                        <ScopeRack
+                          size={artBoxSize}
+                          stripWidth={layout.scopeWidth}
+                          artworkUri={track.artworkData ?? null}
+                          paused={!playerOpen || queueOpen || !scopeStageVisible}
+                        />
+                      </Animated.View>
+                    )}
                   </Animated.View>
 
-                  {scopeStageVisible && (
+                  {railStyle && !layout.isWide && (
+                    <Animated.View
+                      pointerEvents={scopeStageVisible ? 'auto' : 'none'}
+                      style={[
+                        styles.scopeRailFloating,
+                        railSurfaceStyle,
+                        {
+                          width: layout.scopeWidth,
+                          height: layout.scopeHeight,
+                          bottom: NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
+                        },
+                      ]}
+                    >
+                      <ScopeRail
+                        width={layout.scopeWidth}
+                        height={layout.scopeHeight}
+                        mode={scopeMode}
+                        paused={!playerOpen || queueOpen || !scopeStageVisible}
+                        revealed={scopeStageVisible}
+                        onSwap={swapScopeMode}
+                      />
+                    </Animated.View>
+                  )}
+                  {railStyle && layout.isWide && scopeStageVisible && (
                     <View
                       style={[
                         styles.scopeRail,
@@ -914,34 +1019,14 @@ export function NowPlayingOverlay() {
                         },
                       ]}
                     >
-                      <Visualizer
+                      <ScopeRail
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
-                        interactive={false}
-                        showChrome={false}
                         mode={scopeMode}
-                        edgeFade
                         paused={!playerOpen || queueOpen}
+                        revealed={scopeStageVisible}
+                        onSwap={swapScopeMode}
                       />
-                      <TactilePressable
-                        onPress={() =>
-                          useSettingsStore
-                            .getState()
-                            .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum')
-                        }
-                        haptic="selection"
-                        hitSlop={12}
-                        style={styles.scopeSwap} android_ripple={ripple.icon(24)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Showing ${
-                          scopeMode === 'spectrum' ? 'spectrum' : 'oscilloscope'
-                        }. Tap to switch.`}
-                      >
-                        <Text variant="caption" style={styles.scopeSwapLabel}>
-                          {scopeMode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
-                        </Text>
-                        <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
-                      </TactilePressable>
                     </View>
                   )}
                 </View>
@@ -1267,6 +1352,72 @@ export function NowPlayingOverlay() {
   );
 }
 
+interface ScopeRailProps {
+  width: number;
+  height: number;
+  mode: ScopeMode;
+  paused: boolean;
+  /** Whether the rail is currently shown — drives the transient label hint. */
+  revealed: boolean;
+  onSwap: () => Promise<void>;
+}
+
+/**
+ * Rail-style scope strip. The whole surface swaps SPECTRUM ⇄ SCOPE on tap; the
+ * mode label only appears transiently (on reveal and on swap) so the rail reads
+ * as an instrument, not a labelled widget.
+ */
+function ScopeRail({ width, height, mode, paused, revealed, onSwap }: ScopeRailProps) {
+  const styles = useStyles();
+  const colors = useColors();
+  const labelOpacity = useSharedValue(0);
+  // Swap presses bump the nonce; the flash itself lives in the effect because
+  // the compiler forbids direct shared-value writes after an effect uses one.
+  const [flashNonce, setFlashNonce] = useState(0);
+
+  useEffect(() => {
+    if (!revealed) return;
+    void flashNonce;
+    labelOpacity.value = withSequence(
+      withTiming(1, { duration: 160 }),
+      withDelay(1400, withTiming(0, { duration: 420 }))
+    );
+  }, [flashNonce, labelOpacity, revealed]);
+  const labelStyle = useAnimatedStyle(() => ({ opacity: labelOpacity.value }));
+
+  return (
+    <TactilePressable
+      onPress={() => {
+        void onSwap();
+        setFlashNonce((n) => n + 1);
+      }}
+      haptic="selection"
+      pressedScale={0.99}
+      style={[styles.scopeRailSurface, { width, height }]}
+      accessibilityRole="button"
+      accessibilityLabel={`Showing ${
+        mode === 'spectrum' ? 'spectrum' : 'oscilloscope'
+      }. Tap to switch.`}
+    >
+      <Visualizer
+        width={width}
+        height={height}
+        interactive={false}
+        showChrome={false}
+        mode={mode}
+        edgeFade
+        paused={paused}
+      />
+      <Animated.View pointerEvents="none" style={[styles.scopeSwap, labelStyle]}>
+        <Text variant="caption" style={styles.scopeSwapLabel}>
+          {mode === 'spectrum' ? 'SPECTRUM' : 'SCOPE'}
+        </Text>
+        <Ionicons name="swap-horizontal" size={14} color={colors.textTertiary} />
+      </Animated.View>
+    </TactilePressable>
+  );
+}
+
 const useStyles = createThemedStyles((colors) => ({
   content: {
     flex: 1,
@@ -1416,6 +1567,25 @@ const useStyles = createThemedStyles((colors) => ({
     alignSelf: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  // Standard-presentation rail: pinned to the stage bottom so it can stay
+  // mounted (and positioned) while its reveal animates. The parent's
+  // alignItems centers it horizontally.
+  scopeRailFloating: {
+    position: 'absolute',
+    overflow: 'hidden',
+  },
+  scopeRailSurface: {
+    justifyContent: 'center',
+  },
+  // Rack-style face over the art card frame. Deliberately unclipped: the
+  // backdrop rounds/clips itself, while the strips overflow the card.
+  rackFace: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   scopeSwap: {
     position: 'absolute',

@@ -3,7 +3,9 @@ import {
   useMemo,
   useRef
 } from 'react';
+import { useReducedMotion } from 'react-native-reanimated';
 import {
+  BlendMode,
   PaintStyle,
   Skia,
   SkiaPictureView,
@@ -41,7 +43,6 @@ interface SpectrumCurveProps {
   glow?: boolean;
   glowOpacity?: number;
   edgeFade?: boolean;
-  edgeFadeColor?: string;
   edgeFadeWidth?: number;
 }
 
@@ -59,6 +60,10 @@ const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
 const TILT_DB_PER_OCT = 3.5;
 const TILT_REFERENCE_HZ = 1000;
+// Deactivation decay: let the last live curve fall to the floor over ~250ms
+// instead of freezing mid-song, so pausing reads as powering down.
+const DECAY_PER_FRAME = 0.72;
+const REST_EPSILON = 0.004;
 const spectrumBins = new Float32Array(SPECTRUM_BINS);
 
 function skiaViewApi(): SkiaViewApiShape | null {
@@ -85,37 +90,77 @@ function makeStrokePaint(color: string, width: number, alpha = 1) {
   return paint;
 }
 
-function makeFillPaint(color: string, height: number, opacity: number) {
+/**
+ * Edge fade baked into the paints: a horizontal alpha ramp so the curve
+ * dissolves at its ends over any background — solid screen or blurred artwork.
+ */
+function makeFadedStrokeShader(
+  color: string,
+  alpha: number,
+  width: number,
+  fadeWidth: number
+) {
+  const f = Math.min(fadeWidth, width * 0.5);
+  return Skia.Shader.MakeLinearGradient(
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    [
+      Skia.Color(withAlpha(color, 0)),
+      Skia.Color(withAlpha(color, alpha)),
+      Skia.Color(withAlpha(color, alpha)),
+      Skia.Color(withAlpha(color, 0)),
+    ],
+    [0, f / width, 1 - f / width, 1],
+    TileMode.Clamp
+  );
+}
+
+/** White-with-alpha horizontal ramp; Modulate-blending it onto another shader
+ * multiplies alphas while leaving color untouched. */
+function makeFadeMaskShader(width: number, fadeWidth: number) {
+  const f = Math.min(fadeWidth, width * 0.5);
+  return Skia.Shader.MakeLinearGradient(
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    [
+      Skia.Color('rgba(255, 255, 255, 0)'),
+      Skia.Color('rgba(255, 255, 255, 1)'),
+      Skia.Color('rgba(255, 255, 255, 1)'),
+      Skia.Color('rgba(255, 255, 255, 0)'),
+    ],
+    [0, f / width, 1 - f / width, 1],
+    TileMode.Clamp
+  );
+}
+
+function makeFillPaint(
+  color: string,
+  height: number,
+  opacity: number,
+  fade: { width: number; fadeWidth: number } | null = null
+) {
   const paint = Skia.Paint();
   paint.setAntiAlias(true);
   paint.setStyle(PaintStyle.Fill);
-  paint.setShader(
-    Skia.Shader.MakeLinearGradient(
-      { x: 0, y: 0 },
-      { x: 0, y: height },
-      [
-        Skia.Color(withAlpha(color, 0.38 * opacity)),
-        Skia.Color(withAlpha(color, 0.08 * opacity)),
-        Skia.Color(withAlpha(color, 0)),
-      ],
-      null,
-      TileMode.Clamp
-    )
+  const vertical = Skia.Shader.MakeLinearGradient(
+    { x: 0, y: 0 },
+    { x: 0, y: height },
+    [
+      Skia.Color(withAlpha(color, 0.38 * opacity)),
+      Skia.Color(withAlpha(color, 0.08 * opacity)),
+      Skia.Color(withAlpha(color, 0)),
+    ],
+    null,
+    TileMode.Clamp
   );
-  return paint;
-}
-
-function makeFadePaint(color: string, startAlpha: number, endAlpha: number, x0: number, x1: number) {
-  const paint = Skia.Paint();
-  paint.setStyle(PaintStyle.Fill);
   paint.setShader(
-    Skia.Shader.MakeLinearGradient(
-      { x: x0, y: 0 },
-      { x: x1, y: 0 },
-      [Skia.Color(withAlpha(color, startAlpha)), Skia.Color(withAlpha(color, endAlpha))],
-      null,
-      TileMode.Clamp
-    )
+    fade
+      ? Skia.Shader.MakeBlend(
+          BlendMode.Modulate,
+          vertical,
+          makeFadeMaskShader(fade.width, fade.fadeWidth)
+        )
+      : vertical
   );
   return paint;
 }
@@ -172,7 +217,6 @@ function buildPicture(
   glow: boolean,
   glowOpacity: number,
   edgeFade: boolean,
-  edgeFadeColor: string,
   edgeFadeWidth: number
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
@@ -180,23 +224,20 @@ function buildPicture(
   const { line, fill } = buildPaths(values, width, height, lineWidth);
 
   if (values.length >= 2 && width > 0 && height > 0) {
-    canvas.drawPath(fill, makeFillPaint(color, height, fillOpacity));
+    const fade = edgeFade && edgeFadeWidth > 0 ? { width, fadeWidth: edgeFadeWidth } : null;
+    canvas.drawPath(fill, makeFillPaint(color, height, fillOpacity, fade));
     if (glow) {
-      canvas.drawPath(line, makeStrokePaint(color, lineWidth * 3, glowOpacity));
+      const glowPaint = makeStrokePaint(color, lineWidth * 3, glowOpacity);
+      if (fade) {
+        glowPaint.setShader(makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth));
+      }
+      canvas.drawPath(line, glowPaint);
     }
-    canvas.drawPath(line, makeStrokePaint(color, lineWidth, lineOpacity));
-  }
-
-  if (edgeFade && width > 0 && height > 0 && edgeFadeWidth > 0) {
-    const fadeWidth = Math.min(edgeFadeWidth, width * 0.5);
-    canvas.drawRect(
-      Skia.XYWHRect(0, 0, fadeWidth, height),
-      makeFadePaint(edgeFadeColor, 1, 0, 0, fadeWidth)
-    );
-    canvas.drawRect(
-      Skia.XYWHRect(width - fadeWidth, 0, fadeWidth, height),
-      makeFadePaint(edgeFadeColor, 0, 1, width - fadeWidth, width)
-    );
+    const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
+    if (fade) {
+      strokePaint.setShader(makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth));
+    }
+    canvas.drawPath(line, strokePaint);
   }
 
   return recorder.finishRecordingAsPicture();
@@ -326,13 +367,15 @@ export function SpectrumCurve({
   glow = false,
   glowOpacity = 0.18,
   edgeFade = false,
-  edgeFadeColor: edgeFadeColorProp,
   edgeFadeWidth = 28,
 }: SpectrumCurveProps) {
   const themeColors = useColors();
   const color = colorProp ?? themeColors.accent;
-  const edgeFadeColor = edgeFadeColorProp ?? themeColors.bgPrimary;
+  const reduceMotion = useReducedMotion();
   const viewRef = useRef<SkiaPictureView | null>(null);
+  // Last live curve, kept across effect re-runs so deactivation can decay it
+  // to the floor instead of freezing the final frame.
+  const lastLiveValuesRef = useRef<Float32Array | null>(null);
   // Half a point per pixel, capped: the quadTo midpoint smoothing makes denser
   // sampling visually indistinguishable while doubling per-frame path cost.
   const activePointCount = Math.min(160, Math.max(96, Math.floor(width / 2)));
@@ -354,13 +397,11 @@ export function SpectrumCurve({
         glow,
         glowOpacity,
         edgeFade,
-        edgeFadeColor,
         edgeFadeWidth
       ),
     [
       color,
       edgeFade,
-      edgeFadeColor,
       edgeFadeWidth,
       fillOpacity,
       glow,
@@ -374,10 +415,12 @@ export function SpectrumCurve({
   );
 
   useEffect(() => {
-    if (!active) return;
     const view = viewRef.current;
     const api = skiaViewApi();
     if (!view || !api || width <= 0 || height <= 0 || resolvedPointCount < 2) return;
+    const priorLive = lastLiveValuesRef.current;
+    // Static usage (values prop, never went live): leave the initial picture.
+    if (!active && !priorLive) return;
 
     let mounted = true;
     let raf = 0;
@@ -387,24 +430,22 @@ export function SpectrumCurve({
     const drawThreshold = frameMs > 0 ? Math.max(0, frameMs - 0.5) : 0;
     const analysisMs = analysisFrameMs ?? frameMs;
     const analysisThreshold = analysisMs > 0 ? Math.max(0, analysisMs - 0.5) : 0;
-    const renderValues = new Float32Array(resolvedPointCount);
+    const renderValues =
+      !active && priorLive && priorLive.length === resolvedPointCount
+        ? priorLive
+        : new Float32Array(resolvedPointCount);
     const pointOptions = { dbMin, dbMax, tiltDbPerOctave };
 
     // Paints, shaders, and paths live for the whole effect run: allocating them
     // (and the gradient shaders) per frame was measurable GC/JSI churn at 60fps.
+    const fade = edgeFade && edgeFadeWidth > 0 ? { width, fadeWidth: edgeFadeWidth } : null;
     const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
     const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, glowOpacity) : null;
-    const fillPaint = makeFillPaint(color, height, fillOpacity);
-    const fadeWidth = Math.min(edgeFadeWidth, width * 0.5);
-    const fade =
-      edgeFade && fadeWidth > 0
-        ? {
-            leftRect: Skia.XYWHRect(0, 0, fadeWidth, height),
-            leftPaint: makeFadePaint(edgeFadeColor, 1, 0, 0, fadeWidth),
-            rightRect: Skia.XYWHRect(width - fadeWidth, 0, fadeWidth, height),
-            rightPaint: makeFadePaint(edgeFadeColor, 0, 1, width - fadeWidth, width),
-          }
-        : null;
+    if (fade) {
+      strokePaint.setShader(makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth));
+      glowPaint?.setShader(makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth));
+    }
+    const fillPaint = makeFillPaint(color, height, fillOpacity, fade);
     const bounds = Skia.XYWHRect(0, 0, width, height);
     const linePath = Skia.Path.Make();
     const fillPath = Skia.Path.Make();
@@ -416,14 +457,53 @@ export function SpectrumCurve({
       canvas.drawPath(fillPath, fillPaint);
       if (glowPaint) canvas.drawPath(linePath, glowPaint);
       canvas.drawPath(linePath, strokePaint);
-      if (fade) {
-        canvas.drawRect(fade.leftRect, fade.leftPaint);
-        canvas.drawRect(fade.rightRect, fade.rightPaint);
-      }
       api.setJsiProperty(view.nativeId, 'picture', recorder.finishRecordingAsPicture());
       api.requestRedraw(view.nativeId);
     };
 
+    const cleanup = () => {
+      mounted = false;
+      cancelAnimationFrame(raf);
+    };
+
+    if (!active) {
+      // Deactivation: decay the last live curve to the floor, then rest.
+      lastLiveValuesRef.current = null;
+      let peak = 0;
+      for (let i = 0; i < renderValues.length; i++) {
+        if (renderValues[i] > peak) peak = renderValues[i];
+      }
+      if (reduceMotion || peak < REST_EPSILON) {
+        renderValues.fill(0);
+        draw();
+        return cleanup;
+      }
+      const decayTick = (t: number) => {
+        if (!mounted) return;
+        if (drawThreshold > 0 && t - lastDraw < drawThreshold) {
+          raf = requestAnimationFrame(decayTick);
+          return;
+        }
+        lastDraw = t;
+        let max = 0;
+        for (let i = 0; i < renderValues.length; i++) {
+          const v = renderValues[i] * DECAY_PER_FRAME;
+          renderValues[i] = v;
+          if (v > max) max = v;
+        }
+        if (max < REST_EPSILON) {
+          renderValues.fill(0);
+          draw();
+          return;
+        }
+        draw();
+        raf = requestAnimationFrame(decayTick);
+      };
+      raf = requestAnimationFrame(decayTick);
+      return cleanup;
+    }
+
+    lastLiveValuesRef.current = renderValues;
     renderValues.fill(0);
     draw();
 
@@ -449,10 +529,7 @@ export function SpectrumCurve({
     };
 
     raf = requestAnimationFrame(tick);
-    return () => {
-      mounted = false;
-      cancelAnimationFrame(raf);
-    };
+    return cleanup;
   }, [
     active,
     analysisFrameMs,
@@ -460,7 +537,6 @@ export function SpectrumCurve({
     dbMax,
     dbMin,
     edgeFade,
-    edgeFadeColor,
     edgeFadeWidth,
     fillOpacity,
     frameMs,
@@ -469,6 +545,7 @@ export function SpectrumCurve({
     height,
     lineOpacity,
     lineWidth,
+    reduceMotion,
     resolvedPointCount,
     source,
     tiltDbPerOctave,

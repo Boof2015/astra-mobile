@@ -22,6 +22,9 @@ const VISUALIZER_BOTTOM_GAP = spacing.sm;
 const VISUALIZER_HEIGHT_MIN = 84;
 const VISUALIZER_HEIGHT_MAX = 108;
 const VISUALIZER_HEIGHT_RATIO = 0.28;
+/** Fixed rail offset from the stage bottom, state-independent so the rail can
+ * stay mounted (and positioned) while its visibility animates. */
+export const NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP = VISUALIZER_BOTTOM_GAP;
 export const NOW_PLAYING_HEADER_HEIGHT = 32;
 export const NOW_PLAYING_CONTENT_TOP_PADDING = spacing.sm;
 export const NOW_PLAYING_CONTENT_BOTTOM_PADDING = spacing.lg;
@@ -61,6 +64,10 @@ export interface NowPlayingLayout {
   waveformHeight: number;
   mediaStackHeight: number;
   artSize: number;
+  /** Art size with the scope rail shown / hidden, regardless of the current
+   * state — both are returned so the rail toggle can animate between them. */
+  artSizeScopeOn: number;
+  artSizeScopeOff: number;
   scopeWidth: number;
   scopeHeight: number;
   visualizerTopGap: number;
@@ -82,7 +89,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getScopeHeight(scopeWidth: number): number {
+/** Natural scope strip height for a given width (~3.6:1, clamped). */
+export function getScopeHeight(scopeWidth: number): number {
   return Math.round(
     clamp(scopeWidth * VISUALIZER_HEIGHT_RATIO, VISUALIZER_HEIGHT_MIN, VISUALIZER_HEIGHT_MAX)
   );
@@ -122,11 +130,11 @@ export function getNowPlayingLayout(
       NOW_PLAYING_CONTENT_BOTTOM_PADDING -
       NOW_PLAYING_HEADER_HEIGHT -
       spacing.md;
-    const artHeightBudget =
-      verticalBudget - (showVisualizer ? scopeHeight + visualizerTopGap : 0);
-    const artSize = Math.round(
-      clamp(Math.min(leftPaneWidth, artHeightBudget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX)
-    );
+    const wideArt = (budget: number) =>
+      Math.round(clamp(Math.min(leftPaneWidth, budget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX));
+    const artSizeScopeOn = wideArt(verticalBudget - (scopeHeight + VISUALIZER_TOP_GAP));
+    const artSizeScopeOff = wideArt(verticalBudget);
+    const artSize = showVisualizer ? artSizeScopeOn : artSizeScopeOff;
     const controlsGap = availableHeight < WIDE_COMPACT_HEIGHT ? spacing.sm : spacing.lg;
     return {
       presentation: 'wide',
@@ -142,6 +150,8 @@ export function getNowPlayingLayout(
         ? artSize + visualizerTopGap + scopeHeight
         : artSize,
       artSize,
+      artSizeScopeOn,
+      artSizeScopeOff,
       scopeWidth,
       scopeHeight,
       visualizerTopGap,
@@ -214,6 +224,8 @@ export function getNowPlayingLayout(
     waveformHeight,
     mediaStackHeight,
     artSize,
+    artSizeScopeOn: scopeOnArt,
+    artSizeScopeOff: scopeOffArt,
     scopeWidth,
     scopeHeight,
     visualizerTopGap,
