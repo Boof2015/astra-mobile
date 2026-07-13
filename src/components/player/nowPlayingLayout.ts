@@ -7,6 +7,7 @@ const NARROW_CONTENT_SIDE_PADDING = spacing.md;
 const MEDIA_AREA_MIN = 220;
 const TABLET_MAX_CONTENT_WIDTH = 520;
 const TABLET_ART_SIZE_MAX = 440;
+const PHONE_SCOPE_OFF_ART_SIZE_MAX = 336;
 const WIDE_MAX_CONTENT_WIDTH = 960;
 export const NOW_PLAYING_WIDE_PANE_GAP = spacing.xxl;
 const WIDE_RIGHT_PANE_MIN = 300;
@@ -183,14 +184,19 @@ export function getNowPlayingLayout(
     NOW_PLAYING_SUB_BUTTON_SIZE +
     MIN_FLOATING_SPACE;
   const bound = availableHeight - fixedHeightBase - mediaBottomGap;
-  const scopeOffArt = Math.round(
+  const uncappedScopeOffArt = Math.round(
     clamp(bound, Math.min(mediaMin, Math.max(96, bound)), mediaMax)
   );
-  const offSurplus = Math.max(0, bound - scopeOffArt);
+  const scopeOffArt = isTabletColumn
+    ? uncappedScopeOffArt
+    : Math.min(uncappedScopeOffArt, PHONE_SCOPE_OFF_ART_SIZE_MAX);
+  const offSurplus = Math.max(0, bound - uncappedScopeOffArt);
   const stretchUnit = Math.min(Math.floor(offSurplus / 5), spacing.md);
   const waveformHeight = NOW_PLAYING_WAVEFORM_HEIGHT + stretchUnit * 2;
   const scopeBlockHeight = VISUALIZER_TOP_GAP + scopeHeight + VISUALIZER_BOTTOM_GAP;
-  const mediaStackHeight = Math.max(scopeOffArt, 96 + scopeBlockHeight);
+  // Keep the old stage height even when the visualizer-off artwork is capped.
+  // This preserves the metadata/lower-content anchor across the toggle.
+  const mediaStackHeight = Math.max(uncappedScopeOffArt, 96 + scopeBlockHeight);
   const scopeOnArt = mediaStackHeight - scopeBlockHeight;
   const artSize = showVisualizer ? scopeOnArt : scopeOffArt;
   const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;

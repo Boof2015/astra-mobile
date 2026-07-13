@@ -210,7 +210,10 @@ export function NowPlayingOverlay() {
     const collaborators = splitCollaborators(track.artist);
     return buildArtistNameTokens(
       collaborators.length > 0 ? collaborators : [track.artist]
-    );
+    ).map((token) => ({
+      ...token,
+      separator: token.separator ? ', ' : null,
+    }));
   }, [track]);
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 
@@ -572,6 +575,7 @@ export function NowPlayingOverlay() {
                   <View
                     style={[
                       styles.middleStack,
+                      !layout.isWide && styles.middleStackCentered,
                       layout.isWide
                         ? { width: layout.leftPaneWidth, justifyContent: 'center' }
                         : {
@@ -856,6 +860,7 @@ export function NowPlayingOverlay() {
                 <View
                   style={[
                     styles.middleStack,
+                    !layout.isWide && !scopeStageVisible && styles.middleStackCentered,
                     layout.isWide
                       ? { width: layout.leftPaneWidth, justifyContent: 'center' }
                       : {
@@ -1392,6 +1397,9 @@ const useStyles = createThemedStyles((colors) => ({
   middleStack: {
     width: '100%',
     alignItems: 'center',
+  },
+  middleStackCentered: {
+    justifyContent: 'center',
   },
   artButton: {
     alignItems: 'center',

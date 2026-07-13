@@ -10,9 +10,9 @@ const BASELINES = [
   [320, 568, true, 296, 96, 204, 58],
   [360, 640, false, 328, 206, 214, 58],
   [360, 640, true, 328, 96, 214, 58],
-  [393, 852, false, 361, 361, 361, 76],
+  [393, 852, false, 361, 336, 361, 76],
   [393, 852, true, 361, 234, 361, 76],
-  [412, 915, false, 380, 380, 380, 82],
+  [412, 915, false, 380, 336, 380, 82],
   [412, 915, true, 380, 248, 380, 82],
   [600, 840, false, 520, 394, 394, 58],
   [600, 840, true, 520, 262, 394, 58],
@@ -44,6 +44,17 @@ test('keeps the lower-content anchor stable when the analyzer toggles', () => {
     assert.equal(visible.mediaStackHeight, hidden.mediaStackHeight);
     assert.equal(visible.mediaTopMargin, hidden.mediaTopMargin);
     assert.equal(visible.mediaBottomGap, hidden.mediaBottomGap);
+  }
+});
+
+test('caps visualizer-off artwork on roomy phones without shrinking the media stage', () => {
+  for (const [width, height] of [
+    [393, 852],
+    [412, 915],
+  ]) {
+    const hidden = getNowPlayingLayout(width, height, false);
+    assert.equal(hidden.artSize, 336);
+    assert.ok(hidden.mediaStackHeight > hidden.artSize);
   }
 });
 
