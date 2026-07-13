@@ -555,48 +555,6 @@ export function NowPlayingOverlay() {
                   </Text>
                 </View>
                 <View style={[styles.headerSide, styles.headerActions]}>
-                  {!isDesktopTarget && track ? (
-                    <TactilePressable
-                      style={styles.headerBtn} android_ripple={ripple.icon(22)}
-                      haptic="selection"
-                      onPress={showLyrics}
-                      hitSlop={12}
-                      accessibilityLabel={
-                        hasTabletCompanion
-                          ? 'Show lyrics in companion'
-                          : lyricsVisible
-                            ? 'Hide lyrics'
-                            : 'Show lyrics'
-                      }
-                      accessibilityState={{
-                        selected: hasTabletCompanion
-                          ? nowPlayingCompanion === 'lyrics'
-                          : lyricsVisible,
-                      }}
-                    >
-                      <PlayerStateIcon
-                        selected={
-                          (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
-                          (!hasTabletCompanion && lyricsVisible)
-                        }
-                        size={20}
-                        inactive={
-                          <MaterialCommunityIcons
-                            name="script-text-outline"
-                            size={20}
-                            color={colors.textSecondary}
-                          />
-                        }
-                        active={
-                          <MaterialCommunityIcons
-                            name="script-text-outline"
-                            size={20}
-                            color={colors.accent}
-                          />
-                        }
-                      />
-                    </TactilePressable>
-                  ) : null}
                   <Pressable
                     style={styles.headerBtn} android_ripple={ripple.icon(22)}
                     onPress={openMenu}
@@ -1229,6 +1187,46 @@ export function NowPlayingOverlay() {
                       <FormatBadges track={track} wrap={false} variant="plain" />
                     </View>
                     <View style={styles.subActions}>
+                      <TactilePressable
+                        hitSlop={10}
+                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        haptic="selection"
+                        onPress={showLyrics}
+                        accessibilityLabel={
+                          hasTabletCompanion
+                            ? 'Show lyrics in companion'
+                            : lyricsVisible
+                              ? 'Hide lyrics'
+                              : 'Show lyrics'
+                        }
+                        accessibilityState={{
+                          selected: hasTabletCompanion
+                            ? nowPlayingCompanion === 'lyrics'
+                            : lyricsVisible,
+                        }}
+                      >
+                        <PlayerStateIcon
+                          selected={
+                            (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
+                            (!hasTabletCompanion && lyricsVisible)
+                          }
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <MaterialCommunityIcons
+                              name="script-text-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <MaterialCommunityIcons
+                              name="script-text-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          }
+                        />
+                      </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
                         style={styles.subBtn} android_ripple={ripple.icon(20)}

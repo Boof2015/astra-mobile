@@ -1,8 +1,8 @@
 // Lyrics mode for now-playing — a lyrics-first takeover that replaces the whole
 // art/controls body (and the standard header). Lyrics fill the screen over the
-// blurred-art wash; a slim strip on top (dismiss · track · favorite · exit) and a
-// minimal control bar below (progress + prev/play/next) stay permanently visible
-// so you never lose control to go fully immersive. The ♫ toggle exits back to the
+// blurred-art wash; a slim strip on top (dismiss + track) and a minimal control
+// bar below (favorite + prev/play/next + exit) stay permanently visible so you
+// never lose control to go fully immersive. The lyrics toggle exits back to the
 // art view; swipe-down still closes the player.
 
 import { Image } from 'expo-image';
@@ -94,32 +94,6 @@ export function LyricsView({
           </View>
         </View>
 
-        <TactilePressable android_ripple={ripple.bounded}
-          onPress={onToggleFavorite}
-          haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
-          confirmationScale={1.08}
-          hitSlop={10}
-          style={styles.stripBtn}
-          accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          accessibilityState={{ selected: isFavorite }}
-        >
-          <Ionicons
-            name={isFavorite ? 'heart' : 'heart-outline'}
-            size={20}
-            color={isFavorite ? colors.accent : colors.textTertiary}
-          />
-        </TactilePressable>
-
-        <TactilePressable android_ripple={ripple.bounded}
-          onPress={onExitLyrics}
-          haptic="selection"
-          hitSlop={10}
-          style={styles.stripBtn}
-          accessibilityLabel="Hide lyrics"
-          accessibilityState={{ selected: true }}
-        >
-          <MaterialCommunityIcons name="script-text-outline" size={20} color={colors.accent} />
-        </TactilePressable>
       </View>
 
       <LyricsBand
@@ -133,6 +107,21 @@ export function LyricsView({
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
+          <TactilePressable android_ripple={ripple.bounded}
+            onPress={onToggleFavorite}
+            haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
+            confirmationScale={1.08}
+            hitSlop={10}
+            style={styles.transportBtn}
+            accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            accessibilityState={{ selected: isFavorite }}
+          >
+            <Ionicons
+              name={isFavorite ? 'heart' : 'heart-outline'}
+              size={22}
+              color={isFavorite ? colors.accent : colors.textTertiary}
+            />
+          </TactilePressable>
           <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
           </TactilePressable>
@@ -145,6 +134,16 @@ export function LyricsView({
           </TactilePressable>
           <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
+          </TactilePressable>
+          <TactilePressable android_ripple={ripple.bounded}
+            onPress={onExitLyrics}
+            haptic="selection"
+            hitSlop={10}
+            style={styles.transportBtn}
+            accessibilityLabel="Hide lyrics"
+            accessibilityState={{ selected: true }}
+          >
+            <MaterialCommunityIcons name="script-text-outline" size={22} color={colors.accent} />
           </TactilePressable>
         </View>
       </View>
@@ -210,8 +209,7 @@ const useStyles = createThemedStyles((colors) => ({
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xl,
+    justifyContent: 'space-between',
     marginTop: spacing.xs,
   },
   transportBtn: {
