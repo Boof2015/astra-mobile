@@ -707,7 +707,7 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
-                        haptic="light"
+                        haptic={activeTrack.isFavorite ? 'toggleOff' : 'toggleOn'}
                         confirmationScale={1.08}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
                         accessibilityLabel={activeTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -750,7 +750,7 @@ export function NowPlayingOverlay() {
                           desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
                         ]}
                         disabled={desktopSnapshot?.shuffle === undefined}
-                        haptic="selection"
+                        haptic={desktopSnapshot?.shuffle ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void sendDesktopControl('toggle-shuffle')}
                         accessibilityLabel="Shuffle"
                         accessibilityState={{ selected: Boolean(desktopSnapshot?.shuffle) }}
@@ -768,7 +768,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={() => void sendDesktopControl('previous')}
-                        haptic="light"
+                        haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Previous"
@@ -781,7 +781,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={() => void sendDesktopControl(isPlaying ? 'pause' : 'play')}
-                        haptic="light"
+                        haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
                         style={styles.playButton} android_ripple={ripple.onAccent()}
@@ -795,7 +795,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={() => void sendDesktopControl('next')}
-                        haptic="light"
+                        haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Next"
@@ -814,7 +814,7 @@ export function NowPlayingOverlay() {
                           desktopSnapshot?.repeat === undefined && styles.controlDisabled,
                         ]}
                         disabled={desktopSnapshot?.repeat === undefined}
-                        haptic="selection"
+                        haptic="modeCycle"
                         onPress={() => void sendDesktopControl('toggle-repeat')}
                         accessibilityLabel="Repeat"
                         accessibilityState={{ selected: desktopSnapshot?.repeat !== 'none' }}
@@ -1092,7 +1092,7 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
-                        haptic="light"
+                        haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
                         confirmationScale={1.08}
                         onPress={() => void toggleFavorite(track)}
                         accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -1131,7 +1131,7 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
-                        haptic="selection"
+                        haptic={shuffle ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void toggleShuffle()}
                         accessibilityLabel="Shuffle"
                         accessibilityState={{ selected: shuffle }}
@@ -1149,7 +1149,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={skipToPrevious}
-                        haptic="light"
+                        haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Previous"
@@ -1162,7 +1162,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={togglePlay}
-                        haptic="light"
+                        haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
                         style={styles.playButton}
@@ -1177,7 +1177,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         onPress={skipToNext}
-                        haptic="light"
+                        haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
                         accessibilityLabel="Next"
@@ -1191,7 +1191,7 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
-                        haptic="selection"
+                        haptic="modeCycle"
                         onPress={() => void cycleRepeat()}
                         accessibilityLabel="Repeat"
                         accessibilityState={{ selected: repeat !== 'none' }}
@@ -1232,7 +1232,7 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.subBtn} android_ripple={ripple.icon(20)}
-                        haptic="selection"
+                        haptic={scopeStageVisible ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
                         accessibilityState={{ selected: scopeStageVisible }}

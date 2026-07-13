@@ -46,7 +46,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { artworkThumbFromSource } from '@/library/artwork';
-import { dragArmHaptic, tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 import { useQueueStore } from '@/stores/queueStore';
 import {
   jumpToQueueIndex,
@@ -334,6 +334,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       }
 
       const nextEntries = arrayMove(snapshot, from, to);
+      playHaptic('queueDrop');
       setVisibleEntries(nextEntries);
       clearDragAfterReorderCommit();
       commitNativeMove(
@@ -347,7 +348,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const onDragArm = useCallback(() => {
     dragInFlightRef.current = true;
-    dragArmHaptic();
+    playHaptic('queueLift');
   }, []);
 
   const onDragAbort = useCallback(() => {
@@ -380,7 +381,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
           );
           if (nextTarget !== dTarget.value) {
             dTarget.value = nextTarget;
-            runOnJS(tickHaptic)();
+            runOnJS(playHaptic)('frequentStep');
           }
         })
         .onEnd(() => {

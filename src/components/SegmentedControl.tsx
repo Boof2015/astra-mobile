@@ -18,6 +18,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
+import { playHaptic } from '@/lib/haptics';
 
 const THUMB_INSET = 3;
 
@@ -106,11 +107,17 @@ function SegmentButton({
     color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
   }));
 
+  const handlePress = () => {
+    if (focused) return;
+    playHaptic('selection');
+    onPress();
+  };
+
   return (
     <Pressable
       android_ripple={ripple.bounded}
       style={styles.segment}
-      onPress={onPress}
+      onPress={handlePress}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >

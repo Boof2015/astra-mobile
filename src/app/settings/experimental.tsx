@@ -72,6 +72,12 @@ export default function ExperimentalSettingsScreen() {
 
       <SettingsSectionLabel>DEVELOPER</SettingsSectionLabel>
       <SettingsNavRow
+        icon="pulse-outline"
+        title="Haptics Lab"
+        subtitle="Audition semantic feedback, device primitives, and signature candidates."
+        onPress={() => router.push('/settings/haptics-lab' as never)}
+      />
+      <SettingsNavRow
         icon="refresh-outline"
         title="Replay onboarding"
         subtitle="Show the first-run setup wizard again."

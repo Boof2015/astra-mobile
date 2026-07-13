@@ -3,7 +3,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   View,
   type StyleProp,
   type ViewStyle,
@@ -15,6 +14,7 @@ import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { HapticSwitch } from '@/components/HapticSwitch';
 
 export type SettingsIconName = keyof typeof Ionicons.glyphMap;
 
@@ -148,7 +148,7 @@ export function SettingsToggleRow({
           {description}
         </Text>
       </View>
-      <Switch
+      <HapticSwitch
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: colors.glassBorder, true: colors.accent }}

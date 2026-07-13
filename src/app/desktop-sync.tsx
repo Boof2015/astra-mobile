@@ -10,13 +10,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { HapticSwitch } from '@/components/HapticSwitch';
 import { SyncConflictDetails } from '@/components/sync/SyncConflictDetails';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -265,7 +265,7 @@ export default function DesktopSyncScreen() {
                     foreground. Manual and desktop-requested syncs always work.
                   </Text>
                 </View>
-                <Switch
+                <HapticSwitch
                   value={autoSyncEnabled}
                   onValueChange={(value) => void setAutoSyncEnabled(value)}
                   trackColor={{ false: colors.glassBorder, true: colors.accent }}

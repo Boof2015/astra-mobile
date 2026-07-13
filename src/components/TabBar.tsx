@@ -25,6 +25,7 @@ import { motion } from '@/theme/motion';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { playHaptic } from '@/lib/haptics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type MiniPlayerPhase = 'hidden' | 'reserved' | 'visible';
@@ -184,11 +185,16 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
     color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
   }));
 
+  const handlePress = () => {
+    if (!focused) playHaptic('selection');
+    onPress();
+  };
+
   return (
     <Pressable
       android_ripple={ripple.icon(26)}
       style={styles.tab}
-      onPress={onPress}
+      onPress={handlePress}
       onPressIn={() => {
         press.value = withTiming(1, motion.quick);
       }}

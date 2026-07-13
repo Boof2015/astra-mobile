@@ -34,6 +34,7 @@ import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
+import { playHaptic } from '@/lib/haptics';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
@@ -58,7 +59,16 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
   const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.missingRow} onLongPress={onLongPress} accessibilityRole="button">
+    <Pressable
+      android_ripple={ripple.bounded}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={styles.missingRow}
+      onLongPress={() => {
+        playHaptic('holdAccepted');
+        onLongPress();
+      }}
+      accessibilityRole="button"
+    >
       <View style={styles.missingMeta}>
         <Text variant="body" numberOfLines={1} color={colors.textTertiary}>
           {entry.fallback_title ?? basename(entry.track_path)}

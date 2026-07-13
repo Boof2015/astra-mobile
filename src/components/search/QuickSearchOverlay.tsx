@@ -39,7 +39,7 @@ import {
 } from '@/library/artwork';
 import { multiFieldScore, MIN_SCORE_THRESHOLD } from '@/lib/fuzzySearch';
 import { formatDuration } from '@/lib/format';
-import { commitHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -945,7 +945,7 @@ function QuickSearchPanel({
   };
 
   const queueTrack = (track: DbTrack) => {
-    commitHaptic();
+    playHaptic('confirm');
     const existingTimer = queuedFeedbackTimers.current.get(track.path);
     if (existingTimer) clearTimeout(existingTimer);
 

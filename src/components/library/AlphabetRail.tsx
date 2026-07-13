@@ -7,7 +7,7 @@ import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 import { rgbaFromHex } from '@/theme/colorUtils';
-import { tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 import { usePullSearchGestureRef } from '@/components/search/PullSearchGesture';
 import { RAIL_LETTERS } from '@/lib/letterIndex';
 
@@ -60,7 +60,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
         );
         const letter = RAIL_LETTERS[index];
         lastLetter.value = letter;
-        runOnJS(tickHaptic)();
+        runOnJS(playHaptic)('frequentStep');
         runOnJS(scrubTo)(letter);
       })
       .onUpdate((event) => {
@@ -76,7 +76,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
         const letter = RAIL_LETTERS[index];
         if (letter === lastLetter.value) return;
         lastLetter.value = letter;
-        runOnJS(tickHaptic)();
+        runOnJS(playHaptic)('frequentStep');
         runOnJS(scrubTo)(letter);
       })
       .onFinalize(() => {

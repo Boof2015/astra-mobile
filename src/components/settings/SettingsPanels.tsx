@@ -27,6 +27,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
+import { playHaptic } from '@/lib/haptics';
 
 export function lastFmScrobbleSubtitle(status: LastFmStatus | null): string {
   const connected = status?.profiles.filter((p) => p.connected).length ?? 0;
@@ -110,7 +111,11 @@ export function AppearanceSettingsPanel() {
             <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.id}
               style={[styles.option, selected && styles.optionSelected]}
-              onPress={() => void setBaseTheme(option.id)}
+              onPress={() => {
+                if (selected) return;
+                playHaptic('selection');
+                void setBaseTheme(option.id);
+              }}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
             >
@@ -331,7 +336,11 @@ export function LibrarySettingsPanel() {
             <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.mode}
               style={[styles.option, selected && styles.optionSelected]}
-              onPress={() => void setArtistGroupingMode(option.mode)}
+              onPress={() => {
+                if (selected) return;
+                playHaptic('selection');
+                void setArtistGroupingMode(option.mode);
+              }}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
             >
@@ -418,7 +427,11 @@ export function AudioSettingsPanel() {
                 <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
                   key={m.mode}
                   style={[styles.modePill, selected && styles.modePillSelected]}
-                  onPress={() => void setReplayGainMode(m.mode)}
+                  onPress={() => {
+                    if (selected) return;
+                    playHaptic('selection');
+                    void setReplayGainMode(m.mode);
+                  }}
                 >
                   <Text variant="label" color={selected ? colors.accentTextStrong : colors.textSecondary}>
                     {m.label}

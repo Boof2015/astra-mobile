@@ -17,6 +17,7 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { playHaptic } from '@/lib/haptics';
 
 export function AppSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const styles = useStyles();
@@ -98,14 +99,21 @@ export function AppSheetItem({
   const colors = useColors();
   const ripple = useRipple();
   const tint = destructive ? colors.warning : selected ? colors.accentTextStrong : colors.textPrimary;
+  const selectable = selected !== undefined;
+
+  const handlePress = () => {
+    if (selectable && !selected) playHaptic('selection');
+    onPress();
+  };
 
   return (
     <View style={styles.itemRow}>
       <Pressable
         android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.item}
-        onPress={onPress}
-        accessibilityRole="button"
+        onPress={handlePress}
+        accessibilityRole={selectable ? 'radio' : 'button'}
+        accessibilityState={selectable ? { selected } : undefined}
       >
         {icon ? (
           <Ionicons name={icon} size={20} color={destructive ? colors.warning : colors.textSecondary} />

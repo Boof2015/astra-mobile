@@ -31,6 +31,7 @@ import {
   type FolderTreeNode
 } from '@/library/folderTree';
 import { formatDuration } from '@/lib/format';
+import { playHaptic } from '@/lib/haptics';
 import {
   radius,
   spacing,
@@ -78,7 +79,10 @@ function FolderRow({
       android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.folderRow}
       onPress={() => onToggle(node.id)}
-      onLongPress={() => onOpenActions(node)}
+      onLongPress={() => {
+        playHaptic('holdAccepted');
+        onOpenActions(node);
+      }}
       accessibilityRole="button"
       accessibilityState={{ expanded: isExpanded }}
     >
@@ -157,7 +161,10 @@ function FolderTrackRow({
       android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.trackRow, active && styles.trackRowActive]}
       onPress={playFolderTrack}
-      onLongPress={onOpenActions}
+      onLongPress={() => {
+        playHaptic('holdAccepted');
+        onOpenActions();
+      }}
       accessibilityRole="button"
     >
       <View style={[styles.indent, { width: row.depth * 18 + 16 }]} />

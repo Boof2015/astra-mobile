@@ -4,7 +4,6 @@ import { LyricsBand } from '@/components/lyrics/LyricsBand';
 import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { seekTo } from '@/audio/playbackController';
-import { tickHaptic } from '@/lib/haptics';
 import { spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -43,7 +42,6 @@ export function NowPlayingCompanionPane({
   const selectCompanion = (next: string) => {
     const value: NowPlayingCompanion = next === 'lyrics' ? 'lyrics' : 'queue';
     if (value === companion) return;
-    tickHaptic();
     void setCompanion(value);
   };
 

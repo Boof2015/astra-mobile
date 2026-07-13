@@ -18,7 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
-import { commitHaptic, tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -79,7 +79,7 @@ export function SwipeableRow({
   const onCommit = (direction: 'right' | 'left') => {
     if (direction === 'right') swipeRight?.onCommit();
     else swipeLeft?.onCommit();
-    commitHaptic();
+    playHaptic('confirm');
   };
 
   const pan = Gesture.Pan()
@@ -95,7 +95,7 @@ export function SwipeableRow({
       const nowArmed = Math.abs(t) >= arm;
       if (nowArmed !== armed.value) {
         armed.value = nowArmed;
-        runOnJS(tickHaptic)();
+        runOnJS(playHaptic)('threshold');
       }
     })
     .onEnd(() => {

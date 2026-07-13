@@ -12,12 +12,12 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { commitHaptic, tickHaptic } from '@/lib/haptics';
+import { playHaptic, type HapticEvent } from '@/lib/haptics';
 import { motion } from '@/theme/motion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-type HapticFeedback = 'selection' | 'light' | 'none';
+type HapticFeedback = HapticEvent | 'none';
 
 interface TactilePressableProps
   extends Omit<PressableProps, 'children' | 'style'> {
@@ -60,8 +60,7 @@ export function TactilePressable({
   };
 
   const handlePress: NonNullable<PressableProps['onPress']> = (event) => {
-    if (haptic === 'selection') tickHaptic();
-    else if (haptic === 'light') commitHaptic();
+    if (haptic !== 'none') playHaptic(haptic);
     if (confirmationScale) {
       scale.value = withSequence(
         withTiming(confirmationScale, motion.quick),

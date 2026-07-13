@@ -28,6 +28,7 @@ import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
+import { playHaptic } from '@/lib/haptics';
 import type { BaseThemeId } from '@/theme/resolve';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore, type NowPlayingScopeStyle } from '@/stores/settingsStore';
@@ -266,7 +267,11 @@ function ThemeStep() {
           return (
             <Pressable android_ripple={ripple.bounded}
               key={option.id}
-              onPress={() => void setBaseTheme(option.id)}
+              onPress={() => {
+                if (selected) return;
+                playHaptic('selection');
+                void setBaseTheme(option.id);
+              }}
               style={[styles.themePill, selected && styles.themePillSelected]}
               accessibilityRole="radio"
               accessibilityState={{ selected }}

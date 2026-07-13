@@ -23,7 +23,7 @@ import { formatDuration } from '@/lib/format';
 import { downsampleWaveform, getWaveform } from '@/scope/waveform';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { usePlayerStore } from '@/stores/playerStore';
-import { tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 
 const CANVAS_HEIGHT = 58;
 const BAR_WIDTH = 3;
@@ -125,7 +125,7 @@ export function WaveformSeekBar({
     const fraction = clamp(event.nativeEvent.locationX / Math.max(1, widthRef.current));
     grantRef.current = { fraction, pageX: event.nativeEvent.pageX };
     setScrub(fraction);
-    tickHaptic();
+    playHaptic('threshold');
   };
 
   const handleMove = (event: GestureResponderEvent) => {

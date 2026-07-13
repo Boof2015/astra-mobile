@@ -19,6 +19,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { formatDuration } from '@/lib/format';
+import { playHaptic } from '@/lib/haptics';
 import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
@@ -69,6 +70,13 @@ export function TrackRow({
 
   const thumbUri = failedArtKey !== artKey ? trackArtworkThumbSource(track) : null;
   const secondaryText = subtitle ?? (showArtist ? track.artist : null);
+  const longPressAction = selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions);
+  const handleLongPress = longPressAction
+    ? () => {
+        playHaptic('holdAccepted');
+        longPressAction();
+      }
+    : undefined;
   const openActions = (event: GestureResponderEvent) => {
     event.stopPropagation();
     onOpenActions?.();
@@ -79,7 +87,7 @@ export function TrackRow({
       android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.row, selectionMode && selected && styles.rowSelected]}
       onPress={selectionMode ? onToggleSelect : onPress}
-      onLongPress={selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions)}
+      onLongPress={handleLongPress}
       accessibilityRole="button"
       accessibilityState={selectionMode ? { selected } : undefined}
     >

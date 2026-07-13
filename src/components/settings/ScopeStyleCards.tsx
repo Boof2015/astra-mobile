@@ -4,6 +4,7 @@ import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type { NowPlayingScopeStyle } from '@/stores/settingsStore';
+import { playHaptic } from '@/lib/haptics';
 
 interface ScopeStyleCardsProps {
   /** null renders neither card selected (onboarding: no preselection bias). */
@@ -59,11 +60,17 @@ function StyleCard({
   const colors = useColors();
   const ripple = useRipple();
 
+  const handlePress = () => {
+    if (selected) return;
+    playHaptic('selection');
+    onPress();
+  };
+
   return (
     <Pressable
       android_ripple={ripple.bounded}
       style={[styles.card, selected && styles.cardSelected]}
-      onPress={onPress}
+      onPress={handlePress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       accessibilityLabel={`${title}. ${description}`}

@@ -1,11 +1,11 @@
 import {
   Pressable,
   StyleSheet,
-  Switch,
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
+import { HapticSwitch } from '@/components/HapticSwitch';
 import {
   radius,
   spacing,
@@ -71,7 +71,7 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
         </Pressable>
         <View style={styles.toggle}>
           <Text variant="label">{band.enabled ? 'On' : 'Off'}</Text>
-          <Switch
+          <HapticSwitch
             value={band.enabled}
             onValueChange={(enabled) => onUpdate({ enabled })}
             trackColor={{ false: colors.glassBorder, true: colors.accent }}

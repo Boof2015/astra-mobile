@@ -37,7 +37,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { commitHaptic, tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 
 const OPEN_THRESHOLD = 76;
 const RESET_THRESHOLD = 58;
@@ -150,7 +150,7 @@ export function PullSearchGesture({
   }, []);
 
   const open = useCallback(() => {
-    commitHaptic();
+    playHaptic('pullRelease');
     onOpen();
     resetUi();
   }, [onOpen, resetUi]);
@@ -204,10 +204,11 @@ export function PullSearchGesture({
           if (!armedValue.value && nextPull >= OPEN_THRESHOLD) {
             armedValue.value = true;
             runOnJS(setArmed)(true);
-            runOnJS(tickHaptic)();
+            runOnJS(playHaptic)('pullLatch');
           } else if (armedValue.value && nextPull < RESET_THRESHOLD) {
             armedValue.value = false;
             runOnJS(setArmed)(false);
+            runOnJS(playHaptic)('thresholdExit');
           }
         })
         .onEnd((event) => {

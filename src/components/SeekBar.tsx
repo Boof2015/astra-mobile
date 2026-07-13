@@ -11,7 +11,7 @@ import {
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
-import { tickHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 
 const THUMB_SIZE = 12;
 
@@ -59,7 +59,7 @@ export function SeekBar({ currentTime, duration, onSeek, trackKey }: SeekBarProp
     const fraction = clamp(event.nativeEvent.locationX / Math.max(1, widthRef.current));
     grantRef.current = { fraction, pageX: event.nativeEvent.pageX };
     setScrub(fraction);
-    tickHaptic();
+    playHaptic('threshold');
   };
 
   const handleMove = (event: GestureResponderEvent) => {

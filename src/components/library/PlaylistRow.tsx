@@ -13,6 +13,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { artworkUri } from '@/library/artwork';
+import { playHaptic } from '@/lib/haptics';
 
 export function PlaylistRow({
   name,
@@ -46,7 +47,14 @@ export function PlaylistRow({
       android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.row}
       onPress={onPress}
-      onLongPress={onLongPress}
+      onLongPress={
+        onLongPress
+          ? () => {
+              playHaptic('holdAccepted');
+              onLongPress();
+            }
+          : undefined
+      }
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${dynamic ? 'dynamic playlist, ' : ''}${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
     >

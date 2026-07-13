@@ -4,13 +4,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { HapticSwitch } from '@/components/HapticSwitch';
 import {
   radius,
   spacing,
@@ -181,7 +181,7 @@ export default function LastFmScreen() {
           </Text>
         </View>
         {profile.connected ? (
-          <Switch
+          <HapticSwitch
             value={profile.enabled}
             onValueChange={(v) => void setProfileEnabled(profile.id, v)}
             trackColor={{ false: colors.glassBorder, true: colors.accent }}
@@ -225,7 +225,7 @@ export default function LastFmScreen() {
                 Submit played tracks + &quot;now playing&quot; to your connected destinations.
               </Text>
             </View>
-            <Switch
+            <HapticSwitch
               value={status?.enabled ?? false}
               onValueChange={(v) => void setEnabled(v)}
               trackColor={{ false: colors.glassBorder, true: colors.accent }}

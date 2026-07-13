@@ -5,6 +5,7 @@ import { spacing } from '@/theme';
 import { ACCENTS, ACCENT_IDS, type AccentId } from '@/theme/accents';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
+import { playHaptic } from '@/lib/haptics';
 
 const SWATCH_SIZE = 36;
 
@@ -26,7 +27,11 @@ export function AccentSwatchRow({ value, onChange }: AccentSwatchRowProps) {
           return (
             <Pressable android_ripple={ripple.bounded}
               key={id}
-              onPress={() => onChange(id)}
+              onPress={() => {
+                if (selected) return;
+                playHaptic('selection');
+                onChange(id);
+              }}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
               accessibilityLabel={`${ACCENTS[id].label} accent`}

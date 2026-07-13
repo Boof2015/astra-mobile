@@ -49,7 +49,7 @@ import {
   playTracks
 } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { commitHaptic, dragArmHaptic } from '@/lib/haptics';
+import { playHaptic } from '@/lib/haptics';
 import {
   sortTracks,
   TRACK_SORT_LABELS,
@@ -161,12 +161,13 @@ export default function LibraryScreen() {
   // Multi-select (tracks view): long-press arms it, batch actions live in the
   // bottom bar, selection order follows the current display order.
   const enterSelection = (track: DbTrack) => {
-    dragArmHaptic();
+    playHaptic('threshold');
     setSelectMode(true);
     setSelectedIds(new Set([track.id]));
   };
 
   const toggleSelected = (id: number) => {
+    playHaptic('selection');
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -194,14 +195,14 @@ export default function LibraryScreen() {
 
   const batchPlayNext = () => {
     const tracks = selectedDbTracks().map(dbTrackToTrack);
-    commitHaptic();
+    playHaptic('confirm');
     exitSelection();
     void enqueueTopMany(tracks);
   };
 
   const batchAddToQueue = () => {
     const tracks = selectedDbTracks().map(dbTrackToTrack);
-    commitHaptic();
+    playHaptic('confirm');
     exitSelection();
     void enqueueEndMany(tracks);
   };
@@ -420,7 +421,7 @@ export default function LibraryScreen() {
           subtitle={`${selectedIds.size} ${selectedIds.size === 1 ? 'track' : 'tracks'}`}
           onClose={() => setPlaylistPickerOpen(false)}
           onAdded={() => {
-            commitHaptic();
+            playHaptic('confirm');
             exitSelection();
           }}
         />

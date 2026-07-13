@@ -96,7 +96,7 @@ export function LyricsView({
 
         <TactilePressable android_ripple={ripple.bounded}
           onPress={onToggleFavorite}
-          haptic="light"
+          haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
           confirmationScale={1.08}
           hitSlop={10}
           style={styles.stripBtn}
@@ -133,17 +133,17 @@ export function LyricsView({
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="light" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
+          <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPlayPause} haptic="light" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+          <TactilePressable android_ripple={ripple.bounded} onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={28}
               color={colors.bgPrimary}
             />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="light" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
+          <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
           </TactilePressable>
         </View>

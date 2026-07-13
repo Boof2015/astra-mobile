@@ -39,6 +39,8 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
+import { hapticForToggle } from '@/lib/hapticCatalog';
+import { playHaptic } from '@/lib/haptics';
 import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
@@ -242,7 +244,11 @@ export default function EQScreen() {
       activeBandId={eq.activeBandId}
       enabled={eq.enabled}
       spectrumActive={scopeActive && focused}
-      onSelectBand={eq.selectBand}
+      onSelectBand={(id) => {
+        if (id === eq.activeBandId) return;
+        playHaptic('selection');
+        eq.selectBand(id);
+      }}
       onChangeBand={(id, updates) => eq.updateBand(id, updates)}
     />
   );
@@ -260,8 +266,15 @@ export default function EQScreen() {
       bands={eq.bands}
       activeBandId={eq.activeBandId}
       canAdd={eq.bands.length < EQ_MAX_BANDS}
-      onSelect={eq.selectBand}
-      onAdd={() => eq.addBand()}
+      onSelect={(id) => {
+        if (id === eq.activeBandId) return;
+        playHaptic('selection');
+        eq.selectBand(id);
+      }}
+      onAdd={() => {
+        playHaptic('action');
+        eq.addBand();
+      }}
     />
   );
 
@@ -289,7 +302,10 @@ export default function EQScreen() {
       </View>
       <Pressable android_ripple={ripple.bounded}
         style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
-        onPress={eq.toggleEnabled}
+        onPress={() => {
+          playHaptic(hapticForToggle(!eq.enabled));
+          eq.toggleEnabled();
+        }}
       >
         <Ionicons
           name="power"
@@ -410,6 +426,7 @@ export default function EQScreen() {
               icon="remove-circle-outline"
               onPress={() => {
                 eq.removeBand(activeBand.id);
+                playHaptic('confirm');
                 closeSheet();
               }}
             />
