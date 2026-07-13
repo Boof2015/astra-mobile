@@ -43,6 +43,7 @@ import { useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   enqueueEndMany,
   enqueueTopMany,
@@ -66,6 +67,7 @@ import {
   type ArtistSort
 } from '@/lib/artistSort';
 import { buildLetterIndex, resolveJumpIndex } from '@/lib/letterIndex';
+import { filterArtistBrowseList } from '@/library/artistGrouping';
 import type {
   Album,
   Artist,
@@ -92,6 +94,8 @@ export default function LibraryScreen() {
   const setAlbumSort = useLibraryStore((s) => s.setAlbumSort);
   const artistSort = useLibraryStore((s) => s.artistSort);
   const setArtistSort = useLibraryStore((s) => s.setArtistSort);
+  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
+  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -118,9 +122,13 @@ export default function LibraryScreen() {
     () => (viewMode === 'albums' ? sortAlbums(albums, albumSort) : []),
     [albumSort, albums, viewMode]
   );
+  const visibleArtists = useMemo(
+    () => filterArtistBrowseList(artists, artistGroupingMode, includeCollabArtists),
+    [artistGroupingMode, artists, includeCollabArtists]
+  );
   const sortedArtists = useMemo(
-    () => (viewMode === 'artists' ? sortArtists(artists, artistSort) : []),
-    [artistSort, artists, viewMode]
+    () => (viewMode === 'artists' ? sortArtists(visibleArtists, artistSort) : []),
+    [artistSort, viewMode, visibleArtists]
   );
 
   // Tap index is within sortedTracks so the tapped row is the track that plays.

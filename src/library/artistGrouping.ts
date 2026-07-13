@@ -9,8 +9,9 @@
 // so desktop's parsed-array paths collapse to splitCollaborators(artist) — which is
 // the parsing heuristic. Everything here is derivable from artist + album_artist.
 
-import { normalizeDisplay, normalizeKey, splitCollaborators } from '@/shared/library/albumGrouping';
-import type { Artist, DbTrack } from '@/types/library';
+// Runtime imports stay relative so this module can run under plain `node --test`.
+import { normalizeDisplay, normalizeKey, splitCollaborators } from '../shared/library/albumGrouping.ts';
+import type { Artist, DbTrack } from '../types/library';
 
 // Shared with the album-identity port so artist and album grouping can never
 // drift apart on normalization or collaborator splitting.
@@ -22,7 +23,7 @@ const UNKNOWN_ARTIST = 'Unknown Artist';
 const VARIOUS_ARTISTS_KEY = 'various artists';
 
 /** Track fields the grouping logic reads (subset of DbTrack, for testability). */
-type ArtistTrackLike = Pick<
+export type ArtistTrackLike = Pick<
   DbTrack,
   'artist' | 'album_artist' | 'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
 >;
@@ -133,6 +134,7 @@ export function trackMatchesBrowseArtist(
 interface ArtistAggregate {
   artist: string;
   track_count: number;
+  primary_track_count: number;
   artwork_hash: string | null;
   artworkYear: number;
   artworkAddedAt: number;
@@ -151,6 +153,11 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
   const byKey = new Map<string, ArtistAggregate>();
 
   for (const track of tracks) {
+    const primaryArtistKey = normalizeKey(
+      mode === 'fileTags'
+        ? resolveStrictBrowseArtist(track)
+        : resolveCanonicalBrowseArtist(track)
+    );
     const indexNames = mode === 'fileTags'
       ? [resolveStrictBrowseArtist(track)]
       : getCanonicalArtistIndexNames(track);
@@ -166,6 +173,7 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
         aggregate = {
           artist: name,
           track_count: 0,
+          primary_track_count: 0,
           artwork_hash: null,
           artworkYear: -1,
           artworkAddedAt: -1,
@@ -176,6 +184,7 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
         byKey.set(key, aggregate);
       }
       aggregate.track_count += 1;
+      if (key === primaryArtistKey) aggregate.primary_track_count += 1;
       aggregate.albumKeys.add(track.album_identity_key);
 
       if (!track.artwork_hash) continue;
@@ -198,16 +207,33 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
   }
 
   return Array.from(byKey.values())
-    .map(({ artist, track_count, artwork_hash, albumKeys, albumArtwork }) => {
+    .map(({ artist, track_count, primary_track_count, artwork_hash, albumKeys, albumArtwork }) => {
       // Primary artwork first, then one distinct cover per further album (max 4).
       const artwork_hashes: string[] = artwork_hash ? [artwork_hash] : [];
       for (const hash of albumArtwork.values()) {
         if (artwork_hashes.length >= 4) break;
         if (!artwork_hashes.includes(hash)) artwork_hashes.push(hash);
       }
-      return { artist, track_count, artwork_hash, album_count: albumKeys.size, artwork_hashes };
+      return {
+        artist,
+        track_count,
+        primary_track_count,
+        artwork_hash,
+        album_count: albumKeys.size,
+        artwork_hashes,
+      };
     })
     .sort((a, b) => a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }));
+}
+
+/** Apply the Artists-root collaborator preference without changing detail/search data. */
+export function filterArtistBrowseList(
+  artists: Artist[],
+  mode: ArtistGroupingMode,
+  includeCollabArtists: boolean
+): Artist[] {
+  if (mode !== 'astra' || includeCollabArtists) return artists;
+  return artists.filter((artist) => artist.primary_track_count > 0);
 }
 
 /** Tracks belonging to one artist under the active mode (preserves input order). */

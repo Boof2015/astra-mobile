@@ -38,6 +38,7 @@ const VIEW_MODE_KEY = 'library_view_mode';
 const TRACK_SORT_KEY = 'library_track_sort';
 const ALBUM_SORT_KEY = 'library_album_sort';
 const ARTIST_SORT_KEY = 'library_artist_sort';
+const INCLUDE_COLLAB_ARTISTS_KEY = 'library_include_collab_artists';
 
 // Bump when the album-identity algorithm changes to re-run the whole-library
 // recompute at startup. '2' = the desktop three-tier grouping port (v15 schema).
@@ -94,6 +95,7 @@ interface LibraryStore {
   trackSort: TrackSort;
   albumSort: AlbumSort;
   artistSort: ArtistSort;
+  includeCollabArtists: boolean;
   isScanning: boolean;
   scanProgress: ScanProgressState;
   scanError: string | null;
@@ -107,6 +109,7 @@ interface LibraryStore {
   setTrackSort: (sort: TrackSort) => void;
   setAlbumSort: (sort: AlbumSort) => void;
   setArtistSort: (sort: ArtistSort) => void;
+  setIncludeCollabArtists: (include: boolean) => void;
   addFolder: () => Promise<void>;
   removeFolder: (folderId: number) => Promise<void>;
   rescan: () => Promise<void>;
@@ -149,6 +152,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     trackSort: 'title',
     albumSort: 'name',
     artistSort: 'name',
+    includeCollabArtists: false,
     isScanning: false,
     scanProgress: { ...IDLE_PROGRESS },
     scanError: null,
@@ -172,25 +176,31 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
             await setSetting(db, ALBUM_GROUPING_VERSION_KEY, ALBUM_GROUPING_VERSION);
           }
           // Restore view preferences before the first render of the library screen.
-          const [savedViewMode, savedTrackSort, savedAlbumSort, savedArtistSort] =
+          const [
+            savedViewMode,
+            savedTrackSort,
+            savedAlbumSort,
+            savedArtistSort,
+            savedIncludeCollabArtists,
+          ] =
             await Promise.all([
               getSetting(db, VIEW_MODE_KEY),
               getSetting(db, TRACK_SORT_KEY),
               getSetting(db, ALBUM_SORT_KEY),
               getSetting(db, ARTIST_SORT_KEY),
+              getSetting(db, INCLUDE_COLLAB_ARTISTS_KEY),
             ]);
           const viewMode = parseViewMode(savedViewMode);
           const trackSort = parseTrackSort(savedTrackSort);
           const albumSort = parseAlbumSort(savedAlbumSort);
           const artistSort = parseArtistSort(savedArtistSort);
-          if (viewMode || trackSort || albumSort || artistSort) {
-            set({
-              ...(viewMode ? { viewMode } : null),
-              ...(trackSort ? { trackSort } : null),
-              ...(albumSort ? { albumSort } : null),
-              ...(artistSort ? { artistSort } : null),
-            });
-          }
+          set({
+            ...(viewMode ? { viewMode } : null),
+            ...(trackSort ? { trackSort } : null),
+            ...(albumSort ? { albumSort } : null),
+            ...(artistSort ? { artistSort } : null),
+            includeCollabArtists: savedIncludeCollabArtists === 'true',
+          });
           await get().refresh();
           set({ initialized: true });
           // One-time recovery: the v3 migration marks tracks stale (mtime = -1)
@@ -273,6 +283,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     setArtistSort: (artistSort) => {
       set({ artistSort });
       persistSetting(ARTIST_SORT_KEY, artistSort);
+    },
+
+    setIncludeCollabArtists: (includeCollabArtists) => {
+      set({ includeCollabArtists });
+      persistSetting(INCLUDE_COLLAB_ARTISTS_KEY, includeCollabArtists ? 'true' : 'false');
     },
 
     addFolder: () => runScan(() => addFolderViaPicker({ onProgress })),

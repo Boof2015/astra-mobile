@@ -315,6 +315,8 @@ export function LibrarySettingsPanel() {
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
   const includeSingles = useSettingsStore((s) => s.includeSingles);
   const setIncludeSingles = useSettingsStore((s) => s.setIncludeSingles);
+  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
+  const setIncludeCollabArtists = useLibraryStore((s) => s.setIncludeCollabArtists);
 
   return (
     <>
@@ -369,6 +371,16 @@ export function LibrarySettingsPanel() {
           value={includeSingles}
           onValueChange={(v) => void setIncludeSingles(v)}
         />
+        {groupingMode === 'astra' ? (
+          <View style={styles.toggleSpacing}>
+            <SettingsToggleRow
+              title="Show collaborator-only artists"
+              description="Include artists that appear only as collaborators in the Artists view."
+              value={includeCollabArtists}
+              onValueChange={setIncludeCollabArtists}
+            />
+          </View>
+        ) : null}
       </SettingsCard>
     </>
   );
@@ -545,6 +557,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   cardSpacing: {
     marginTop: spacing.sm,
+  },
+  toggleSpacing: {
+    marginTop: spacing.lg,
   },
   indent: {
     marginTop: spacing.sm,

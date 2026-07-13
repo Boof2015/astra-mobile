@@ -81,6 +81,8 @@ export interface Album {
 export interface Artist {
   artist: string;
   track_count: number;
+  /** Tracks where this artist is the resolved primary browse artist. */
+  primary_track_count: number;
   artwork_hash: string | null;
   album_count: number;
   /** Primary hash first, then one distinct cover per further album (max 4) — grid mosaic. */
