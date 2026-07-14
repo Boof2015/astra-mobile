@@ -73,6 +73,7 @@
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/services/desktopSyncPolicy.test.mts src/shared/sync/conflictPreview.test.mts",
     "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
     "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
+    "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts",
     "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts",
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",

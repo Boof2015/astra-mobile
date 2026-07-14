@@ -21,6 +21,11 @@ import {
   queueLoadSettled,
   setQueueLoadErrorHandler,
 } from './queueLoader';
+import {
+  dspTargetFromTrack,
+  prepareAudioProcessingForPlayback,
+  primePreparedTrackForPlayback,
+} from './audioProcessingStartup';
 
 // If a background queue fill dies partway, the mirror no longer matches the
 // native queue — re-read the truth.
@@ -321,10 +326,13 @@ async function playTracksInternal(
     ordered = [...tracks.slice(0, startIndex + 1), ...shuffleArray(tracks.slice(startIndex + 1))];
   }
   const queueTracks = ordered.map(toRntpTrack);
+  const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
   useQueueStore.getState().setSnapshot(queueTracks, startIndex);
   setOptimisticTrack(queueTracks[startIndex], 'loading');
   try {
+    await prepareAudioProcessingForPlayback(playbackTarget, 'queue-play');
     await loadQueueChunked(queueTracks, startIndex);
+    await primePreparedTrackForPlayback(playbackTarget, 'queue-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {
@@ -342,10 +350,13 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
   originalOrder = tracks.map((t) => t.id);
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
+  const playbackTarget = dspTargetFromTrack(queueTracks[0], 'none');
   useQueueStore.getState().setSnapshot(queueTracks, 0);
   setOptimisticTrack(queueTracks[0], 'loading');
   try {
+    await prepareAudioProcessingForPlayback(playbackTarget, 'shuffle-play');
     await loadQueueChunked(queueTracks, 0);
+    await primePreparedTrackForPlayback(playbackTarget, 'shuffle-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {
@@ -361,18 +372,24 @@ export async function playSample(): Promise<void> {
   await ensurePlayerReady({ materializeRestored: false });
   await queueLoadSettled();
   const queue = await TrackPlayer.getQueue();
+  let playbackTarget: ReturnType<typeof dspTargetFromTrack>;
   if (queue.length === 0) {
     const sampleQueue = SAMPLE_TRACKS.map(toRntpTrack);
+    playbackTarget = dspTargetFromTrack(sampleQueue[0], 'none');
+    await prepareAudioProcessingForPlayback(playbackTarget, 'sample-play');
     await TrackPlayer.add(sampleQueue);
     originalOrder = SAMPLE_TRACKS.map((t) => t.id);
     useQueueStore.getState().setSnapshot(sampleQueue, 0);
     setOptimisticTrack(sampleQueue[0], 'loading');
   } else {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();
+    playbackTarget = dspTargetFromTrack(queue[activeIndex ?? 0], 'immediate');
+    await prepareAudioProcessingForPlayback(playbackTarget, 'sample-resume');
     useQueueStore.getState().setSnapshot(queue, activeIndex);
     setOptimisticTrack(queue[activeIndex ?? 0], 'loading');
   }
   try {
+    await primePreparedTrackForPlayback(playbackTarget, 'sample-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {
@@ -383,9 +400,14 @@ export async function playSample(): Promise<void> {
 
 export async function play(): Promise<void> {
   selectPhonePlaybackTarget();
-  usePlayerStore.getState().setPlaybackState('playing');
   try {
+    const activeTrack = await TrackPlayer.getActiveTrack();
+    await prepareAudioProcessingForPlayback(
+      dspTargetFromTrack(activeTrack, 'immediate'),
+      'controller-play',
+    );
     await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {
     await reconcilePlayerFromNative();
     throw err;
@@ -431,6 +453,17 @@ export async function togglePlay(): Promise<void> {
 
 export async function skipToNext(): Promise<void> {
   await ensurePlayerReady();
+  const [nativeQueue, nativeIndex] = await Promise.all([
+    TrackPlayer.getQueue(),
+    TrackPlayer.getActiveTrackIndex(),
+  ]);
+  await prepareAudioProcessingForPlayback(
+    dspTargetFromTrack(
+      nativeIndex == null ? undefined : nativeQueue[nativeIndex + 1],
+      'none',
+    ),
+    'skip-next',
+  );
   const { tracks, activeIndex } = useQueueStore.getState();
   const nextIndex = activeIndex >= 0 ? activeIndex + 1 : -1;
   if (nextIndex >= 0 && nextIndex < tracks.length) {
@@ -448,6 +481,17 @@ export async function skipToNext(): Promise<void> {
 
 export async function skipToPrevious(): Promise<void> {
   await ensurePlayerReady();
+  const [nativeQueue, nativeIndex] = await Promise.all([
+    TrackPlayer.getQueue(),
+    TrackPlayer.getActiveTrackIndex(),
+  ]);
+  await prepareAudioProcessingForPlayback(
+    dspTargetFromTrack(
+      nativeIndex == null ? undefined : nativeQueue[nativeIndex - 1],
+      'none',
+    ),
+    'skip-previous',
+  );
   const { tracks, activeIndex } = useQueueStore.getState();
   const previousIndex = activeIndex > 0 ? activeIndex - 1 : -1;
   if (previousIndex >= 0 && previousIndex < tracks.length) {
@@ -627,6 +671,7 @@ export async function jumpToQueueIndex(index: number): Promise<void> {
   // a shifted native index while the head is still prepending) — translate,
   // waiting out the fill only when the target isn't loaded.
   const queuedTrack = useQueueStore.getState().tracks[index];
+  const playbackTarget = dspTargetFromTrack(queuedTrack, 'none');
   useQueueStore.getState().setActiveIndex(index);
   setOptimisticTrack(queuedTrack, 'playing');
   let nativeIndex = absoluteIndexToNative(index);
@@ -635,8 +680,10 @@ export async function jumpToQueueIndex(index: number): Promise<void> {
     nativeIndex = absoluteIndexToNative(index);
   }
   try {
+    await prepareAudioProcessingForPlayback(playbackTarget, 'queue-jump');
     await TrackPlayer.skip(nativeIndex);
     useQueueStore.getState().setActiveIndex(index);
+    await primePreparedTrackForPlayback(playbackTarget, 'queue-jump');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {

@@ -15,9 +15,8 @@ import { buildArtistList, filterTracksByArtist } from '@/library/artistGrouping'
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playForCar, playTracksForCar, pause, seekTo, skipToNext, skipToPrevious } from '@/audio/playbackController';
 import { syncCarNowPlayingFromTrackPlayer } from '@/audio/carSync';
-import { ensureEQRouteSyncStarted } from '@/audio/eqRouteSync';
+import { startAudioProcessingWarmup } from '@/audio/audioProcessingStartup';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
-import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
@@ -57,10 +56,6 @@ async function initializeForCar(): Promise<void> {
       await useLibraryStore.getState().initialize();
       await usePlaylistStore.getState().refresh();
       await useRemoteSourcesStore.getState().init();
-      await Promise.all([
-        ensureEQRouteSyncStarted(),
-        useAudioSettingsStore.getState().load(),
-      ]);
     })().catch((err) => {
       initPromise = null;
       throw err;
@@ -71,13 +66,17 @@ async function initializeForCar(): Promise<void> {
 
 export async function handleAstraCarCommand(payload: CarCommandPayload): Promise<void> {
   try {
-    await initializeForCar();
+    // Warm DSP independently of catalog/library startup. Transport commands do
+    // not need to wait for a full library initialize; media-id/search commands do.
+    void startAudioProcessingWarmup('car-command').catch(() => {});
 
     switch (payload.command) {
       case 'playMediaId':
+        await initializeForCar();
         if (payload.media) await playMedia(payload.media);
         break;
       case 'playSearch':
+        await initializeForCar();
         await playSearch(payload);
         break;
       case 'play':
@@ -96,6 +95,7 @@ export async function handleAstraCarCommand(payload: CarCommandPayload): Promise
         if (typeof payload.position === 'number') await seekTo(payload.position);
         break;
       case 'toggleFavorite':
+        await initializeForCar();
         await handleFavoriteCommand();
         break;
       default:

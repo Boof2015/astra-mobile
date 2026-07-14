@@ -79,6 +79,12 @@ class AstraScopeModule : Module() {
       GainBridge.activateSmoothFor(url)
     }
 
+    // Hard-prime while paused; unlike activateTrackGain this must not spend the
+    // first audible second gliding down from the process default (unity).
+    Function("primeTrackGain") { url: String ->
+      GainBridge.primeFor(url)
+    }
+
     // Conservative temp gain applied when a transition hits an unregistered URL
     // (unanalyzed track). JS keeps this at 1 while normalization is disabled.
     Function("setFallbackGain") { linear: Double ->

@@ -13,6 +13,8 @@ declare class AstraAudioRouteModuleType extends NativeModule<AstraAudioRouteEven
 
 const native = requireOptionalNativeModule<AstraAudioRouteModuleType>('AstraAudioRoute');
 
+export const isAstraAudioRouteAvailable = native !== null;
+
 export const AstraAudioRoute = native ?? {
   addListener: () => ({ remove: () => {} }),
   removeAllListeners: () => {},

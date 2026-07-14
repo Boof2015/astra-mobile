@@ -89,6 +89,15 @@ object GainBridge {
     setTarget(gains[url] ?: fallbackGain, CORRECTION_RAMP_MS)
   }
 
+  /**
+   * Prime a paused player before play is released. There is no live signal to
+   * declick here, so publishing a zero-duration target guarantees the first
+   * processed frame is already at the requested gain.
+   */
+  fun primeFor(url: String) {
+    setTarget(gains[url] ?: fallbackGain, 0)
+  }
+
   /** Glide to an explicit gain (unity paths: no track / remote track / disabled). */
   fun setGainSmooth(linear: Float) {
     setTarget(linear, CORRECTION_RAMP_MS)

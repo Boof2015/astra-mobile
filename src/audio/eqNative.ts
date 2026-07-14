@@ -12,11 +12,53 @@ type NativeEq = {
   setTrackGain?: (url: string, linear: number) => void;
   setTrackGains?: (entries: Record<string, number>, clearExisting: boolean) => void;
   activateTrackGain?: (url: string) => void;
+  primeTrackGain?: (url: string) => void;
   setFallbackGain?: (linear: number) => void;
   setActivePostEq?: (active: boolean) => void;
 };
 
 const native = AstraScope as unknown as NativeEq;
+
+function requireNativeMethod<K extends keyof NativeEq>(name: K): NonNullable<NativeEq[K]> {
+  const method = native[name];
+  if (typeof method !== 'function') {
+    throw new Error(`Native DSP method unavailable: ${String(name)}`);
+  }
+  return method as NonNullable<NativeEq[K]>;
+}
+
+/** Fail-closed capability check used before any guarded playback release. */
+export function assertNativeDspAvailable(): void {
+  requireNativeMethod('setEqEnabled');
+  requireNativeMethod('setEqPreamp');
+  requireNativeMethod('setEqBands');
+  requireNativeMethod('setTrackGain');
+  requireNativeMethod('primeTrackGain');
+  requireNativeMethod('setFallbackGain');
+}
+
+/** Strict startup setters: unlike the UI wrappers below, failures must block play. */
+export function applyEqNativeStrict(
+  enabled: boolean,
+  preampLinear: number,
+  bandParams: number[],
+): void {
+  (requireNativeMethod('setEqEnabled') as (value: boolean) => void)(enabled);
+  (requireNativeMethod('setEqPreamp') as (value: number) => void)(preampLinear);
+  (requireNativeMethod('setEqBands') as (value: number[]) => void)(bandParams);
+}
+
+export function setFallbackGainNativeStrict(linear: number): void {
+  (requireNativeMethod('setFallbackGain') as (value: number) => void)(linear);
+}
+
+export function setTrackGainNativeStrict(url: string, linear: number): void {
+  (requireNativeMethod('setTrackGain') as (key: string, value: number) => void)(url, linear);
+}
+
+export function primeTrackGainNativeStrict(url: string): void {
+  (requireNativeMethod('primeTrackGain') as (key: string) => void)(url);
+}
 
 export function setEqEnabledNative(enabled: boolean): void {
   try {

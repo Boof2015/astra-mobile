@@ -59,6 +59,8 @@ declare class AstraScopeModuleType extends NativeModule {
   setTrackGains(entries: Record<string, number>, clearExisting: boolean): void;
   /** Glide to the registered gain for this URL now (mount/settings/late measurement). */
   activateTrackGain(url: string): void;
+  /** Apply the registered gain immediately while playback is still paused. */
+  primeTrackGain(url: string): void;
   /**
    * Conservative temp gain (linear) applied when a media-item transition hits a URL
    * with no registered gain (unanalyzed track). Keep at 1 while normalization is off.

@@ -2,8 +2,8 @@ import TrackPlayer, { Event } from 'react-native-track-player';
 import { syncCarNowPlayingFromTrackPlayer } from './carSync';
 import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
-import { ensureGainRegistryStarted } from './gainRegistry';
-import { ensureEQRouteSyncStarted } from './eqRouteSync';
+import { startAudioProcessingWarmup } from './audioProcessingStartup';
+import { playForCar, skipToNext, skipToPrevious } from './playbackController';
 import { nativeIndexToAbsolute } from './queueLoader';
 import { useQueueStore } from '@/stores/queueStore';
 
@@ -13,11 +13,13 @@ import { useQueueStore } from '@/stores/queueStore';
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
-  // Whole-queue gain registration + fallback gain, headless-safe (Android Auto /
-  // Bluetooth starts with the app UI never mounted must still normalize).
-  ensureGainRegistryStarted();
-  void ensureEQRouteSyncStarted().catch((error) => {
-    console.warn('[eq-route] headless init failed', error);
+  // Begin the small fail-closed warm-up before a car/Bluetooth play command can
+  // arrive. Full-queue registration and analysis start only after it is safe.
+  void startAudioProcessingWarmup('playback-service-start').catch((error) => {
+    console.warn('[dsp-startup] headless warm failed', {
+      at: Date.now(),
+      error: error instanceof Error ? error.name : 'UnknownError',
+    });
   });
 
   const syncNowPlaying = () =>
@@ -72,7 +74,9 @@ export async function PlaybackService(): Promise<void> {
     scheduleSync();
   });
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
-    void TrackPlayer.play().finally(scheduleSync);
+    void playForCar()
+      .catch(() => {})
+      .finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemotePause, () => {
     void TrackPlayer.pause().finally(scheduleSync);
@@ -81,12 +85,12 @@ export async function PlaybackService(): Promise<void> {
     void TrackPlayer.stop().finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemoteNext, () => {
-    void TrackPlayer.skipToNext()
+    void skipToNext()
       .catch(() => {})
       .finally(scheduleSync);
   });
   TrackPlayer.addEventListener(Event.RemotePrevious, () => {
-    void TrackPlayer.skipToPrevious()
+    void skipToPrevious()
       .catch(() => {})
       .finally(scheduleSync);
   });

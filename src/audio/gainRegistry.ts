@@ -39,6 +39,17 @@ import { setFallbackGainNative, setTrackGainsNative } from '@/audio/eqNative';
 /** Persisted fallback gain (dB) — pushed before the stats aggregate on cold start. */
 const FALLBACK_DB_KEY = 'normalization_fallback_db';
 
+/** Single-setting cold-start read; no library aggregate or track analysis. */
+export async function loadPersistedFallbackGain(): Promise<number | null> {
+  const db = await openLibraryDb();
+  const raw = await getSetting(db, FALLBACK_DB_KEY);
+  if (raw === null) return null;
+  const gainDb = Number(raw);
+  if (!Number.isFinite(gainDb)) return null;
+  const linear = dbToLinear(gainDb);
+  return Number.isFinite(linear) && linear > 0 ? linear : null;
+}
+
 /**
  * The queue can change rapidly (drag-reorder); coalesce re-registrations. Kept
  * past the start-of-playback transition: registering a large queue marshals a

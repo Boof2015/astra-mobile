@@ -1,6 +1,7 @@
 package expo.modules.astraaudioroute
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -162,20 +163,30 @@ class AstraAudioRouteModule : Module() {
     } catch (_: Throwable) {
       emptyList()
     }
-    if (outputs.isEmpty()) return null
-    return outputs.firstOrNull { kindForType(it.type) == "bluetooth" }
-      ?: outputs.firstOrNull { kindForType(it.type) == "wired" }
-      ?: outputs.firstOrNull { kindForType(it.type) == "usb" }
-      ?: outputs.firstOrNull { kindForType(it.type) == "hdmi" }
-      ?: outputs.firstOrNull { kindForType(it.type) == "speaker" }
-      ?: outputs.first()
+    val predicted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      try {
+        val mediaAttributes = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_MEDIA)
+          .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+          .build()
+        audioManager().getAudioDevicesForAttributes(mediaAttributes).filter { it.isSink }
+      } catch (_: Throwable) {
+        emptyList()
+      }
+    } else {
+      emptyList()
+    }
+    return selectPredictedOutputDevice(predicted, outputs) { kindForType(it.type) }
   }
 
   private fun kindForType(type: Int): String =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       when (type) {
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "bluetooth"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BLE_BROADCAST -> "bluetooth"
         AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
         AudioDeviceInfo.TYPE_WIRED_HEADSET -> "wired"
         AudioDeviceInfo.TYPE_USB_ACCESSORY,

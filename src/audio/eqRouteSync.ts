@@ -1,5 +1,9 @@
-import { AstraAudioRoute } from '../../modules/astra-audio-route';
+import {
+  AstraAudioRoute,
+  isAstraAudioRouteAvailable,
+} from '../../modules/astra-audio-route';
 import { useEQStore } from '@/stores/eqStore';
+import type { AudioOutputRoute } from '@/types/audio';
 
 type Subscription = { remove: () => void };
 
@@ -12,6 +16,23 @@ async function applyCurrentRoute(): Promise<void> {
   } catch (error) {
     console.warn('[eq-route] apply failed', error);
   }
+}
+
+/**
+ * Strict one-shot refresh for the guarded play path. The normal listener is
+ * defensive; this version must surface missing native routing or a failed EQ
+ * profile restore so playback can remain paused.
+ */
+export async function refreshEQRouteForPlayback(): Promise<AudioOutputRoute> {
+  if (!isAstraAudioRouteAvailable) {
+    throw new Error('Native audio-route module unavailable');
+  }
+  await useEQStore.getState().load();
+  const route = AstraAudioRoute.getCurrentRoute();
+  if (!route) throw new Error('Current media output route unavailable');
+  if (route.kind === 'unknown') throw new Error('Current media output route unresolved');
+  await useEQStore.getState().setOutputRoute(route);
+  return route;
 }
 
 async function startEQRouteSync(): Promise<void> {
