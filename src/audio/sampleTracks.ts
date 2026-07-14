@@ -1,6 +1,7 @@
 import type { Track as RntpTrack } from 'react-native-track-player';
 import type { Track } from '@/types/audio';
 import { streamUrlForTrack } from '@/services/remoteUrls';
+import { artworkThumbFromSource, playerBackdropArtworkSource } from '@/library/artwork';
 
 /**
  * M0 verification tracks. Streamed from a public royalty-free source so playback
@@ -43,13 +44,20 @@ export function toRntpTrack(track: Track): RntpTrack {
   // playing match the `tracks` row. Local tracks already play from their path.
   const isRemote = !!track.sourceType && track.sourceType !== 'local';
   const url = isRemote ? (streamUrlForTrack(track) ?? track.path) : track.path;
+  // RNTP hands `artwork` to MediaSession/notification code, which eagerly
+  // decodes local files as native Bitmaps. Supplying the full cover here can
+  // retain tens of MiB even while Now Playing is closed. Keep that surface
+  // bounded and carry Astra's display source separately for the sharp cover.
+  const notificationArtwork = isRemote
+    ? playerBackdropArtworkSource(track)
+    : artworkThumbFromSource(track.artworkData);
   return {
     id: track.id,
     url,
     title: track.title,
     artist: track.artist,
     album: track.album,
-    artwork: track.artworkData,
+    artwork: notificationArtwork ?? undefined,
     duration: track.duration,
     // Custom fields preserved by RNTP and read back in `rntpToTrack`.
     format: track.format,
@@ -61,6 +69,7 @@ export function toRntpTrack(track: Track): RntpTrack {
     sourceId: track.sourceId,
     sourceTrackId: track.sourceTrackId,
     artworkSourceId: track.artworkSourceId,
+    astraArtworkData: track.artworkData,
   };
 }
 
@@ -74,7 +83,12 @@ export function rntpToTrack(rt: RntpTrack): Track {
     artist: rt.artist ?? 'Unknown artist',
     album: rt.album ?? '',
     duration: typeof rt.duration === 'number' ? rt.duration : 0,
-    artworkData: typeof rt.artwork === 'string' ? rt.artwork : undefined,
+    artworkData:
+      typeof rt.astraArtworkData === 'string'
+        ? rt.astraArtworkData
+        : typeof rt.artwork === 'string'
+          ? rt.artwork
+          : undefined,
     format: (rt.format as string) ?? 'PCM',
     sampleRate: rt.sampleRate as number | undefined,
     bitDepth: rt.bitDepth as number | undefined,

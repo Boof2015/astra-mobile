@@ -58,7 +58,8 @@ export function buildCoverArtUrlTemplate(sourceId: number): string | null {
 
 /** Build the cover-art URL for a remote track, or null if unavailable. */
 export function artworkUrlForTrack(
-  track: Pick<Track, 'sourceType' | 'sourceId' | 'artworkSourceId'>
+  track: Pick<Track, 'sourceType' | 'sourceId' | 'artworkSourceId'>,
+  options: { size?: number } = {}
 ): string | null {
   if (!track.sourceType || track.sourceType === 'local') return null;
   if (track.sourceId == null || !track.artworkSourceId) return null;
@@ -66,11 +67,15 @@ export function artworkUrlForTrack(
   if (!cfg) return null;
 
   if (cfg.type === 'subsonic') {
-    return buildSubsonicCoverArtUrl(connection(cfg), track.artworkSourceId);
+    return buildSubsonicCoverArtUrl(connection(cfg), track.artworkSourceId, {
+      size: options.size,
+    });
   }
   if (cfg.type === 'jellyfin') {
     if (!cfg.accessToken) return null;
-    return buildJellyfinCoverArtUrl(connection(cfg), track.artworkSourceId, cfg.accessToken);
+    return buildJellyfinCoverArtUrl(connection(cfg), track.artworkSourceId, cfg.accessToken, {
+      maxWidth: options.size,
+    });
   }
   return null;
 }

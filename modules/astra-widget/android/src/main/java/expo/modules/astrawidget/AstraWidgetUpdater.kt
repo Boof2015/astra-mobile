@@ -20,6 +20,7 @@ import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
 import java.io.File
+import java.util.LinkedHashMap
 
 object AstraWidgetUpdater {
   private const val REQUEST_OPEN_APP = 100
@@ -30,6 +31,8 @@ object AstraWidgetUpdater {
   private const val FOUR_CELL_MIN_WIDTH_DP = 300
   private const val FIVE_CELL_MIN_WIDTH_DP = 370
   private const val ARTWORK_CORNER_RADIUS_DP = 8f
+  private const val MAX_PREPARED_ARTWORK = 16
+  private val artworkBitmaps = WidgetArtworkBitmaps()
 
   private val RECENT_IMAGE_IDS = intArrayOf(
     R.id.astra_widget_recent_1_image,
@@ -67,30 +70,42 @@ object AstraWidgetUpdater {
     val state = AstraWidgetStateStore.load(context)
     appWidgetIds.forEach { appWidgetId ->
       val options = manager.getAppWidgetOptions(appWidgetId)
-      manager.updateAppWidget(appWidgetId, buildRemoteViews(context, state, options))
+      manager.updateAppWidget(
+        appWidgetId,
+        buildRemoteViews(context, state, options, artworkBitmaps),
+      )
     }
   }
 
   fun updateWidget(context: Context, manager: AppWidgetManager, appWidgetId: Int, options: Bundle) {
     val state = AstraWidgetStateStore.load(context)
-    manager.updateAppWidget(appWidgetId, buildRemoteViews(context, state, options))
+    manager.updateAppWidget(
+      appWidgetId,
+      buildRemoteViews(context, state, options, artworkBitmaps),
+    )
   }
 
-  private fun buildRemoteViews(context: Context, state: AstraWidgetState, options: Bundle): RemoteViews {
+  private fun buildRemoteViews(
+    context: Context,
+    state: AstraWidgetState,
+    options: Bundle,
+    artwork: WidgetArtworkBitmaps,
+  ): RemoteViews {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      return buildResponsiveRemoteViews(context, state)
+      return buildResponsiveRemoteViews(context, state, artwork)
     }
 
-    return buildBucketRemoteViews(context, state, WidgetLayoutBucket.fromOptions(options))
+    return buildBucketRemoteViews(context, state, WidgetLayoutBucket.fromOptions(options), artwork)
   }
 
   private fun buildResponsiveRemoteViews(
     context: Context,
     state: AstraWidgetState,
+    artwork: WidgetArtworkBitmaps,
   ): RemoteViews {
     val mapping =
       WidgetLayoutBucket.entries.associate { bucket ->
-        bucket.minSize to buildBucketRemoteViews(context, state, bucket)
+        bucket.minSize to buildBucketRemoteViews(context, state, bucket, artwork)
       }
 
     return RemoteViews(mapping)
@@ -100,6 +115,7 @@ object AstraWidgetUpdater {
     context: Context,
     state: AstraWidgetState,
     bucket: WidgetLayoutBucket,
+    artwork: WidgetArtworkBitmaps,
   ): RemoteViews {
     val views = RemoteViews(context.packageName, bucket.layoutRes)
     val title = if (state.hasTrack) state.title.cleanOrFallback("Unknown title") else "Astra"
@@ -108,7 +124,7 @@ object AstraWidgetUpdater {
 
     views.setTextViewText(R.id.astra_widget_title, title)
     views.setTextViewText(R.id.astra_widget_artist, artist)
-    setImageView(context, views, R.id.astra_widget_art, state.artworkUri, 320)
+    setImageView(context, artwork, views, R.id.astra_widget_art, state.artworkUri, 320)
     views.setOnClickPendingIntent(R.id.astra_widget_root, openAppPendingIntent(context))
 
     if (bucket.hasPlayPause) {
@@ -128,7 +144,7 @@ object AstraWidgetUpdater {
       )
     }
     if (bucket.recentCount > 0) {
-      bindRecentlyPlayed(context, views, state.recentlyPlayed, bucket)
+      bindRecentlyPlayed(context, views, state.recentlyPlayed, bucket, artwork)
     }
 
     return views
@@ -172,6 +188,7 @@ object AstraWidgetUpdater {
     views: RemoteViews,
     recentlyPlayed: List<AstraWidgetRecentItem>,
     bucket: WidgetLayoutBucket,
+    artwork: WidgetArtworkBitmaps,
   ) {
     val openRecents = openRecentlyPlayedPendingIntent(context)
     views.setOnClickPendingIntent(R.id.astra_widget_recent_container, openRecents)
@@ -179,7 +196,7 @@ object AstraWidgetUpdater {
     for (index in 0 until bucket.recentCount) {
       val item = recentlyPlayed.getOrNull(index)
       val imageId = RECENT_IMAGE_IDS[index]
-      setImageView(context, views, imageId, item?.artworkUri, 128)
+      setImageView(context, artwork, views, imageId, item?.artworkUri, 128)
       views.setContentDescription(imageId, item?.title.cleanOrFallback("Recently played"))
       views.setOnClickPendingIntent(imageId, openRecents)
 
@@ -193,12 +210,13 @@ object AstraWidgetUpdater {
 
   private fun setImageView(
     context: Context,
+    artwork: WidgetArtworkBitmaps,
     views: RemoteViews,
     viewId: Int,
     uri: String?,
     maxPx: Int,
   ) {
-    val bitmap = decodeBitmap(context, uri, maxPx)?.let { prepareArtworkBitmap(context, it) }
+    val bitmap = artwork.get(context, uri, maxPx)
     if (bitmap != null) {
       views.setImageViewBitmap(viewId, bitmap)
     } else {
@@ -206,10 +224,22 @@ object AstraWidgetUpdater {
     }
   }
 
-  private fun prepareArtworkBitmap(context: Context, bitmap: Bitmap): Bitmap {
+  private fun prepareArtworkBitmap(context: Context, bitmap: Bitmap, maxPx: Int): Bitmap {
     val square = cropCenterSquare(bitmap)
+    val scaled =
+      if (maxPx > 0 && (square.width > maxPx || square.height > maxPx)) {
+        Bitmap.createScaledBitmap(square, maxPx, maxPx, true)
+      } else {
+        square
+      }
     val radiusPx = ARTWORK_CORNER_RADIUS_DP * context.resources.displayMetrics.density
-    return roundBitmap(square, radiusPx)
+    val rounded = roundBitmap(scaled, radiusPx)
+    // The rounded output owns its pixels. Release decode/crop/scale
+    // intermediates immediately instead of waiting for native Bitmap GC.
+    listOf(bitmap, square, scaled).distinct().forEach { intermediate ->
+      if (intermediate !== rounded && !intermediate.isRecycled) intermediate.recycle()
+    }
+    return rounded
   }
 
   private fun cropCenterSquare(bitmap: Bitmap): Bitmap {
@@ -290,6 +320,35 @@ object AstraWidgetUpdater {
       val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
       BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     }.getOrNull()
+  }
+
+  /**
+   * Android 12 responsive RemoteViews builds all size buckets at once. Cache
+   * each prepared cover by source/size so responsive buckets and later
+   * play/pause refreshes reuse the same bounded native Bitmaps. Content-keyed
+   * artwork paths make eviction safe when the queue/recents change.
+   */
+  private class WidgetArtworkBitmaps {
+    private val prepared = LinkedHashMap<String, Bitmap?>(MAX_PREPARED_ARTWORK, 0.75f, true)
+
+    @Synchronized
+    fun get(context: Context, uri: String?, maxPx: Int): Bitmap? {
+      if (uri.isNullOrBlank()) return null
+      val key = "$maxPx:$uri"
+      if (prepared.containsKey(key)) return prepared[key]
+      val bitmap = decodeBitmap(context, uri, maxPx)?.let {
+        prepareArtworkBitmap(context, it, maxPx)
+      }
+      prepared[key] = bitmap
+      while (prepared.size > MAX_PREPARED_ARTWORK) {
+        val eldest = prepared.entries.iterator().next()
+        prepared.remove(eldest.key)
+        eldest.value?.let { evicted ->
+          if (!evicted.isRecycled) evicted.recycle()
+        }
+      }
+      return bitmap
+    }
   }
 
   private fun readImageBytes(context: Context, value: String): ByteArray? {

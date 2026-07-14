@@ -95,7 +95,7 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
 
         // Every relaunch begins at rest even when a React activity was rebuilt
         // inside a still-live JS process.
-        usePlayerUiStore.setState({ playerOpen: false, everOpened: false });
+        usePlayerUiStore.setState({ playerOpen: false });
         useSearchStore.getState().closeQuickSearch();
 
         const liveNativeSession = await hasActiveNativePlaybackSession();

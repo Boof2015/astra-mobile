@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef
 } from 'react';
@@ -43,6 +44,12 @@ const values = new Float32Array(OSCILLOSCOPE_POINTS);
 // ~250ms instead of snapping flat, so pausing reads as powering down.
 const DECAY_PER_FRAME = 0.72;
 const REST_EPSILON = 0.004;
+
+type SkiaDisposable = { dispose: () => void };
+
+function disposeSkiaResources(resources: readonly (SkiaDisposable | null)[]) {
+  for (let i = resources.length - 1; i >= 0; i--) resources[i]?.dispose();
+}
 
 function skiaViewApi(): SkiaViewApiShape | null {
   const globalWithSkia = globalThis as typeof globalThis & { SkiaViewApi?: SkiaViewApiShape };
@@ -141,22 +148,32 @@ function buildPicture(
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
   const path = Skia.Path.Make();
+  const resources: SkiaDisposable[] = [recorder, path];
   writeWavePath(samples, sampleCount, width, height, lineWidth, gain, path);
 
-  if (glow) {
-    const glowPaint = makeStrokePaint(color, lineWidth * 3, 0.18);
-    if (edgeFade) {
-      glowPaint.setShader(makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth));
+  try {
+    if (glow) {
+      const glowPaint = makeStrokePaint(color, lineWidth * 3, 0.18);
+      resources.push(glowPaint);
+      if (edgeFade) {
+        const glowShader = makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth);
+        resources.push(glowShader);
+        glowPaint.setShader(glowShader);
+      }
+      canvas.drawPath(path, glowPaint);
     }
-    canvas.drawPath(path, glowPaint);
+    const strokePaint = makeStrokePaint(color, lineWidth);
+    resources.push(strokePaint);
+    if (edgeFade) {
+      const strokeShader = makeFadedStrokeShader(color, 1, width, edgeFadeWidth);
+      resources.push(strokeShader);
+      strokePaint.setShader(strokeShader);
+    }
+    canvas.drawPath(path, strokePaint);
+    return recorder.finishRecordingAsPicture();
+  } finally {
+    disposeSkiaResources(resources);
   }
-  const strokePaint = makeStrokePaint(color, lineWidth);
-  if (edgeFade) {
-    strokePaint.setShader(makeFadedStrokeShader(color, 1, width, edgeFadeWidth));
-  }
-  canvas.drawPath(path, strokePaint);
-
-  return recorder.finishRecordingAsPicture();
 }
 
 /**
@@ -200,7 +217,20 @@ export function OscilloscopeWave({
     [color, edgeFade, edgeFadeWidth, glow, height, lineWidth, width]
   );
 
-  useEffect(() => {
+  useEffect(() => () => initialPicture.dispose(), [initialPicture]);
+
+  useLayoutEffect(
+    () => () => {
+      const view = viewRef.current;
+      const api = skiaViewApi();
+      if (!view || !api) return;
+      api.setJsiProperty(view.nativeId, 'picture', null);
+      api.requestRedraw(view.nativeId);
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
     const view = viewRef.current;
     const api = skiaViewApi();
     if (!view || !api || width <= 0 || height <= 0) return;
@@ -214,12 +244,22 @@ export function OscilloscopeWave({
     // was measurable GC/JSI churn at 60fps.
     const strokePaint = makeStrokePaint(color, lineWidth);
     const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, 0.18) : null;
+    const effectResources: SkiaDisposable[] = [strokePaint];
+    if (glowPaint) effectResources.push(glowPaint);
     if (edgeFade) {
-      strokePaint.setShader(makeFadedStrokeShader(color, 1, width, edgeFadeWidth));
-      glowPaint?.setShader(makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth));
+      const strokeShader = makeFadedStrokeShader(color, 1, width, edgeFadeWidth);
+      effectResources.push(strokeShader);
+      strokePaint.setShader(strokeShader);
+      if (glowPaint) {
+        const glowShader = makeFadedStrokeShader(color, 0.18, width, edgeFadeWidth);
+        effectResources.push(glowShader);
+        glowPaint.setShader(glowShader);
+      }
     }
     const bounds = Skia.XYWHRect(0, 0, width, height);
     const path = Skia.Path.Make();
+    effectResources.push(path);
+    let currentPicture: SkPicture | null = null;
 
     const draw = (sampleCount: number) => {
       const gain = useScopeStore.getState().oscGain;
@@ -228,13 +268,22 @@ export function OscilloscopeWave({
       const canvas = recorder.beginRecording(bounds);
       if (glowPaint) canvas.drawPath(path, glowPaint);
       canvas.drawPath(path, strokePaint);
-      api.setJsiProperty(view.nativeId, 'picture', recorder.finishRecordingAsPicture());
+      const nextPicture = recorder.finishRecordingAsPicture();
+      recorder.dispose();
+      api.setJsiProperty(view.nativeId, 'picture', nextPicture);
       api.requestRedraw(view.nativeId);
+      currentPicture?.dispose();
+      currentPicture = nextPicture;
     };
 
     const cleanup = () => {
       mounted = false;
       cancelAnimationFrame(raf);
+      api.setJsiProperty(view.nativeId, 'picture', null);
+      api.requestRedraw(view.nativeId);
+      currentPicture?.dispose();
+      currentPicture = null;
+      disposeSkiaResources(effectResources);
     };
 
     if (!active) {

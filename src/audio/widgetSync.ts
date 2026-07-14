@@ -2,7 +2,7 @@ import TrackPlayer, { State, type Track as RntpTrack } from 'react-native-track-
 
 import type { PlaybackState, Track } from '@/types/audio';
 import type { DbTrack } from '@/types/library';
-import { artworkThumbUri } from '@/library/artwork';
+import { artworkThumbFromSource, artworkThumbUri } from '@/library/artwork';
 import { AstraWidget, type AstraWidgetRecentItem } from '../../modules/astra-widget';
 
 function mapRntpState(state?: State): PlaybackState {
@@ -54,7 +54,10 @@ export function setWidgetNowPlaying(
 ): void {
   const title = track?.title ?? null;
   const artist = track?.artist ?? null;
-  const artworkUri = track?.artworkData ?? null;
+  // RemoteViews never needs the full player cover. Feeding it the existing
+  // thumbnail also avoids reading the full artwork file into a temporary byte
+  // array for every play/pause widget refresh.
+  const artworkUri = artworkThumbFromSource(track?.artworkData) ?? null;
   const hasTrack = Boolean(track);
 
   const coreSame =

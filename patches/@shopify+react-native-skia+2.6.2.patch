@@ -1,0 +1,124 @@
+diff --git a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/OpenGLContext.h b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/OpenGLContext.h
+index a3b0e0e..3826fea 100644
+--- a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/OpenGLContext.h
++++ b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/OpenGLContext.h
+@@ -201,6 +201,13 @@ private:
+     if (_directContext == nullptr) {
+       throw std::runtime_error("GrDirectContexts::MakeGL failed");
+     }
++
++    // This singleton is thread-local: every simultaneous TextureView can own a
++    // separate Ganesh context. Budget one eighth of Astra's 64 MiB aggregate
++    // cache ceiling per context (wash + waveform + rack + EQ transitions can
++    // briefly reach eight) instead of accidentally granting each one 64 MiB.
++    constexpr size_t kAstraGaneshCachePerContext = 8ULL * 1024ULL * 1024ULL;
++    _directContext->setResourceCacheLimit(kAstraGaneshCachePerContext);
+   }
+ };
+ 
+diff --git a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
+index e8e4c03..0ce542c 100644
+--- a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
++++ b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
+@@ -5,8 +5,6 @@
+ #include <jni.h>
+ #include <memory>
+ 
+-#include "RNSkLog.h"
+-
+ #if defined(SK_GRAPHITE)
+ #include "RNDawnContext.h"
+ #else
+@@ -50,18 +48,6 @@ bool RNSkOpenGLCanvasProvider::renderToCanvas(
+   if (_surfaceHolder != nullptr && cb != nullptr) {
+     // Get the surface
+     auto surface = _surfaceHolder->getSurface();
+-    if (_jSurfaceTexture) {
+-      JNIEnv *env = facebook::jni::Environment::current();
+-      env->CallVoidMethod(_jSurfaceTexture, _updateTexImageMethod);
+-
+-      // Check for exceptions
+-      if (env->ExceptionCheck()) {
+-        RNSkLogger::logToConsole(
+-            "updateAndRelease() failed. The exception above "
+-            "can safely be ignored");
+-        env->ExceptionClear();
+-      }
+-    }
+     if (surface) {
+       // Draw into canvas using callback
+       cb(surface->getCanvas());
+@@ -86,7 +72,10 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+   ANativeWindow *window = nullptr;
+   JNIEnv *env = facebook::jni::Environment::current();
+   if (!opaque) {
+-    _jSurfaceTexture = env->NewGlobalRef(jSurfaceTexture);
++    // The framework-owned TextureView is the SurfaceTexture consumer. Calling
++    // updateTexImage() here from RNSkia's producer context fails every frame
++    // with "EGLConsumer is not attached" and retains the failed JNI work.
++    // Presenting the ANativeWindow already queues buffers for TextureView.
+     jclass surfaceClass = env->FindClass("android/view/Surface");
+     jmethodID surfaceConstructor = env->GetMethodID(
+         surfaceClass, "<init>", "(Landroid/graphics/SurfaceTexture;)V");
+@@ -95,15 +84,10 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+         env->NewObject(surfaceClass, surfaceConstructor, jSurfaceTexture);
+     window = ANativeWindow_fromSurface(env, jSurface);
+ 
+-    jclass surfaceTextureClass = env->GetObjectClass(_jSurfaceTexture);
+-    _updateTexImageMethod =
+-        env->GetMethodID(surfaceTextureClass, "updateTexImage", "()V");
+-
+     // Acquire the native window from the Surface
+     // Clean up local references
+     env->DeleteLocalRef(jSurface);
+     env->DeleteLocalRef(surfaceClass);
+-    env->DeleteLocalRef(surfaceTextureClass);
+   } else {
+     window = ANativeWindow_fromSurface(env, jSurfaceTexture);
+   }
+@@ -112,6 +96,12 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+ #else
+   _surfaceHolder = OpenGLContext::getInstance().MakeWindow(window);
+ #endif
++  // ANativeWindow_fromSurface() returns an acquired reference and the window
++  // context acquires its own. Drop the caller's reference now so TextureView
++  // destruction can release the final native window/buffer queue.
++  if (window != nullptr) {
++    ANativeWindow_release(window);
++  }
+ 
+   // Post redraw request to ensure we paint in the next draw cycle.
+   _requestRedraw();
+@@ -120,11 +110,15 @@ void RNSkOpenGLCanvasProvider::surfaceDestroyed() {
+   // destroy the renderer (a unique pointer so the dtor will be called
+   // immediately.)
+   _surfaceHolder = nullptr;
+-  if (_jSurfaceTexture) {
+-    JNIEnv *env = facebook::jni::Environment::current();
+-    env->DeleteGlobalRef(_jSurfaceTexture);
+-    _jSurfaceTexture = nullptr;
+-  }
++#if !defined(SK_GRAPHITE)
++  // The window surface is gone, so switch back to the shared pbuffer before
++  // evicting resources that were unlocked by its destruction. This prevents
++  // dead TextureViews from lingering in Ganesh's cache until process death.
++  auto &context = OpenGLContext::getInstance();
++  context.makeCurrent();
++  context.getDirectContext()->purgeUnlockedResources(
++      GrPurgeResourceOptions::kAllResources);
++#endif
+ }
+ 
+ void RNSkOpenGLCanvasProvider::surfaceSizeChanged(jobject jSurface, int width,
+diff --git a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.h b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.h
+index ca5768d..0b3c5fa 100644
+--- a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.h
++++ b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.h
+@@ -36,7 +36,5 @@ public:
+ private:
+   std::unique_ptr<WindowContext> _surfaceHolder = nullptr;
+   std::shared_ptr<RNSkPlatformContext> _platformContext;
+-  jobject _jSurfaceTexture = nullptr;
+-  jmethodID _updateTexImageMethod = nullptr;
+ };
+ } // namespace RNSkia

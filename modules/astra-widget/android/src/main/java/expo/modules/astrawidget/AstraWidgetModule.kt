@@ -62,18 +62,16 @@ class AstraWidgetModule : Module() {
         } else {
           previous.recentlyPlayed
         }
-      AstraWidgetStateStore.save(
-        context,
-        AstraWidgetState(
-          title = state.title,
-          artist = state.artist,
-          artworkUri = if (state.hasTrack) state.artworkUri else null,
-          playbackState = state.playbackState,
-          hasTrack = state.hasTrack,
-          recentlyPlayed = recentlyPlayed,
-        ),
+      val next = AstraWidgetState(
+        title = state.title,
+        artist = state.artist,
+        artworkUri = if (state.hasTrack) state.artworkUri else null,
+        playbackState = state.playbackState,
+        hasTrack = state.hasTrack,
+        recentlyPlayed = recentlyPlayed,
       )
-      AstraWidgetUpdater.updateAll(context)
+      AstraWidgetStateStore.save(context, next)
+      if (previous != next) AstraWidgetUpdater.updateAll(context)
     }
   }
 

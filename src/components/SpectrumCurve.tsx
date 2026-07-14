@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef
 } from 'react';
@@ -65,6 +66,12 @@ const TILT_REFERENCE_HZ = 1000;
 const DECAY_PER_FRAME = 0.72;
 const REST_EPSILON = 0.004;
 const spectrumBins = new Float32Array(SPECTRUM_BINS);
+
+type SkiaDisposable = { dispose: () => void };
+
+function disposeSkiaResources(resources: readonly (SkiaDisposable | null)[]) {
+  for (let i = resources.length - 1; i >= 0; i--) resources[i]?.dispose();
+}
 
 function skiaViewApi(): SkiaViewApiShape | null {
   const globalWithSkia = globalThis as typeof globalThis & { SkiaViewApi?: SkiaViewApiShape };
@@ -153,16 +160,16 @@ function makeFillPaint(
     null,
     TileMode.Clamp
   );
-  paint.setShader(
-    fade
-      ? Skia.Shader.MakeBlend(
-          BlendMode.Modulate,
-          vertical,
-          makeFadeMaskShader(fade.width, fade.fadeWidth)
-        )
-      : vertical
-  );
-  return paint;
+  const shaders: SkiaDisposable[] = [vertical];
+  if (fade) {
+    const mask = makeFadeMaskShader(fade.width, fade.fadeWidth);
+    const blended = Skia.Shader.MakeBlend(BlendMode.Modulate, vertical, mask);
+    shaders.push(mask, blended);
+    paint.setShader(blended);
+  } else {
+    paint.setShader(vertical);
+  }
+  return { paint, shaders };
 }
 
 function writePaths(
@@ -222,25 +229,37 @@ function buildPicture(
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, width, height));
   const { line, fill } = buildPaths(values, width, height, lineWidth);
+  const resources: SkiaDisposable[] = [recorder, line, fill];
 
-  if (values.length >= 2 && width > 0 && height > 0) {
-    const fade = edgeFade && edgeFadeWidth > 0 ? { width, fadeWidth: edgeFadeWidth } : null;
-    canvas.drawPath(fill, makeFillPaint(color, height, fillOpacity, fade));
-    if (glow) {
-      const glowPaint = makeStrokePaint(color, lineWidth * 3, glowOpacity);
-      if (fade) {
-        glowPaint.setShader(makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth));
+  try {
+    if (values.length >= 2 && width > 0 && height > 0) {
+      const fade = edgeFade && edgeFadeWidth > 0 ? { width, fadeWidth: edgeFadeWidth } : null;
+      const fillResources = makeFillPaint(color, height, fillOpacity, fade);
+      resources.push(fillResources.paint, ...fillResources.shaders);
+      canvas.drawPath(fill, fillResources.paint);
+      if (glow) {
+        const glowPaint = makeStrokePaint(color, lineWidth * 3, glowOpacity);
+        resources.push(glowPaint);
+        if (fade) {
+          const glowShader = makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth);
+          resources.push(glowShader);
+          glowPaint.setShader(glowShader);
+        }
+        canvas.drawPath(line, glowPaint);
       }
-      canvas.drawPath(line, glowPaint);
+      const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
+      resources.push(strokePaint);
+      if (fade) {
+        const strokeShader = makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth);
+        resources.push(strokeShader);
+        strokePaint.setShader(strokeShader);
+      }
+      canvas.drawPath(line, strokePaint);
     }
-    const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
-    if (fade) {
-      strokePaint.setShader(makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth));
-    }
-    canvas.drawPath(line, strokePaint);
+    return recorder.finishRecordingAsPicture();
+  } finally {
+    disposeSkiaResources(resources);
   }
-
-  return recorder.finishRecordingAsPicture();
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -414,7 +433,20 @@ export function SpectrumCurve({
     ]
   );
 
-  useEffect(() => {
+  useEffect(() => () => initialPicture.dispose(), [initialPicture]);
+
+  useLayoutEffect(
+    () => () => {
+      const view = viewRef.current;
+      const api = skiaViewApi();
+      if (!view || !api) return;
+      api.setJsiProperty(view.nativeId, 'picture', null);
+      api.requestRedraw(view.nativeId);
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
     const view = viewRef.current;
     const api = skiaViewApi();
     if (!view || !api || width <= 0 || height <= 0 || resolvedPointCount < 2) return;
@@ -441,14 +473,26 @@ export function SpectrumCurve({
     const fade = edgeFade && edgeFadeWidth > 0 ? { width, fadeWidth: edgeFadeWidth } : null;
     const strokePaint = makeStrokePaint(color, lineWidth, lineOpacity);
     const glowPaint = glow ? makeStrokePaint(color, lineWidth * 3, glowOpacity) : null;
+    const effectResources: SkiaDisposable[] = [strokePaint];
+    if (glowPaint) effectResources.push(glowPaint);
     if (fade) {
-      strokePaint.setShader(makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth));
-      glowPaint?.setShader(makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth));
+      const strokeShader = makeFadedStrokeShader(color, lineOpacity, width, edgeFadeWidth);
+      effectResources.push(strokeShader);
+      strokePaint.setShader(strokeShader);
+      if (glowPaint) {
+        const glowShader = makeFadedStrokeShader(color, glowOpacity, width, edgeFadeWidth);
+        effectResources.push(glowShader);
+        glowPaint.setShader(glowShader);
+      }
     }
-    const fillPaint = makeFillPaint(color, height, fillOpacity, fade);
+    const fillResources = makeFillPaint(color, height, fillOpacity, fade);
+    const fillPaint = fillResources.paint;
+    effectResources.push(fillPaint, ...fillResources.shaders);
     const bounds = Skia.XYWHRect(0, 0, width, height);
     const linePath = Skia.Path.Make();
     const fillPath = Skia.Path.Make();
+    effectResources.push(linePath, fillPath);
+    let currentPicture: SkPicture | null = null;
 
     const draw = () => {
       writePaths(renderValues, width, height, lineWidth, linePath, fillPath);
@@ -457,13 +501,22 @@ export function SpectrumCurve({
       canvas.drawPath(fillPath, fillPaint);
       if (glowPaint) canvas.drawPath(linePath, glowPaint);
       canvas.drawPath(linePath, strokePaint);
-      api.setJsiProperty(view.nativeId, 'picture', recorder.finishRecordingAsPicture());
+      const nextPicture = recorder.finishRecordingAsPicture();
+      recorder.dispose();
+      api.setJsiProperty(view.nativeId, 'picture', nextPicture);
       api.requestRedraw(view.nativeId);
+      currentPicture?.dispose();
+      currentPicture = nextPicture;
     };
 
     const cleanup = () => {
       mounted = false;
       cancelAnimationFrame(raf);
+      api.setJsiProperty(view.nativeId, 'picture', null);
+      api.requestRedraw(view.nativeId);
+      currentPicture?.dispose();
+      currentPicture = null;
+      disposeSkiaResources(effectResources);
     };
 
     if (!active) {

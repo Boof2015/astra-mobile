@@ -24,6 +24,7 @@ import { skipToNext, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import { useAppForeground } from '@/lib/useAppForeground';
 import { PlaybackTargetPicker } from './PlaybackTargetPicker';
 import {
   getDesktopPlaybackPresentation,
@@ -81,6 +82,7 @@ export function MiniPlayer() {
   const connectDesktop = useDesktopRemoteStore((s) => s.connect);
 
   const scopeActive = useScopeActive();
+  const foreground = useAppForeground();
   const [pillWidth, setPillWidth] = useState(0);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
 
@@ -106,7 +108,7 @@ export function MiniPlayer() {
   const isLoading = presentation.playbackState === 'loading';
   // The pill sits underneath the now-playing overlay; don't burn a second
   // live-scope frame loop while it's fully occluded.
-  const liveScopeActive = scopeActive && !isDesktop && !playerOpen;
+  const liveScopeActive = scopeActive && foreground && !isDesktop && !playerOpen;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
   const onTogglePlay = () => {

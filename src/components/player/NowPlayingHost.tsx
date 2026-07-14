@@ -1,25 +1,24 @@
-import { useEffect } from 'react';
 import { NowPlayingOverlay } from '@/components/player/NowPlayingOverlay';
+import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import { NOW_PLAYING_CLOSE_UNMOUNT_MS } from '@/components/renderPresenceTiming';
+import { useAppForeground } from '@/lib/useAppForeground';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
-import { usePlayerStore } from '@/stores/playerStore';
-
-const PREWARM_DELAY_MS = 2000;
 
 /**
- * Mount gate for the always-mounted now-playing overlay. Nothing mounts until a
- * track exists (cold start unchanged); shortly after playback first starts the
- * overlay pre-warms hidden so even the FIRST open is a pure slide, no mount cost.
+ * Presence gate for the heavyweight now-playing tree. It stays alive just past
+ * the 200 ms close animation, but never remains hidden indefinitely. Android
+ * backgrounding drops it immediately so TextureViews and decoded art release.
  */
 export function NowPlayingHost() {
-  const everOpened = usePlayerUiStore((s) => s.everOpened);
-  const hasTrack = usePlayerStore((s) => Boolean(s.currentTrack));
+  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
+  const foreground = useAppForeground();
 
-  useEffect(() => {
-    if (everOpened || !hasTrack) return;
-    const timer = setTimeout(() => usePlayerUiStore.getState().prewarm(), PREWARM_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [everOpened, hasTrack]);
+  const renderOverlay = useDelayedUnmountPresence(
+    playerOpen,
+    NOW_PLAYING_CLOSE_UNMOUNT_MS,
+    !foreground
+  );
 
-  if (!everOpened) return null;
+  if (!renderOverlay) return null;
   return <NowPlayingOverlay />;
 }

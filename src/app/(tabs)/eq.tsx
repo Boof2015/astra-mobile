@@ -8,7 +8,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
@@ -28,6 +28,8 @@ import { EqSheet, EqSheetItem } from '@/components/eq/EqSheet';
 import { EQModeSwitcher } from '@/components/eq/EQModeSwitcher';
 import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
 import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
+import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import { EQ_GRAPH_UNMOUNT_DELAY_MS } from '@/components/renderPresenceTiming';
 import { PresetSheet } from '@/components/eq/PresetSheet';
 import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
 import { EQPresetNameSheet } from '@/components/eq/EQPresetNameSheet';
@@ -41,6 +43,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { hapticForToggle } from '@/lib/hapticCatalog';
 import { playHaptic } from '@/lib/haptics';
+import { useAppForeground } from '@/lib/useAppForeground';
 import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
@@ -81,9 +84,16 @@ export default function EQScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const pathname = usePathname();
   const eq = useEQStore();
   const scopeActive = useScopeActive();
+  const foreground = useAppForeground();
   const [focused, setFocused] = useState(false);
+  const renderEqGraphics = useDelayedUnmountPresence(
+    pathname === '/eq',
+    EQ_GRAPH_UNMOUNT_DELAY_MS,
+    !foreground
+  );
   const [sheet, setSheet] = useState<SheetKind>('none');
   const [editingValue, setEditingValue] = useState<EQEditableValue | null>(null);
   const [pendingCurrentAction, setPendingCurrentAction] = useState<CurrentPresetAction | null>(null);
@@ -238,7 +248,7 @@ export default function EQScreen() {
     </View>
   );
 
-  const graphEl = (
+  const graphEl = renderEqGraphics ? (
     <EQGraph
       bands={eq.bands}
       activeBandId={eq.activeBandId}
@@ -251,15 +261,15 @@ export default function EQScreen() {
       }}
       onChangeBand={(id, updates) => eq.updateBand(id, updates)}
     />
-  );
+  ) : null;
 
   // Graphic editor card — the panel draws its response curve behind the sliders
   // in the tracks' own coordinate space, so it stays glued to the thumbs.
-  const graphicEditorEl = (
+  const graphicEditorEl = renderEqGraphics ? (
     <View style={styles.graphicEditor}>
       <GraphicEQPanel gains={eq.graphicGains} enabled={eq.enabled} onChangeGain={eq.setGraphicGain} />
     </View>
-  );
+  ) : null;
 
   const stripEl = (
     <BandStrip

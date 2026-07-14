@@ -40,6 +40,7 @@ import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
+import { useDelayedUnmountPresence } from '@/components/delayedPresence';
 import {
   radius,
   spacing,
@@ -61,7 +62,10 @@ import {
 } from '@/components/player/nowPlayingLayout';
 import { resolveNavigationArtist, splitCollaborators } from '@/library/artistGrouping';
 import { buildArtistNameTokens } from '@/shared/library/artistCredits';
-import { artworkThumbFromSource } from '@/library/artwork';
+import {
+  artworkThumbFromSource,
+  playerBackdropArtworkSource,
+} from '@/library/artwork';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -129,6 +133,7 @@ export function NowPlayingOverlay() {
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
   const scopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
+  const railStyle = scopeStyle === 'rail';
   const lyricsVisible = useSettingsStore((s) => s.lyricsVisible);
   const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
   const nowPlayingCompanion = useSettingsStore((s) => s.nowPlayingCompanion);
@@ -147,7 +152,6 @@ export function NowPlayingOverlay() {
   const desktopQueue = useDesktopRemoteStore((s) => s.queue);
   const sendDesktopControl = useDesktopRemoteStore((s) => s.sendControl);
   const reconnectDesktop = useDesktopRemoteStore((s) => s.reconnect);
-
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
@@ -163,6 +167,15 @@ export function NowPlayingOverlay() {
     desktop: desktopPresentation,
   });
   const isDesktopTarget = activePresentation.target === 'desktop';
+  const effectiveScopeStageVisible = !isDesktopTarget && scopeStageVisible;
+  const renderScopeSurfaces = useDelayedUnmountPresence(
+    effectiveScopeStageVisible,
+    motion.snap.duration
+  );
+  const renderArtworkFace = useDelayedUnmountPresence(
+    railStyle || !effectiveScopeStageVisible,
+    motion.snap.duration
+  );
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
   const transitionTrackKey = isDesktopTarget ? activeTrack?.id ?? '' : track?.id ?? '';
   const isPlaying = activePresentation.playbackState === 'playing';
@@ -170,15 +183,15 @@ export function NowPlayingOverlay() {
   // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
   // blur reads as pure colors — full-res art keeps its detail at any blur radius.
   // currentTrack only carries the full-size artworkData, so derive the thumb from it.
-  const washArtworkUri = artworkThumbFromSource(
-    isDesktopTarget ? activePresentation.artworkUri : track?.artworkData ?? null
-  );
+  const backdropArtworkUri = isDesktopTarget
+    ? artworkThumbFromSource(activePresentation.artworkUri)
+    : playerBackdropArtworkSource(track);
+  const washArtworkUri = backdropArtworkUri;
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
   // The rack style swaps the art card's face in place, so only the rail style
   // reserves stage height for a scope strip below the art.
-  const railStyle = scopeStyle === 'rail';
-  const layoutScopeVisible = isDesktopTarget ? false : scopeStageVisible && railStyle;
+  const layoutScopeVisible = effectiveScopeStageVisible && railStyle;
   const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
@@ -338,10 +351,9 @@ export function NowPlayingOverlay() {
   const menuProgress = useSharedValue(0);
   const trackProgress = useSharedValue(1);
   // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
-  // rack = art face crossfading to the instrument rack. The scope surface stays
-  // mounted either way (its frame loops idle while hidden), so visibility is
-  // purely this value — no mount state to juggle.
-  const stageProgress = useSharedValue(scopeStageVisible ? 1 : 0);
+  // rack = art face crossfading to the instrument rack. The presence gates keep
+  // both faces for the 220 ms transition, then release the invisible surface.
+  const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
 
   useEffect(() => {
     if (!transitionTrackKey) return;
@@ -350,8 +362,8 @@ export function NowPlayingOverlay() {
   }, [trackProgress, transitionTrackKey]);
 
   useEffect(() => {
-    stageProgress.value = withTiming(scopeStageVisible ? 1 : 0, motion.snap);
-  }, [scopeStageVisible, stageProgress]);
+    stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
+  }, [effectiveScopeStageVisible, stageProgress]);
   // Closing is a store toggle, not navigation. Reset the inner layers so a
   // reopen starts from the plain player (parity with the old per-open mount).
   const dismiss = () => {
@@ -916,18 +928,22 @@ export function NowPlayingOverlay() {
                         },
                       ]}
                     >
-                      {track.artworkData ? (
-                        <Image
-                          source={{ uri: track.artworkData }}
-                          style={styles.artImage}
-                          contentFit="cover"
-                          transition={reduceMotion ? null : 200}
-                        />
-                      ) : (
-                        <AstraLogo size={Math.round(artBoxSize * 0.4)} />
-                      )}
+                      {renderArtworkFace ? (
+                        track.artworkData ? (
+                          <Image
+                            source={{ uri: track.artworkData }}
+                            style={styles.artImage}
+                            contentFit="cover"
+                            cachePolicy="disk"
+                            allowDownscaling
+                            transition={reduceMotion ? null : 200}
+                          />
+                        ) : (
+                          <AstraLogo size={Math.round(artBoxSize * 0.4)} />
+                        )
+                      ) : null}
                     </Animated.View>
-                    {!railStyle && (
+                    {!railStyle && renderScopeSurfaces && (
                       <Animated.View
                         pointerEvents="none"
                         style={[styles.rackFace, rackFaceStyle]}
@@ -935,16 +951,16 @@ export function NowPlayingOverlay() {
                         <ScopeRack
                           size={artBoxSize}
                           stripWidth={layout.scopeWidth}
-                          artworkUri={track.artworkData ?? null}
-                          paused={!playerOpen || queueOpen || !scopeStageVisible}
+                          artworkUri={backdropArtworkUri}
+                          paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
                         />
                       </Animated.View>
                     )}
                   </Animated.View>
 
-                  {railStyle && !layout.isWide && (
+                  {railStyle && !layout.isWide && renderScopeSurfaces && (
                     <Animated.View
-                      pointerEvents={scopeStageVisible ? 'auto' : 'none'}
+                      pointerEvents={effectiveScopeStageVisible ? 'auto' : 'none'}
                       style={[
                         styles.scopeRailFloating,
                         railSurfaceStyle,
@@ -959,13 +975,13 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen || !scopeStageVisible}
-                        revealed={scopeStageVisible}
+                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
                     </Animated.View>
                   )}
-                  {railStyle && layout.isWide && scopeStageVisible && (
+                  {railStyle && layout.isWide && renderScopeSurfaces && (
                     <View
                       style={[
                         styles.scopeRail,
@@ -981,8 +997,8 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen}
-                        revealed={scopeStageVisible}
+                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
                     </View>

@@ -3,6 +3,7 @@
 
 import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import { artworkUrlForTrack } from '@/services/remoteUrls';
+import type { Track } from '@/types/audio';
 import type { Album, DbTrack } from '@/types/library';
 
 let artworkDir: string | null = null;
@@ -49,11 +50,11 @@ export function artworkThumbUri(hash: string): string {
 
 /**
  * Low-res thumbnail for a live artwork source. The player store's currentTrack
- * (rebuilt from RNTP via `rntpToTrack`) only carries the full-size `artworkData`
- * — `file://…/artwork/<hash>` for local tracks — not the hash. Recover the cached
- * file name from the path and point at the generated thumb so callers can blur it
- * down to pure color. Remote URLs and base64 data URLs have no local thumb, so
- * they pass through unchanged.
+ * (rebuilt from RNTP via `rntpToTrack`) carries the full-size `artworkData` in a
+ * custom queue field — `file://…/artwork/<hash>` for local tracks — but not the
+ * hash. Recover the cached file name from the path and point at the generated
+ * thumb. Remote URLs and base64 data URLs have no local thumb, so they pass
+ * through unchanged.
  */
 export function artworkThumbFromSource(source: string | null | undefined): string | null {
   if (!source) return null;
@@ -65,6 +66,29 @@ export function artworkThumbFromSource(source: string | null | undefined): strin
   } catch {
     return artworkThumbUri(name);
   }
+}
+
+const PLAYER_BACKDROP_ARTWORK_SIZE = 256;
+
+/**
+ * Memory-bounded artwork for blurred/dim player atmosphere. Local tracks use
+ * the existing 128 px derivative; remote servers are asked for a 256 px cover.
+ * The visible cover continues to use the normal display source.
+ */
+export function playerBackdropArtworkSource(
+  track: Pick<
+    Track,
+    'artworkData' | 'sourceType' | 'sourceId' | 'artworkSourceId'
+  > | null | undefined
+): string | null {
+  if (!track) return null;
+  if (track.sourceType && track.sourceType !== 'local') {
+    return (
+      artworkUrlForTrack(track, { size: PLAYER_BACKDROP_ARTWORK_SIZE }) ??
+      artworkThumbFromSource(track.artworkData)
+    );
+  }
+  return artworkThumbFromSource(track.artworkData);
 }
 
 type TrackArtworkFields = Pick<
