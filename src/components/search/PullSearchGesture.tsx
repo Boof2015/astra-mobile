@@ -28,7 +28,6 @@ import {
 } from 'react-native-gesture-handler';
 import {
   runOnJS,
-  runOnUI,
   useSharedValue
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
@@ -44,11 +43,11 @@ const RESET_THRESHOLD = 58;
 const MAX_PULL = 112;
 
 type PullSearchGestureRef = MutableRefObject<GestureType | undefined>;
-type SimultaneousHandlers = NativeViewGestureHandlerProps['simultaneousHandlers'];
-type PullSearchScrollViewProps = ScrollViewProps & Pick<NativeViewGestureHandlerProps, 'simultaneousHandlers'>;
+type WaitForHandlers = NativeViewGestureHandlerProps['waitFor'];
+type PullSearchScrollViewProps = ScrollViewProps &
+  Pick<NativeViewGestureHandlerProps, 'simultaneousHandlers' | 'waitFor'>;
 type PullSearchContextValue = {
   gestureRef: PullSearchGestureRef;
-  cancelIfScrolledAway: (offsetY: number) => void;
 };
 
 const PullSearchGestureContext = createContext<PullSearchContextValue | null>(null);
@@ -57,10 +56,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function mergeSimultaneousHandlers(
-  existing: SimultaneousHandlers,
+function mergeWaitForHandlers(
+  existing: WaitForHandlers,
   contextValue: PullSearchContextValue | null
-): SimultaneousHandlers {
+): WaitForHandlers {
   if (!contextValue) return existing;
   if (!existing) return contextValue.gestureRef;
   return Array.isArray(existing)
@@ -69,26 +68,18 @@ function mergeSimultaneousHandlers(
 }
 
 export const PullSearchScrollView = forwardRef<RNScrollView, PullSearchScrollViewProps>(
-  function PullSearchScrollView({ simultaneousHandlers, onScroll, ...props }, ref) {
+  function PullSearchScrollView({ waitFor, ...props }, ref) {
     const pullSearchContext = useContext(PullSearchGestureContext);
-    const mergedHandlers = useMemo(
-      () => mergeSimultaneousHandlers(simultaneousHandlers, pullSearchContext),
-      [pullSearchContext, simultaneousHandlers]
-    );
-    const handleScroll = useCallback(
-      (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        onScroll?.(event);
-        pullSearchContext?.cancelIfScrolledAway(event.nativeEvent.contentOffset.y);
-      },
-      [onScroll, pullSearchContext]
+    const mergedWaitFor = useMemo(
+      () => mergeWaitForHandlers(waitFor, pullSearchContext),
+      [pullSearchContext, waitFor]
     );
 
     return (
       <GestureScrollView
         ref={ref}
         {...props}
-        onScroll={handleScroll}
-        simultaneousHandlers={mergedHandlers}
+        waitFor={mergedWaitFor}
       />
     );
   }
@@ -142,6 +133,7 @@ export function PullSearchGesture({
   const pullValue = useSharedValue(0);
   const armedValue = useSharedValue(false);
   const draggingValue = useSharedValue(false);
+  const pullOriginY = useSharedValue(0);
 
   const resetUi = useCallback(() => {
     setArmed(false);
@@ -155,27 +147,9 @@ export function PullSearchGesture({
     resetUi();
   }, [onOpen, resetUi]);
 
-  const resetShared = useCallback(() => {
-    runOnUI(() => {
-      'worklet';
-      pullValue.value = 0;
-      armedValue.value = false;
-      draggingValue.value = false;
-    })();
-  }, [armedValue, draggingValue, pullValue]);
-
-  const cancelIfScrolledAway = useCallback(
-    (offsetY: number) => {
-      if (offsetY <= 2 || !dragging) return;
-      resetShared();
-      resetUi();
-    },
-    [dragging, resetShared, resetUi]
-  );
-
   const contextValue = useMemo<PullSearchContextValue>(
-    () => ({ gestureRef: pullGestureRef, cancelIfScrolledAway }),
-    [cancelIfScrolledAway, pullGestureRef]
+    () => ({ gestureRef: pullGestureRef }),
+    [pullGestureRef]
   );
 
   const pullGesture = useMemo(
@@ -186,6 +160,19 @@ export function PullSearchGesture({
         .activeOffsetY(10)
         .failOffsetY(-8)
         .failOffsetX([-28, 28])
+        .onTouchesDown((event) => {
+          'worklet';
+          if (event.numberOfTouches !== 1) return;
+          pullOriginY.value = event.allTouches[0]?.absoluteY ?? 0;
+        })
+        .onTouchesMove((event, stateManager) => {
+          'worklet';
+          if (!draggingValue.value || event.numberOfTouches !== 1) return;
+          const touchY = event.allTouches[0]?.absoluteY;
+          if (touchY !== undefined && touchY <= pullOriginY.value) {
+            stateManager.fail();
+          }
+        })
         .onStart(() => {
           'worklet';
           pullValue.value = 0;
@@ -211,8 +198,9 @@ export function PullSearchGesture({
             runOnJS(playHaptic)('thresholdExit');
           }
         })
-        .onEnd((event) => {
+        .onEnd((event, success) => {
           'worklet';
+          if (!success) return;
           const finalPull = pullValue.value;
           pullValue.value = 0;
           armedValue.value = false;
@@ -239,6 +227,7 @@ export function PullSearchGesture({
       enabled,
       open,
       pullGestureRef,
+      pullOriginY,
       pullValue,
       resetUi,
     ]
