@@ -6,6 +6,10 @@ import {
   parseNowPlayingCompanion,
   type NowPlayingCompanion,
 } from '@/components/player/nowPlayingPreferences';
+import {
+  parseHomeGreetingTextMode,
+  type HomeGreetingTextMode,
+} from '@/home/homeGreeting';
 
 /**
  * Persisted app preferences. SQLite (settings table) is the source of truth — this
@@ -19,6 +23,7 @@ const SCOPE_STAGE_VISIBLE_KEY = 'scope_stage_visible';
 const SCOPE_STYLE_KEY = 'now_playing_scope_style';
 const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
+const HOME_GREETING_TEXT_MODE_KEY = 'home_greeting_text_mode';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -56,6 +61,7 @@ interface SettingsStore {
   /** Whether the now-playing top half shows lyrics instead of art/scope. */
   lyricsVisible: boolean;
   nowPlayingCompanion: NowPlayingCompanion;
+  homeGreetingTextMode: HomeGreetingTextMode;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
@@ -65,6 +71,7 @@ interface SettingsStore {
   setNowPlayingScopeStyle: (style: NowPlayingScopeStyle) => Promise<void>;
   setLyricsVisible: (visible: boolean) => Promise<void>;
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
+  setHomeGreetingTextMode: (mode: HomeGreetingTextMode) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -75,6 +82,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   nowPlayingScopeStyle: 'rail',
   lyricsVisible: false,
   nowPlayingCompanion: 'queue',
+  homeGreetingTextMode: 'messages',
   loaded: false,
 
   load: async () => {
@@ -88,6 +96,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       scopeStyle,
       lyricsVisible,
       nowPlayingCompanion,
+      homeGreetingTextMode,
     ] = await Promise.all([
       getSetting(db, ARTIST_GROUPING_KEY),
       getSetting(db, INCLUDE_SINGLES_KEY),
@@ -96,6 +105,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       getSetting(db, SCOPE_STYLE_KEY),
       getSetting(db, LYRICS_VISIBLE_KEY),
       getSetting(db, NOW_PLAYING_COMPANION_KEY),
+      getSetting(db, HOME_GREETING_TEXT_MODE_KEY),
     ]);
     set({
       artistGroupingMode: parseGroupingMode(grouping),
@@ -105,6 +115,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nowPlayingScopeStyle: parseScopeStyle(scopeStyle),
       lyricsVisible: parseBoolean(lyricsVisible),
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
+      homeGreetingTextMode: parseHomeGreetingTextMode(homeGreetingTextMode),
       loaded: true,
     });
   },
@@ -156,5 +167,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ nowPlayingCompanion: companion });
     const db = await openLibraryDb();
     await setSetting(db, NOW_PLAYING_COMPANION_KEY, companion);
+  },
+
+  setHomeGreetingTextMode: async (mode) => {
+    const nextMode = parseHomeGreetingTextMode(mode);
+    if (get().homeGreetingTextMode === nextMode) return;
+    set({ homeGreetingTextMode: nextMode });
+    const db = await openLibraryDb();
+    await setSetting(db, HOME_GREETING_TEXT_MODE_KEY, nextMode);
   },
 }));

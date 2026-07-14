@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
-  type LayoutChangeEvent
+  type GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +13,6 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { SpectrumCurve } from '@/components/SpectrumCurve';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
@@ -29,53 +29,188 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { rgbaFromHex } from '@/theme/colorUtils';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
-import {
-  playTracks,
-  shuffleTracks,
-  skipToNext,
-  skipToPrevious,
-  togglePlay
-} from '@/audio/playbackController';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { playTracks, shuffleTracks } from '@/audio/playbackController';
 import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
+import { buildArtistDetail } from '@/library/artistDetail';
+import { filterArtistBrowseList } from '@/library/artistGrouping';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { albumArtworkSource } from '@/library/artwork';
-import { formatDuration } from '@/lib/format';
-import { useScopeActive } from '@/scope/scopeStore';
-import type { PlaybackState, Track } from '@/types/audio';
-import type { Album, DbTrack } from '@/types/library';
+import { albumArtworkSource, artworkUri } from '@/library/artwork';
+import {
+  chooseHomeGreeting,
+  HOME_GREETING_ROTATION_MS,
+  type HomeGreetingTextMode,
+} from '@/home/homeGreeting';
+import type { Album, Artist, DbTrack } from '@/types/library';
 
 const RECENT_ALBUM_LIMIT = 8;
 const RECENT_TRACK_LIMIT = 3;
 const PLAYLIST_LIMIT = 4;
-const PLAYER_CARD_MIN_HEIGHT = 174;
-const CURVE_POINTS = 64;
 
-function chooseRandomAlbum(albums: Album[], currentKey?: string | null): string | null {
-  if (albums.length === 0) return null;
-  if (albums.length === 1) return albums[0].identity_key;
+type RandomSpotlight =
+  | { kind: 'album'; key: string }
+  | { kind: 'artist'; name: string };
 
-  let next: string | null = currentKey ?? null;
-  while (next === currentKey) {
-    next = albums[Math.floor(Math.random() * albums.length)].identity_key;
+function chooseRandomSpotlight(
+  albums: Album[],
+  artists: Artist[],
+  current: RandomSpotlight | null = null,
+  random: () => number = Math.random
+): RandomSpotlight | null {
+  const kinds: RandomSpotlight['kind'][] = [];
+  if (albums.length > 0) kinds.push('album');
+  if (artists.length > 0) kinds.push('artist');
+  if (kinds.length === 0) return null;
+
+  let kind = kinds[Math.floor(random() * kinds.length)];
+  const currentPoolSize = kind === 'album' ? albums.length : artists.length;
+  if (current?.kind === kind && currentPoolSize === 1 && kinds.length > 1) {
+    kind = kind === 'album' ? 'artist' : 'album';
   }
-  return next;
+
+  if (kind === 'album') {
+    const candidates =
+      current?.kind === 'album' && albums.length > 1
+        ? albums.filter((album) => album.identity_key !== current.key)
+        : albums;
+    const album = candidates[Math.floor(random() * candidates.length)];
+    return album ? { kind: 'album', key: album.identity_key } : null;
+  }
+
+  const candidates =
+    current?.kind === 'artist' && artists.length > 1
+      ? artists.filter((artist) => artist.artist !== current.name)
+      : artists;
+  const artist = candidates[Math.floor(random() * candidates.length)];
+  return artist ? { kind: 'artist', name: artist.artist } : null;
 }
 
-function albumMeta(album: Album, tracks: DbTrack[]): string {
-  const duration = tracks.reduce((sum, track) => sum + track.duration, 0);
+function compactAlbumMeta(album: Album): string {
   return [
+    album.artist,
     album.year ? String(album.year) : null,
     `${album.track_count} ${album.track_count === 1 ? 'track' : 'tracks'}`,
-    formatDuration(duration),
   ]
     .filter(Boolean)
     .join(' / ');
+}
+
+function compactArtistMeta(artist: Artist): string {
+  return [
+    `${artist.album_count} ${artist.album_count === 1 ? 'album' : 'albums'}`,
+    `${artist.track_count} ${artist.track_count === 1 ? 'track' : 'tracks'}`,
+  ].join(' / ');
+}
+
+function formatHomeClockTime(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatHomeClockDate(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
+
+function HomeMasthead({
+  mode,
+  onSearch,
+}: {
+  mode: HomeGreetingTextMode;
+  onSearch: () => void;
+}) {
+  const styles = useStyles();
+  const colors = useColors();
+  const ripple = useRipple();
+  const [clockNow, setClockNow] = useState(() => new Date());
+  const [greeting, setGreeting] = useState(() => chooseHomeGreeting(null, new Date()));
+
+  useEffect(() => {
+    if (mode !== 'messages') return;
+    const rotateGreeting = () => {
+      setGreeting((current) => chooseHomeGreeting(current.id, new Date()));
+    };
+    const interval = setInterval(rotateGreeting, HOME_GREETING_ROTATION_MS);
+    return () => clearInterval(interval);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'clock') return;
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const updateClock = () => setClockNow(new Date());
+    updateClock();
+
+    const now = new Date();
+    const delay = 60_000 - (now.getSeconds() * 1_000 + now.getMilliseconds());
+    const timeout = setTimeout(() => {
+      updateClock();
+      interval = setInterval(updateClock, 60_000);
+    }, Math.max(100, delay));
+
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const now = new Date();
+      setClockNow(now);
+      if (mode === 'messages') {
+        setGreeting((current) => chooseHomeGreeting(current.id, now));
+      }
+    });
+    return () => subscription.remove();
+  }, [mode]);
+
+  const searchButton = (
+    <Pressable
+      style={styles.mastheadSearch}
+      android_ripple={ripple.icon(22)}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      onPress={onSearch}
+      accessibilityRole="button"
+      accessibilityLabel="Search music"
+      hitSlop={4}
+    >
+      <Ionicons name="search" size={22} color={colors.textPrimary} />
+    </Pressable>
+  );
+
+  if (mode === 'off') {
+    return <View style={styles.mastheadUtility}>{searchButton}</View>;
+  }
+
+  const primary = mode === 'clock' ? formatHomeClockTime(clockNow) : greeting.primary;
+  const subline = mode === 'clock' ? formatHomeClockDate(clockNow) : greeting.subline;
+
+  return (
+    <View style={styles.masthead}>
+      <View style={styles.mastheadCopy}>
+        <Text variant="heading" style={styles.mastheadPrimary} numberOfLines={2}>
+          {primary}
+        </Text>
+        {subline ? (
+          <Text variant="body" color={colors.textSecondary} numberOfLines={2}>
+            {subline}
+          </Text>
+        ) : null}
+      </View>
+      {searchButton}
+    </View>
+  );
 }
 
 function formatCount(count: number, noun: string): string {
@@ -139,102 +274,38 @@ function AlbumCover({ album, size }: { album: Album; size: number }) {
   );
 }
 
-/** Progress strip subscribes here so the 2Hz tick skips the card and screen. */
-function NowPlayingSeekStrip() {
-  const styles = useStyles();
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
-  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
-  return (
-    <View style={styles.seekTrack}>
-      <View style={[styles.seekFill, { width: `${progress * 100}%` }]} />
-    </View>
-  );
-}
-
-function NowPlayingCard({
-  track,
-  playbackState,
-  onOpen,
-}: {
-  track: Track;
-  playbackState: PlaybackState;
-  onOpen: () => void;
-}) {
+function ArtistCover({ artist, size }: { artist: Artist; size: number }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
-  const isPlaying = playbackState === 'playing';
-  const isLoading = playbackState === 'loading';
-  const scopeActive = useScopeActive();
-  const [cardSize, setCardSize] = useState({ width: 0, height: PLAYER_CARD_MIN_HEIGHT });
-
-  const onCardLayout = (event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setCardSize((prev) =>
-      prev.width === width && prev.height === height ? prev : { width, height }
-    );
-  };
+  const useMosaic = artist.artwork_hashes.length >= 4;
+  const hashes = useMosaic
+    ? artist.artwork_hashes.slice(0, 4)
+    : artist.artwork_hashes.slice(0, 1);
 
   return (
-    <View style={styles.playerCard} onLayout={onCardLayout}>
-      {scopeActive && cardSize.width > 0 ? (
-        <View pointerEvents="none" style={styles.playerSpectrum}>
-          <SpectrumCurve
-            active={scopeActive}
-            pointCount={CURVE_POINTS}
-            dbMin={-84}
-            dbMax={-20}
-            width={cardSize.width}
-            height={cardSize.height}
-            lineWidth={1.4}
-            lineOpacity={0.38}
-            fillOpacity={0.28}
-            glow
-            glowOpacity={0.07}
+    <View style={[styles.albumArt, styles.artistArt, { width: size, height: size }]}>
+      {hashes.length === 0 ? (
+        <Ionicons name="person" size={Math.round(size * 0.4)} color={colors.textTertiary} />
+      ) : useMosaic ? (
+        hashes.map((hash) => (
+          <Image
+            key={hash}
+            source={{ uri: artworkUri(hash) }}
+            style={styles.artistMosaicTile}
+            contentFit="cover"
+            recyclingKey={hash}
+            transition={null}
           />
-        </View>
-      ) : null}
-      {scopeActive && cardSize.width > 0 ? (
-        <View pointerEvents="none" style={styles.playerSpectrumVeil} />
-      ) : null}
-      <Pressable style={styles.playerArt} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen} accessibilityRole="button">
-        {track.artworkData ? (
-          <Image source={{ uri: track.artworkData }} style={styles.image} contentFit="cover" />
-        ) : (
-          <AstraLogo size={42} />
-        )}
-      </Pressable>
-      <View style={styles.playerMeta}>
-        <Text variant="label" color={colors.textTertiary}>
-          NOW PLAYING
-        </Text>
-        <Text variant="heading" numberOfLines={1}>
-          {track.title}
-        </Text>
-        <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-          {track.album ? `${track.artist} / ${track.album}` : track.artist}
-        </Text>
-        <NowPlayingSeekStrip />
-        <View style={styles.placeholderControls}>
-          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={() => void skipToPrevious()}>
-            <Ionicons name="play-skip-back" size={22} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable hitSlop={10} onPress={() => void togglePlay()} style={styles.playCircle} android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}>
-            <Ionicons
-              name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-              size={18}
-              color={colors.bgPrimary}
-            />
-          </Pressable>
-          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={() => void skipToNext()}>
-            <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable hitSlop={10} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen}>
-            <Ionicons name="expand-outline" size={21} color={colors.textTertiary} />
-          </Pressable>
-        </View>
-      </View>
+        ))
+      ) : (
+        <Image
+          source={{ uri: artworkUri(hashes[0]) }}
+          style={styles.image}
+          contentFit="cover"
+          recyclingKey={hashes[0]}
+          transition={null}
+        />
+      )}
     </View>
   );
 }
@@ -261,15 +332,15 @@ function RecentlyAddedAlbum({
   );
 }
 
-function RandomAlbumCard({
-  album,
+function RandomSpotlightCard({
+  spotlight,
   tracks,
   onPlay,
   onShuffle,
   onReroll,
   onOpen,
 }: {
-  album: Album;
+  spotlight: { kind: 'album'; album: Album } | { kind: 'artist'; artist: Artist };
   tracks: DbTrack[];
   onPlay: () => void;
   onShuffle: () => void;
@@ -280,63 +351,81 @@ function RandomAlbumCard({
   const colors = useColors();
   const ripple = useRipple();
   const disabled = tracks.length === 0;
+  const title = spotlight.kind === 'album' ? spotlight.album.album : spotlight.artist.artist;
+  const label = spotlight.kind === 'album' ? 'RANDOM ALBUM' : 'RANDOM ARTIST';
+  const meta = spotlight.kind === 'album'
+    ? compactAlbumMeta(spotlight.album)
+    : compactArtistMeta(spotlight.artist);
+  const runAction = (event: GestureResponderEvent, action: () => void) => {
+    event.stopPropagation();
+    action();
+  };
 
   return (
-    <View style={styles.randomCard}>
-      <Pressable style={styles.randomMain} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onOpen} accessibilityRole="button">
-        <AlbumCover album={album} size={96} />
+    <Pressable
+      style={styles.randomCard}
+      android_ripple={ripple.tile}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${title}`}
+    >
+      <View style={styles.randomMain}>
+        {spotlight.kind === 'album' ? (
+          <AlbumCover album={spotlight.album} size={88} />
+        ) : (
+          <ArtistCover artist={spotlight.artist} size={88} />
+        )}
         <View style={styles.randomMeta}>
           <Text variant="label" color={colors.textTertiary}>
-            RANDOM ALBUM
+            {label}
           </Text>
-          <Text variant="heading" numberOfLines={2}>
-            {album.album}
+          <Text variant="heading" numberOfLines={1}>
+            {title}
           </Text>
-          <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-            {album.artist}
+          <Text variant="label" color={colors.textSecondary} numberOfLines={1}>
+            {meta}
           </Text>
-          <Text variant="label" numberOfLines={1}>
-            {albumMeta(album, tracks)}
-          </Text>
+          <View style={styles.randomActions}>
+            <Pressable
+              android_ripple={ripple.onAccent()}
+              unstable_pressDelay={SCROLL_PRESS_DELAY}
+              style={[styles.randomPrimaryAction, disabled && styles.buttonDisabled]}
+              disabled={disabled}
+              onPress={(event) => runAction(event, onPlay)}
+              hitSlop={{ top: 7, right: 4, bottom: 7, left: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Play ${title}`}
+            >
+              <Ionicons name="play" size={16} color={colors.bgPrimary} />
+            </Pressable>
+            <Pressable
+              android_ripple={ripple.icon(18)}
+              unstable_pressDelay={SCROLL_PRESS_DELAY}
+              style={[styles.randomAction, disabled && styles.buttonDisabled]}
+              disabled={disabled}
+              onPress={(event) => runAction(event, onShuffle)}
+              hitSlop={{ top: 7, right: 4, bottom: 7, left: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Shuffle ${title}`}
+            >
+              <Ionicons name="shuffle" size={17} color={colors.accent} />
+            </Pressable>
+            <Pressable
+              android_ripple={ripple.icon(18)}
+              unstable_pressDelay={SCROLL_PRESS_DELAY}
+              style={styles.randomAction}
+              onPress={(event) => runAction(event, onReroll)}
+              hitSlop={{ top: 7, right: 4, bottom: 7, left: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel="Pick another random album or artist"
+            >
+              <Ionicons name="refresh" size={17} color={colors.textSecondary} />
+            </Pressable>
+          </View>
         </View>
-        <Pressable
-          style={styles.reroll} android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
-          onPress={onReroll}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Pick another random album"
-        >
-          <Ionicons name="shuffle" size={19} color={colors.textSecondary} />
-        </Pressable>
-      </Pressable>
-
-      <View style={styles.randomActions}>
-        <Pressable
-          android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}
-          style={[styles.primaryButton, disabled && styles.buttonDisabled]}
-          disabled={disabled}
-          onPress={onPlay}
-          accessibilityRole="button"
-        >
-          <Ionicons name="play" size={16} color={colors.bgPrimary} />
-          <Text variant="body" style={styles.primaryButtonText}>
-            Play
-          </Text>
-        </Pressable>
-        <Pressable
-          android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
-          style={[styles.secondaryButton, disabled && styles.buttonDisabled]}
-          disabled={disabled}
-          onPress={onShuffle}
-          accessibilityRole="button"
-        >
-          <Ionicons name="shuffle" size={16} color={colors.accent} />
-          <Text variant="body" color={colors.accent}>
-            Shuffle
-          </Text>
-        </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -381,21 +470,22 @@ function EmptyHomeCard({
 
 export default function HomeScreen() {
   const styles = useStyles();
-  const colors = useColors();
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.tracks);
   const albums = useLibraryStore((s) => s.albums);
+  const artists = useLibraryStore((s) => s.artists);
+  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const scanError = useLibraryStore((s) => s.scanError);
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
-  const currentTrack = usePlayerStore((s) => s.currentTrack);
-  const currentPath = currentTrack?.path;
-  const playbackState = usePlayerStore((s) => s.playbackState);
+  const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
+  const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
+  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
 
-  const [randomAlbumKey, setRandomAlbumKey] = useState<string | null>(null);
-  const [randomSeed] = useState(() => Math.random());
+  const [spotlightOverride, setSpotlightOverride] = useState<RandomSpotlight | null>(null);
+  const [randomSeeds] = useState(() => [Math.random(), Math.random()] as const);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
   const hasLibrary = tracks.length > 0;
@@ -403,6 +493,11 @@ export default function HomeScreen() {
   const recentlyAddedAlbums = useMemo(
     () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
     [albums]
+  );
+
+  const visibleArtists = useMemo(
+    () => filterArtistBrowseList(artists, artistGroupingMode, includeCollabArtists),
+    [artistGroupingMode, artists, includeCollabArtists]
   );
 
   const homePlaylists = useMemo(
@@ -417,15 +512,36 @@ export default function HomeScreen() {
     [playlists]
   );
 
-  const randomAlbum = useMemo(() => {
-    if (!albums.length) return null;
-    const selected = randomAlbumKey
-      ? albums.find((album) => album.identity_key === randomAlbumKey)
+  const randomSpotlight = useMemo(() => {
+    const overrideValid = spotlightOverride?.kind === 'album'
+      ? albums.some((album) => album.identity_key === spotlightOverride.key)
+      : spotlightOverride?.kind === 'artist'
+        ? visibleArtists.some((artist) => artist.artist === spotlightOverride.name)
+        : false;
+    if (spotlightOverride && overrideValid) return spotlightOverride;
+
+    let seedIndex = 0;
+    return chooseRandomSpotlight(
+      albums,
+      visibleArtists,
+      null,
+      () => randomSeeds[seedIndex++] ?? randomSeeds[0]
+    );
+  }, [albums, randomSeeds, spotlightOverride, visibleArtists]);
+
+  const randomAlbum = randomSpotlight?.kind === 'album'
+    ? albums.find((album) => album.identity_key === randomSpotlight.key) ?? null
+    : null;
+  const randomArtist = randomSpotlight?.kind === 'artist'
+    ? visibleArtists.find((artist) => artist.artist === randomSpotlight.name) ?? null
+    : null;
+  const spotlightContent = randomAlbum
+    ? ({ kind: 'album', album: randomAlbum } as const)
+    : randomArtist
+      ? ({ kind: 'artist', artist: randomArtist } as const)
       : null;
-    if (selected) return selected;
-    return albums[Math.floor(randomSeed * albums.length) % albums.length];
-  }, [albums, randomAlbumKey, randomSeed]);
-  const randomAlbumNeedsTracks = hasLibrary && !currentTrack && randomAlbum != null;
+
+  const randomAlbumNeedsTracks = hasLibrary && randomAlbum != null;
   const tracksByAlbum = useMemo(() => {
     if (!randomAlbumNeedsTracks) return null;
     const map = new Map<string, DbTrack[]>();
@@ -441,6 +557,13 @@ export default function HomeScreen() {
   }, [randomAlbumNeedsTracks, tracks]);
   const randomTracks =
     randomAlbum && tracksByAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
+  const randomArtistDetail = useMemo(
+    () => randomArtist
+      ? buildArtistDetail(tracks, randomArtist.artist, artistGroupingMode)
+      : null,
+    [artistGroupingMode, randomArtist, tracks]
+  );
+  const spotlightTracks = randomAlbum ? randomTracks : randomArtistDetail?.playbackTracks ?? [];
   const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
   const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
 
@@ -451,20 +574,29 @@ export default function HomeScreen() {
     });
   };
 
+  const openArtist = (artist: Artist) => {
+    router.push({
+      pathname: '/library/artist/[name]',
+      params: { name: artist.artist },
+    });
+  };
+
   const playTrackList = (list: DbTrack[], index = 0) => {
     if (list.length === 0) return;
     void playTracks(list.map(dbTrackToTrack), index);
   };
 
-  const playAlbum = (album: Album, shuffled = false) => {
-    if (!tracksByAlbum) return;
-    const albumTracks = tracksByAlbum.get(album.identity_key) ?? [];
-    if (albumTracks.length === 0) return;
+  const playSpotlight = (shuffled = false) => {
+    if (spotlightTracks.length === 0) return;
     if (shuffled) {
-      void shuffleTracks(albumTracks.map(dbTrackToTrack));
+      void shuffleTracks(spotlightTracks.map(dbTrackToTrack));
     } else {
-      void playTracks(albumTracks.map(dbTrackToTrack), 0);
+      void playTracks(spotlightTracks.map(dbTrackToTrack), 0);
     }
+  };
+
+  const rerollSpotlight = () => {
+    setSpotlightOverride(chooseRandomSpotlight(albums, visibleArtists, randomSpotlight));
   };
 
   const openSearch = () => openQuickSearch();
@@ -479,69 +611,42 @@ export default function HomeScreen() {
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
         >
-        <View style={styles.header}>
-          <AstraLogo size={36} />
-          <Text style={styles.wordmark}>ASTRA</Text>
-        </View>
-        <Text variant="label" style={styles.tagline}>
-          Audiophile player
-        </Text>
+          <HomeMasthead mode={homeGreetingTextMode} onSearch={openSearch} />
 
-        <ScanProgress />
+          <ScanProgress />
 
-        {!hasLibrary ? (
-          <>
-            {currentTrack ? (
-              <View style={styles.topFeature}>
-                <NowPlayingCard
-                  track={currentTrack}
-                  playbackState={playbackState}
-                  onOpen={() => usePlayerUiStore.getState().openPlayer()}
-                />
-              </View>
-            ) : null}
+          {!hasLibrary ? (
             <EmptyHomeCard
               scanError={scanError}
               onManageFolders={() => router.push('/settings')}
             />
-          </>
-        ) : (
-          <>
-            <View style={styles.topFeature}>
-              {currentTrack ? (
-                <NowPlayingCard
-                  track={currentTrack}
-                  playbackState={playbackState}
-                  onOpen={() => usePlayerUiStore.getState().openPlayer()}
+          ) : (
+            <>
+            {spotlightContent ? (
+              <View style={styles.topFeature}>
+                <RandomSpotlightCard
+                  spotlight={spotlightContent}
+                  tracks={spotlightTracks}
+                  onOpen={() => spotlightContent.kind === 'album'
+                    ? openAlbum(spotlightContent.album)
+                    : openArtist(spotlightContent.artist)}
+                  onPlay={() => playSpotlight()}
+                  onShuffle={() => playSpotlight(true)}
+                  onReroll={rerollSpotlight}
                 />
-              ) : randomAlbum ? (
-                <RandomAlbumCard
-                  album={randomAlbum}
-                  tracks={randomTracks}
-                  onOpen={() => openAlbum(randomAlbum)}
-                  onPlay={() => playAlbum(randomAlbum)}
-                  onShuffle={() => playAlbum(randomAlbum, true)}
-                  onReroll={() => setRandomAlbumKey(chooseRandomAlbum(albums, randomAlbum.identity_key))}
-                />
-              ) : null}
-            </View>
+              </View>
+            ) : null}
 
-            <View style={styles.section}>
-              <SectionHeader
-                title="Recently Played"
-                trailing={
-                  recentlyPlayedTracks.length > 0
-                    ? formatCount(recentlyPlayedTracks.length, 'track')
-                    : undefined
-                }
-                actionLabel={
-                  canExpandRecentTracks ? 'See all' : undefined
-                }
-                onActionPress={
-                  canExpandRecentTracks ? () => router.push('/recently-played') : undefined
-                }
-              />
-              {recentTracks.length > 0 ? (
+            {recentTracks.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Recently Played"
+                  trailing={formatCount(recentlyPlayedTracks.length, 'track')}
+                  actionLabel={canExpandRecentTracks ? 'See all' : undefined}
+                  onActionPress={
+                    canExpandRecentTracks ? () => router.push('/recently-played') : undefined
+                  }
+                />
                 <View style={styles.listBlock}>
                   {recentTracks.map((track, index) => (
                     <TrackRow
@@ -555,54 +660,56 @@ export default function HomeScreen() {
                     />
                   ))}
                 </View>
-              ) : (
-                <Text variant="body" color={colors.textSecondary} style={styles.emptyLine}>
-                  No recent plays yet.
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <SectionHeader title="Recently Added" />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.albumRail}
-              >
-                {recentlyAddedAlbums.map((album) => (
-                  <RecentlyAddedAlbum
-                    key={album.identity_key}
-                    album={album}
-                    onPress={() => openAlbum(album)}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.section}>
-              <SectionHeader title="Favorites & Playlists" />
-              <View style={styles.listBlock}>
-                <PlaylistRow
-                  name="Favorites"
-                  trackCount={favoriteTracks.length}
-                  coverHash={favoriteTracks[0]?.artwork_hash ?? null}
-                  pinned
-                  onPress={() => router.push('/library/playlist/favorites')}
-                />
-                {homePlaylists.map((playlist) => (
-                  <PlaylistRow
-                    key={playlist.id}
-                    name={playlist.name}
-                    trackCount={playlist.track_count}
-                    missingCount={playlist.missing_track_count}
-                    coverHash={playlist.auto_cover_hash}
-                    onPress={() => router.push(`/library/playlist/${playlist.id}`)}
-                  />
-                ))}
               </View>
-            </View>
-          </>
-        )}
+            ) : null}
+
+            {recentlyAddedAlbums.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader title="Recently Added" />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.albumRail}
+                >
+                  {recentlyAddedAlbums.map((album) => (
+                    <RecentlyAddedAlbum
+                      key={album.identity_key}
+                      album={album}
+                      onPress={() => openAlbum(album)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            {favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader title="Favorites & Playlists" />
+                <View style={styles.listBlock}>
+                  {favoriteTracks.length > 0 ? (
+                    <PlaylistRow
+                      name="Favorites"
+                      trackCount={favoriteTracks.length}
+                      coverHash={favoriteTracks[0]?.artwork_hash ?? null}
+                      pinned
+                      onPress={() => router.push('/library/playlist/favorites')}
+                    />
+                  ) : null}
+                  {homePlaylists.map((playlist) => (
+                    <PlaylistRow
+                      key={playlist.id}
+                      name={playlist.name}
+                      trackCount={playlist.track_count}
+                      missingCount={playlist.missing_track_count}
+                      coverHash={playlist.auto_cover_hash}
+                      onPress={() => router.push(`/library/playlist/${playlist.id}`)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            </>
+          )}
         </PullSearchScrollView>
       </PullSearchGesture>
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
@@ -614,96 +721,42 @@ const useStyles = createThemedStyles((colors) => ({
   content: {
     paddingBottom: spacing.xxl,
   },
-  header: {
+  masthead: {
+    minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     marginTop: spacing.xl,
+    paddingVertical: spacing.sm,
   },
-  wordmark: {
-    fontFamily: fonts.sans.bold,
-    fontSize: 30,
-    letterSpacing: 6,
-    color: colors.textPrimary,
-  },
-  tagline: {
-    marginTop: spacing.xs,
-    letterSpacing: 1,
-  },
-  topFeature: {
-    marginTop: spacing.xxl,
-  },
-  playerCard: {
-    minHeight: PLAYER_CARD_MIN_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.glassBg,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  playerSpectrum: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  playerSpectrumVeil: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: rgbaFromHex(colors.bgPrimary, 0.28),
-  },
-  playerArt: {
-    width: 112,
-    aspectRatio: 1,
-    alignSelf: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
+  mastheadUtility: {
+    height: 44,
+    marginTop: spacing.xl,
+    alignItems: 'flex-end',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  playerMeta: {
+  mastheadCopy: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  seekTrack: {
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.glassBorder,
-    overflow: 'hidden',
-    marginTop: spacing.sm,
+  mastheadPrimary: {
+    fontSize: 28,
+    lineHeight: 32,
   },
-  seekFill: {
-    width: '38%',
-    height: 3,
-    backgroundColor: colors.accent,
-  },
-  placeholderControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-    maxWidth: 220,
-  },
-  playCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.accent,
+  mastheadSearch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.glassHighlight,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  topFeature: {
+    marginTop: spacing.xl,
   },
   section: {
     marginTop: spacing.xl,
@@ -751,11 +804,20 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  artistArt: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  artistMosaicTile: {
+    width: '50%',
+    height: '50%',
+  },
   image: {
     width: '100%',
     height: '100%',
   },
   randomCard: {
+    minHeight: 112,
     borderRadius: radius.md,
     backgroundColor: colors.glassBg,
     borderColor: colors.glassBorder,
@@ -766,26 +828,35 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   randomMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 3,
-  },
-  reroll: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.glassHighlight,
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
+    gap: 2,
   },
   randomActions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  randomPrimaryAction: {
+    width: 36,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  randomAction: {
+    width: 36,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glassHighlight,
   },
   primaryButton: {
     minHeight: 40,
@@ -802,26 +873,11 @@ const useStyles = createThemedStyles((colors) => ({
     color: colors.bgPrimary,
     fontFamily: fonts.sans.semibold,
   },
-  secondaryButton: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
   buttonDisabled: {
     opacity: 0.45,
   },
   listBlock: {
     backgroundColor: colors.bgPrimary,
-  },
-  emptyLine: {
-    paddingVertical: spacing.md,
   },
   emptyCard: {
     marginTop: spacing.xl,

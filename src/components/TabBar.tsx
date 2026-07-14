@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Pressable,
@@ -22,14 +22,9 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
-import { TAB_TRANSITION_SETTLE_MS } from '@/navigation/tabTransition';
-import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
-import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
-import { usePlayerStore } from '@/stores/playerStore';
 import { playHaptic } from '@/lib/haptics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
-type MiniPlayerPhase = 'hidden' | 'reserved' | 'visible';
 
 export const TAB_META: Record<string, { label: string; icon: IconName }> = {
   index: { label: 'Home', icon: 'home' },
@@ -58,12 +53,6 @@ export function TabBar({ items, onPress }: TabBarProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
-  const homeFocused = items.some((item) => item.name === 'index' && item.focused);
-  const selectedTarget = usePlaybackTargetStore((s) => s.target);
-  const phoneTrack = usePlayerStore((s) => s.currentTrack);
-  const desktopConnection = useDesktopRemoteStore((s) => s.connection);
-  const desktopTrack = useDesktopRemoteStore((s) => s.snapshot?.currentTrack);
-  const [settledHomeFocused, setSettledHomeFocused] = useState(homeFocused);
   const count = tabs.length;
   const activeIndex = Math.max(
     0,
@@ -79,32 +68,6 @@ export function TabBar({ items, onPress }: TabBarProps) {
     position.value = withTiming(activeIndex, motion.snap);
   }, [activeIndex, position]);
 
-  useEffect(() => {
-    if (settledHomeFocused === homeFocused) {
-      return;
-    }
-
-    const timer = setTimeout(
-      () => setSettledHomeFocused(homeFocused),
-      TAB_TRANSITION_SETTLE_MS
-    );
-    return () => clearTimeout(timer);
-  }, [homeFocused, settledHomeFocused]);
-
-  const remoteMiniVisibleOnHome =
-    (selectedTarget === 'desktop' && Boolean(desktopConnection || desktopTrack)) ||
-    (!phoneTrack && Boolean(desktopTrack));
-  const suppressMiniForHome = homeFocused && !remoteMiniVisibleOnHome;
-  const suppressMiniForSettledHome = settledHomeFocused && !remoteMiniVisibleOnHome;
-
-  const miniPlayerPhase: MiniPlayerPhase = suppressMiniForHome
-    ? suppressMiniForSettledHome
-      ? 'hidden'
-      : 'reserved'
-    : suppressMiniForSettledHome
-      ? 'hidden'
-      : 'visible';
-
   const indicatorStyle = useAnimatedStyle(() => {
     const segment = count > 0 ? barWidth.value / count : 0;
     return {
@@ -119,8 +82,7 @@ export function TabBar({ items, onPress }: TabBarProps) {
 
   return (
     <View style={styles.wrap}>
-      {miniPlayerPhase === 'visible' ? <MiniPlayer /> : null}
-      {miniPlayerPhase === 'reserved' ? <MiniPlayer visible={false} /> : null}
+      <MiniPlayer />
       <View
         style={[
           styles.bar,

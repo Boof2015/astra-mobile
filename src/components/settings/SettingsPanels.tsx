@@ -28,6 +28,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
 import { playHaptic } from '@/lib/haptics';
+import type { HomeGreetingTextMode } from '@/home/homeGreeting';
 
 export function lastFmScrobbleSubtitle(status: LastFmStatus | null): string {
   const connected = status?.profiles.filter((p) => p.connected).length ?? 0;
@@ -57,6 +58,12 @@ const DARK_STYLE_SEGMENTS = [
   { key: 'midnight', label: 'Midnight' },
   { key: 'dark', label: 'Dark' },
   { key: 'amoled', label: 'AMOLED' },
+];
+
+const HOME_GREETING_SEGMENTS = [
+  { key: 'messages', label: 'Messages' },
+  { key: 'clock', label: 'Clock' },
+  { key: 'off', label: 'Off' },
 ];
 
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
@@ -101,6 +108,8 @@ export function AppearanceSettingsPanel() {
   const accentApplies = !resolvedId.startsWith('materialYou');
   const nowPlayingScopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
   const setNowPlayingScopeStyle = useSettingsStore((s) => s.setNowPlayingScopeStyle);
+  const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
+  const setHomeGreetingTextMode = useSettingsStore((s) => s.setHomeGreetingTextMode);
 
   return (
     <>
@@ -155,6 +164,21 @@ export function AppearanceSettingsPanel() {
           <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
         </View>
       ) : null}
+
+      <SettingsSectionLabel spaced>HOME</SettingsSectionLabel>
+      <SettingsCard>
+        <Text variant="body" style={styles.settingTitle}>
+          Greeting
+        </Text>
+        <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+          Show rotating Astra messages, a clock, or only the search action on Home.
+        </Text>
+        <SegmentedControl
+          segments={HOME_GREETING_SEGMENTS}
+          value={homeGreetingTextMode}
+          onChange={(key) => void setHomeGreetingTextMode(key as HomeGreetingTextMode)}
+        />
+      </SettingsCard>
 
       <SettingsSectionLabel spaced>NOW PLAYING SCOPES</SettingsSectionLabel>
       <ScopeStyleCards

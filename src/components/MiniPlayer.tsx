@@ -35,10 +35,6 @@ const PILL_HEIGHT = 56;
 const ART = 42;
 const CURVE_POINTS = 64;
 
-interface MiniPlayerProps {
-  visible?: boolean;
-}
-
 function MiniProgress({
   currentTime,
   duration,
@@ -70,7 +66,7 @@ function PhoneMiniProgress({ isPlaying }: { isPlaying: boolean }) {
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
  * opens the full now-playing screen.
  */
-export function MiniPlayer({ visible = true }: MiniPlayerProps) {
+export function MiniPlayer() {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -110,7 +106,7 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   const isLoading = presentation.playbackState === 'loading';
   // The pill sits underneath the now-playing overlay; don't burn a second
   // live-scope frame loop while it's fully occluded.
-  const liveScopeActive = visible && scopeActive && !isDesktop && !playerOpen;
+  const liveScopeActive = scopeActive && !isDesktop && !playerOpen;
 
   const onLayout = (e: LayoutChangeEvent) => setPillWidth(e.nativeEvent.layout.width);
   const onTogglePlay = () => {
@@ -135,9 +131,8 @@ export function MiniPlayer({ visible = true }: MiniPlayerProps) {
   return (
     <>
       <Pressable
-        pointerEvents={visible ? 'auto' : 'none'}
         android_ripple={ripple.bounded}
-        style={[styles.pill, !visible && styles.hidden]}
+        style={styles.pill}
         onPress={() => usePlayerUiStore.getState().openPlayer()}
         onLayout={onLayout}
       >
@@ -237,9 +232,6 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     justifyContent: 'center',
-  },
-  hidden: {
-    opacity: 0,
   },
   spectrum: {
     position: 'absolute',
