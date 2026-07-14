@@ -47,6 +47,8 @@ import { useOnboardingStore } from '@/stores/onboardingStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { useTheme } from '@/theme/themed';
 import { SessionLifecycle } from '@/session/SessionLifecycle';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
+import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -75,6 +77,17 @@ function ThemeSystemSync() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') useThemeStore.getState().refreshSystemInputs();
+    });
+    return () => subscription.remove();
+  }, []);
+  return null;
+}
+
+function SleepTimerLifecycle() {
+  useEffect(() => {
+    void useSleepTimerStore.getState().hydrate();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void useSleepTimerStore.getState().reconcile();
     });
     return () => subscription.remove();
   }, []);
@@ -110,7 +123,10 @@ function PlaybackTargetSync() {
   }, [loadTarget]);
 
   useEffect(() => {
-    if (target === 'desktop') void initDesktopRemote();
+    if (target === 'desktop') {
+      if (useSleepTimerStore.getState().timer) void useSleepTimerStore.getState().cancel();
+      void initDesktopRemote();
+    }
   }, [target, initDesktopRemote]);
 
   return null;
@@ -346,6 +362,10 @@ export default function RootLayout() {
       .getState()
       .load()
       .catch((err) => console.error('[audioSettings] load failed', err));
+    useLyricsSettingsStore
+      .getState()
+      .load()
+      .catch((err) => console.error('[lyricsSettings] load failed', err));
     // Remote sources: load server rows + hydrate the URL registry from cached
     // config/token (no network on launch). Runs after library init reads first.
     useRemoteSourcesStore
@@ -373,6 +393,7 @@ export default function RootLayout() {
         {onboardingComplete ? (
           <>
             <ThemeSystemSync />
+            <SleepTimerLifecycle />
             <PlaybackSync />
             <ScopeLifecycle />
             <NormalizationSync />

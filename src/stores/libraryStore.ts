@@ -9,6 +9,7 @@ import {
   markTrackPlayed,
   setSetting,
 } from '@/db/queries';
+import { markLocalTracksStaleForRebuild } from '@/db/libraryMaintenance';
 import { recomputeAlbumIdentity } from '@/library/albumIdentity';
 import { buildAlbumList } from '@/library/albumSummary';
 import { ensureArtworkThumbnails } from '@/library/artwork';
@@ -113,6 +114,7 @@ interface LibraryStore {
   addFolder: () => Promise<void>;
   removeFolder: (folderId: number) => Promise<void>;
   rescan: () => Promise<void>;
+  rebuildLocalIndex: () => Promise<void>;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -300,5 +302,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     },
 
     rescan: () => runScan(() => rescanAll({ callbacks: { onProgress } })),
+
+    rebuildLocalIndex: () => runScan(async () => {
+      const db = await openLibraryDb();
+      await markLocalTracksStaleForRebuild(db);
+      return rescanAll({ callbacks: { onProgress } });
+    }),
   };
 });

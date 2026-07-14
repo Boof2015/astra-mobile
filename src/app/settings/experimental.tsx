@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Alert, InteractionManager } from 'react-native';
+import { InteractionManager } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   SettingsNavRow,
@@ -10,7 +10,6 @@ import { formatRelativeTime } from '@/lib/format';
 import { useColors } from '@/theme/themed';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
-import { useOnboardingStore } from '@/stores/onboardingStore';
 
 export default function ExperimentalSettingsScreen() {
   const colors = useColors();
@@ -32,16 +31,6 @@ export default function ExperimentalSettingsScreen() {
   const desktopRemoteSubtitle = desktopRemoteConnection
     ? `${desktopRemoteConnection.desktopName ?? 'Astra Desktop'}: ${desktopRemoteState === 'connected' ? 'connected' : desktopRemoteState}`
     : 'Pair with Astra Desktop to control playback from this phone.';
-  const replayOnboarding = () => {
-    Alert.alert(
-      'Replay onboarding?',
-      'The first-run setup wizard will show again the next time you return to the home screen. Your library and settings are kept.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Replay', onPress: () => void useOnboardingStore.getState().reset() },
-      ]
-    );
-  };
 
   const desktopSyncSubtitle = !desktopRemoteConnection
     ? 'Sync favorites and playlists with Astra Desktop.'
@@ -76,12 +65,6 @@ export default function ExperimentalSettingsScreen() {
         title="Haptics Lab"
         subtitle="Audition semantic feedback, device primitives, and signature candidates."
         onPress={() => router.push('/settings/haptics-lab' as never)}
-      />
-      <SettingsNavRow
-        icon="refresh-outline"
-        title="Replay onboarding"
-        subtitle="Show the first-run setup wizard again."
-        onPress={replayOnboarding}
       />
     </SettingsSectionScreen>
   );

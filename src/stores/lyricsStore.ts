@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { buildLyricsQuery, getLyricsForTrack } from '@/lyrics/lyrics';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import type { LyricsLookupResult } from '@/lyrics/types';
 import type { Track } from '@/types/audio';
 
@@ -17,10 +18,9 @@ export interface LyricsUiEntry {
 }
 
 interface LyricsStore {
-  onlineEnabled: boolean;
   byPath: Record<string, LyricsUiEntry>;
   loadForTrack: (track: Track | null, options?: { force?: boolean }) => Promise<void>;
-  setOnlineEnabled: (enabled: boolean) => void;
+  invalidateAll: () => void;
 }
 
 // Latest request id per path — guards against a stale response overwriting a
@@ -40,11 +40,11 @@ function pruneToLru(byPath: Record<string, LyricsUiEntry>): Record<string, Lyric
 }
 
 export const useLyricsStore = create<LyricsStore>((set, get) => ({
-  onlineEnabled: true,
   byPath: {},
 
   loadForTrack: async (track, options = {}) => {
     if (!track?.path) return;
+    await useLyricsSettingsStore.getState().load();
     const path = track.path;
     const force = Boolean(options.force);
 
@@ -74,7 +74,10 @@ export const useLyricsStore = create<LyricsStore>((set, get) => ({
 
     let result: LyricsLookupResult;
     try {
-      result = await getLyricsForTrack(query, { forceRefresh: force, onlineEnabled: get().onlineEnabled });
+      result = await getLyricsForTrack(query, {
+        forceRefresh: force,
+        onlineEnabled: useLyricsSettingsStore.getState().onlineLookupEnabled,
+      });
     } catch (error) {
       result = {
         status: 'transient_error',
@@ -90,5 +93,8 @@ export const useLyricsStore = create<LyricsStore>((set, get) => ({
     }));
   },
 
-  setOnlineEnabled: (enabled) => set({ onlineEnabled: enabled }),
+  invalidateAll: () => {
+    requestIds.clear();
+    set({ byPath: {} });
+  },
 }));

@@ -6,6 +6,7 @@ import { startAudioProcessingWarmup } from './audioProcessingStartup';
 import { playForCar, skipToNext, skipToPrevious } from './playbackController';
 import { nativeIndexToAbsolute } from './queueLoader';
 import { useQueueStore } from '@/stores/queueStore';
+import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -13,6 +14,7 @@ import { useQueueStore } from '@/stores/queueStore';
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
+  void useSleepTimerStore.getState().hydrate().catch(() => {});
   // Begin the small fail-closed warm-up before a car/Bluetooth play command can
   // arrive. Full-queue registration and analysis start only after it is safe.
   void startAudioProcessingWarmup('playback-service-start').catch((error) => {
@@ -72,6 +74,28 @@ export async function PlaybackService(): Promise<void> {
   });
   TrackPlayer.addEventListener(Event.PlaybackState, () => {
     scheduleSync();
+    void useSleepTimerStore.getState().reconcile();
+  });
+  TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, ({ position, duration }) => {
+    const timer = useSleepTimerStore.getState();
+    void timer.reconcile();
+    if (timer.timer?.mode === 'end-of-track') {
+      void TrackPlayer.getPlayWhenReady()
+        .then((playWhenReady) => timer.reconcileEndOfTrack(position, duration, playWhenReady))
+        .catch(() => {});
+    }
+  });
+  TrackPlayer.addEventListener(Event.PlaybackPlayWhenReadyChanged, ({ playWhenReady }) => {
+    if (playWhenReady || useSleepTimerStore.getState().timer?.mode !== 'end-of-track') return;
+    void TrackPlayer.getProgress()
+      .then(({ position, duration }) => useSleepTimerStore.getState().reconcileEndOfTrack(position, duration, playWhenReady))
+      .catch(() => {});
+  });
+  TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+    if (useSleepTimerStore.getState().timer?.mode !== 'end-of-track') return;
+    void TrackPlayer.getProgress()
+      .then(({ position, duration }) => useSleepTimerStore.getState().reconcileEndOfTrack(position, duration, false))
+      .catch(() => {});
   });
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     void playForCar()

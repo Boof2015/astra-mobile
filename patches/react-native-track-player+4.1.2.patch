@@ -191,7 +191,7 @@ index b2409a0..4491bad 100644
          if (verifyServiceBoundOrReject(callback)) return@launch
  
          musicService.stop()
-@@ -431,188 +450,213 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -431,188 +450,222 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
          callback.resolve(null)
      }
@@ -215,6 +215,15 @@ index b2409a0..4491bad 100644
          musicService.pause()
          callback.resolve(null)
      }
++    }
++
++    @ReactMethod
++    fun setPauseAtEndOfItem(enabled: Boolean, callback: Promise) { scope.launch {
++        if (verifyServiceBoundOrReject(callback)) return@launch
++
++        musicService.setPauseAtEndOfItem(enabled)
++        callback.resolve(null)
++    }
 +    }
  
      @ReactMethod
@@ -452,7 +461,12 @@ diff --git a/node_modules/react-native-track-player/android/src/main/java/com/do
 index afa6b0f..c6f01d5 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-@@ -741,7 +741,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -337,0 +338,4 @@ class MusicService : HeadlessJsTaskService() {
++    fun setPauseAtEndOfItem(enabled: Boolean) {
++        player.setPauseAtEndOfItem(enabled)
++    }
++
+@@ -741,7 +745,7 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      private fun emit(event: String, data: Bundle? = null) {
@@ -461,7 +475,7 @@ index afa6b0f..c6f01d5 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, data?.let { Arguments.fromBundle(it) })
      }
-@@ -751,7 +751,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -751,7 +755,7 @@ class MusicService : HeadlessJsTaskService() {
          val payload = Arguments.createArray()
          data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
  

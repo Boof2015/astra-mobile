@@ -41,6 +41,8 @@ import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanion
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import { SleepTimerControls } from '@/components/player/SleepTimerControls';
+import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   radius,
   spacing,
@@ -73,6 +75,7 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
+import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
@@ -89,6 +92,7 @@ import {
   getPhonePlaybackPresentation,
   hostFromBaseUrl,
 } from '@/playback/playbackTargetPresentation';
+import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 
 const DISMISS_DISTANCE = 140;
 const DISMISS_VELOCITY = 1000;
@@ -127,6 +131,7 @@ export function NowPlayingOverlay() {
   const closeQueue = useCallback(() => setQueueOpen(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
@@ -152,6 +157,9 @@ export function NowPlayingOverlay() {
   const desktopQueue = useDesktopRemoteStore((s) => s.queue);
   const sendDesktopControl = useDesktopRemoteStore((s) => s.sendControl);
   const reconnectDesktop = useDesktopRemoteStore((s) => s.reconnect);
+  const sleepTimer = useSleepTimerStore((s) => s.timer);
+  const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
+  void sleepRemainingMs;
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
@@ -311,6 +319,17 @@ export function NowPlayingOverlay() {
       setTargetPickerOpen(true);
     },
   });
+  if (!isDesktopTarget) {
+    menuItems.push({
+      key: 'sleep-timer',
+      label: sleepTimer ? `Sleep timer · ${formatSleepTimerStatus(sleepTimer)}` : 'Sleep timer',
+      icon: 'moon-outline',
+      onPress: () => {
+        closeMenu();
+        setSleepTimerOpen(true);
+      },
+    });
+  }
   if (!isDesktopTarget && artistName) {
     menuItems.push({
       key: 'artist',
@@ -1351,6 +1370,12 @@ export function NowPlayingOverlay() {
         initialStep="pickPlaylist"
         onClose={() => setPlaylistActionTrack(null)}
       />
+      {sleepTimerOpen ? (
+        <AppSheet onClose={() => setSleepTimerOpen(false)}>
+          <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerStatus(sleepTimer) : undefined} />
+          <SleepTimerControls />
+        </AppSheet>
+      ) : null}
       {queueOpen && !hasTabletCompanion && (
         isDesktopTarget ? (
           <RemoteQueueSheet onClose={closeQueue} />

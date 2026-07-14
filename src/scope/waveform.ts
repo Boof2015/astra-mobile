@@ -5,7 +5,8 @@
 
 import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import { openLibraryDb } from '@/db/database';
-import { getWaveformPeaks, putWaveformPeaks } from '@/db/waveformQueries';
+import { clearWaveformCache, getWaveformPeaks, putWaveformPeaks } from '@/db/waveformQueries';
+import { CacheInvalidationGate } from '@/lib/cacheInvalidation';
 
 export const WAVEFORM_BINS = 512;
 export const WAVEFORM_PREVIEW_BINS = 96;
@@ -17,6 +18,7 @@ export interface WaveformLoadOptions {
 // Dedupe concurrent requests for the same track (e.g. mini-player + now-playing).
 const inflight = new Map<string, Promise<Float32Array | null>>();
 const previewInflight = new Map<string, Promise<Float32Array | null>>();
+const cacheGate = new CacheInvalidationGate();
 
 export function getWaveform(
   trackPath: string,
@@ -42,12 +44,15 @@ async function loadWaveform(
 
   const existing = inflight.get(trackPath);
   if (existing) return existing;
-  const task = decodeAccurateWaveform(trackPath).finally(() => inflight.delete(trackPath));
+  const generation = cacheGate.capture();
+  const task = decodeAccurateWaveform(trackPath, generation).finally(() => {
+    if (inflight.get(trackPath) === task) inflight.delete(trackPath);
+  });
   inflight.set(trackPath, task);
   return task;
 }
 
-async function decodeAccurateWaveform(trackPath: string): Promise<Float32Array | null> {
+async function decodeAccurateWaveform(trackPath: string, generation: number): Promise<Float32Array | null> {
   let raw: number[];
   try {
     raw = await AstraLibraryScanner.extractWaveform(trackPath, WAVEFORM_BINS);
@@ -57,17 +62,33 @@ async function decodeAccurateWaveform(trackPath: string): Promise<Float32Array |
   if (!raw || raw.length === 0) return null;
 
   const peaks = Float32Array.from(raw);
-  const db = await openLibraryDb();
-  await putWaveformPeaks(db, trackPath, peaks).catch(() => {
+  await cacheGate.enqueue(async () => {
+    if (!cacheGate.isCurrent(generation)) return;
+    const db = await openLibraryDb();
+    if (!cacheGate.isCurrent(generation)) return;
+    await putWaveformPeaks(db, trackPath, peaks);
+  }).catch(() => {
     /* cache write failure is non-fatal */
   });
   return peaks;
 }
 
+/** Deletes waveform rows and prevents decodes already in flight from writing them back. */
+export async function clearAllWaveformCache(): Promise<void> {
+  inflight.clear();
+  previewInflight.clear();
+  await cacheGate.invalidate(async () => {
+    const db = await openLibraryDb();
+    await clearWaveformCache(db);
+  });
+}
+
 function getWaveformPreview(trackPath: string): Promise<Float32Array | null> {
   const existing = previewInflight.get(trackPath);
   if (existing) return existing;
-  const task = decodePreviewWaveform(trackPath).finally(() => previewInflight.delete(trackPath));
+  const task = decodePreviewWaveform(trackPath).finally(() => {
+    if (previewInflight.get(trackPath) === task) previewInflight.delete(trackPath);
+  });
   previewInflight.set(trackPath, task);
   return task;
 }

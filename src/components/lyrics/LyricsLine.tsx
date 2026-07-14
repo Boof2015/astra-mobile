@@ -1,28 +1,11 @@
-// One synced lyric line for the now-playing lyrics view. Left-aligned (mobile /
-// Apple-Music reading style), with furigana ruby columns when present and an
-// optional translation line beneath. Tapping seeks to the line.
-//
-// Every line uses the SAME font size, weight, and metrics, so text wrapping and
-// line heights are identical across tiers — the layout never reflows as the active
-// line moves, which is what caused the surrounding lines to shift/flicker. The
-// active line is emphasized only by opacity, a small scale, and an accent glow —
-// all paint/transform, never layout — and both animate so tier changes ease
-// instead of snapping.
-//
-// RN has no <ruby>, so ruby is a stacked column: a small reading Text over the
-// base Text. Every segment is the identical box (a View reserving `readingHeight`
-// of top space with the base below) so all bases land on one line; the reading is
-// absolutely positioned in that top zone, base-width and shrunk to fit, so a wide
-// reading never widens the column and spreads the sentence apart.
-
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { getPreferredLyricsTranslation } from '@/lyrics/presentation';
-import type { LyricsFurigana, LyricsLine as LyricsLineData } from '@/lyrics/types';
+import { getPreferredLyricsTranslation, resolveLyricsWordTiming } from '@/lyrics/presentation';
+import type { LyricsFurigana, LyricsLine as LyricsLineData, LyricsWord } from '@/lyrics/types';
 
 export type LyricsLineTier = 'active' | 'near' | 'far' | 'distant';
 
@@ -30,16 +13,19 @@ interface LyricsLineProps {
   line: LyricsLineData;
   tier: LyricsLineTier;
   baseSize: number;
+  activeTimeSeconds: number | null;
+  wordTimingEnabled: boolean;
+  furiganaEnabled: boolean;
+  translationsEnabled: boolean;
   translationPriority: string[];
+  voiceLabelsEnabled: boolean;
   onSeek: () => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-// scale/opacity only — never anything that reflows layout. Active scale is kept
-// small enough that the grow overflows into the horizontal padding, not off-screen.
 const TIER: Record<LyricsLineTier, { scale: number; opacity: number }> = {
   active: { scale: 1.06, opacity: 1 },
-  near: { scale: 1.0, opacity: 0.52 },
+  near: { scale: 1, opacity: 0.52 },
   far: { scale: 0.965, opacity: 0.27 },
   distant: { scale: 0.93, opacity: 0.13 },
 };
@@ -64,24 +50,157 @@ function buildSegments(text: string, furigana: LyricsFurigana[] | undefined): Se
     cursor = entry.end;
   }
   if (cursor < text.length) segments.push({ text: text.slice(cursor) });
-  return segments;
+  return segments.length > 0 ? segments : [{ text }];
 }
 
-function LyricsLineComponent({ line, tier, baseSize, translationPriority, onSeek, onLayout }: LyricsLineProps) {
+function RubyText({
+  text,
+  furigana,
+  enabled,
+  size,
+  lineHeight,
+  readingSize,
+  readingHeight,
+  color,
+  readingColor,
+  shadow,
+}: {
+  text: string;
+  furigana?: LyricsFurigana[];
+  enabled: boolean;
+  size: number;
+  lineHeight: number;
+  readingSize: number;
+  readingHeight: number;
+  color: string;
+  readingColor: string;
+  shadow?: object;
+}) {
+  const segments = useMemo(
+    () => buildSegments(text, enabled ? furigana : undefined),
+    [enabled, furigana, text]
+  );
+  if (!enabled || !furigana?.length) {
+    return <Text variant="heading" color={color} style={{ fontSize: size, lineHeight, ...shadow }}>{text}</Text>;
+  }
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      {segments.map((segment, index) => (
+        <View key={`${index}:${segment.text}`} style={{ paddingTop: readingHeight }}>
+          <Text variant="heading" color={color} style={{ fontSize: size, lineHeight, ...shadow }}>
+            {segment.text}
+          </Text>
+          {segment.reading ? (
+            <Text
+              variant="caption"
+              color={readingColor}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0,
+                height: readingHeight, fontSize: readingSize,
+                lineHeight: readingHeight, textAlign: 'center',
+              }}
+            >
+              {segment.reading}
+            </Text>
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function TimedWord({
+  word,
+  progress,
+  furiganaEnabled,
+  size,
+  lineHeight,
+  readingSize,
+  readingHeight,
+}: {
+  word: LyricsWord;
+  progress: number;
+  furiganaEnabled: boolean;
+  size: number;
+  lineHeight: number;
+  readingSize: number;
+  readingHeight: number;
+}) {
+  const colors = useColors();
+  const [width, setWidth] = useState(0);
+  const hasFurigana = furiganaEnabled && Boolean(word.furigana?.length);
+  const textTop = hasFurigana ? readingHeight : 0;
+  return (
+    <View
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    >
+      <RubyText
+        text={word.text}
+        furigana={word.furigana}
+        enabled={furiganaEnabled}
+        size={size}
+        lineHeight={lineHeight}
+        readingSize={readingSize}
+        readingHeight={readingHeight}
+        color={colors.textPrimary}
+        readingColor={colors.textSecondary}
+      />
+      {width > 0 && progress > 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', left: 0, top: textTop,
+            width: width * progress, height: lineHeight, overflow: 'hidden',
+          }}
+        >
+          <Text
+            variant="heading"
+            color={colors.accentTextStrong}
+            numberOfLines={1}
+            style={{ width, fontSize: size, lineHeight }}
+          >
+            {word.text}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function LyricsLineComponent({
+  line,
+  tier,
+  baseSize,
+  activeTimeSeconds,
+  wordTimingEnabled,
+  furiganaEnabled,
+  translationsEnabled,
+  translationPriority,
+  voiceLabelsEnabled,
+  onSeek,
+  onLayout,
+}: LyricsLineProps) {
   const colors = useColors();
   const ripple = useRipple();
   const target = TIER[tier];
-  // Uniform metrics for every line (the whole point — no wrap/reflow between tiers).
   const size = baseSize;
   const lineHeight = Math.round(size * 1.2);
   const readingSize = Math.max(9, Math.round(size * 0.5));
   const readingHeight = Math.round(readingSize * 1.25);
   const translation = useMemo(
-    () => getPreferredLyricsTranslation(line, translationPriority),
-    [line, translationPriority]
+    () => translationsEnabled ? getPreferredLyricsTranslation(line, translationPriority) : null,
+    [line, translationPriority, translationsEnabled]
   );
-  const hasFurigana = Boolean(line.furigana && line.furigana.length > 0);
-  const segments = useMemo(() => buildSegments(line.text, line.furigana), [line.text, line.furigana]);
+  const words = useMemo(
+    () => wordTimingEnabled ? line.words ?? [] : [],
+    [line.words, wordTimingEnabled]
+  );
+  const wordTiming = useMemo(
+    () => activeTimeSeconds === null ? null : resolveLyricsWordTiming(words, activeTimeSeconds),
+    [activeTimeSeconds, words]
+  );
 
   const opacity = useSharedValue(target.opacity);
   const scale = useSharedValue(target.scale);
@@ -93,71 +212,57 @@ function LyricsLineComponent({ line, tier, baseSize, translationPriority, onSeek
     opacity: opacity.value,
     transform: [{ scale: scale.value }],
   }));
-
-  const textColor = colors.textPrimary;
-  const mainShadow =
-    tier === 'active'
-      ? { textShadowColor: colors.accentGlow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 }
-      : undefined;
+  const mainShadow = tier === 'active'
+    ? { textShadowColor: colors.accentGlow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 }
+    : undefined;
 
   return (
     <Animated.View onLayout={onLayout} style={[{ width: '100%', transformOrigin: 'left center' }, animatedStyle]}>
       <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: 7 }}>
         <View style={{ alignItems: 'flex-start' }}>
-          {hasFurigana ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                justifyContent: 'flex-start',
-                alignItems: 'flex-start',
-              }}
-            >
-              {segments.map((segment, index) => (
-                <View key={index} style={{ paddingTop: readingHeight }}>
-                  <Text variant="heading" color={textColor} style={{ fontSize: size, lineHeight, ...mainShadow }}>
-                    {segment.text}
-                  </Text>
-                  {segment.reading ? (
-                    <Text
-                      variant="caption"
-                      color={colors.textSecondary}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: readingHeight,
-                        fontSize: readingSize,
-                        lineHeight: readingHeight,
-                        textAlign: 'center',
-                      }}
-                    >
-                      {segment.reading}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text variant="heading" color={textColor} style={{ fontSize: size, lineHeight, textAlign: 'left', ...mainShadow }}>
-              {line.text}
-            </Text>
-          )}
-
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
+            {voiceLabelsEnabled && line.voice?.trim() ? (
+              <View style={{ borderWidth: 1, borderColor: colors.accent, borderRadius: 999, paddingHorizontal: 5, paddingVertical: 1 }}>
+                <Text variant="caption" color={colors.accentTextStrong} style={{ fontSize: Math.max(9, Math.round(size * 0.45)), textTransform: 'uppercase' }}>
+                  {line.voice.trim()}
+                </Text>
+              </View>
+            ) : null}
+            {words.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                {words.map((word, index) => (
+                  <TimedWord
+                    key={`${word.timestampMs}:${index}`}
+                    word={word}
+                    progress={wordTiming?.progressByIndex[index] ?? 0}
+                    furiganaEnabled={furiganaEnabled}
+                    size={size}
+                    lineHeight={lineHeight}
+                    readingSize={readingSize}
+                    readingHeight={readingHeight}
+                  />
+                ))}
+              </View>
+            ) : (
+              <RubyText
+                text={line.text}
+                furigana={line.furigana}
+                enabled={furiganaEnabled}
+                size={size}
+                lineHeight={lineHeight}
+                readingSize={readingSize}
+                readingHeight={readingHeight}
+                color={colors.textPrimary}
+                readingColor={colors.textSecondary}
+                shadow={mainShadow}
+              />
+            )}
+          </View>
           {translation ? (
             <Text
               variant="body"
               color={colors.textSecondary}
-              style={{
-                fontSize: Math.max(11, Math.round(size * 0.52)),
-                lineHeight: Math.round(size * 0.66),
-                textAlign: 'left',
-                marginTop: 3,
-                opacity: 0.85,
-              }}
+              style={{ fontSize: Math.max(11, Math.round(size * 0.52)), lineHeight: Math.round(size * 0.66), marginTop: 3, opacity: 0.85 }}
             >
               {translation.text}
             </Text>
@@ -168,4 +273,16 @@ function LyricsLineComponent({ line, tier, baseSize, translationPriority, onSeek
   );
 }
 
-export const LyricsLine = memo(LyricsLineComponent);
+function sameLyricsLineProps(previous: LyricsLineProps, next: LyricsLineProps): boolean {
+  return previous.line === next.line
+    && previous.tier === next.tier
+    && previous.baseSize === next.baseSize
+    && previous.activeTimeSeconds === next.activeTimeSeconds
+    && previous.wordTimingEnabled === next.wordTimingEnabled
+    && previous.furiganaEnabled === next.furiganaEnabled
+    && previous.translationsEnabled === next.translationsEnabled
+    && previous.translationPriority === next.translationPriority
+    && previous.voiceLabelsEnabled === next.voiceLabelsEnabled;
+}
+
+export const LyricsLine = memo(LyricsLineComponent, sameLyricsLineProps);

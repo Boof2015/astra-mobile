@@ -50,6 +50,7 @@ import type {
   DbTrack
 } from '@/types/library';
 import type { Playlist } from '@/types/playlist';
+import { SETTINGS_SEARCH_ROUTES } from '@/components/search/settingsSearchRoutes';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type RouteHref =
@@ -60,8 +61,11 @@ type RouteHref =
   | '/settings/appearance'
   | '/settings/library'
   | '/settings/audio'
+  | '/settings/playback'
   | '/settings/services'
+  | '/settings/lyrics'
   | '/settings/experimental'
+  | '/settings/troubleshooting'
   | '/settings/info'
   | '/sources'
   | '/lastfm';
@@ -150,6 +154,14 @@ const SETTING_ENTRIES: {
     keywords: ['audio', 'normalization', 'replaygain', 'loudness', 'gain', 'target lufs'],
   },
   {
+    id: 'setting:playback',
+    label: 'Playback settings',
+    subtitle: 'Sleep timer / end of track',
+    href: SETTINGS_SEARCH_ROUTES.playback,
+    icon: 'play-circle-outline',
+    keywords: ['playback', 'sleep timer', 'timer', 'end of track', 'pause after track'],
+  },
+  {
     id: 'setting:library',
     label: 'Library settings',
     subtitle: 'Folders / artist grouping / albums',
@@ -172,6 +184,14 @@ const SETTING_ENTRIES: {
     href: '/settings/services',
     icon: 'server-outline',
     keywords: ['services', 'integrations', 'remote sources', 'scrobbling'],
+  },
+  {
+    id: 'setting:lyrics',
+    label: 'Lyrics settings',
+    subtitle: 'XLRC / furigana / translations',
+    href: SETTINGS_SEARCH_ROUTES.lyrics,
+    icon: 'musical-notes-outline',
+    keywords: ['lyrics', 'xlrc', 'word timing', 'furigana', 'translations', 'voice labels', 'lrclib', 'xlrcdb'],
   },
   {
     id: 'setting:sources',
@@ -204,6 +224,14 @@ const SETTING_ENTRIES: {
     href: '/settings/info',
     icon: 'information-circle-outline',
     keywords: ['info', 'about', 'version', 'license', 'attribution', 'github', 'repo', 'repository', 'discord', 'kofi', 'ko-fi', 'support', 'gpl'],
+  },
+  {
+    id: 'setting:troubleshooting',
+    label: 'Troubleshooting',
+    subtitle: 'Rescan / rebuild / clear caches',
+    href: SETTINGS_SEARCH_ROUTES.troubleshooting,
+    icon: 'build-outline',
+    keywords: ['troubleshooting', 'support', 'rescan', 'rebuild index', 'clear lyrics cache', 'clear waveform cache', 'onboarding'],
   },
 ];
 

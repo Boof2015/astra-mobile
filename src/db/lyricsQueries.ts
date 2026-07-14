@@ -105,3 +105,12 @@ export async function putLyricsCache(db: LibraryDatabase, entry: LyricsCacheWrit
     ]
   );
 }
+
+export async function getLyricsCacheCount(db: LibraryDatabase): Promise<number> {
+  const row = await db.get<{ count: number }>('SELECT COUNT(*) AS count FROM lyrics_cache');
+  return row?.count ?? 0;
+}
+
+export async function clearLyricsCache(db: LibraryDatabase): Promise<void> {
+  await db.run('DELETE FROM lyrics_cache');
+}

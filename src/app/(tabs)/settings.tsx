@@ -26,6 +26,8 @@ import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useThemeStore } from '@/stores/themeStore';
+import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 
 function formatEnabled(value: boolean): string {
   return value ? 'On' : 'Off';
@@ -48,6 +50,9 @@ export default function SettingsScreen() {
   const desktopSyncStatus = useDesktopSyncStore((s) => s.status);
   const desktopLastSyncAt = useDesktopSyncStore((s) => s.lastSyncAt);
   const desktopSyncConflictCount = useDesktopSyncStore((s) => s.conflicts.length);
+  const sleepTimer = useSleepTimerStore((s) => s.timer);
+  const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
+  void sleepRemainingMs;
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -104,6 +109,12 @@ export default function SettingsScreen() {
           onPress={() => router.push('/settings/audio' as never)}
         />
         <SettingsNavRow
+          icon="play-circle-outline"
+          title="Playback"
+          subtitle={sleepTimer ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}.` : 'Sleep timer and playback behavior.'}
+          onPress={() => router.push('/settings/playback' as never)}
+        />
+        <SettingsNavRow
           icon="server-outline"
           title="Services"
           subtitle={servicesSubtitle}
@@ -117,7 +128,13 @@ export default function SettingsScreen() {
           onPress={() => router.push('/settings/experimental' as never)}
         />
 
-        <SettingsSectionLabel spaced>ABOUT</SettingsSectionLabel>
+        <SettingsSectionLabel spaced>SUPPORT</SettingsSectionLabel>
+        <SettingsNavRow
+          icon="build-outline"
+          title="Troubleshooting"
+          subtitle="Library maintenance, cache tools, and onboarding."
+          onPress={() => router.push('/settings/troubleshooting' as never)}
+        />
         <SettingsNavRow
           icon="information-circle-outline"
           title="Info"

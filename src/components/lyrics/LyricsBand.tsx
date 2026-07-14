@@ -13,6 +13,7 @@ import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import {
   getLyricsLineSeekTimeSeconds,
   getSyncedLyricsDisplayLines,
@@ -24,7 +25,6 @@ import {
 import { LyricsLine, type LyricsLineTier } from './LyricsLine';
 import type { Track } from '@/types/audio';
 
-const TRANSLATION_PRIORITY = ['en', 'ja-Latn'];
 const ANCHOR_RATIO = 0.4;
 const H_PADDING = 22;
 // The displayed active line lags the audio by a fixed pipeline delay (RNTP
@@ -48,6 +48,11 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
   const ripple = useRipple();
   const entry = useLyricsStore((s) => s.byPath[track.path]);
   const loadForTrack = useLyricsStore((s) => s.loadForTrack);
+  const wordTimingEnabled = useLyricsSettingsStore((s) => s.wordTimingEnabled);
+  const furiganaEnabled = useLyricsSettingsStore((s) => s.furiganaEnabled);
+  const translationsEnabled = useLyricsSettingsStore((s) => s.translationsEnabled);
+  const translationPriority = useLyricsSettingsStore((s) => s.translationPriority);
+  const voiceLabelsEnabled = useLyricsSettingsStore((s) => s.voiceLabelsEnabled);
 
   useEffect(() => {
     void loadForTrack(track);
@@ -109,7 +114,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
     }, 90);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.path, displayLines.length]);
+  }, [track.path, displayLines.length, furiganaEnabled, translationsEnabled, voiceLabelsEnabled, wordTimingEnabled]);
 
   // Follow the active/focus line as playback advances.
   useEffect(() => {
@@ -184,8 +189,8 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
           };
 
           if (displayLine.kind === 'gap') {
-            const progress = getSyncedLyricsGapProgress(displayLine, lyricsTime) ?? 0;
             const isCurrentGap = displayLine.displayIndex === focusIndex && timing.isNeutral;
+            const progress = isCurrentGap ? getSyncedLyricsGapProgress(displayLine, lyricsTime) ?? 0 : 0;
             return (
               <View
                 key={displayLine.key}
@@ -219,7 +224,12 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
               line={displayLine.line}
               tier={tier}
               baseSize={baseSize}
-              translationPriority={TRANSLATION_PRIORITY}
+              activeTimeSeconds={isActive && wordTimingEnabled ? lyricsTime : null}
+              wordTimingEnabled={wordTimingEnabled}
+              furiganaEnabled={furiganaEnabled}
+              translationsEnabled={translationsEnabled}
+              translationPriority={translationPriority}
+              voiceLabelsEnabled={voiceLabelsEnabled}
               onSeek={() => {
                 if (seekSeconds != null) onSeek(seekSeconds);
               }}

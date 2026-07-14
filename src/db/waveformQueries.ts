@@ -36,6 +36,15 @@ export async function putWaveformPeaks(
   );
 }
 
+export async function getWaveformCacheCount(db: LibraryDatabase): Promise<number> {
+  const row = await db.get<{ count: number }>('SELECT COUNT(*) AS count FROM waveform_peaks');
+  return row?.count ?? 0;
+}
+
+export async function clearWaveformCache(db: LibraryDatabase): Promise<void> {
+  await db.run('DELETE FROM waveform_peaks');
+}
+
 function toFloat32(blob: ArrayBuffer | ArrayBufferView): Float32Array {
   if (blob instanceof Float32Array) return blob;
   if (ArrayBuffer.isView(blob)) {

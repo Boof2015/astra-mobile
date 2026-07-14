@@ -6,12 +6,14 @@ import {
   SettingsSectionScreen,
 } from '@/components/settings/SettingsSectionScaffold';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 
 export default function ServicesSettingsScreen() {
   const router = useRouter();
   const remoteSources = useRemoteSourcesStore((s) => s.sources);
   const lastFmStatus = useLastFmSettingsStore((s) => s.status);
+  const onlineLookupEnabled = useLyricsSettingsStore((s) => s.onlineLookupEnabled);
 
   return (
     <SettingsSectionScreen title="Services">
@@ -25,6 +27,14 @@ export default function ServicesSettingsScreen() {
             : `${remoteSources.length} server${remoteSources.length === 1 ? '' : 's'} connected.`
         }
         onPress={() => router.push('/sources')}
+      />
+
+      <SettingsSectionLabel spaced>LYRICS</SettingsSectionLabel>
+      <SettingsNavRow
+        icon="musical-notes-outline"
+        title="Lyrics"
+        subtitle={`Online lookup ${onlineLookupEnabled ? 'on' : 'off'}. XLRC display and language priority.`}
+        onPress={() => router.push('/settings/lyrics' as never)}
       />
 
       <SettingsSectionLabel spaced>SCROBBLING</SettingsSectionLabel>
