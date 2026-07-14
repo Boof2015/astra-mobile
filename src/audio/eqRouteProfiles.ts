@@ -49,6 +49,7 @@ function isRouteKind(value: unknown): value is AudioOutputRouteKind {
     value === 'bluetooth' ||
     value === 'usb' ||
     value === 'hdmi' ||
+    value === 'remote' ||
     value === 'unknown'
   );
 }
@@ -84,6 +85,8 @@ function defaultRouteLabel(kind: AudioOutputRouteKind): string {
       return 'USB audio';
     case 'hdmi':
       return 'HDMI audio';
+    case 'remote':
+      return 'Remote audio';
     default:
       return 'Unknown output';
   }
@@ -124,6 +127,8 @@ export function buildAudioOutputRouteKey(kind: AudioOutputRouteKind, label: stri
       return 'usb';
     case 'hdmi':
       return 'hdmi';
+    case 'remote':
+      return 'remote';
     default:
       return 'unknown';
   }
@@ -146,6 +151,11 @@ export function normalizeAudioOutputRoute(value: unknown): AudioOutputRoute | nu
     selectedRouteName: trim(raw.selectedRouteName),
     updatedAt: Math.max(0, Math.trunc(finiteNumber(raw.updatedAt) ?? Date.now())),
   };
+}
+
+/** A known kind or a concrete native type is enough to apply the loaded EQ safely. */
+export function isAudioOutputRouteUsable(route: AudioOutputRoute): boolean {
+  return route.kind !== 'unknown' || route.nativeType != null;
 }
 
 function normalizeBands(value: unknown, createId: () => string): EQBand[] | null {

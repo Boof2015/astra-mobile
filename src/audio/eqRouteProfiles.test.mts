@@ -4,6 +4,7 @@ import type { AudioOutputRoute, EQBand } from '../types/audio.ts';
 import {
   buildAudioOutputRouteKey,
   createEQRouteProfile,
+  isAudioOutputRouteUsable,
   normalizeAudioOutputRoute,
   parseEQRouteProfilesJson,
   restoreEQRouteProfile,
@@ -55,8 +56,14 @@ test('normalizes named external routes and generic class routes', () => {
   assert.equal(normalizeAudioOutputRoute({ kind: 'usb', label: 'USB DAC' })?.key, 'usb:name:usb-dac');
   assert.equal(normalizeAudioOutputRoute({ kind: 'usb', label: 'USB audio' })?.key, 'usb');
   assert.equal(normalizeAudioOutputRoute({ kind: 'hdmi', label: 'Living Room TV' })?.key, 'hdmi:name:living-room-tv');
+  assert.equal(normalizeAudioOutputRoute({ kind: 'remote', label: 'Remote audio' })?.key, 'remote');
   assert.equal(normalizeAudioOutputRoute({ kind: 'speaker', label: 'Pixel speaker' })?.key, 'speaker');
   assert.equal(normalizeAudioOutputRoute({ kind: 'nonsense', label: '' })?.key, 'unknown');
+});
+
+test('accepts concrete unclassified Android outputs without accepting a missing route', () => {
+  assert.equal(isAudioOutputRouteUsable(route({ kind: 'unknown', nativeType: 25 })), true);
+  assert.equal(isAudioOutputRouteUsable(route({ kind: 'unknown', nativeType: null })), false);
 });
 
 test('recovers from corrupt route profile storage', () => {

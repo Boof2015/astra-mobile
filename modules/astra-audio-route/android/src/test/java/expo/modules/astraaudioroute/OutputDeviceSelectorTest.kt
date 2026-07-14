@@ -38,6 +38,20 @@ class OutputDeviceSelectorTest {
   }
 
   @Test
+  fun legacyFallbackPrefersAnActiveRemoteMixForProjectedMedia() {
+    val bluetooth = Device("car bluetooth", "bluetooth")
+    val remote = Device("android auto", "remote")
+
+    val selected = selectPredictedOutputDevice(
+      predicted = emptyList(),
+      connected = listOf(bluetooth, remote),
+      kindFor = Device::kind,
+    )
+
+    assertEquals(remote, selected)
+  }
+
+  @Test
   fun externalAddressProducesStablePrivacySafeKey() {
     val first = buildOutputRouteKey("bluetooth", "Sony WH-1000XM5", "AA:BB:CC:DD:EE:FF")
     val same = buildOutputRouteKey("bluetooth", "Renamed headphones", "aa:bb:cc:dd:ee:ff")
@@ -63,6 +77,7 @@ class OutputDeviceSelectorTest {
     assertEquals("bluetooth", buildOutputRouteKey("bluetooth", "Bluetooth audio", null))
     assertEquals("usb", buildOutputRouteKey("usb", "USB audio", null))
     assertEquals("hdmi", buildOutputRouteKey("hdmi", "HDMI audio", null))
+    assertEquals("remote", buildOutputRouteKey("remote", "Remote audio", null))
     assertEquals("unknown", buildOutputRouteKey("unknown", "Unknown output", null))
   }
 }

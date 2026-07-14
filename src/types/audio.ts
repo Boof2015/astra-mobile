@@ -85,7 +85,14 @@ export interface EQPreset {
   graphicGains?: number[];
 }
 
-export type AudioOutputRouteKind = 'speaker' | 'wired' | 'bluetooth' | 'usb' | 'hdmi' | 'unknown';
+export type AudioOutputRouteKind =
+  | 'speaker'
+  | 'wired'
+  | 'bluetooth'
+  | 'usb'
+  | 'hdmi'
+  | 'remote'
+  | 'unknown';
 
 export interface AudioOutputRoute {
   key: string;

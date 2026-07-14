@@ -10,7 +10,8 @@ internal fun <T> selectPredictedOutputDevice(
 ): T? {
   predicted.firstOrNull()?.let { return it }
   if (connected.isEmpty()) return null
-  return connected.firstOrNull { kindFor(it) == "bluetooth" }
+  return connected.firstOrNull { kindFor(it) == "remote" }
+    ?: connected.firstOrNull { kindFor(it) == "bluetooth" }
     ?: connected.firstOrNull { kindFor(it) == "wired" }
     ?: connected.firstOrNull { kindFor(it) == "usb" }
     ?: connected.firstOrNull { kindFor(it) == "hdmi" }
@@ -49,6 +50,7 @@ private fun addressToken(address: String?): String? {
 internal fun buildOutputRouteKey(kind: String, label: String, address: String?): String {
   if (kind == "speaker") return "speaker"
   if (kind == "wired") return "wired"
+  if (kind == "remote") return "remote"
   if (kind !in setOf("bluetooth", "usb", "hdmi")) return "unknown"
 
   addressToken(address)?.let { return "$kind:id:$it" }

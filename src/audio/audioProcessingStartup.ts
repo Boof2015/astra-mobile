@@ -105,6 +105,8 @@ const coordinator = new DspStartupCoordinator<
     console.info('[dsp-startup] base-applied', {
       at: Date.now(),
       routeKey: route.key,
+      routeKind: route.kind,
+      nativeType: route.nativeType,
       eqEnabled: eq.enabled,
       preampDb: eq.preamp,
       normalizationEnabled: settings.enabled,
@@ -134,6 +136,8 @@ const coordinator = new DspStartupCoordinator<
     console.info('[dsp-startup] target-applied', {
       at: Date.now(),
       routeKey: route.key,
+      routeKind: route.kind,
+      nativeType: route.nativeType,
       gainSource: resolved.source,
       activation: target.activation,
       hasTarget: Boolean(target.url),

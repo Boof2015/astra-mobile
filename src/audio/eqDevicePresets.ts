@@ -25,6 +25,7 @@ function isRouteKind(value: unknown): value is AudioOutputRouteKind {
     value === 'bluetooth' ||
     value === 'usb' ||
     value === 'hdmi' ||
+    value === 'remote' ||
     value === 'unknown'
   );
 }

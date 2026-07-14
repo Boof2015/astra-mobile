@@ -4,6 +4,7 @@ import {
 } from '../../modules/astra-audio-route';
 import { useEQStore } from '@/stores/eqStore';
 import type { AudioOutputRoute } from '@/types/audio';
+import { isAudioOutputRouteUsable } from '@/audio/eqRouteProfiles';
 
 type Subscription = { remove: () => void };
 
@@ -30,7 +31,19 @@ export async function refreshEQRouteForPlayback(): Promise<AudioOutputRoute> {
   await useEQStore.getState().load();
   const route = AstraAudioRoute.getCurrentRoute();
   if (!route) throw new Error('Current media output route unavailable');
-  if (route.kind === 'unknown') throw new Error('Current media output route unresolved');
+  if (!isAudioOutputRouteUsable(route)) {
+    throw new Error('Current media output route unresolved');
+  }
+  if (route.kind === 'unknown') {
+    // A real but newer Android route type is still safe: retain/reassert the
+    // loaded EQ state instead of permanently blocking playback. Android Auto
+    // used to reach this path because TYPE_REMOTE_SUBMIX was not classified.
+    console.warn('[eq-route] unclassified native output; retaining current EQ', {
+      nativeType: route.nativeType,
+      nativeId: route.nativeId,
+      label: route.label,
+    });
+  }
   await useEQStore.getState().setOutputRoute(route);
   return route;
 }

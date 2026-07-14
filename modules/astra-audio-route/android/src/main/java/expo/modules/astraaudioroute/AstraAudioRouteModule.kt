@@ -195,6 +195,7 @@ class AstraAudioRouteModule : Module() {
         AudioDeviceInfo.TYPE_HDMI,
         AudioDeviceInfo.TYPE_HDMI_ARC,
         AudioDeviceInfo.TYPE_HDMI_EARC -> "hdmi"
+        AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "remote"
         AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
         else -> "unknown"
@@ -232,6 +233,7 @@ class AstraAudioRouteModule : Module() {
       "bluetooth" -> "Bluetooth"
       "usb" -> "USB audio"
       "hdmi" -> "HDMI audio"
+      "remote" -> "Remote audio"
       else -> "Unknown output"
     }
 
