@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetView,
   type BottomSheetBackdropProps
 } from '@gorhom/bottom-sheet';
@@ -19,7 +20,15 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { playHaptic } from '@/lib/haptics';
 
-export function AppSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+export function AppSheet({
+  onClose,
+  children,
+  scrollable = false,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+  scrollable?: boolean;
+}) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const renderBackdrop = useCallback(
@@ -45,9 +54,20 @@ export function AppSheet({ onClose, children }: { onClose: () => void; children:
       backgroundStyle={styles.sheetBg}
       handleIndicatorStyle={styles.handle}
     >
-      <BottomSheetView style={[styles.content, { paddingBottom: insets.bottom + spacing.md }]}>
-        {children}
-      </BottomSheetView>
+      {scrollable ? (
+        <BottomSheetScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.md }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </BottomSheetScrollView>
+      ) : (
+        <BottomSheetView
+          style={[styles.content, { paddingBottom: insets.bottom + spacing.md }]}
+        >
+          {children}
+        </BottomSheetView>
+      )}
     </BottomSheet>
   );
 }
@@ -80,6 +100,7 @@ export function AppSheetTitle({ title, subtitle }: { title: string; subtitle?: s
 
 export interface AppSheetItemProps {
   label: string;
+  subtitle?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   selected?: boolean;
   destructive?: boolean;
@@ -89,6 +110,7 @@ export interface AppSheetItemProps {
 
 export function AppSheetItem({
   label,
+  subtitle,
   icon,
   selected,
   destructive,
@@ -118,9 +140,16 @@ export function AppSheetItem({
         {icon ? (
           <Ionicons name={icon} size={20} color={destructive ? colors.warning : colors.textSecondary} />
         ) : null}
-        <Text variant="body" numberOfLines={1} style={styles.itemLabel} color={tint}>
-          {label}
-        </Text>
+        <View style={styles.itemMeta}>
+          <Text variant="body" numberOfLines={1} style={styles.itemLabel} color={tint}>
+            {label}
+          </Text>
+          {subtitle ? (
+            <Text variant="caption" numberOfLines={1} color={colors.textSecondary}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
         {selected ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
       </Pressable>
       {trailing}
@@ -168,7 +197,12 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.md,
   },
   itemLabel: {
+    flexShrink: 1,
+  },
+  itemMeta: {
     flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
 }));
 

@@ -42,7 +42,7 @@ function route(overrides: Partial<AudioOutputRoute> = {}): AudioOutputRoute {
 test('normalizes route keys for named and unnamed Bluetooth outputs', () => {
   assert.equal(
     normalizeAudioOutputRoute({ kind: 'bluetooth', label: 'Sony WH-1000XM5' })?.key,
-    'bluetooth:sony-wh-1000xm5'
+    'bluetooth:name:sony-wh-1000xm5'
   );
   assert.equal(
     normalizeAudioOutputRoute({ kind: 'bluetooth', label: 'Bluetooth audio' })?.key,
@@ -50,9 +50,11 @@ test('normalizes route keys for named and unnamed Bluetooth outputs', () => {
   );
 });
 
-test('normalizes class routes for wired, usb, speaker, and unknown outputs', () => {
+test('normalizes named external routes and generic class routes', () => {
   assert.equal(normalizeAudioOutputRoute({ kind: 'wired', label: '3.5mm' })?.key, 'wired');
-  assert.equal(normalizeAudioOutputRoute({ kind: 'usb', label: 'USB DAC' })?.key, 'usb');
+  assert.equal(normalizeAudioOutputRoute({ kind: 'usb', label: 'USB DAC' })?.key, 'usb:name:usb-dac');
+  assert.equal(normalizeAudioOutputRoute({ kind: 'usb', label: 'USB audio' })?.key, 'usb');
+  assert.equal(normalizeAudioOutputRoute({ kind: 'hdmi', label: 'Living Room TV' })?.key, 'hdmi:name:living-room-tv');
   assert.equal(normalizeAudioOutputRoute({ kind: 'speaker', label: 'Pixel speaker' })?.key, 'speaker');
   assert.equal(normalizeAudioOutputRoute({ kind: 'nonsense', label: '' })?.key, 'unknown');
 });

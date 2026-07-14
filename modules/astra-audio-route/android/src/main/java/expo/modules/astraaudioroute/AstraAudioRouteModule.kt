@@ -131,7 +131,7 @@ class AstraAudioRouteModule : Module() {
     val device = selectOutputDevice()
     val kind = device?.let { kindForType(it.type) } ?: "unknown"
     val label = displayLabel(kind, device, selectedRouteName)
-    val key = routeKey(kind, label)
+    val key = buildOutputRouteKey(kind, label, deviceAddress(device))
 
     return mapOf(
       "key" to key,
@@ -214,6 +214,17 @@ class AstraAudioRouteModule : Module() {
     return routeName ?: deviceName ?: defaultLabel(kind)
   }
 
+  private fun deviceAddress(device: AudioDeviceInfo?): String? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      try {
+        device?.address?.trim()?.ifEmpty { null }
+      } catch (_: Throwable) {
+        null
+      }
+    } else {
+      null
+    }
+
   private fun defaultLabel(kind: String): String =
     when (kind) {
       "speaker" -> "Phone speaker"
@@ -244,27 +255,4 @@ class AstraAudioRouteModule : Module() {
     return kind == "bluetooth" || kind == "usb" || kind == "hdmi"
   }
 
-  private fun routeKey(kind: String, label: String): String {
-    if (kind == "bluetooth") {
-      val slug = slug(label)
-      if (slug.isNotEmpty() && slug != "bluetooth" && slug != "bluetooth-audio") {
-        return "bluetooth:$slug"
-      }
-    }
-    return when (kind) {
-      "speaker" -> "speaker"
-      "wired" -> "wired"
-      "bluetooth" -> "bluetooth"
-      "usb" -> "usb"
-      "hdmi" -> "hdmi"
-      else -> "unknown"
-    }
-  }
-
-  private fun slug(value: String): String =
-    value
-      .trim()
-      .lowercase()
-      .replace(Regex("[^a-z0-9]+"), "-")
-      .trim('-')
 }

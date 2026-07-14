@@ -35,6 +35,7 @@ import { SavePresetSheet } from '@/components/eq/SavePresetSheet';
 import { EQPresetNameSheet } from '@/components/eq/EQPresetNameSheet';
 import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
 import { EQPresetQrSheet } from '@/components/eq/EQPresetQrSheet';
+import { PresetDeviceAssignmentSheet } from '@/components/eq/PresetDeviceAssignmentSheet';
 import {
   radius,
   spacing,
@@ -73,7 +74,16 @@ import {
 import { BAND_TYPE_LABEL, formatGain } from '@/components/eq/format';
 import type { EQBand, EQBandType, EQPreset } from '@/types/audio';
 
-type SheetKind = 'none' | 'preset' | 'save' | 'overflow' | 'type' | 'shareName' | 'qr' | 'preview';
+type SheetKind =
+  | 'none'
+  | 'preset'
+  | 'assignDevices'
+  | 'save'
+  | 'overflow'
+  | 'type'
+  | 'shareName'
+  | 'qr'
+  | 'preview';
 type CurrentPresetAction = 'export' | 'share' | 'qr';
 type EQState = ReturnType<typeof useEQStore.getState>;
 
@@ -99,6 +109,7 @@ export default function EQScreen() {
   const [pendingCurrentAction, setPendingCurrentAction] = useState<CurrentPresetAction | null>(null);
   const [pendingImportPreset, setPendingImportPreset] = useState<EQPreset | null>(null);
   const [qrPreset, setQrPreset] = useState<{ name: string; value: string } | null>(null);
+  const [actionPresetId, setActionPresetId] = useState<string | null>(null);
   const closeSheet = useCallback(() => setSheet('none'), []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -128,6 +139,20 @@ export default function EQScreen() {
   const activeBandNumber = eq.bands.findIndex((b) => b.id === eq.activeBandId) + 1;
   const presetName = eq.presets.find((p) => p.id === eq.activePresetId)?.name ?? 'Custom';
   const outputRouteLabel = eq.activeOutputRoute?.label ?? 'This phone';
+  const assignedPresetId = eq.activeOutputRoute
+    ? eq.devicePresetAssignments[eq.activeOutputRoute.key]
+    : null;
+  const assignedPresetName = assignedPresetId
+    ? eq.presets.find((preset) => preset.id === assignedPresetId)?.name ?? null
+    : null;
+  const outputAssignmentLabel = eq.activeOutputRoute
+    ? assignedPresetName
+      ? `Auto: ${assignedPresetName}`
+      : 'No auto preset'
+    : 'Detecting output';
+  const actionPreset = actionPresetId
+    ? eq.presets.find((preset) => preset.id === actionPresetId) ?? null
+    : null;
   const defaultPresetName = `Preset ${eq.presets.filter((p) => p.isCustom).length + 1}`;
   const valueEditConfig = activeBand && editingValue ? getValueEditConfig(editingValue, activeBand) : null;
 
@@ -147,6 +172,30 @@ export default function EQScreen() {
 
   const showPresetImportError = useCallback((message = 'That file is not an Astra EQ preset.') => {
     Alert.alert('Could not import preset', message);
+  }, []);
+
+  const deletePreset = useCallback((preset: EQPreset) => {
+    const state = useEQStore.getState();
+    if (!preset.isCustom || !state.presets.some((candidate) => candidate.id === preset.id)) return;
+    const assignmentCount = Object.values(state.devicePresetAssignments)
+      .filter((assignedPresetId) => assignedPresetId === preset.id).length;
+    const finishDelete = () => {
+      useEQStore.getState().deleteCustomPreset(preset.id);
+      setSheet('none');
+      playHaptic('confirm');
+    };
+    if (assignmentCount === 0) {
+      finishDelete();
+      return;
+    }
+    Alert.alert(
+      `Delete ${preset.name}?`,
+      `This will also clear ${assignmentCount} device assignment${assignmentCount === 1 ? '' : 's'}. The current sound will not change.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: finishDelete },
+      ]
+    );
   }, []);
 
   const runCurrentPresetAction = useCallback(async (action: CurrentPresetAction, name: string) => {
@@ -345,7 +394,7 @@ export default function EQScreen() {
             numberOfLines={1}
             style={styles.routeLabel}
           >
-            {`Tuning ${outputRouteLabel}`}
+            {`${outputRouteLabel} · ${outputAssignmentLabel}`}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -400,8 +449,14 @@ export default function EQScreen() {
         <PresetSheet
           presets={eq.presets}
           activePresetId={eq.activePresetId}
+          knownDevices={Object.values(eq.knownOutputDevices)}
+          assignments={eq.devicePresetAssignments}
           onApply={eq.applyPreset}
-          onDelete={eq.deleteCustomPreset}
+          onAssign={(preset) => {
+            setActionPresetId(preset.id);
+            setSheet('assignDevices');
+          }}
+          onDelete={deletePreset}
           onSaveNew={() => setSheet('save')}
           onClose={closeSheet}
         />
@@ -410,7 +465,33 @@ export default function EQScreen() {
       {sheet === 'save' ? (
         <SavePresetSheet
           defaultName={defaultPresetName}
-          onSave={(name) => eq.saveCustomPreset(name)}
+          currentDeviceLabel={
+            eq.activeOutputRoute && eq.activeOutputRoute.kind !== 'unknown'
+              ? eq.activeOutputRoute.label
+              : null
+          }
+          onSave={(name, assignToCurrentDevice) => {
+            const presetId = eq.saveCustomPreset(name);
+            if (
+              assignToCurrentDevice &&
+              eq.activeOutputRoute &&
+              eq.activeOutputRoute.kind !== 'unknown'
+            ) {
+              eq.assignPresetToDevices(presetId, [eq.activeOutputRoute.key]);
+            }
+          }}
+          onClose={closeSheet}
+        />
+      ) : null}
+
+      {sheet === 'assignDevices' && actionPreset ? (
+        <PresetDeviceAssignmentSheet
+          preset={actionPreset}
+          devices={Object.values(eq.knownOutputDevices)}
+          assignments={eq.devicePresetAssignments}
+          presets={eq.presets}
+          currentDeviceKey={eq.activeOutputRoute?.key ?? null}
+          onSave={(deviceKeys) => eq.assignPresetToDevices(actionPreset.id, deviceKeys)}
           onClose={closeSheet}
         />
       ) : null}

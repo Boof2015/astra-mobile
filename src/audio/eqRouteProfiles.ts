@@ -89,20 +89,29 @@ function defaultRouteLabel(kind: AudioOutputRouteKind): string {
   }
 }
 
-function isGenericBluetoothLabel(label: string): boolean {
+function isGenericExternalLabel(kind: AudioOutputRouteKind, label: string): boolean {
   const normalized = slug(label);
-  return (
-    normalized.length === 0 ||
-    normalized === 'bluetooth' ||
-    normalized === 'bluetooth-audio' ||
-    normalized === 'headphones' ||
-    normalized === 'headset'
-  );
+  if (normalized.length === 0) return true;
+  if (kind === 'bluetooth') {
+    return (
+      normalized === 'bluetooth' ||
+      normalized === 'bluetooth-audio' ||
+      normalized === 'headphones' ||
+      normalized === 'headset'
+    );
+  }
+  if (kind === 'usb') return normalized === 'usb' || normalized === 'usb-audio';
+  if (kind === 'hdmi') return normalized === 'hdmi' || normalized === 'hdmi-audio';
+  return true;
 }
 
 export function buildAudioOutputRouteKey(kind: AudioOutputRouteKind, label: string | null): string {
-  if (kind === 'bluetooth' && label && !isGenericBluetoothLabel(label)) {
-    return `bluetooth:${slug(label)}`;
+  if (
+    (kind === 'bluetooth' || kind === 'usb' || kind === 'hdmi') &&
+    label &&
+    !isGenericExternalLabel(kind, label)
+  ) {
+    return `${kind}:name:${slug(label)}`;
   }
   switch (kind) {
     case 'speaker':

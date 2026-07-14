@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
+import { HapticSwitch } from '@/components/HapticSwitch';
 import {
   fonts,
   radius,
@@ -17,16 +18,23 @@ import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {
   defaultName: string;
-  onSave: (name: string) => void;
+  currentDeviceLabel?: string | null;
+  onSave: (name: string, assignToCurrentDevice: boolean) => void;
   onClose: () => void;
 }
 
 /** Name + save a custom preset from the current bands/preamp. */
-export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetSheetProps) {
+export function SavePresetSheet({
+  defaultName,
+  currentDeviceLabel,
+  onSave,
+  onClose,
+}: SavePresetSheetProps) {
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
   const [name, setName] = useState(defaultName);
+  const [assignToCurrentDevice, setAssignToCurrentDevice] = useState(false);
   const trimmed = name.trim();
 
   return (
@@ -46,11 +54,27 @@ export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetShee
         returnKeyType="done"
         onSubmitEditing={() => {
           if (trimmed) {
-            onSave(trimmed);
+            onSave(trimmed, assignToCurrentDevice);
             onClose();
           }
         }}
       />
+      {currentDeviceLabel ? (
+        <View style={styles.assignmentRow}>
+          <View style={styles.assignmentText}>
+            <Text variant="body">Assign to current output</Text>
+            <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
+              {currentDeviceLabel}
+            </Text>
+          </View>
+          <HapticSwitch
+            value={assignToCurrentDevice}
+            onValueChange={setAssignToCurrentDevice}
+            trackColor={{ false: colors.glassBorder, true: colors.accent }}
+            thumbColor={colors.textPrimary}
+          />
+        </View>
+      ) : null}
       <View style={styles.actions}>
         <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
@@ -61,7 +85,7 @@ export function SavePresetSheet({ defaultName, onSave, onClose }: SavePresetShee
           style={[styles.btn, styles.save, !trimmed && styles.saveDisabled]}
           disabled={!trimmed}
           onPress={() => {
-            onSave(trimmed);
+            onSave(trimmed, assignToCurrentDevice);
             onClose();
           }}
         >
@@ -89,6 +113,22 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
+  },
+  assignmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassBg,
+  },
+  assignmentText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   actions: {
     flexDirection: 'row',

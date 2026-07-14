@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { spacing } from '@/theme';
+import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import {
   EqSheet,
@@ -14,8 +15,11 @@ import {
 interface PresetSheetProps {
   presets: EQPreset[];
   activePresetId: string | null;
+  knownDevices: KnownEQOutputDevice[];
+  assignments: Readonly<Record<string, string>>;
   onApply: (id: string) => void;
-  onDelete: (id: string) => void;
+  onAssign: (preset: EQPreset) => void;
+  onDelete: (preset: EQPreset) => void;
   onSaveNew: () => void;
   onClose: () => void;
 }
@@ -32,7 +36,10 @@ function modeIcon(preset: EQPreset): 'options-outline' | 'analytics-outline' {
 export function PresetSheet({
   presets,
   activePresetId,
+  knownDevices,
+  assignments,
   onApply,
+  onAssign,
   onDelete,
   onSaveNew,
   onClose,
@@ -41,25 +48,69 @@ export function PresetSheet({
   const ripple = useRipple();
   const builtIn = presets.filter((p) => !p.isCustom);
   const custom = presets.filter((p) => p.isCustom);
+  const devicesByKey = new Map(knownDevices.map((device) => [device.key, device]));
+
+  const renderPreset = (preset: EQPreset) => {
+    const assignedDeviceKeys = Object.entries(assignments)
+      .filter(([, presetId]) => presetId === preset.id)
+      .map(([deviceKey]) => deviceKey);
+    const assignmentSubtitle = assignedDeviceKeys.length === 1
+      ? `Assigned to ${devicesByKey.get(assignedDeviceKeys[0])?.label ?? '1 device'}`
+      : assignedDeviceKeys.length > 1
+        ? `Assigned to ${assignedDeviceKeys.length} devices`
+        : undefined;
+    return (
+      <EqSheetItem
+        key={preset.id}
+        label={preset.name}
+        subtitle={assignmentSubtitle}
+        icon={preset.isCustom ? modeIcon(preset) : undefined}
+        selected={preset.id === activePresetId}
+        onPress={() => {
+          onApply(preset.id);
+          onClose();
+        }}
+        trailing={
+          <View style={styles.trailingActions}>
+            <Pressable
+              android_ripple={ripple.bounded}
+              unstable_pressDelay={SCROLL_PRESS_DELAY}
+              hitSlop={6}
+              onPress={() => onAssign(preset)}
+              style={styles.assignButton}
+              accessibilityLabel={`Assign devices to ${preset.name}`}
+            >
+              <Text variant="label" color={colors.textSecondary}>
+                Assign
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </Pressable>
+            {preset.isCustom ? (
+              <Pressable
+                android_ripple={ripple.bounded}
+                unstable_pressDelay={SCROLL_PRESS_DELAY}
+                hitSlop={8}
+                onPress={() => onDelete(preset)}
+                style={styles.deleteButton}
+                accessibilityLabel={`Delete preset ${preset.name}`}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
+              </Pressable>
+            ) : null}
+          </View>
+        }
+      />
+    );
+  };
 
   return (
-    <EqSheet onClose={onClose}>
+    <EqSheet onClose={onClose} scrollable>
       <Text variant="heading" style={styles.title}>
         Presets
       </Text>
 
       <EqSheetSection label="BUILT-IN" />
-      {builtIn.map((p) => (
-        <EqSheetItem
-          key={p.id}
-          label={p.name}
-          selected={p.id === activePresetId}
-          onPress={() => {
-            onApply(p.id);
-            onClose();
-          }}
-        />
-      ))}
+      {builtIn.map(renderPreset)}
 
       <EqSheetSection label="CUSTOM" />
       {custom.length === 0 ? (
@@ -67,28 +118,7 @@ export function PresetSheet({
           No saved presets yet.
         </Text>
       ) : (
-        custom.map((p) => (
-          <EqSheetItem
-            key={p.id}
-            label={p.name}
-            icon={modeIcon(p)}
-            selected={p.id === activePresetId}
-            onPress={() => {
-              onApply(p.id);
-              onClose();
-            }}
-            trailing={
-              <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
-                hitSlop={10}
-                onPress={() => onDelete(p.id)}
-                style={styles.delete}
-                accessibilityLabel={`Delete preset ${p.name}`}
-              >
-                <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
-              </Pressable>
-            }
-          />
-        ))
+        custom.map(renderPreset)
       )}
 
       <EqSheetItem
@@ -110,7 +140,21 @@ const styles = StyleSheet.create({
   empty: {
     paddingVertical: spacing.sm,
   },
-  delete: {
+  trailingActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  assignButton: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  deleteButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },

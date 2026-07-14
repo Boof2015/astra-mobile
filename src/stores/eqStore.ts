@@ -20,13 +20,21 @@ import {
   parseGraphicGains,
 } from '@/audio/graphicEq';
 import {
-  createEQRouteProfile,
   normalizeAudioOutputRoute,
   parseEQRouteProfilesJson,
-  restoreEQRouteProfile,
-  stringifyEQRouteProfiles,
-  type EQRouteProfile,
 } from '@/audio/eqRouteProfiles';
+import {
+  migrateLegacyEQRouteProfiles,
+  observeEQOutputDevice,
+  parseEQDevicePresetStateJson,
+  presetForOutputRouteTransition,
+  pruneEQDevicePresetAssignments,
+  removePresetDeviceAssignments,
+  replacePresetDeviceAssignments,
+  stringifyEQDevicePresetState,
+  type EQDevicePresetState,
+  type KnownEQOutputDevice,
+} from '@/audio/eqDevicePresets';
 import { setEqBandsNative, setEqEnabledNative, setEqPreampNative } from '@/audio/eqNative';
 
 /**
@@ -43,6 +51,7 @@ const CUSTOM_PRESETS_KEY = 'eq_custom_presets';
 const MODE_KEY = 'eq_mode';
 const GRAPHIC_GAINS_KEY = 'eq_graphic_gains';
 const ROUTE_PROFILES_KEY = 'eq_route_profiles_v1';
+const DEVICE_PRESETS_KEY = 'eq_device_preset_assignments_v1';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -107,6 +116,8 @@ interface EQStore {
   activePresetId: string | null; // null = manually edited ("Custom")
   activeBandId: string | null; // UI selection shared by curve / strip / panel
   activeOutputRoute: AudioOutputRoute | null;
+  knownOutputDevices: Record<string, KnownEQOutputDevice>;
+  devicePresetAssignments: Record<string, string>;
   loaded: boolean;
 
   load: () => Promise<void>;
@@ -121,16 +132,16 @@ interface EQStore {
   selectBand: (id: string | null) => void;
   applyPreset: (presetId: string) => void;
   resetToFlat: () => void;
-  saveCustomPreset: (name: string) => void;
+  saveCustomPreset: (name: string) => string;
   deleteCustomPreset: (presetId: string) => void;
   importPreset: (preset: EQPreset) => void;
+  assignPresetToDevices: (presetId: string, deviceKeys: readonly string[]) => void;
   setOutputRoute: (route: AudioOutputRoute | null) => Promise<void>;
 
   _syncToNative: () => void;
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let routeProfilesByKey: Record<string, EQRouteProfile> = {};
 
 export const useEQStore = create<EQStore>((set, get) => {
   function syncToNative(): void {
@@ -141,24 +152,16 @@ export const useEQStore = create<EQStore>((set, get) => {
     setEqBandsNative(flattenBandsForNative(activeBands));
   }
 
-  function captureRouteProfile(route: AudioOutputRoute | null = get().activeOutputRoute): void {
-    if (!route) return;
-    const { enabled, preamp, mode, bands, graphicGains, activePresetId } = get();
-    routeProfilesByKey = {
-      ...routeProfilesByKey,
-      [route.key]: createEQRouteProfile(route, {
-        enabled,
-        preamp,
-        mode,
-        bands,
-        graphicGains,
-        activePresetId,
-      }),
+  function currentDevicePresetState(): EQDevicePresetState {
+    const { knownOutputDevices, devicePresetAssignments } = get();
+    return {
+      version: 1,
+      devices: knownOutputDevices,
+      assignments: devicePresetAssignments,
     };
   }
 
   function schedulePersist(): void {
-    captureRouteProfile();
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       persistTimer = null;
@@ -167,9 +170,23 @@ export const useEQStore = create<EQStore>((set, get) => {
   }
 
   async function persistNow(): Promise<void> {
-    captureRouteProfile();
-    const { enabled, preamp, bands, mode, graphicGains, activePresetId, presets } = get();
+    const {
+      enabled,
+      preamp,
+      bands,
+      mode,
+      graphicGains,
+      activePresetId,
+      presets,
+      knownOutputDevices,
+      devicePresetAssignments,
+    } = get();
     const custom = presets.filter((p) => p.isCustom);
+    const devicePresetState: EQDevicePresetState = {
+      version: 1,
+      devices: knownOutputDevices,
+      assignments: devicePresetAssignments,
+    };
     try {
       const db = await openLibraryDb();
       await Promise.all([
@@ -179,7 +196,7 @@ export const useEQStore = create<EQStore>((set, get) => {
         setSetting(db, MODE_KEY, mode),
         setSetting(db, GRAPHIC_GAINS_KEY, JSON.stringify(graphicGains)),
         setSetting(db, ACTIVE_PRESET_KEY, activePresetId ?? ''),
-        setSetting(db, ROUTE_PROFILES_KEY, stringifyEQRouteProfiles(routeProfilesByKey)),
+        setSetting(db, DEVICE_PRESETS_KEY, stringifyEQDevicePresetState(devicePresetState)),
         setSetting(
           db,
           CUSTOM_PRESETS_KEY,
@@ -216,12 +233,24 @@ export const useEQStore = create<EQStore>((set, get) => {
     activePresetId: FLAT_PRESET_ID,
     activeBandId: null,
     activeOutputRoute: null,
+    knownOutputDevices: {},
+    devicePresetAssignments: {},
     loaded: false,
 
     load: async () => {
       if (get().loaded) return;
       const db = await openLibraryDb();
-      const [enabledRaw, preampRaw, bandsRaw, modeRaw, gainsRaw, activeRaw, customRaw, routeProfilesRaw] = await Promise.all([
+      const [
+        enabledRaw,
+        preampRaw,
+        bandsRaw,
+        modeRaw,
+        gainsRaw,
+        activeRaw,
+        customRaw,
+        devicePresetsRaw,
+        routeProfilesRaw,
+      ] = await Promise.all([
         getSetting(db, ENABLED_KEY),
         getSetting(db, PREAMP_KEY),
         getSetting(db, BANDS_KEY),
@@ -229,13 +258,20 @@ export const useEQStore = create<EQStore>((set, get) => {
         getSetting(db, GRAPHIC_GAINS_KEY),
         getSetting(db, ACTIVE_PRESET_KEY),
         getSetting(db, CUSTOM_PRESETS_KEY),
+        getSetting(db, DEVICE_PRESETS_KEY),
         getSetting(db, ROUTE_PROFILES_KEY),
       ]);
 
       const bands = parseBands(bandsRaw) ?? createDefaultBands();
       const presets = [...createBuiltInPresets(), ...parseCustomPresets(customRaw)];
       const storedActive = activeRaw && activeRaw.length > 0 ? activeRaw : null;
-      routeProfilesByKey = parseEQRouteProfilesJson(routeProfilesRaw, genEqId);
+      const parsedDeviceState = devicePresetsRaw === null
+        ? migrateLegacyEQRouteProfiles(parseEQRouteProfilesJson(routeProfilesRaw, genEqId))
+        : parseEQDevicePresetStateJson(devicePresetsRaw);
+      const deviceState = pruneEQDevicePresetAssignments(
+        parsedDeviceState,
+        (presetId) => presets.some((preset) => preset.id === presetId)
+      );
 
       set({
         enabled: enabledRaw === 'true',
@@ -245,13 +281,24 @@ export const useEQStore = create<EQStore>((set, get) => {
         mode: modeRaw === 'graphic' ? 'graphic' : 'parametric',
         graphicGains: parseGraphicGains(safeJsonParse(gainsRaw)) ?? createFlatGraphicGains(),
         presets,
-        // Stored active preset ids are regenerated on load (parseCustomPresets makes
-        // new ids), so only built-in ids survive a reload; fall back to "Custom".
+        // Missing/deleted preset references fall back to the freely editable state.
         activePresetId: presets.some((p) => p.id === storedActive) ? storedActive : null,
         activeBandId: bands[0]?.id ?? null,
+        knownOutputDevices: deviceState.devices,
+        devicePresetAssignments: deviceState.assignments,
         loaded: true,
       });
       syncToNative();
+
+      // The presence of the new envelope is the migration marker. The legacy
+      // snapshots remain unread after this write and can no longer affect EQ.
+      if (devicePresetsRaw === null) {
+        try {
+          await setSetting(db, DEVICE_PRESETS_KEY, stringifyEQDevicePresetState(deviceState));
+        } catch {
+          /* migration persistence failure is non-fatal and safe to retry */
+        }
+      }
     },
 
     setEnabled: (enabled) => {
@@ -401,13 +448,16 @@ export const useEQStore = create<EQStore>((set, get) => {
             };
       set({ presets: [...presets, preset], activePresetId: preset.id });
       schedulePersist();
+      return preset.id;
     },
 
     deleteCustomPreset: (presetId) => {
       const { presets, activePresetId } = get();
+      const deviceState = removePresetDeviceAssignments(currentDevicePresetState(), presetId);
       set({
         presets: presets.filter((p) => p.id !== presetId),
         activePresetId: activePresetId === presetId ? null : activePresetId,
+        devicePresetAssignments: deviceState.assignments,
       });
       schedulePersist();
     },
@@ -426,59 +476,75 @@ export const useEQStore = create<EQStore>((set, get) => {
       get().applyPreset(stored.id);
     },
 
+    assignPresetToDevices: (presetId, deviceKeys) => {
+      if (!get().presets.some((preset) => preset.id === presetId)) return;
+      const previousAssignments = get().devicePresetAssignments;
+      const nextState = replacePresetDeviceAssignments(
+        currentDevicePresetState(),
+        presetId,
+        deviceKeys
+      );
+      const activeDeviceKey = get().activeOutputRoute?.key ?? null;
+      const previousActivePresetId = activeDeviceKey ? previousAssignments[activeDeviceKey] : null;
+      const nextActivePresetId = activeDeviceKey ? nextState.assignments[activeDeviceKey] : null;
+
+      set({ devicePresetAssignments: nextState.assignments });
+      schedulePersist();
+
+      // Only a changed assignment is an explicit request to replace the live
+      // working state. Saving an unchanged checklist must preserve manual tweaks.
+      if (
+        activeDeviceKey &&
+        nextActivePresetId === presetId &&
+        previousActivePresetId !== nextActivePresetId
+      ) {
+        get().applyPreset(presetId);
+      }
+    },
+
     setOutputRoute: async (route) => {
       if (!get().loaded) await get().load();
 
       const nextRoute = normalizeAudioOutputRoute(route);
       const previousRoute = get().activeOutputRoute;
-      if (previousRoute?.key === nextRoute?.key) {
-        if (
-          previousRoute &&
-          nextRoute &&
-          (previousRoute.label !== nextRoute.label ||
-            previousRoute.kind !== nextRoute.kind ||
-            previousRoute.nativeId !== nextRoute.nativeId ||
-            previousRoute.nativeType !== nextRoute.nativeType ||
-            previousRoute.selectedRouteName !== nextRoute.selectedRouteName)
-        ) {
-          set({ activeOutputRoute: nextRoute });
-          schedulePersist();
-        }
-        return;
-      }
-
-      captureRouteProfile(previousRoute);
-
       if (!nextRoute) {
-        set({ activeOutputRoute: null });
-        schedulePersist();
+        if (previousRoute) set({ activeOutputRoute: null });
         return;
       }
 
-      const profile = routeProfilesByKey[nextRoute.key];
-      if (!profile) {
-        // First-seen routes inherit whatever EQ is currently audible, then diverge
-        // as soon as the user edits while this route is active.
-        set({ activeOutputRoute: nextRoute });
-        schedulePersist();
-        return;
+      const previousDeviceState = currentDevicePresetState();
+      const observedDeviceState = observeEQOutputDevice(previousDeviceState, nextRoute);
+      const deviceStateChanged = observedDeviceState !== previousDeviceState;
+      const activeRouteChanged =
+        previousRoute?.key !== nextRoute.key ||
+        previousRoute.label !== nextRoute.label ||
+        previousRoute.kind !== nextRoute.kind ||
+        previousRoute.nativeId !== nextRoute.nativeId ||
+        previousRoute.nativeType !== nextRoute.nativeType ||
+        previousRoute.selectedRouteName !== nextRoute.selectedRouteName;
+      if (activeRouteChanged || deviceStateChanged) {
+        set({
+          ...(activeRouteChanged ? { activeOutputRoute: nextRoute } : {}),
+          ...(deviceStateChanged
+            ? {
+                knownOutputDevices: observedDeviceState.devices,
+                devicePresetAssignments: observedDeviceState.assignments,
+              }
+            : {}),
+        });
       }
+      if (deviceStateChanged) schedulePersist();
 
-      const restored = restoreEQRouteProfile(profile, (presetId) =>
-        get().presets.some((preset) => preset.id === presetId)
+      const assignedPresetId = presetForOutputRouteTransition(
+        previousRoute?.key ?? null,
+        nextRoute.key,
+        observedDeviceState.assignments,
+        (presetId) => get().presets.some((preset) => preset.id === presetId)
       );
-      set({
-        activeOutputRoute: nextRoute,
-        enabled: restored.enabled,
-        preamp: restored.preamp,
-        mode: restored.mode,
-        bands: restored.bands,
-        graphicGains: restored.graphicGains,
-        activePresetId: restored.activePresetId,
-        activeBandId: restored.bands[0]?.id ?? null,
-      });
-      syncToNative();
-      schedulePersist();
+      if (assignedPresetId) {
+        // applyPreset intentionally does not touch `enabled`, so EQ power stays global.
+        get().applyPreset(assignedPresetId);
+      }
     },
 
     _syncToNative: syncToNative,
