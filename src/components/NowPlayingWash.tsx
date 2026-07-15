@@ -20,6 +20,10 @@ const REACH = 0.42;
 const ART_OPACITY = 0.3;
 /** Where the fade-to-background begins within the band (0 = top, 1 = bottom). */
 const FADE_START = 0.45;
+/** Hold the final edge fully opaque so subpixel sampling cannot reveal an artwork seam. */
+const SOLID_TAIL_START = 0.99;
+/** Bridge the composited image/Canvas boundary with the screen's solid background. */
+const EDGE_OVERDRAW = 2;
 /** Matches the album/artist detail wash — blurring a low-res thumb reads as pure color. */
 const BLUR_RADIUS = 40;
 
@@ -57,11 +61,26 @@ export function NowPlayingWash({
           <LinearGradient
             start={vec(0, 0)}
             end={vec(0, bandH)}
-            colors={[`${colors.bgPrimary}00`, `${colors.bgPrimary}00`, colors.bgPrimary]}
-            positions={[0, FADE_START, 1]}
+            colors={[
+              `${colors.bgPrimary}00`,
+              `${colors.bgPrimary}00`,
+              colors.bgPrimary,
+              colors.bgPrimary,
+            ]}
+            positions={[0, FADE_START, SOLID_TAIL_START, 1]}
           />
         </Rect>
       </Canvas>
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: -EDGE_OVERDRAW / 2,
+          height: EDGE_OVERDRAW,
+          backgroundColor: colors.bgPrimary,
+        }}
+      />
     </View>
   );
 }
