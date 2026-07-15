@@ -26,6 +26,7 @@ import {
   prepareAudioProcessingForPlayback,
   primePreparedTrackForPlayback,
 } from './audioProcessingStartup';
+import { shouldRestartOnPrevious } from './playbackNavigation';
 
 // If a background queue fill dies partway, the mirror no longer matches the
 // native queue — re-read the truth.
@@ -481,6 +482,20 @@ export async function skipToNext(): Promise<void> {
 
 export async function skipToPrevious(): Promise<void> {
   await ensurePlayerReady();
+
+  // Use RNTP's position so headless Bluetooth/Auto commands do not depend on
+  // the UI-mounted progress mirror. A failed read preserves the old skip path.
+  let nativePosition: number | null = null;
+  try {
+    nativePosition = (await TrackPlayer.getProgress()).position;
+  } catch {
+    // Fall through to the existing previous-track behavior.
+  }
+  if (nativePosition != null && shouldRestartOnPrevious(nativePosition)) {
+    await seekTo(0);
+    return;
+  }
+
   const [nativeQueue, nativeIndex] = await Promise.all([
     TrackPlayer.getQueue(),
     TrackPlayer.getActiveTrackIndex(),
