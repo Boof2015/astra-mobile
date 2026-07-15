@@ -24,6 +24,7 @@ const expectedSemantics: Record<HapticEvent, string> = {
   toggleOff: 'toggle-off',
   selection: 'segment-tick',
   frequentStep: 'segment-frequent-tick',
+  scrubStep: 'segment-frequent-tick',
   threshold: 'gesture-start',
   thresholdExit: 'gesture-end',
   action: 'virtual-key',
@@ -44,6 +45,7 @@ const expectedFallbacks: Record<HapticEvent, string> = {
   toggleOff: 'selection',
   selection: 'selection',
   frequentStep: 'selection',
+  scrubStep: 'selection',
   threshold: 'lightImpact',
   thresholdExit: 'lightImpact',
   action: 'lightImpact',
@@ -114,13 +116,14 @@ test('maps every application event to an Android semantic haptic', () => {
 
 test('keeps all tuning candidates within the native recipe contract', () => {
   assert.equal(HAPTIC_RECIPE_SECTIONS.length, 6);
-  assert.equal(HAPTIC_RECIPE_GROUPS.length, 16);
+  assert.equal(HAPTIC_RECIPE_GROUPS.length, 17);
   assert.deepEqual(
     HAPTIC_RECIPE_SECTIONS.flatMap((section) => section.groups),
     HAPTIC_RECIPE_GROUPS
   );
   for (const group of HAPTIC_RECIPE_GROUPS) {
-    assert.equal(group.candidates.length, group.id.startsWith('timing') ? 4 : 2);
+    const candidateCount = group.id.startsWith('timing') ? 4 : group.id === 'scrubStep' ? 1 : 2;
+    assert.equal(group.candidates.length, candidateCount);
     for (const candidate of group.candidates) {
       assert.equal(validateHapticRecipe(candidate.steps), true, candidate.id);
     }
@@ -159,6 +162,7 @@ test('records the retimed vote and keeps every composition articulated', () => {
     toggleOff: 'toggleOffB',
     dragPickup: 'dragPickupB',
     dragPlacement: 'dragPlacementA',
+    scrubStep: 'scrubStepA',
     confirm: 'confirmA',
     reject: 'rejectB',
     thresholdExit: 'thresholdExitA',
@@ -210,6 +214,19 @@ test('offers two articulated reject rhythms for a tactile no', () => {
       { primitives: ['click', 'lowTick'], delays: [0, 45] },
     ]
   );
+});
+
+test('keeps seek detents crisp, strong, and capability-gated', () => {
+  const scrubStep = hapticRecipeCandidate('scrubStepA');
+  assert.ok(scrubStep);
+  assert.deepEqual(scrubStep.steps, [
+    { primitive: 'click', scale: 0.65, delayMs: 0 },
+  ]);
+  assert.equal(canPlayHapticRecipe(scrubStep.steps, capabilities()), true);
+  assert.equal(canPlayHapticRecipe(scrubStep.steps, capabilities(['tick'])), false);
+  assert.deepEqual(unsupportedRecipePrimitives(scrubStep.steps, capabilities(['tick'])), [
+    'click',
+  ]);
 });
 
 test('rejects invalid scale, delay, and empty recipes', () => {

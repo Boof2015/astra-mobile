@@ -210,6 +210,16 @@ export const HAPTIC_RECIPE_SECTIONS: readonly HapticRecipeSection[] = [
           { id: 'dragPlacementB', label: 'B · soft landing', steps: recipe(['quickFall', 0.55], ['lowTick', 0.6, HAPTIC_GAPS_MS.neutral]) },
         ],
       },
+      {
+        id: 'scrubStep',
+        label: 'Scrub detent',
+        description: 'A spatial detent passes beneath the seek finger.',
+        leadingCandidateId: 'scrubStepA',
+        selectionStatus: 'selected',
+        candidates: [
+          { id: 'scrubStepA', label: 'A · crisp linear click', steps: recipe(['click', 0.65]) },
+        ],
+      },
     ],
   },
   {

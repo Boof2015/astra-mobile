@@ -31,6 +31,7 @@ const SEMANTIC_EVENTS: {
   { event: 'toggleOff', label: 'Toggle off', description: 'A setting leaves its active state.' },
   { event: 'selection', label: 'Selection', description: 'A discrete choice changes.' },
   { event: 'frequentStep', label: 'Frequent step', description: 'A repeated row or letter crossing.' },
+  { event: 'scrubStep', label: 'Scrub step', description: 'A fine seek detent passes under the finger.' },
   { event: 'threshold', label: 'Threshold', description: 'A gesture becomes armed.' },
   { event: 'action', label: 'Action', description: 'A direct control commits.' },
   { event: 'dragStart', label: 'Drag start', description: 'An item is picked up.' },

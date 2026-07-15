@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  applyPlaybackSnapshot,
+  clampPlaybackTime,
+  createPlaybackClock,
+  projectPlaybackClock,
+  setPlaybackClockRunning,
+} from './playbackClock';
 
 const DISPLAY_FRAME_MS = 66;
-
-function clampTime(value: number, duration: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (duration <= 0) return Math.max(0, value);
-  return Math.min(duration, Math.max(0, value));
-}
 
 /**
  * Interpolates displayed playback time between RNTP progress snapshots. RNTP
@@ -18,21 +19,41 @@ export function useSmoothPlaybackTime(
   duration: number,
   isPlaying: boolean
 ): number {
-  const [displayTime, setDisplayTime] = useState(() => clampTime(currentTime, duration));
-  const anchorRef = useRef({
-    time: clampTime(currentTime, duration),
-    timestamp: 0,
-  });
+  const [displayTime, setDisplayTime] = useState(() =>
+    clampPlaybackTime(currentTime, duration)
+  );
+  const clockRef = useRef(createPlaybackClock(currentTime, duration, isPlaying));
 
   useEffect(() => {
-    const next = clampTime(currentTime, duration);
-    anchorRef.current = { time: next, timestamp: Date.now() };
+    const now = Date.now();
+    const nextClock = applyPlaybackSnapshot(
+      clockRef.current,
+      currentTime,
+      duration,
+      now
+    );
+    clockRef.current = nextClock;
+    const next = projectPlaybackClock(nextClock, duration, now);
     const raf = requestAnimationFrame(() => setDisplayTime(next));
     return () => cancelAnimationFrame(raf);
   }, [currentTime, duration]);
 
   useEffect(() => {
-    if (!isPlaying || duration <= 0) return;
+    const now = Date.now();
+    const nextClock = setPlaybackClockRunning(
+      clockRef.current,
+      isPlaying,
+      duration,
+      now
+    );
+    clockRef.current = nextClock;
+
+    if (!isPlaying || duration <= 0) {
+      const frozen = projectPlaybackClock(nextClock, duration, now);
+      const freezeRaf = requestAnimationFrame(() => setDisplayTime(frozen));
+      return () => cancelAnimationFrame(freezeRaf);
+    }
+
     let raf = 0;
     let lastPaint = 0;
 
@@ -40,9 +61,7 @@ export function useSmoothPlaybackTime(
       raf = requestAnimationFrame(tick);
       if (frameTime - lastPaint < DISPLAY_FRAME_MS) return;
       lastPaint = frameTime;
-      const anchor = anchorRef.current;
-      const elapsed = (Date.now() - anchor.timestamp) / 1000;
-      setDisplayTime(clampTime(anchor.time + elapsed, duration));
+      setDisplayTime(projectPlaybackClock(clockRef.current, duration, Date.now()));
     };
 
     raf = requestAnimationFrame(tick);

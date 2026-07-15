@@ -3,6 +3,7 @@ export type HapticEvent =
   | 'toggleOff'
   | 'selection'
   | 'frequentStep'
+  | 'scrubStep'
   | 'threshold'
   | 'thresholdExit'
   | 'action'
@@ -52,6 +53,11 @@ export const HAPTIC_DEFINITIONS: Readonly<Record<HapticEvent, HapticDefinition>>
   toggleOff: { semantic: 'toggle-off', fallback: 'selection', recipeId: 'toggleOffB' },
   selection: { semantic: 'segment-tick', fallback: 'selection' },
   frequentStep: { semantic: 'segment-frequent-tick', fallback: 'selection' },
+  scrubStep: {
+    semantic: 'segment-frequent-tick',
+    fallback: 'selection',
+    recipeId: 'scrubStepA',
+  },
   threshold: { semantic: 'gesture-start', fallback: 'lightImpact' },
   thresholdExit: {
     semantic: 'gesture-end',
