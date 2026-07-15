@@ -231,6 +231,10 @@ jobs:
           :kotlin-audio:testDebugUnitTest
           --no-daemon
 
+      - name: Reclaim native test build space
+        working-directory: android
+        run: ./gradlew clean --no-daemon
+
       - name: Decode upload keystore
         env:
           ASTRA_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
@@ -252,7 +256,7 @@ jobs:
           ASTRA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           ASTRA_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ASTRA_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
-        run: ./gradlew :app:bundleRelease --no-daemon
+        run: ./gradlew :app:bundleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon
 
       - name: Verify release dependency substitution
         working-directory: android
