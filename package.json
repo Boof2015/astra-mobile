@@ -3,6 +3,7 @@
   "main": "index.js",
   "version": "0.1.0",
   "dependencies": {
+    "@boof2015/astra-signal": "^0.3.0",
     "@boof2015/xlrc": "^0.2.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
@@ -72,6 +73,7 @@
     "test:artist-grouping": "node --experimental-strip-types --test src/library/artistGrouping.test.mts",
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/services/desktopSyncPolicy.test.mts src/shared/sync/conflictPreview.test.mts",
     "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
+    "test:signal": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/signalShare.test.mts src/audio/signalShareIntent.test.mts src/audio/signalScanGeometry.test.mts",
     "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
     "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts",

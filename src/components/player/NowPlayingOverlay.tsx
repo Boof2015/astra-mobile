@@ -363,6 +363,18 @@ export function NowPlayingOverlay() {
       },
     });
   }
+  if (!isDesktopTarget) {
+    menuItems.push({
+      key: 'share-signal',
+      label: 'Share as Signal',
+      icon: 'pulse-outline',
+      onPress: () => {
+        closeMenu();
+        dismissSheet();
+        router.navigate('/signal' as never);
+      },
+    });
+  }
 
   // The overlay stays mounted; open/close is this one shared value sliding the
   // sheet on the UI thread. Starts off-screen so a pre-warmed mount never flashes.
