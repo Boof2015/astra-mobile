@@ -58,14 +58,6 @@ export default function ExperimentalSettingsScreen() {
         subtitleColor={desktopSyncConflictCount > 0 ? colors.warning : undefined}
         onPress={() => router.push('/desktop-sync' as never)}
       />
-
-      <SettingsSectionLabel>DEVELOPER</SettingsSectionLabel>
-      <SettingsNavRow
-        icon="pulse-outline"
-        title="Haptics Lab"
-        subtitle="Audition semantic feedback, device primitives, and signature candidates."
-        onPress={() => router.push('/settings/haptics-lab' as never)}
-      />
     </SettingsSectionScreen>
   );
 }

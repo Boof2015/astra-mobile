@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import {
+  SettingsNavRow,
   SettingsSectionLabel,
   SettingsSectionScreen,
   type SettingsIconName,
@@ -35,6 +37,7 @@ function countLabel(count: number | null, noun: string): string {
 export default function TroubleshootingSettingsScreen() {
   const styles = useStyles();
   const colors = useColors();
+  const router = useRouter();
   const isScanning = useLibraryStore((s) => s.isScanning);
   const [runningAction, setRunningAction] = useState<ActionKey | null>(null);
   const [feedback, setFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -174,6 +177,14 @@ export default function TroubleshootingSettingsScreen() {
           </Text>
         </View>
       ) : null}
+
+      <SettingsSectionLabel spaced>DEBUG</SettingsSectionLabel>
+      <SettingsNavRow
+        icon="pulse-outline"
+        title="Haptics Lab"
+        subtitle="Audition semantic feedback, device primitives, and signature candidates."
+        onPress={() => router.push('/settings/haptics-lab' as never)}
+      />
     </SettingsSectionScreen>
   );
 }
