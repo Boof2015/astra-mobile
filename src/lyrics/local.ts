@@ -4,16 +4,17 @@
 // over online lookup (see the orchestrator ordering in lyrics.ts).
 
 import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
+import {
+  createEmbeddedLyricsPayload,
+  isLocalLyricsPath,
+  type EmbeddedLyricsResolution,
+} from './embedded';
 import { parseLyricsText } from './parsing';
 import type { LyricsPayload } from './types';
 
-function isLocalPath(path: string): boolean {
-  return path.startsWith('content://') || path.startsWith('file://');
-}
-
 /** Resolve a sibling `<name>.xlrc`/`.lrc` next to a local track. */
 export async function resolveSidecarLyrics(trackPath: string): Promise<LyricsPayload | null> {
-  if (!isLocalPath(trackPath)) return null;
+  if (!isLocalLyricsPath(trackPath)) return null;
   try {
     const sidecar = await AstraLibraryScanner.readSidecarLyrics(trackPath);
     if (!sidecar?.text) return null;
@@ -24,15 +25,15 @@ export async function resolveSidecarLyrics(trackPath: string): Promise<LyricsPay
   }
 }
 
-/** Resolve embedded lyrics (Vorbis LYRICS/etc.) from a local track's container. */
-export async function resolveEmbeddedLyrics(trackPath: string): Promise<LyricsPayload | null> {
-  if (!isLocalPath(trackPath)) return null;
+/** Resolve embedded lyrics from a local track while preserving miss vs I/O failure. */
+export async function resolveEmbeddedLyrics(trackPath: string): Promise<EmbeddedLyricsResolution> {
+  if (!isLocalLyricsPath(trackPath)) return { status: 'not_local' };
   try {
     const embedded = await AstraLibraryScanner.readEmbeddedLyrics(trackPath);
-    if (!embedded?.text) return null;
-    // Parse as LRC so timestamped tags become synced; plain text stays plain.
-    return parseLyricsText(embedded.text, 'embedded', 'lrc');
+    if (embedded.status !== 'hit') return embedded;
+    const lyrics = createEmbeddedLyricsPayload(embedded);
+    return lyrics ? { status: 'hit', lyrics } : { status: 'missing' };
   } catch {
-    return null;
+    return { status: 'unavailable' };
   }
 }

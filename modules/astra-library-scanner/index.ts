@@ -57,10 +57,20 @@ export interface SidecarLyrics {
   format: 'xlrc' | 'lrc';
 }
 
-/** Embedded lyrics text read from container tags. */
-export interface EmbeddedLyrics {
+export interface EmbeddedLyricsSyncText {
+  timestampMs: number;
   text: string;
 }
+
+/** Embedded lyrics read from container tags without decoding audio. */
+export type EmbeddedLyricsReadResult =
+  | {
+      status: 'hit';
+      text: string | null;
+      syncText: EmbeddedLyricsSyncText[];
+    }
+  | { status: 'missing' }
+  | { status: 'unavailable' };
 
 export interface ScanProgressEvent {
   phase: 'discovering';
@@ -103,11 +113,11 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    */
   readSidecarLyrics(uri: string): Promise<SidecarLyrics | null>;
   /**
-   * Read embedded lyrics from container tags (Vorbis LYRICS/UNSYNCEDLYRICS for
-   * FLAC/Ogg/Opus, TXXX:LYRICS, MP4 lyric atoms) without decoding audio. Null when
-   * absent. ID3 USLT/SYLT are not covered (ExoPlayer leaves them undecoded).
+   * Read embedded lyrics from Vorbis, ID3 (USLT/SYLT/TXXX), and MP4/M4A tags
+   * without decoding audio. `missing` means metadata was read successfully but
+   * no supported tag was present; `unavailable` preserves cache on I/O failure.
    */
-  readEmbeddedLyrics(uri: string): Promise<EmbeddedLyrics | null>;
+  readEmbeddedLyrics(uri: string): Promise<EmbeddedLyricsReadResult>;
   getArtworkDirPath(): string;
   getArtworkThumbDirPath(): string;
   ensureArtworkThumbnails(hashes: string[]): Promise<number>;

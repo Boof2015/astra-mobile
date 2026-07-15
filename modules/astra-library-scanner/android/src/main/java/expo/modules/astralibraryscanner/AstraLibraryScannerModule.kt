@@ -14,6 +14,7 @@ import android.os.Build
 import android.provider.DocumentsContract
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.MetadataRetriever
+import com.google.android.exoplayer2.metadata.id3.BinaryFrame
 import com.google.android.exoplayer2.metadata.id3.InternalFrame
 import com.google.android.exoplayer2.metadata.id3.TextInformationFrame
 import com.google.android.exoplayer2.metadata.flac.VorbisComment
@@ -132,10 +133,9 @@ class AstraLibraryScannerModule : Module() {
       withContext(Dispatchers.IO) { readSidecarLyrics(uri) }
     }
 
-    // Embedded lyrics from container tags (Vorbis LYRICS/UNSYNCEDLYRICS for
-    // FLAC/Ogg/Opus, plus TXXX/MP4 lyric atoms), metadata-only (no PCM decode).
-    // Returns { text } or null. ID3 USLT/SYLT are not decoded by ExoPlayer and are
-    // intentionally out of scope here.
+    // Embedded lyrics from container tags (Vorbis comments, ID3 USLT/SYLT/TXXX,
+    // and MP4 lyric atoms), metadata-only (no PCM decode). Distinguishing a true
+    // miss from an I/O failure lets JS invalidate only genuinely stale cache rows.
     AsyncFunction("readEmbeddedLyrics") Coroutine { uri: String ->
       withContext(Dispatchers.IO) { readEmbeddedLyrics(uri) }
     }
@@ -341,26 +341,23 @@ class AstraLibraryScannerModule : Module() {
 
   /**
    * Read embedded lyrics from container metadata via ExoPlayer's MetadataRetriever.
-   * Covers Vorbis LYRICS/UNSYNCEDLYRICS (FLAC/Ogg/Opus), TXXX:LYRICS (ID3), and MP4
-   * freeform lyric atoms — metadata only, no PCM decode. ID3 USLT/SYLT arrive as
-   * undecoded BinaryFrames and are out of scope. Returns { text } or null.
+   * ExoPlayer decodes Vorbis/TXXX/MP4 text entries directly and exposes ID3 lyric
+   * frames as BinaryFrame payloads, which Id3LyricsParser handles without reading
+   * or decoding PCM.
    */
-  private fun readEmbeddedLyrics(uriStr: String): Map<String, Any?>? {
+  private fun readEmbeddedLyrics(uriStr: String): Map<String, Any?> {
     return try {
       val mediaItem = MediaItem.fromUri(Uri.parse(uriStr))
       val trackGroups = MetadataRetriever.retrieveMetadata(requireContext(), mediaItem)
         .get(metadataTimeoutMs, TimeUnit.MILLISECONDS)
 
-      // Keep the longest lyric candidate (a full body beats a stray short tag).
-      var best: String? = null
+      val collector = EmbeddedLyricsCollector()
       fun consider(rawKey: String?, rawValue: String?) {
         if (rawKey == null || rawValue == null) return
         val key = rawKey.trim().lowercase()
         val isLyricKey = key in embeddedLyricKeys || key.contains("lyric") || key == "©lyr"
         if (!isLyricKey) return
-        val value = rawValue.trim()
-        if (value.isEmpty()) return
-        if (best == null || value.length > best!!.length) best = value
+        collector.considerPlain(rawValue)
       }
 
       for (g in 0 until trackGroups.length) {
@@ -369,17 +366,31 @@ class AstraLibraryScannerModule : Module() {
           val metadata = group.getFormat(f).metadata ?: continue
           for (i in 0 until metadata.length()) {
             when (val entry = metadata.get(i)) {
-              is TextInformationFrame -> if (entry.id == "TXXX") consider(entry.description, entry.value)
+              is TextInformationFrame -> when (entry.id) {
+                "TXXX" -> consider(entry.description, entry.value)
+                // ExoPlayer maps the standard MP4/M4A ©lyr atom to USLT text.
+                "USLT", "ULT" -> collector.considerPlain(entry.value)
+                else -> Unit
+              }
               is VorbisComment -> consider(entry.key, entry.value)
               is InternalFrame -> consider(entry.description, entry.text)
+              is BinaryFrame -> collector.consider(Id3LyricsParser.parse(entry.id, entry.data))
             }
           }
         }
       }
 
-      best?.let { mapOf("text" to it) }
+      val lyrics = collector.valueOrNull()
+        ?: return mapOf("status" to "missing")
+      mapOf(
+        "status" to "hit",
+        "text" to lyrics.text,
+        "syncText" to lyrics.syncText.map { entry ->
+          mapOf("timestampMs" to entry.timestampMs, "text" to entry.text)
+        },
+      )
     } catch (_: Throwable) {
-      null
+      mapOf("status" to "unavailable")
     }
   }
 

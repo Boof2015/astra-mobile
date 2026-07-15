@@ -111,6 +111,10 @@ export async function getLyricsCacheCount(db: LibraryDatabase): Promise<number> 
   return row?.count ?? 0;
 }
 
+export async function deleteLyricsCache(db: LibraryDatabase, trackPath: string): Promise<void> {
+  await db.run('DELETE FROM lyrics_cache WHERE track_path = ?', [trackPath]);
+}
+
 export async function clearLyricsCache(db: LibraryDatabase): Promise<void> {
   await db.run('DELETE FROM lyrics_cache');
 }

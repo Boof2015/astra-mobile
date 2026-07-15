@@ -76,7 +76,7 @@
     "test:signal": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/signalShare.test.mts src/audio/signalShareIntent.test.mts src/audio/signalScanGeometry.test.mts src/audio/signalLocalMatch.test.mts",
     "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
     "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
-    "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts",
+    "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts src/lyrics/embedded.test.mts src/lyrics/resolver.test.mts",
     "test:sleep": "node --experimental-strip-types --test src/audio/sleepTimerState.test.mts",
     "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/db/libraryMaintenance.test.mts src/lib/cacheInvalidation.test.mts",
     "test:settings-search": "node --experimental-strip-types --test src/components/search/settingsSearchRoutes.test.mts",
