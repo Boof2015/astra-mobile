@@ -15,10 +15,11 @@ declare class AstraScopeModuleType extends NativeModule {
   setActive(active: boolean): void;
   /**
    * Fill `out` (length should be {@link SPECTRUM_BINS}) with the latest dB
-   * spectrum magnitudes in place; returns the number of bins written. Call once
-   * per render frame from the JS thread.
+   * spectrum magnitudes in place; returns the number of bins written. `smoothing`
+   * is the previous-frame retention in [0, 0.99]. Call once per render frame
+   * from the JS thread.
    */
-  getSpectrumFrame(out: Float32Array): number;
+  getSpectrumFrame(out: Float32Array, smoothing: number): number;
   /**
    * Fill `out` with render-ready, evenly spaced points from the latest
    * pitch-locked oscilloscope window. Values are interpolated visual samples in
@@ -31,7 +32,7 @@ declare class AstraScopeModuleType extends NativeModule {
    * Like {@link getSpectrumFrame} but for the POST-EQ tap (ring #2) — feeds the
    * EQ screen's spectrum behind the response curve. Returns bins written.
    */
-  getSpectrumFramePostEq(out: Float32Array): number;
+  getSpectrumFramePostEq(out: Float32Array, smoothing: number): number;
 
   // --- M4 EQ + per-track gain (params pushed from JS; biquad coeffs computed
   // natively at the real stream sample rate) ---

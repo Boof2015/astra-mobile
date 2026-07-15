@@ -21,8 +21,8 @@ class AstraScopeModule : Module() {
     }
 
     // Fill `out` with the latest dB spectrum; returns the number of bins written.
-    Function("getSpectrumFrame") { out: Float32Array ->
-      ScopeBridge.nativeFillSpectrum(out.toDirectBuffer(), out.length)
+    Function("getSpectrumFrame") { out: Float32Array, smoothing: Double ->
+      ScopeBridge.nativeFillSpectrum(out.toDirectBuffer(), out.length, smoothing.toFloat())
     }
 
     // Fill `out` with render-ready oscilloscope points (~[-1,1]).
@@ -36,8 +36,8 @@ class AstraScopeModule : Module() {
       ScopeBridge.postEqActive = active
     }
 
-    Function("getSpectrumFramePostEq") { out: Float32Array ->
-      ScopeBridge.nativeFillSpectrumPostEq(out.toDirectBuffer(), out.length)
+    Function("getSpectrumFramePostEq") { out: Float32Array, smoothing: Double ->
+      ScopeBridge.nativeFillSpectrumPostEq(out.toDirectBuffer(), out.length, smoothing.toFloat())
     }
 
     // --- M4: EQ params + per-track gain (consumed by the kotlin-audio processors) ---

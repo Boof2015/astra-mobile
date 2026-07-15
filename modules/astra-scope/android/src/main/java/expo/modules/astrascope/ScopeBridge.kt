@@ -40,7 +40,11 @@ object ScopeBridge {
    * memory) with the latest dB spectrum, up to `capacityFloats` floats.
    * Returns the number of bins written. Zero-copy: writes straight into JS memory.
    */
-  external fun nativeFillSpectrum(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
+  external fun nativeFillSpectrum(
+    buffer: java.nio.ByteBuffer,
+    capacityFloats: Int,
+    smoothing: Float
+  ): Int
 
   /**
    * Render thread. Fill `buffer` (a direct ByteBuffer over the JS Float32Array's
@@ -57,5 +61,9 @@ object ScopeBridge {
    * Render thread. Fill `buffer` with the latest POST-EQ dB spectrum (feeds the
    * EQ screen's response-curve overlay). Returns bins written. Zero-copy.
    */
-  external fun nativeFillSpectrumPostEq(buffer: java.nio.ByteBuffer, capacityFloats: Int): Int
+  external fun nativeFillSpectrumPostEq(
+    buffer: java.nio.ByteBuffer,
+    capacityFloats: Int,
+    smoothing: Float
+  ): Int
 }

@@ -25,6 +25,7 @@ interface VisualizerProps {
   showChrome?: boolean;
   mode?: Mode;
   edgeFade?: boolean;
+  spectrumSmoothing?: number;
   /** Freeze the live scopes without unmounting (e.g. while occluded by an overlay). */
   paused?: boolean;
 }
@@ -41,6 +42,7 @@ export function Visualizer({
   showChrome = true,
   mode: controlledMode,
   edgeFade = false,
+  spectrumSmoothing,
   paused = false,
 }: VisualizerProps) {
   const styles = useStyles();
@@ -72,6 +74,7 @@ export function Visualizer({
           <SpectrumCurve
             active={spectrumActive}
             frameMs={STAGE_FRAME_MS}
+            smoothing={spectrumSmoothing}
             width={width}
             height={height}
             glow

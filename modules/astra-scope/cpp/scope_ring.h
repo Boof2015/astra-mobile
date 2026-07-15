@@ -68,10 +68,12 @@ class ScopeDriver {
   // Render thread (single consumer). Snapshot the most recent fftSize mono
   // samples, run the FFT, copy up to `cap` dB magnitudes into `out`.
   // Returns the number of bins written.
-  size_t fillSpectrum(float* out, size_t cap) {
+  size_t fillSpectrum(float* out, size_t cap, float smoothing) {
     if (out == nullptr || cap == 0) {
       return 0;
     }
+
+    spectrum_.setSmoothing(smoothing);
 
     const int sr = pendingSampleRate_.load(std::memory_order_acquire);
     if (sr != appliedSampleRate_) {
@@ -209,10 +211,12 @@ class ScopeDriver {
   }
 
   // Render thread. Latest post-EQ spectrum window -> `out` (dB magnitudes).
-  size_t fillSpectrumPostEq(float* out, size_t cap) {
+  size_t fillSpectrumPostEq(float* out, size_t cap, float smoothing) {
     if (out == nullptr || cap == 0) {
       return 0;
     }
+
+    postEqSpectrum_.setSmoothing(smoothing);
 
     const int sr = pendingSampleRate_.load(std::memory_order_acquire);
     if (sr != postEqAppliedSampleRate_) {

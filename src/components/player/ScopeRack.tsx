@@ -35,6 +35,7 @@ interface ScopeRackProps {
   /** Strip span (the rail's width): wider than the card, overflowing it. */
   stripWidth: number;
   artworkUri: string | null;
+  spectrumSmoothing?: number;
   /** Freeze the scopes without unmounting (overlay closed / queue open). */
   paused?: boolean;
 }
@@ -45,7 +46,13 @@ interface ScopeRackProps {
  * backdrop dissolves past the former card frame, while the strips span the
  * full rail width and independently fade at their ends.
  */
-export function ScopeRack({ size, stripWidth, artworkUri, paused = false }: ScopeRackProps) {
+export function ScopeRack({
+  size,
+  stripWidth,
+  artworkUri,
+  spectrumSmoothing,
+  paused = false,
+}: ScopeRackProps) {
   const styles = useStyles();
   const artwork = useImage(artworkUri);
   const active = useScopeActive() && !paused;
@@ -114,6 +121,7 @@ export function ScopeRack({ size, stripWidth, artworkUri, paused = false }: Scop
         <SpectrumCurve
           active={active}
           frameMs={STAGE_FRAME_MS}
+          smoothing={spectrumSmoothing}
           width={width}
           height={stripHeight}
           glow

@@ -45,7 +45,8 @@ Java_expo_modules_astrascope_ScopeBridge_nativePushFrames(
 // Zero-copy: writes straight into the JS-owned ArrayBuffer.
 JNIEXPORT jint JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrum(
-    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats) {
+    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats,
+    jfloat smoothing) {
   if (buffer == nullptr || capacityFloats <= 0) {
     return 0;
   }
@@ -53,7 +54,8 @@ Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrum(
   if (dst == nullptr) {
     return 0;
   }
-  const size_t n = driver().fillSpectrum(dst, static_cast<size_t>(capacityFloats));
+  const size_t n = driver().fillSpectrum(
+      dst, static_cast<size_t>(capacityFloats), static_cast<float>(smoothing));
   return static_cast<jint>(n);
 }
 
@@ -95,7 +97,8 @@ Java_expo_modules_astrascope_ScopeBridge_nativePushFramesPostEq(
 
 JNIEXPORT jint JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrumPostEq(
-    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats) {
+    JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats,
+    jfloat smoothing) {
   if (buffer == nullptr || capacityFloats <= 0) {
     return 0;
   }
@@ -103,7 +106,8 @@ Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrumPostEq(
   if (dst == nullptr) {
     return 0;
   }
-  const size_t n = driver().fillSpectrumPostEq(dst, static_cast<size_t>(capacityFloats));
+  const size_t n = driver().fillSpectrumPostEq(
+      dst, static_cast<size_t>(capacityFloats), static_cast<float>(smoothing));
   return static_cast<jint>(n);
 }
 

@@ -34,6 +34,8 @@ interface SpectrumCurveProps {
   frameMs?: number;
   /** Native pull cadence. Defaults to frameMs; 0 advances analysis every display frame. */
   analysisFrameMs?: number;
+  /** Previous native spectrum-frame retention in [0, 0.99]. */
+  smoothing?: number;
   dbMin?: number;
   dbMax?: number;
   tiltDbPerOctave?: number;
@@ -54,6 +56,7 @@ type SkiaViewApiShape = {
 
 const DEFAULT_POINTS = 120;
 const MINI_FRAME_MS = 32;
+const DEFAULT_SMOOTHING = 0.92;
 const DISPLAY_DB_MIN = -90;
 const DISPLAY_DB_MAX = -10;
 const SPECTRUM_SAMPLE_RATE = 48000;
@@ -376,6 +379,7 @@ export function SpectrumCurve({
   pointCount,
   frameMs = MINI_FRAME_MS,
   analysisFrameMs,
+  smoothing = DEFAULT_SMOOTHING,
   dbMin = DISPLAY_DB_MIN,
   dbMax = DISPLAY_DB_MAX,
   tiltDbPerOctave = TILT_DB_PER_OCT,
@@ -567,8 +571,8 @@ export function SpectrumCurve({
         lastAnalysis = t;
         const got =
           source === 'post'
-            ? AstraScope.getSpectrumFramePostEq(spectrumBins)
-            : AstraScope.getSpectrumFrame(spectrumBins);
+            ? AstraScope.getSpectrumFramePostEq(spectrumBins, smoothing)
+            : AstraScope.getSpectrumFrame(spectrumBins, smoothing);
         if (got > 0) {
           writeSpectrumPoints(spectrumBins, renderValues, pointOptions);
           hasNewFrame = true;
@@ -601,6 +605,7 @@ export function SpectrumCurve({
     reduceMotion,
     resolvedPointCount,
     source,
+    smoothing,
     tiltDbPerOctave,
     width,
   ]);

@@ -109,6 +109,7 @@ const SUB_ICON_SIZE = 20;
 const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
+const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -983,6 +984,7 @@ export function NowPlayingOverlay() {
                           size={artBoxSize}
                           stripWidth={layout.scopeWidth}
                           artworkUri={backdropArtworkUri}
+                          spectrumSmoothing={NOW_PLAYING_SPECTRUM_SMOOTHING}
                           paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
                         />
                       </Animated.View>
@@ -1457,6 +1459,7 @@ function ScopeRail({ width, height, mode, paused, revealed, onSwap }: ScopeRailP
         showChrome={false}
         mode={mode}
         edgeFade
+        spectrumSmoothing={NOW_PLAYING_SPECTRUM_SMOOTHING}
         paused={paused}
       />
       <Animated.View pointerEvents="none" style={[styles.scopeSwap, labelStyle]}>
