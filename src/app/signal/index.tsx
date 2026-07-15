@@ -30,9 +30,14 @@ export default function SignalScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const layout = useMemo(() => (track ? signalLayoutFromTrack(track) : null), [track]);
   const artworkWash = playerBackdropArtworkSource(track);
-  const availableWidth = Math.max(1, screenWidth - spacing.lg * 4);
-  const targetWidth = layout?.tier === 'small' ? 280 : layout?.tier === 'medium' ? 340 : availableWidth;
-  const codeWidth = Math.min(targetWidth, availableWidth);
+  const availableCardWidth = Math.max(1, screenWidth - spacing.lg * 2);
+  const availableCarrierWidth = Math.max(1, availableCardWidth - spacing.lg * 2);
+  const targetCarrierWidth = layout?.tier === 'small'
+    ? 280
+    : layout?.tier === 'medium'
+      ? 340
+      : availableCarrierWidth;
+  const codeWidth = Math.min(targetCarrierWidth + spacing.lg * 2, availableCardWidth);
 
   const shareImage = async () => {
     const base64 = codeRef.current?.snapshot();
@@ -100,6 +105,7 @@ export default function SignalScreen() {
               width={codeWidth}
               foreground={CODE_FG}
               background={CODE_BG}
+              branded
               exportForeground={CODE_FG}
               exportBackground={CODE_BG}
             />
@@ -159,7 +165,6 @@ const useStyles = createThemedStyles((colors) => ({
     marginBottom: spacing.lg,
   },
   codeCard: {
-    padding: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: CODE_BG,
     marginBottom: spacing.lg,
