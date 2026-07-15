@@ -1,31 +1,56 @@
 # Privacy Policy — Astra
 
-**Last updated: June 15, 2026**
+**Last updated: July 15, 2026**
 
 ## Overview
 
-Astra is a local music player application. This policy describes how Astra handles your data — which is to say, it doesn't collect any.
+Astra is a local-first music player. It does not require an Astra account and does not include advertising, analytics, behavioral tracking, or crash-reporting SDKs.
 
-## Data Collection
+Most Astra data stays on your device. Optional features connect only when you choose to use them, as described below.
 
-Astra does not collect, transmit, store, or share any personal data or usage information. All music library data, playback history, and preferences are stored exclusively on your device and are never sent anywhere.
+## Data stored on your device
+
+Astra stores your selected library folders, indexed music metadata, playlists, playback history, preferences, cached artwork and lyrics, and optional service configuration on your device.
+
+Passwords, session keys, and paired-desktop control tokens are stored using Android-backed secure storage. Other app data is stored in Astra's local database and files.
+
+## Optional network features
+
+Depending on the features you enable, Astra may send data to the following destinations:
+
+- **Lyrics providers:** Track title, artist, album, and duration may be sent to LRCLIB or XLRCDB to find lyrics.
+- **Remote music servers:** If you add a Subsonic-compatible or Jellyfin server, Astra sends connection details, credentials, catalog requests, and playback requests directly to the server you configured.
+- **Scrobbling services:** If you enable Last.fm-compatible scrobbling, ListenBrainz, or another configured destination, Astra sends track and playback information to that service.
+- **Paired Astra Desktop:** If you pair a desktop, Astra exchanges remote-control, library-sync, playlist, favorite, queue, and playback data directly with that paired desktop.
+- **External links:** Opening repository, community, license, support, or other web links transfers you to the selected website or app.
+
+Those services may receive ordinary connection information such as your IP address and may handle data under their own privacy policies. Astra does not control user-selected servers or third-party services.
+
+Astra permits connections to local servers over either HTTP or HTTPS because many self-hosted music servers are available only on a private local network. You choose the server and connection method.
 
 ## Permissions
 
-Astra requests access to local storage solely to read audio files you choose to play. These permissions are used only on-device and do not involve any external servers or third parties.
+Astra may request:
 
-## Third-Party Services
+- **Folder and file access** through Android's system picker, so you can choose music folders and import or export supported files.
+- **Camera access** only when you open a QR-code scanner for desktop pairing, EQ presets, or Signal sharing.
+- **Notification access** for playback controls, library scans, and paired-desktop sessions.
+- **Local-network and internet access** for optional servers, scrobbling, lyrics, sharing, and desktop features.
 
-Astra does not integrate any analytics, advertising, crash reporting, or tracking SDKs. No third-party services receive any data from your use of this app.
+Astra does not request microphone access.
 
-## Children's Privacy
+## Data retention and deletion
 
-Astra does not collect data from any users, including children under the age of 13.
+Local data remains until you remove it in Astra, clear Astra's app data, or uninstall the app. Disconnecting an optional service removes its locally stored credentials where the feature provides that action, but it does not delete data already received by that service. Use the service's own controls for that data.
 
-## Changes to This Policy
+## Children's privacy
 
-If this policy changes in a future version (for example, if optional features involving network access are added), this document will be updated and the "Last updated" date will reflect that change.
+Astra is not designed for or directed to children. Astra does not knowingly collect children's personal information through an Astra account or telemetry service because neither exists.
+
+## Changes to this policy
+
+This policy may change as Astra's features change. The updated policy will be published at this URL with a revised date.
 
 ## Contact
 
-For questions about this policy, contact: contact@novaml.ai
+For privacy questions, contact: contact@novaml.ai

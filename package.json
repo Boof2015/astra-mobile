@@ -63,6 +63,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "android:release": "rm -rf android/app/build/generated/assets/react && ORG_GRADLE_PROJECT_reactNativeArchitectures=arm64-v8a expo run:android --variant release",
+    "android:preview": "rm -rf android/app/build/generated/assets/react && ASTRA_ALLOW_INSECURE_RELEASE_SIGNING=true ORG_GRADLE_PROJECT_reactNativeArchitectures=arm64-v8a expo run:android --variant release",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
@@ -86,6 +87,9 @@
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
     "test:home-greeting": "node --experimental-strip-types --test src/home/homeGreeting.test.mts",
     "test:session": "node --experimental-strip-types --test src/session/sessionState.test.mts src/session/playbackMaterialization.test.mts",
+    "test:release-config": "node --experimental-strip-types --test plugins/withAstraAndroidRelease.test.mjs scripts/release/android-release.test.mjs src/release/buildInfo.test.mts",
+    "test:release": "node scripts/run-release-tests.mjs",
+    "release:validate": "node scripts/release/android-release.mjs validate github && node scripts/release/android-release.mjs validate google-play",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },

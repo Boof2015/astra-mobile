@@ -1,0 +1,288 @@
+name: Build Android Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_label:
+        description: Optional label for the Actions artifacts, such as smoke or rc1
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22.x
+  JAVA_VERSION: '17'
+
+jobs:
+  validate:
+    name: Validate candidate source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Require main branch
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Android signing candidates must be built from main; received $GITHUB_REF." >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release identity
+        run: npm run release:validate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run deterministic tests
+        run: npm run test:release
+
+  github-apk:
+    name: Build signed GitHub APK
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: android-release
+    env:
+      ASTRA_DISTRIBUTION: github
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate GitHub release identity
+        run: node scripts/release/android-release.mjs validate github
+
+      - name: Generate Android project from tracked configuration
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Verify generated native customizations
+        shell: bash
+        run: |
+          grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
+          grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
+          grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
+          grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
+
+      - name: Decode app-signing keystore
+        env:
+          ASTRA_KEYSTORE_BASE64: ${{ secrets.ANDROID_APP_SIGNING_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          if [ -z "$ASTRA_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_APP_SIGNING_KEYSTORE_BASE64 is not configured." >&2
+            exit 1
+          fi
+          printf '%s' "$ASTRA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/astra-app-signing.jks"
+          chmod 600 "$RUNNER_TEMP/astra-app-signing.jks"
+
+      - name: Build ARM-universal release APK
+        working-directory: android
+        env:
+          EXPO_PUBLIC_LASTFM_API_KEY: ${{ secrets.EXPO_PUBLIC_LASTFM_API_KEY }}
+          EXPO_PUBLIC_LASTFM_SHARED_SECRET: ${{ secrets.EXPO_PUBLIC_LASTFM_SHARED_SECRET }}
+          ASTRA_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/astra-app-signing.jks
+          ASTRA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_APP_SIGNING_KEYSTORE_PASSWORD }}
+          ASTRA_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_APP_SIGNING_KEY_ALIAS }}
+          ASTRA_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_APP_SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon
+
+      - name: Verify release dependency substitution
+        working-directory: android
+        shell: bash
+        run: |
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --no-daemon > "$RUNNER_TEMP/release-dependencies.txt"
+          grep -Fq "project :kotlin-audio" "$RUNNER_TEMP/release-dependencies.txt"
+
+      - name: Verify APK identity, signature, permissions, and ABIs
+        env:
+          ASTRA_EXPECTED_CERT_SHA256: ${{ vars.ANDROID_APP_SIGNING_CERT_SHA256 }}
+        shell: bash
+        run: |
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          EXPECTED="$(printf '%s' "$ASTRA_EXPECTED_CERT_SHA256" | tr -d ' :' | tr '[:lower:]' '[:upper:]')"
+          ACTUAL="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]')"
+
+          if [ -z "$EXPECTED" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "APK signing certificate does not match the protected app-signing fingerprint." >&2
+            exit 1
+          fi
+
+          node scripts/release/android-release.mjs verify-apk-metadata github android/app/build/outputs/apk/release/output-metadata.json
+          unzip -Z1 "$APK" | grep -Fq 'lib/armeabi-v7a/'
+          unzip -Z1 "$APK" | grep -Fq 'lib/arm64-v8a/'
+          if unzip -Z1 "$APK" | grep -Eq '^lib/(x86|x86_64)/'; then
+            echo "GitHub APK unexpectedly contains emulator ABIs." >&2
+            exit 1
+          fi
+          if ! $AAPT dump badging "$APK" | grep -Fq "uses-feature-not-required: name='android.hardware.camera'"; then
+            echo "GitHub APK incorrectly requires camera hardware." >&2
+            exit 1
+          fi
+
+          for permission in \
+            android.permission.READ_EXTERNAL_STORAGE \
+            android.permission.RECORD_AUDIO \
+            android.permission.SYSTEM_ALERT_WINDOW \
+            android.permission.WRITE_EXTERNAL_STORAGE; do
+            if $AAPT dump permissions "$APK" | grep -Fq "$permission"; then
+              echo "GitHub APK contains forbidden permission $permission." >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare GitHub artifact bundle
+        run: node scripts/release/android-release.mjs prepare github android/app/build/outputs/apk/release/app-release.apk dist/android/github
+
+      - name: Upload GitHub APK candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-github-${{ inputs.candidate_label || format('run-{0}', github.run_number) }}
+          path: dist/android/github/
+          if-no-files-found: error
+          retention-days: 30
+
+  google-play-aab:
+    name: Build signed Google Play AAB
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: android-release
+    env:
+      ASTRA_DISTRIBUTION: google-play
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Play release identity
+        run: node scripts/release/android-release.mjs validate google-play
+
+      - name: Generate Android project from tracked configuration
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Verify generated native customizations
+        shell: bash
+        run: |
+          grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
+          grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
+          grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
+          grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
+
+      - name: Run Astra native unit tests
+        working-directory: android
+        run: >-
+          ./gradlew
+          :astra-audio-route:testDebugUnitTest
+          :astra-desktop-transport:testDebugUnitTest
+          :astra-library-scanner:testDebugUnitTest
+          :astra-scope:testDebugUnitTest
+          :kotlin-audio:testDebugUnitTest
+          --no-daemon
+
+      - name: Decode upload keystore
+        env:
+          ASTRA_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          if [ -z "$ASTRA_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_UPLOAD_KEYSTORE_BASE64 is not configured." >&2
+            exit 1
+          fi
+          printf '%s' "$ASTRA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/astra-upload.jks"
+          chmod 600 "$RUNNER_TEMP/astra-upload.jks"
+
+      - name: Build Play bundle
+        working-directory: android
+        env:
+          EXPO_PUBLIC_LASTFM_API_KEY: ${{ secrets.EXPO_PUBLIC_LASTFM_API_KEY }}
+          EXPO_PUBLIC_LASTFM_SHARED_SECRET: ${{ secrets.EXPO_PUBLIC_LASTFM_SHARED_SECRET }}
+          ASTRA_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/astra-upload.jks
+          ASTRA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ASTRA_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ASTRA_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew :app:bundleRelease --no-daemon
+
+      - name: Verify release dependency substitution
+        working-directory: android
+        shell: bash
+        run: |
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --no-daemon > "$RUNNER_TEMP/release-dependencies.txt"
+          grep -Fq "project :kotlin-audio" "$RUNNER_TEMP/release-dependencies.txt"
+
+      - name: Verify AAB signature
+        env:
+          ASTRA_EXPECTED_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
+        shell: bash
+        run: |
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          EXPECTED="$(printf '%s' "$ASTRA_EXPECTED_CERT_SHA256" | tr -d ' :' | tr '[:lower:]' '[:upper:]')"
+          ACTUAL="$(keytool -printcert -jarfile "$AAB" | awk '/SHA256:/{gsub(":", "", $2); print toupper($2); exit}')"
+
+          jarsigner -verify "$AAB" >/dev/null
+          if [ -z "$EXPECTED" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "AAB signing certificate does not match the protected upload-key fingerprint." >&2
+            exit 1
+          fi
+
+      - name: Prepare Google Play artifact bundle
+        run: node scripts/release/android-release.mjs prepare google-play android/app/build/outputs/bundle/release/app-release.aab dist/android/google-play
+
+      - name: Upload Google Play AAB candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-google-play-${{ inputs.candidate_label || format('run-{0}', github.run_number) }}
+          path: dist/android/google-play/
+          if-no-files-found: error
+          retention-days: 30

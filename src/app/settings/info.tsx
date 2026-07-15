@@ -11,12 +11,14 @@ import {
   SettingsSectionScreen,
 } from '@/components/settings/SettingsSectionScaffold';
 import { Text } from '@/components/Text';
+import { createBuildInfo } from '@/release/buildInfo';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 
 const ASTRA_REPOSITORY_URL = 'https://github.com/Boof2015/astra-mobile';
 const ASTRA_DISCORD_URL = 'https://discord.gg/hsKK8Kr9Nj';
 const ASTRA_SUPPORT_URL = 'https://ko-fi.com/boof2015';
+const ASTRA_PRIVACY_URL = 'https://github.com/Boof2015/astra-mobile/blob/main/PRIVACY.md';
 const ASTRA_LICENSE_URL = 'https://github.com/Boof2015/astra-mobile/blob/main/LICENSE';
 const GPL_V3_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
 
@@ -31,8 +33,7 @@ async function openExternalLink(url: string, label: string) {
 export default function InfoSettingsScreen() {
   const styles = useStyles();
   const colors = useColors();
-  const appVersion = Constants.expoConfig?.version;
-  const appVersionLabel = appVersion ? `v${appVersion}` : 'Unavailable';
+  const buildInfo = createBuildInfo(Constants.expoConfig);
 
   return (
     <SettingsSectionScreen title="Info">
@@ -42,7 +43,7 @@ export default function InfoSettingsScreen() {
           <Text variant="caption" color={colors.textSecondary}>
             App Version
           </Text>
-          <Text variant="body">{appVersionLabel}</Text>
+          <Text variant="body">{buildInfo.versionLabel}</Text>
         </View>
       </SettingsCard>
 
@@ -69,12 +70,23 @@ export default function InfoSettingsScreen() {
         rightIcon="open-outline"
         onPress={() => void openExternalLink(ASTRA_DISCORD_URL, 'Discord')}
       />
+      {buildInfo.showExternalSupportLink ? (
+        <SettingsNavRow
+          icon="heart-outline"
+          title="Ko-fi"
+          subtitle="ko-fi.com/boof2015"
+          rightIcon="open-outline"
+          onPress={() => void openExternalLink(ASTRA_SUPPORT_URL, 'Ko-fi')}
+        />
+      ) : null}
+
+      <SettingsSectionLabel spaced>PRIVACY</SettingsSectionLabel>
       <SettingsNavRow
-        icon="heart-outline"
-        title="Ko-fi"
-        subtitle="ko-fi.com/boof2015"
+        icon="shield-checkmark-outline"
+        title="Privacy Policy"
+        subtitle="How Astra handles local and optional service data"
         rightIcon="open-outline"
-        onPress={() => void openExternalLink(ASTRA_SUPPORT_URL, 'Ko-fi')}
+        onPress={() => void openExternalLink(ASTRA_PRIVACY_URL, 'the Privacy Policy')}
       />
 
       <SettingsSectionLabel spaced>LICENSE</SettingsSectionLabel>

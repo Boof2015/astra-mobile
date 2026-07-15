@@ -25,6 +25,7 @@ import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { createBuildInfo } from '@/release/buildInfo';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
@@ -63,7 +64,7 @@ export default function SettingsScreen() {
 
   const totalTracks = folders.reduce((sum, folder) => sum + folder.track_count, 0);
   const connectedScrobblers = lastFmStatus?.profiles.filter((p) => p.connected).length ?? 0;
-  const appVersion = Constants.expoConfig?.version;
+  const buildInfo = createBuildInfo(Constants.expoConfig);
 
   const librarySubtitle = folders.length === 0
     ? 'Folders, artist grouping, album singles.'
@@ -138,7 +139,7 @@ export default function SettingsScreen() {
         <SettingsNavRow
           icon="information-circle-outline"
           title="Info"
-          subtitle={appVersion ? `v${appVersion}. Attribution, license, community links.` : 'Attribution, license, community links.'}
+          subtitle={`${buildInfo.versionLabel}. Attribution, license, community links.`}
           onPress={() => router.push('/settings/info' as never)}
         />
       </ScrollView>
