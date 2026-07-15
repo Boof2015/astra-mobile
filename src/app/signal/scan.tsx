@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import {
 import { decodeSignalFromUri } from '@/audio/signalDecodeImage';
 import { matchSignalToLibrary } from '@/audio/signalLocalMatch';
 import { SIGNAL_SCAN_GUIDE } from '@/audio/signalScanGeometry';
+import { encodeSignalWebUrl } from '@/audio/signalShare';
 import { enqueueEnd, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
@@ -26,7 +27,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type { SignalPayload } from '@boof2015/astra-signal';
 
-const MIN_READING_MS = 600;
+const MIN_READING_MS = 300;
 const FAILURE_RETURN_MS = 480;
 
 export default function SignalScanScreen() {
@@ -151,6 +152,16 @@ export default function SignalScanScreen() {
     }
   };
 
+  const findOnline = async (payload: SignalPayload) => {
+    playHaptic('action');
+    setActionError(null);
+    try {
+      await Linking.openURL(encodeSignalWebUrl(payload));
+    } catch {
+      setActionError("Couldn't open the online Signal lookup.");
+    }
+  };
+
   const standaloneResult = result !== null && !permission?.granted;
   const resultContent = result ? (
     <SignalResolutionPanel
@@ -160,6 +171,7 @@ export default function SignalScanScreen() {
       actionError={actionError}
       onPlay={(track) => void playMatchedTrack(track)}
       onQueue={(track) => void queueMatchedTrack(track)}
+      onFindOnline={() => void findOnline(result)}
       onScanAnother={scanAnother}
       onDone={() => router.back()}
     />

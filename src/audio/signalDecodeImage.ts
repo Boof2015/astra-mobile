@@ -1,4 +1,4 @@
-import { EncodingType, readAsStringAsync } from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import { AlphaType, ColorType, Skia, rect, type SkImage } from '@shopify/react-native-skia';
 import {
   decodeSignalImage,
@@ -66,8 +66,8 @@ export async function decodeSignalFromUri(
   uri: string,
   options: DecodeSignalFromUriOptions = {}
 ): Promise<SignalPayload> {
-  const b64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-  const encoded = Skia.Data.fromBase64(b64);
+  const bytes = await new File(uri).bytes();
+  const encoded = Skia.Data.fromBytes(bytes);
   const source = Skia.Image.MakeImageFromEncoded(encoded);
   encoded.dispose();
   if (!source) throw new Error('Could not read that image.');

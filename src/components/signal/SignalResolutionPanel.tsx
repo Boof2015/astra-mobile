@@ -19,6 +19,7 @@ interface SignalResolutionPanelProps {
   actionError: string | null;
   onPlay: (track: DbTrack) => void;
   onQueue: (track: DbTrack) => void;
+  onFindOnline: () => void;
   onScanAnother: () => void;
   onDone: () => void;
 }
@@ -30,6 +31,7 @@ export function SignalResolutionPanel({
   actionError,
   onPlay,
   onQueue,
+  onFindOnline,
   onScanAnother,
   onDone,
 }: SignalResolutionPanelProps) {
@@ -37,6 +39,29 @@ export function SignalResolutionPanel({
   const colors = useColors();
   const ripple = useRipple();
   const actionBusy = actionState === 'playing' || actionState === 'queueing';
+
+  const onlineAction = (primary = false) => (
+    <Pressable
+      android_ripple={ripple.bounded}
+      style={[
+        styles.onlineButton,
+        primary ? styles.onlineButtonPrimary : styles.onlineButtonSecondary,
+        actionBusy && styles.disabledButton,
+      ]}
+      onPress={onFindOnline}
+      disabled={actionBusy}
+      accessibilityRole="button"
+    >
+      <Ionicons
+        name="open-outline"
+        size={18}
+        color={primary ? colors.accentTextStrong : colors.textPrimary}
+      />
+      <Text variant="body" color={primary ? colors.accentTextStrong : colors.textPrimary}>
+        Find online
+      </Text>
+    </Pressable>
+  );
 
   const footer = (
     <View style={styles.footerActions}>
@@ -90,6 +115,12 @@ export function SignalResolutionPanel({
             </Text>
           </View>
         </View>
+        {onlineAction(true)}
+        {actionError ? (
+          <Text variant="label" color={colors.warning} style={styles.centerCopy}>
+            {actionError}
+          </Text>
+        ) : null}
         {footer}
       </View>
     );
@@ -132,6 +163,7 @@ export function SignalResolutionPanel({
             {actionError}
           </Text>
         ) : null}
+        {onlineAction()}
         {footer}
       </View>
     );
@@ -193,6 +225,8 @@ export function SignalResolutionPanel({
           </Text>
         </Pressable>
       </View>
+
+      {onlineAction()}
 
       {actionError ? (
         <Text variant="label" color={colors.warning} style={styles.centerCopy}>
@@ -263,6 +297,23 @@ const useStyles = createThemedStyles((colors) => ({
   playActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  onlineButton: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+  },
+  onlineButtonPrimary: {
+    backgroundColor: colors.accent,
+  },
+  onlineButtonSecondary: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.bgSecondary,
   },
   primaryButton: {
     minHeight: 48,

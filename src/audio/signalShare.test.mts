@@ -4,6 +4,7 @@ import type { Track } from '../types/audio.ts';
 import {
   SIGNAL_LINK_PREFIX,
   decodeTrackSignalLink,
+  encodeSignalWebUrl,
   encodeTrackSignalLink,
   signalInputFromTrack,
   signalLayoutFromTrack,
@@ -59,6 +60,19 @@ test('preserves ASCII case and punctuation in track metadata', () => {
     artist: 'N!GHT',
     title: '#iwannadance',
     durationSec: 222,
+  });
+});
+
+test('builds a web resolver URL with the complete Signal in the fragment', () => {
+  const url = encodeSignalWebUrl({ artist: 'ナナツカゼ', title: 'Replay!', durationSec: 201 });
+  assert.match(url, /^https:\/\/astramusic\.dev\/signal\/#astra:signal:v3:/);
+  const signalLink = new URL(url).hash.slice(1);
+  assert.deepEqual(decodeTrackSignalLink(signalLink), {
+    version: 3,
+    type: 'metadata',
+    artist: 'ナナツカゼ',
+    title: 'Replay!',
+    durationSec: 201,
   });
 });
 
