@@ -233,6 +233,8 @@ jobs:
 
       - name: Reclaim native test build space
         working-directory: android
+        env:
+          ASTRA_ALLOW_INSECURE_RELEASE_SIGNING: 'true'
         run: ./gradlew clean --no-daemon
 
       - name: Decode upload keystore
