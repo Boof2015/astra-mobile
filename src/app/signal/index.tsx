@@ -6,8 +6,10 @@ import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-syst
 import * as Sharing from 'expo-sharing';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { NowPlayingWash } from '@/components/NowPlayingWash';
 import { SignalCode, type SignalCodeHandle } from '@/components/signal/SignalCode';
 import { encodeTrackSignalLink, signalLayoutFromTrack } from '@/audio/signalShare';
+import { playerBackdropArtworkSource } from '@/library/artwork';
 import { usePlayerStore } from '@/stores/playerStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -27,6 +29,7 @@ export default function SignalScreen() {
   const codeRef = useRef<SignalCodeHandle>(null);
   const { width: screenWidth } = useWindowDimensions();
   const layout = useMemo(() => (track ? signalLayoutFromTrack(track) : null), [track]);
+  const artworkWash = playerBackdropArtworkSource(track);
   const availableWidth = Math.max(1, screenWidth - spacing.lg * 4);
   const targetWidth = layout?.tier === 'small' ? 280 : layout?.tier === 'medium' ? 340 : availableWidth;
   const codeWidth = Math.min(targetWidth, availableWidth);
@@ -52,15 +55,16 @@ export default function SignalScreen() {
 
   return (
     <Screen>
+      <NowPlayingWash
+        artworkUri={artworkWash}
+        offset={{ top: 0, left: -spacing.lg, right: -spacing.lg }}
+      />
       <View style={styles.header}>
         <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Back
           </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.icon(22)} style={styles.scanBtn} onPress={() => router.navigate('/signal/scan' as never)} hitSlop={8}>
-          <Ionicons name="scan-outline" size={22} color={colors.accent} />
         </Pressable>
       </View>
 
@@ -77,6 +81,18 @@ export default function SignalScreen() {
         </View>
       ) : (
         <View style={styles.body}>
+          <View style={styles.trackMeta}>
+            <Text variant="label" color={colors.accent}>
+              NOW PLAYING
+            </Text>
+            <Text variant="heading" style={styles.trackTitle} numberOfLines={2}>
+              {track.title}
+            </Text>
+            <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
+              {track.artist}
+            </Text>
+          </View>
+
           <View style={styles.codeCard}>
             <SignalCode
               ref={codeRef}
@@ -88,18 +104,16 @@ export default function SignalScreen() {
               exportBackground={CODE_BG}
             />
           </View>
-          <Text variant="heading" style={styles.trackTitle} numberOfLines={1}>
-            {track.title}
-          </Text>
-          <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-            {track.artist}
+
+          <Text variant="body" color={colors.textSecondary} style={styles.hint}>
+            Keep the full white card visible when another phone scans it.
           </Text>
 
           <View style={styles.actions}>
             <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void shareImage()}>
               <Ionicons name="share-outline" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
-                Share Signal
+                Share image
               </Text>
             </Pressable>
             <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={() => void shareLink()}>
@@ -126,9 +140,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: 2,
   },
-  scanBtn: {
-    padding: spacing.xs,
-  },
   heading: {
     marginBottom: spacing.lg,
   },
@@ -141,18 +152,33 @@ const useStyles = createThemedStyles((colors) => ({
   body: {
     alignItems: 'center',
   },
+  trackMeta: {
+    width: '100%',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
   codeCard: {
     padding: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: CODE_BG,
     marginBottom: spacing.lg,
     overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
   },
   trackTitle: {
-    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  hint: {
+    maxWidth: 320,
+    textAlign: 'center',
   },
   actions: {
-    flexDirection: 'row',
+    width: '100%',
     gap: spacing.md,
     marginTop: spacing.xl,
   },
@@ -160,7 +186,7 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radius.sm,
     backgroundColor: colors.accent,
     paddingHorizontal: spacing.lg,
@@ -170,7 +196,7 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radius.sm,
     backgroundColor: colors.bgSecondary,
     borderWidth: StyleSheet.hairlineWidth,

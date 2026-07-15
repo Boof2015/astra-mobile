@@ -11,24 +11,30 @@ import type { SignalPayload } from '@boof2015/astra-signal';
  * playable track (local library match, then online lookup) is the next phase;
  * for now it confirms the round-trip — the make-or-break for the format.
  */
-export function SignalResultCard({ payload }: { payload: SignalPayload }) {
+export function SignalResultCard({
+  payload,
+  compact = false,
+}: {
+  payload: SignalPayload;
+  compact?: boolean;
+}) {
   const styles = useStyles();
   const colors = useColors();
   const title = payload.title.trim();
   const artist = payload.artist.trim();
 
   return (
-    <View style={styles.card}>
-      <View style={styles.badge}>
-        <Ionicons name="pulse" size={18} color={colors.accentTextStrong} />
-        <Text variant="label" color={colors.accentTextStrong}>
-          Signal found
-        </Text>
+    <View style={[styles.card, compact && styles.compactCard]}>
+      <View style={[styles.signalMark, compact && styles.compactSignalMark]}>
+        <Ionicons name="pulse" size={25} color={colors.accent} />
       </View>
+      <Text variant="label" color={colors.accent} style={styles.foundLabel}>
+        SIGNAL FOUND
+      </Text>
       <Text variant="title" style={styles.title}>
         {title || 'Unknown title'}
       </Text>
-      <Text variant="body" color={colors.textSecondary}>
+      <Text variant="body" color={colors.textSecondary} style={styles.artist}>
         {artist || 'Unknown artist'}
       </Text>
       {payload.durationSec > 0 ? (
@@ -45,26 +51,45 @@ export function SignalResultCard({ payload }: { payload: SignalPayload }) {
 
 const useStyles = createThemedStyles((colors) => ({
   card: {
-    borderRadius: radius.md,
+    minHeight: 230,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
-    padding: spacing.lg,
-    gap: spacing.xs,
-  },
-  badge: {
-    flexDirection: 'row',
+    padding: spacing.xl,
+    gap: spacing.sm,
     alignItems: 'center',
-    gap: spacing.xs,
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
+    justifyContent: 'center',
+  },
+  signalMark: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.accentGlow,
     marginBottom: spacing.sm,
   },
+  compactCard: {
+    minHeight: 0,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  compactSignalMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginBottom: spacing.xs,
+  },
+  foundLabel: {
+    letterSpacing: 0.8,
+  },
   title: {
     marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  artist: {
+    textAlign: 'center',
   },
   metaRow: {
     flexDirection: 'row',

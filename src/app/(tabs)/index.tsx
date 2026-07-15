@@ -124,9 +124,11 @@ function formatHomeClockDate(date: Date): string {
 function HomeMasthead({
   mode,
   onSearch,
+  onScan,
 }: {
   mode: HomeGreetingTextMode;
   onSearch: () => void;
+  onScan: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
@@ -189,8 +191,29 @@ function HomeMasthead({
     </Pressable>
   );
 
+  const scanButton = (
+    <Pressable
+      style={styles.mastheadSearch}
+      android_ripple={ripple.icon(22)}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      onPress={onScan}
+      accessibilityRole="button"
+      accessibilityLabel="Scan an Astra Signal"
+      hitSlop={4}
+    >
+      <Ionicons name="scan-outline" size={22} color={colors.textPrimary} />
+    </Pressable>
+  );
+
+  const utilityButtons = (
+    <View style={styles.mastheadActions}>
+      {scanButton}
+      {searchButton}
+    </View>
+  );
+
   if (mode === 'off') {
-    return <View style={styles.mastheadUtility}>{searchButton}</View>;
+    return <View style={styles.mastheadUtility}>{utilityButtons}</View>;
   }
 
   const primary = mode === 'clock' ? formatHomeClockTime(clockNow) : greeting.primary;
@@ -208,7 +231,7 @@ function HomeMasthead({
           </Text>
         ) : null}
       </View>
-      {searchButton}
+      {utilityButtons}
     </View>
   );
 }
@@ -600,6 +623,7 @@ export default function HomeScreen() {
   };
 
   const openSearch = () => openQuickSearch();
+  const openSignalScanner = () => router.push('/signal/scan' as never);
 
   return (
     <Screen>
@@ -611,7 +635,11 @@ export default function HomeScreen() {
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
         >
-          <HomeMasthead mode={homeGreetingTextMode} onSearch={openSearch} />
+          <HomeMasthead
+            mode={homeGreetingTextMode}
+            onSearch={openSearch}
+            onScan={openSignalScanner}
+          />
 
           <ScanProgress />
 
@@ -740,6 +768,11 @@ const useStyles = createThemedStyles((colors) => ({
     minWidth: 0,
     justifyContent: 'center',
     gap: spacing.xs,
+  },
+  mastheadActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   mastheadPrimary: {
     fontSize: 28,
