@@ -6,11 +6,7 @@ import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import type { SignalPayload } from '@boof2015/astra-signal';
 
-/**
- * Shows the song a scanned/imported Signal decoded to. Resolving this to a
- * playable track (local library match, then online lookup) is the next phase;
- * for now it confirms the round-trip — the make-or-break for the format.
- */
+/** Shows the database-free metadata recovered from a scanned/imported Signal. */
 export function SignalResultCard({
   payload,
   compact = false,

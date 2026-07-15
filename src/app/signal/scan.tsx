@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
@@ -6,14 +6,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
-import { SignalResultCard } from '@/components/signal/SignalResultCard';
+import {
+  SignalResolutionPanel,
+  type SignalResultActionState,
+} from '@/components/signal/SignalResolutionPanel';
 import {
   SignalScanTransition,
   type SignalScanPhase,
 } from '@/components/signal/SignalScanTransition';
 import { decodeSignalFromUri } from '@/audio/signalDecodeImage';
+import { matchSignalToLibrary } from '@/audio/signalLocalMatch';
 import { SIGNAL_SCAN_GUIDE } from '@/audio/signalScanGeometry';
-import { usePlayerStore } from '@/stores/playerStore';
+import { enqueueEnd, playTracks } from '@/audio/playbackController';
+import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playHaptic } from '@/lib/haptics';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
@@ -27,15 +34,22 @@ export default function SignalScanScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
-  const currentTrack = usePlayerStore((state) => state.currentTrack);
+  const libraryInitialized = useLibraryStore((state) => state.initialized);
+  const libraryTracks = useLibraryStore((state) => state.tracks);
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SignalPayload | null>(null);
   const [phase, setPhase] = useState<SignalScanPhase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [actionState, setActionState] = useState<SignalResultActionState>('idle');
+  const [actionError, setActionError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const readingStartedAt = useRef(0);
+  const resolution = useMemo(
+    () => result && libraryInitialized ? matchSignalToLibrary(result, libraryTracks) : null,
+    [libraryInitialized, libraryTracks, result]
+  );
 
   useEffect(() => {
     if (phase !== 'failure') return;
@@ -104,9 +118,52 @@ export default function SignalScanScreen() {
   const scanAnother = () => {
     setResult(null);
     setError(null);
+    setActionState('idle');
+    setActionError(null);
     setPhase('idle');
   };
+
+  const playMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+    if (actionState === 'playing' || actionState === 'queueing') return;
+    playHaptic('confirm');
+    setActionState('playing');
+    setActionError(null);
+    try {
+      await playTracks([dbTrackToTrack(track)]);
+      router.back();
+    } catch {
+      setActionState('idle');
+      setActionError("Couldn't start this track. Try playing it from your library.");
+    }
+  };
+
+  const queueMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+    if (actionState !== 'idle') return;
+    playHaptic('confirm');
+    setActionState('queueing');
+    setActionError(null);
+    try {
+      await enqueueEnd(dbTrackToTrack(track));
+      setActionState('queued');
+    } catch {
+      setActionState('idle');
+      setActionError("Couldn't add this track to the queue.");
+    }
+  };
+
   const standaloneResult = result !== null && !permission?.granted;
+  const resultContent = result ? (
+    <SignalResolutionPanel
+      payload={result}
+      resolution={resolution}
+      actionState={actionState}
+      actionError={actionError}
+      onPlay={(track) => void playMatchedTrack(track)}
+      onQueue={(track) => void queueMatchedTrack(track)}
+      onScanAnother={scanAnother}
+      onDone={() => router.back()}
+    />
+  ) : null;
 
   return (
     <Screen>
@@ -124,49 +181,13 @@ export default function SignalScanScreen() {
       </Text>
       {standaloneResult ? (
         <View style={styles.resultState}>
-          <SignalResultCard payload={result} />
-          <View style={styles.resultActions}>
-            <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={scanAnother}>
-              <Ionicons name="scan-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Scan another
-              </Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={() => router.back()}>
-              <Text variant="body" color={colors.textPrimary}>
-                Done
-              </Text>
-            </Pressable>
-          </View>
+          {resultContent}
         </View>
       ) : (
         <>
           <Text variant="body" color={colors.textSecondary} style={styles.instruction}>
             Keep the full white Signal card visible and hold steady.
           </Text>
-
-          {currentTrack ? (
-            <Pressable
-              android_ripple={ripple.bounded}
-              style={styles.currentSignal}
-              onPress={() => router.push('/signal' as never)}
-              accessibilityRole="button"
-              accessibilityLabel={`View the Signal for ${currentTrack.title} by ${currentTrack.artist}`}
-            >
-              <View style={styles.currentSignalIcon}>
-                <Ionicons name="pulse" size={18} color={colors.accent} />
-              </View>
-              <View style={styles.currentSignalCopy}>
-                <Text variant="label" color={colors.textTertiary}>
-                  NOW PLAYING
-                </Text>
-                <Text variant="body" numberOfLines={1}>
-                  {currentTrack.title} · {currentTrack.artist}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={19} color={colors.textTertiary} />
-            </Pressable>
-          ) : null}
 
           {!permission ? (
             <View style={styles.center} />
@@ -213,8 +234,7 @@ export default function SignalScanScreen() {
                 width={previewSize.width}
                 height={previewSize.height}
                 payload={result}
-                onScanAnother={scanAnother}
-                onDone={() => router.back()}
+                resultContent={resultContent}
               />
             </View>
           )}
@@ -249,32 +269,6 @@ const useStyles = createThemedStyles((colors) => ({
   instruction: {
     marginBottom: spacing.md,
   },
-  currentSignal: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
-  },
-  currentSignalIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accentGlow,
-  },
-  currentSignalCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-  },
   center: {
     flex: 1,
   },
@@ -295,16 +289,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  secondaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSecondary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   linkButton: {
     alignItems: 'center',
@@ -402,11 +386,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   resultState: {
     flex: 1,
-    justifyContent: 'center',
-    gap: spacing.xl,
-    paddingBottom: spacing.xxl,
-  },
-  resultActions: {
-    gap: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
   },
 }));

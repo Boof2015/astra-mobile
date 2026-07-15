@@ -1,6 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -14,13 +13,10 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { encodeSignal, type SignalPayload } from '@boof2015/astra-signal';
-import { Text } from '@/components/Text';
 import { SignalCode } from '@/components/signal/SignalCode';
-import { SignalResultCard } from '@/components/signal/SignalResultCard';
 import { SIGNAL_SCAN_GUIDE } from '@/audio/signalScanGeometry';
 import { radius, spacing } from '@/theme';
-import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { createThemedStyles } from '@/theme/themed';
 
 export type SignalScanPhase = 'idle' | 'reading' | 'success' | 'failure';
 
@@ -29,8 +25,7 @@ interface SignalScanTransitionProps {
   width: number;
   height: number;
   payload: SignalPayload | null;
-  onScanAnother: () => void;
-  onDone: () => void;
+  resultContent: ReactNode;
 }
 
 const CODE_FG = '#0b0b12';
@@ -137,12 +132,9 @@ export function SignalScanTransition({
   width,
   height,
   payload,
-  onScanAnother,
-  onDone,
+  resultContent,
 }: SignalScanTransitionProps) {
   const themedStyles = useStyles();
-  const colors = useColors();
-  const ripple = useRipple();
   const overlayOpacity = useSharedValue(0);
   const lockProgress = useSharedValue(0);
   const settleProgress = useSharedValue(0);
@@ -171,6 +163,7 @@ export function SignalScanTransition({
   const targetLeft = (width - targetCardWidth) / 2;
   const targetTop = spacing.lg;
   const resultTop = targetTop + targetCardHeight + spacing.lg;
+  const resultMaxHeight = Math.max(1, height - resultTop - spacing.lg);
 
   useEffect(() => {
     if (phase === 'idle') {
@@ -304,29 +297,14 @@ export function SignalScanTransition({
       </Animated.View>
 
       {payload ? (
-        <Animated.View style={[themedStyles.resultPanel, { top: resultTop }, resultStyle]}>
-          <SignalResultCard payload={payload} compact />
-          <View style={themedStyles.resultActions}>
-            <Pressable
-              android_ripple={ripple.bounded}
-              style={themedStyles.primaryButton}
-              onPress={onScanAnother}
-            >
-              <Ionicons name="scan-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Scan another
-              </Text>
-            </Pressable>
-            <Pressable
-              android_ripple={ripple.bounded}
-              style={themedStyles.secondaryButton}
-              onPress={onDone}
-            >
-              <Text variant="body" color={colors.textPrimary}>
-                Done
-              </Text>
-            </Pressable>
-          </View>
+        <Animated.View
+          style={[
+            themedStyles.resultPanel,
+            { top: resultTop, maxHeight: resultMaxHeight },
+            resultStyle,
+          ]}
+        >
+          {resultContent}
         </Animated.View>
       ) : null}
     </Animated.View>
@@ -451,32 +429,5 @@ const useStyles = createThemedStyles((colors) => ({
     position: 'absolute',
     left: spacing.lg,
     right: spacing.lg,
-    gap: spacing.md,
-  },
-  resultActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  primaryButton: {
-    minHeight: 48,
-    flex: 1.35,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-  },
-  secondaryButton: {
-    minHeight: 48,
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgSecondary,
   },
 }));
