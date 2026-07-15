@@ -40,6 +40,7 @@ import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
+import { resolveNowPlayingDismissSpring } from '@/components/player/nowPlayingDismiss';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
 import { SleepTimerControls } from '@/components/player/SleepTimerControls';
 import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
@@ -442,13 +443,18 @@ export function NowPlayingOverlay() {
     })
     .onEnd((e) => {
       if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
+        const releaseSpring = resolveNowPlayingDismissSpring(
+          e.velocityY,
+          windowHeight - translateY.value
+        );
         translateY.value = withSpring(
           windowHeight,
           {
-            damping: 28,
-            stiffness: 240,
-            velocity: e.velocityY,
+            damping: releaseSpring.damping,
+            stiffness: releaseSpring.stiffness,
+            velocity: releaseSpring.velocity,
             overshootClamping: true,
+            energyThreshold: 1e-4,
           },
           (finished) => {
             if (finished) runOnJS(dismiss)();
