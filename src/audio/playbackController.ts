@@ -3,7 +3,7 @@ import TrackPlayer, {
   State,
   type Track as RntpTrack,
 } from 'react-native-track-player';
-import type { PlaybackState, Track } from '@/types/audio';
+import type { PlaybackSource, PlaybackState, Track } from '@/types/audio';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -45,6 +45,11 @@ setQueueLoadErrorHandler(() => {
 // autoQueue + shuffledAutoIndices split, but over RNTP's flat native queue).
 let originalOrder: string[] | null = null;
 let restoredMaterializationPromise: Promise<void> | null = null;
+
+export interface PlaybackStartOptions {
+  startIndex?: number;
+  source: PlaybackSource;
+}
 
 const NEXT_REPEAT: Record<RepeatModeStr, RepeatModeStr> = {
   none: 'all',
@@ -259,6 +264,7 @@ export function getPlaybackSessionSnapshot(): PlaybackSessionSnapshotV1 | null {
     originalOrderPaths: originalOrderPaths?.length === queuePaths.length
       ? originalOrderPaths
       : [...queuePaths],
+    source: queue.source,
   };
 }
 
@@ -268,7 +274,7 @@ export function restorePlaybackSession(
   const player = usePlayerStore.getState();
   if (!session || session.tracks.length === 0) {
     originalOrder = null;
-    useQueueStore.getState().setSnapshot([], -1);
+    useQueueStore.getState().setSnapshot([], -1, { source: null });
     player.reset();
     player.setShuffle(false);
     player.setRepeat('none');
@@ -281,7 +287,9 @@ export function restorePlaybackSession(
   originalOrder = session.originalOrderPaths
     .map((path) => idByPath.get(path))
     .filter((id): id is string => Boolean(id));
-  useQueueStore.getState().setSnapshot(queueTracks, session.activeIndex);
+  useQueueStore.getState().setSnapshot(queueTracks, session.activeIndex, {
+    source: session.source,
+  });
   player.setCurrentTrack(activeTrack);
   player.setProgress(session.position, activeTrack.duration);
   player.clearPendingSeek();
@@ -301,21 +309,28 @@ export async function hasActiveNativePlaybackSession(): Promise<boolean> {
 }
 
 /** Replace the queue with the given tracks and start playing at startIndex. */
-export async function playTracks(tracks: Track[], startIndex = 0): Promise<void> {
-  return playTracksInternal(tracks, startIndex, { allowBackgroundSetup: false });
+export async function playTracks(
+  tracks: Track[],
+  options: PlaybackStartOptions
+): Promise<void> {
+  return playTracksInternal(tracks, options, { allowBackgroundSetup: false });
 }
 
 /** Android Auto can request playback while the React UI is not foregrounded. */
-export async function playTracksForCar(tracks: Track[], startIndex = 0): Promise<void> {
-  return playTracksInternal(tracks, startIndex, { allowBackgroundSetup: true });
+export async function playTracksForCar(
+  tracks: Track[],
+  options: PlaybackStartOptions
+): Promise<void> {
+  return playTracksInternal(tracks, options, { allowBackgroundSetup: true });
 }
 
 async function playTracksInternal(
   tracks: Track[],
-  startIndex: number,
+  startOptions: PlaybackStartOptions,
   options: { allowBackgroundSetup: boolean },
 ): Promise<void> {
   if (tracks.length === 0) return;
+  const startIndex = startOptions.startIndex ?? 0;
   selectPhonePlaybackTarget();
   discardPendingRestoredSession();
   await ensurePlayerReady({ ...options, materializeRestored: false });
@@ -328,7 +343,9 @@ async function playTracksInternal(
   }
   const queueTracks = ordered.map(toRntpTrack);
   const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
-  useQueueStore.getState().setSnapshot(queueTracks, startIndex);
+  useQueueStore.getState().setSnapshot(queueTracks, startIndex, {
+    source: startOptions.source,
+  });
   setOptimisticTrack(queueTracks[startIndex], 'loading');
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'queue-play');
@@ -343,7 +360,10 @@ async function playTracksInternal(
 }
 
 /** Shuffle a context and play from the top (the library/album "Shuffle" buttons). */
-export async function shuffleTracks(tracks: Track[]): Promise<void> {
+export async function shuffleTracks(
+  tracks: Track[],
+  source: PlaybackSource
+): Promise<void> {
   if (tracks.length === 0) return;
   selectPhonePlaybackTarget();
   discardPendingRestoredSession();
@@ -352,7 +372,7 @@ export async function shuffleTracks(tracks: Track[]): Promise<void> {
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
   const playbackTarget = dspTargetFromTrack(queueTracks[0], 'none');
-  useQueueStore.getState().setSnapshot(queueTracks, 0);
+  useQueueStore.getState().setSnapshot(queueTracks, 0, { source });
   setOptimisticTrack(queueTracks[0], 'loading');
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'shuffle-play');
@@ -380,7 +400,9 @@ export async function playSample(): Promise<void> {
     await prepareAudioProcessingForPlayback(playbackTarget, 'sample-play');
     await TrackPlayer.add(sampleQueue);
     originalOrder = SAMPLE_TRACKS.map((t) => t.id);
-    useQueueStore.getState().setSnapshot(sampleQueue, 0);
+    useQueueStore.getState().setSnapshot(sampleQueue, 0, {
+      source: { kind: 'sample', label: 'Astra Sample' },
+    });
     setOptimisticTrack(sampleQueue[0], 'loading');
   } else {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();

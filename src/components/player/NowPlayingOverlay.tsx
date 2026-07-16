@@ -72,6 +72,7 @@ import {
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
@@ -148,6 +149,7 @@ export function NowPlayingOverlay() {
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
+  const playbackSource = useQueueStore((s) => s.source);
   const playbackState = usePlayerStore((s) => s.playbackState);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
@@ -165,6 +167,7 @@ export function NowPlayingOverlay() {
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
+    source: playbackSource,
   });
   const desktopPresentation = getDesktopPlaybackPresentation({
     connection: desktopConnection,

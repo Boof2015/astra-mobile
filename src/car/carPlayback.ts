@@ -21,6 +21,7 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import type { PlaybackSource } from '@/types/audio';
 import type { DbTrack } from '@/types/library';
 
 export interface CarMediaPayload {
@@ -125,7 +126,10 @@ async function playMedia(media: CarMediaPayload): Promise<void> {
   const db = await openLibraryDb();
   const resolved = await resolveMediaTracks(db, media);
   if (!resolved || resolved.tracks.length === 0) return;
-  await playTracksForCar(resolved.tracks.map(dbTrackToTrack), resolved.startIndex);
+  await playTracksForCar(resolved.tracks.map(dbTrackToTrack), {
+    startIndex: resolved.startIndex,
+    source: resolved.source,
+  });
   if (media.kind === 'playlist' && media.id != null) {
     await markPlaylistPlayed(db, media.id);
   }
@@ -134,20 +138,62 @@ async function playMedia(media: CarMediaPayload): Promise<void> {
 async function resolveMediaTracks(
   db: LibraryDatabase,
   media: CarMediaPayload,
-): Promise<{ tracks: DbTrack[]; startIndex: number } | null> {
+): Promise<{ tracks: DbTrack[]; startIndex: number; source: PlaybackSource } | null> {
   if (media.kind === 'track') {
     const context = contextFromTrack(media);
     const contextTracks = context ? await tracksForContext(db, context) : [];
     const startIndex = contextTracks.findIndex((track) => track.path === media.path);
-    if (contextTracks.length > 0 && startIndex >= 0) {
-      return { tracks: contextTracks, startIndex };
+    if (context && contextTracks.length > 0 && startIndex >= 0) {
+      return {
+        tracks: contextTracks,
+        startIndex,
+        source: await sourceForContext(db, context, contextTracks),
+      };
     }
     const track = media.path ? await getTrackByPath(db, media.path) : null;
-    return track ? { tracks: [track], startIndex: 0 } : null;
+    return track
+      ? {
+          tracks: [track],
+          startIndex: 0,
+          source: { kind: 'android-auto', label: 'Android Auto' },
+        }
+      : null;
   }
 
   const tracks = await tracksForContext(db, media);
-  return tracks.length > 0 ? { tracks, startIndex: 0 } : null;
+  return tracks.length > 0
+    ? {
+        tracks,
+        startIndex: 0,
+        source: await sourceForContext(db, media, tracks),
+      }
+    : null;
+}
+
+async function sourceForContext(
+  db: LibraryDatabase,
+  media: CarMediaPayload,
+  tracks: readonly DbTrack[],
+): Promise<PlaybackSource> {
+  if (media.kind === 'section' && media.section === 'favorites') {
+    return { kind: 'favorites', label: 'Favorites' };
+  }
+  if (media.kind === 'section' && media.section === 'recent') {
+    return { kind: 'recently-played', label: 'Recently Played' };
+  }
+  if (media.kind === 'playlist') {
+    const playlist = media.id == null
+      ? null
+      : (await getPlaylists(db)).find((entry) => entry.id === media.id);
+    return { kind: 'playlist', label: playlist?.name ?? 'Playlist' };
+  }
+  if (media.kind === 'album') {
+    return { kind: 'album', label: tracks[0]?.album?.trim() || 'Album' };
+  }
+  if (media.kind === 'artist') {
+    return { kind: 'artist', label: media.key?.trim() || 'Artist' };
+  }
+  return { kind: 'android-auto', label: 'Android Auto' };
 }
 
 function contextFromTrack(media: CarMediaPayload): CarMediaPayload | null {

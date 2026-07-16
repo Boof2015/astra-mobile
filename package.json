@@ -82,7 +82,7 @@
     "test:sleep": "node --experimental-strip-types --test src/audio/sleepTimerState.test.mts",
     "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/db/libraryMaintenance.test.mts src/lib/cacheInvalidation.test.mts",
     "test:settings-search": "node --experimental-strip-types --test src/components/search/settingsSearchRoutes.test.mts",
-    "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts src/components/player/nowPlayingDismiss.test.mts",
+    "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts src/components/player/nowPlayingDismiss.test.mts src/playback/playbackTargetPresentation.test.mts",
     "test:memory-lifecycle": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/delayedPresence.test.mts scripts/android-memory-profile.test.mjs",
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
     "test:home-greeting": "node --experimental-strip-types --test src/home/homeGreeting.test.mts",

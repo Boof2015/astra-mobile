@@ -46,7 +46,10 @@ export default function RecentlyPlayedScreen() {
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), index);
+    void playTracks(tracks.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'recently-played', label: 'Recently Played' },
+    });
   };
 
   return (

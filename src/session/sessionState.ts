@@ -1,3 +1,6 @@
+import { normalizePlaybackSource } from '../audio/playbackSource.ts';
+import type { PlaybackSource } from '../types/audio.ts';
+
 export const MOBILE_SESSION_KIND = 'astra-mobile-session';
 export const MOBILE_SESSION_SCHEMA_VERSION = 1;
 
@@ -15,6 +18,8 @@ export interface PlaybackSessionSnapshotV1 {
   shuffle: boolean;
   repeat: SessionRepeatMode;
   originalOrderPaths: string[];
+  /** Optional for backward compatibility with version-1 snapshots written before queue sources. */
+  source?: PlaybackSource | null;
 }
 
 export interface MobileSessionSnapshotV1 {
@@ -37,6 +42,7 @@ export interface ResolvedPlaybackSession<T extends SessionTrackLike> {
   shuffle: boolean;
   repeat: SessionRepeatMode;
   originalOrderPaths: string[];
+  source: PlaybackSource | null;
 }
 
 export interface StableRouteValidationContext {
@@ -280,6 +286,7 @@ export function normalizePlaybackSession(value: unknown): PlaybackSessionSnapsho
     shuffle: value.shuffle === true,
     repeat: normalizeRepeat(value.repeat),
     originalOrderPaths,
+    source: normalizePlaybackSource(value.source),
   };
 }
 
@@ -358,5 +365,6 @@ export function resolvePlaybackSession<T extends SessionTrackLike>(
     originalOrderPaths: samePathMultiset(originalOrderPaths, resolvedQueuePaths)
       ? originalOrderPaths
       : resolvedQueuePaths,
+    source: snapshot.source ?? null,
   };
 }

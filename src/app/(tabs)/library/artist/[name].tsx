@@ -88,13 +88,19 @@ export default function ArtistScreen() {
 
   const playTrackListFrom = (tracks: readonly DbTrack[], index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), index);
+    void playTracks(tracks.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'artist', label: name },
+    });
   };
 
   const playArtist = () => playTrackListFrom(detail.playbackTracks, 0);
   const shuffleArtist = () => {
     if (detail.playbackTracks.length === 0) return;
-    void shuffleTracks(detail.playbackTracks.map(dbTrackToTrack));
+    void shuffleTracks(detail.playbackTracks.map(dbTrackToTrack), {
+      kind: 'artist',
+      label: name,
+    });
   };
 
   const openSection = (target: ArtistSectionTarget) => {

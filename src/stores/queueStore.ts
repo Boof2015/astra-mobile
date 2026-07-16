@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
 import { nativeIndexToAbsolute, queueLoadSettled } from '@/audio/queueLoader';
+import type { PlaybackSource } from '@/types/audio';
+
+interface QueueSnapshotOptions {
+  /** Omit to retain the current queue source; pass null when clearing playback. */
+  source?: PlaybackSource | null;
+}
 
 /**
  * Live mirror of RNTP's native queue for the queue tray. Playback actions keep
@@ -11,9 +17,14 @@ interface QueueStore {
   tracks: RntpTrack[];
   activeIndex: number;
   hasSnapshot: boolean;
+  source: PlaybackSource | null;
   refreshFromNative: () => Promise<void>;
   refreshActiveIndex: () => Promise<void>;
-  setSnapshot: (tracks: RntpTrack[], activeIndex?: number) => void;
+  setSnapshot: (
+    tracks: RntpTrack[],
+    activeIndex?: number,
+    options?: QueueSnapshotOptions
+  ) => void;
   setActiveIndex: (activeIndex: number) => void;
   insertTrack: (track: RntpTrack, index?: number) => void;
   replaceUpcoming: (upcoming: RntpTrack[]) => void;
@@ -35,6 +46,7 @@ export const useQueueStore = create<QueueStore>((set) => ({
   tracks: [],
   activeIndex: -1,
   hasSnapshot: false,
+  source: null,
   refreshFromNative: async () => {
     // Mid chunked-load the native queue is partial and index-shifted — wait it out.
     await queueLoadSettled();
@@ -57,12 +69,15 @@ export const useQueueStore = create<QueueStore>((set) => ({
       ),
     }));
   },
-  setSnapshot: (tracks, activeIndex = 0) =>
-    set({
+  setSnapshot: (tracks, activeIndex = 0, options) =>
+    set((state) => ({
       tracks,
       activeIndex: normalizeActiveIndex(activeIndex, tracks.length),
       hasSnapshot: true,
-    }),
+      source: options && Object.hasOwn(options, 'source')
+        ? options.source ?? null
+        : state.source,
+    })),
   setActiveIndex: (activeIndex) =>
     set((s) => ({ activeIndex: normalizeActiveIndex(activeIndex, s.tracks.length) })),
   insertTrack: (track, index) =>

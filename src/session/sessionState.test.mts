@@ -99,6 +99,7 @@ test('round trips a normalized versioned snapshot', () => {
       shuffle: true,
       repeat: 'all',
       originalOrderPaths: ['file:///b.flac', 'file:///a.flac'],
+      source: { kind: 'playlist', label: 'Playlist 11' },
     },
   };
 
@@ -133,7 +134,35 @@ test('rejects unknown versions and safely defaults corrupt fields', () => {
     shuffle: false,
     repeat: 'none',
     originalOrderPaths: ['file:///a.flac', 'file:///b.flac'],
+    source: null,
   });
+});
+
+test('accepts legacy playback snapshots without a source and rejects malformed sources', () => {
+  const legacy = normalizeMobileSessionSnapshot({
+    kind: MOBILE_SESSION_KIND,
+    schemaVersion: MOBILE_SESSION_SCHEMA_VERSION,
+    savedAt: 123,
+    lastStableHref: '/',
+    playback: {
+      queuePaths: ['file:///a.flac'],
+      activeIndex: 0,
+      position: 12,
+      shuffle: false,
+      repeat: 'none',
+      originalOrderPaths: ['file:///a.flac'],
+    },
+  });
+  assert.equal(legacy?.playback?.source, null);
+
+  const malformed = normalizeMobileSessionSnapshot({
+    ...legacy,
+    playback: {
+      ...legacy?.playback,
+      source: { kind: 'playlist', label: '   ' },
+    },
+  });
+  assert.equal(malformed?.playback?.source, null);
 });
 
 test('restores duplicates and clamps position to the current duration', () => {
@@ -164,11 +193,13 @@ test('chooses the next survivor when the active track disappeared, then the prev
       shuffle: false,
       repeat: 'none',
       originalOrderPaths: ['file:///a.flac', 'file:///missing.flac', 'file:///c.flac'],
+      source: { kind: 'favorites', label: 'Favorites' },
     },
     tracks
   );
   assert.equal(next?.tracks[next.activeIndex].title, 'C');
   assert.equal(next?.position, 0);
+  assert.deepEqual(next?.source, { kind: 'favorites', label: 'Favorites' });
 
   const previous = resolvePlaybackSession(
     {

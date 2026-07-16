@@ -133,7 +133,10 @@ export default function LibraryScreen() {
 
   // Tap index is within sortedTracks so the tapped row is the track that plays.
   const playAllFrom = (index: number) => {
-    void playTracks(sortedTracks.map(dbTrackToTrack), index);
+    void playTracks(sortedTracks.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'library', label: 'Library' },
+    });
   };
   const openSearch = () => openQuickSearch();
 

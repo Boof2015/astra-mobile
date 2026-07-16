@@ -604,17 +604,23 @@ export default function HomeScreen() {
     });
   };
 
-  const playTrackList = (list: DbTrack[], index = 0) => {
+  const playRecentlyPlayed = (list: DbTrack[], index = 0) => {
     if (list.length === 0) return;
-    void playTracks(list.map(dbTrackToTrack), index);
+    void playTracks(list.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'recently-played', label: 'Recently Played' },
+    });
   };
 
   const playSpotlight = (shuffled = false) => {
     if (spotlightTracks.length === 0) return;
+    const source = spotlightContent?.kind === 'album'
+      ? { kind: 'album' as const, label: spotlightContent.album.album }
+      : { kind: 'artist' as const, label: spotlightContent?.artist.artist ?? 'Artist' };
     if (shuffled) {
-      void shuffleTracks(spotlightTracks.map(dbTrackToTrack));
+      void shuffleTracks(spotlightTracks.map(dbTrackToTrack), source);
     } else {
-      void playTracks(spotlightTracks.map(dbTrackToTrack), 0);
+      void playTracks(spotlightTracks.map(dbTrackToTrack), { source });
     }
   };
 
@@ -682,7 +688,7 @@ export default function HomeScreen() {
                       track={track}
                       active={track.path === currentPath}
                       swipeToQueue={false}
-                      onPress={() => playTrackList(recentTracks, index)}
+                      onPress={() => playRecentlyPlayed(recentTracks, index)}
                       onLongPress={() => setActionTrack(track)}
                       onOpenActions={() => setActionTrack(track)}
                     />

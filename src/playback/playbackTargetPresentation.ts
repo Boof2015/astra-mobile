@@ -1,4 +1,4 @@
-import type { PlaybackState, Track } from '@/types/audio';
+import type { PlaybackSource, PlaybackState, Track } from '@/types/audio';
 import type {
   DesktopRemoteConnection,
   DesktopRemoteNowPlayingSnapshot,
@@ -67,6 +67,7 @@ export function hostFromBaseUrl(baseUrl: string): string {
 export function getPhonePlaybackPresentation({
   track,
   playbackState,
+  source,
   // Live progress is subscribed by leaf components (MiniProgress, seek bars) so
   // parents don't re-render on the 2Hz tick; only the desktop presentation
   // carries snapshot-fed progress through here.
@@ -75,12 +76,13 @@ export function getPhonePlaybackPresentation({
 }: {
   track: Track | null;
   playbackState: PlaybackState;
+  source?: PlaybackSource | null;
   currentTime?: number;
   duration?: number;
 }): PlaybackPresentation {
   return {
     target: 'phone',
-    sourceLabel: track?.album?.trim() || 'This phone',
+    sourceLabel: source?.label || 'Queue',
     deviceLabel: 'This phone',
     title: track?.title || 'Nothing playing',
     subtitle: track?.artist || 'Start a track from Home',

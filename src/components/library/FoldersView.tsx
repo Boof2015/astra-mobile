@@ -149,7 +149,10 @@ function FolderTrackRow({
   const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
 
   const playFolderTrack = () => {
-    void playTracks(row.folderTracks.map(dbTrackToTrack), Math.max(0, index));
+    void playTracks(row.folderTracks.map(dbTrackToTrack), {
+      startIndex: Math.max(0, index),
+      source: { kind: 'folder', label: row.folderName },
+    });
   };
   const openActions = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -210,11 +213,16 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   // Folder-level playback runs the whole subtree (subfolders included), in tree order.
   const playFolder = (node: FolderTreeNode) => {
     if (node.subtreeTracks.length === 0) return;
-    void playTracks(node.subtreeTracks.map(dbTrackToTrack), 0);
+    void playTracks(node.subtreeTracks.map(dbTrackToTrack), {
+      source: { kind: 'folder', label: node.name },
+    });
   };
   const shuffleFolder = (node: FolderTreeNode) => {
     if (node.subtreeTracks.length === 0) return;
-    void shuffleTracks(node.subtreeTracks.map(dbTrackToTrack));
+    void shuffleTracks(node.subtreeTracks.map(dbTrackToTrack), {
+      kind: 'folder',
+      label: node.name,
+    });
   };
   const playFolderNext = (node: FolderTreeNode) => {
     if (node.subtreeTracks.length === 0) return;

@@ -30,6 +30,7 @@ export type FlattenedFolderTreeRow =
       id: string;
       track: DbTrack;
       folderTracks: DbTrack[];
+      folderName: string;
       depth: number;
     };
 
@@ -226,6 +227,7 @@ export function flattenFolderTree(
         id: `track:${track.id}`,
         track,
         folderTracks: node.tracks,
+        folderName: node.name,
         depth: node.depth + 1,
       });
     }

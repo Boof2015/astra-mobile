@@ -164,13 +164,19 @@ export default function PlaylistScreen() {
 
   const startPlayback = (index: number) => {
     if (playable.length === 0) return;
-    void playTracks(playable.map(dbTrackToTrack), index);
+    void playTracks(playable.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: isFavorites ? 'favorites' : 'playlist', label: name },
+    });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
   };
 
   const startShuffle = () => {
     if (playable.length === 0) return;
-    void shuffleTracks(playable.map(dbTrackToTrack));
+    void shuffleTracks(playable.map(dbTrackToTrack), {
+      kind: isFavorites ? 'favorites' : 'playlist',
+      label: name,
+    });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
   };
 

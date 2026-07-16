@@ -938,7 +938,12 @@ function QuickSearchPanel({
         0,
         context.findIndex((track) => track.path === result.track.path)
       );
-      void playTracks(context.map(dbTrackToTrack), index);
+      void playTracks(context.map(dbTrackToTrack), {
+        startIndex: index,
+        source: hasQuery
+          ? { kind: 'search', label: `Search: ${trimmedQuery}` }
+          : { kind: 'recently-played', label: 'Recently Played' },
+      });
       return;
     }
 

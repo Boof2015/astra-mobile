@@ -44,7 +44,10 @@ export default function ArtistSongsScreen() {
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), index);
+    void playTracks(tracks.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'artist', label: name },
+    });
   };
 
   return (

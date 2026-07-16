@@ -130,7 +130,9 @@ export default function SignalScanScreen() {
     setActionState('playing');
     setActionError(null);
     try {
-      await playTracks([dbTrackToTrack(track)]);
+      await playTracks([dbTrackToTrack(track)], {
+        source: { kind: 'signal', label: 'Signal' },
+      });
       router.back();
     } catch {
       setActionState('idle');

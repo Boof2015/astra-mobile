@@ -84,7 +84,10 @@ export default function AlbumScreen() {
   }, [tracks]);
 
   const playFrom = (index: number) => {
-    void playTracks(tracks.map(dbTrackToTrack), index);
+    void playTracks(tracks.map(dbTrackToTrack), {
+      startIndex: index,
+      source: { kind: 'album', label: album?.album ?? tracks[0]?.album ?? 'Album' },
+    });
   };
 
   // Eligibility can filter an album out of the store list (a single reached via
@@ -164,7 +167,10 @@ export default function AlbumScreen() {
         disabled={tracks.length === 0}
         onBack={handleBack}
         onPlay={() => playFrom(0)}
-        onShuffle={() => void shuffleTracks(tracks.map(dbTrackToTrack))}
+        onShuffle={() => void shuffleTracks(tracks.map(dbTrackToTrack), {
+          kind: 'album',
+          label: album?.album ?? tracks[0]?.album ?? 'Album',
+        })}
         scrollY={scrollY}
         heroFaded={heroFaded}
         collapsed={collapsed}

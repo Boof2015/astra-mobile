@@ -147,6 +147,7 @@ export function installMobileSessionPersistence(
       state.tracks !== previous.tracks
       || state.activeIndex !== previous.activeIndex
       || state.hasSnapshot !== previous.hasSnapshot
+      || state.source !== previous.source
     ) {
       scheduleDebouncedSave();
     }

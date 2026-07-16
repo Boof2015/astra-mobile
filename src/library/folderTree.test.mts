@@ -184,4 +184,19 @@ test('flattens only expanded folder nodes', () => {
     ),
     ['AstraTest', 'Album', 'Nested Song', 'Root Song']
   );
+  const expandedRows = flattenFolderTree(tree, new Set([root.id, album.id]));
+  const nestedTrackRow = expandedRows.find(
+    (row) => row.type === 'track' && row.track.title === 'Nested Song'
+  );
+  const rootTrackRow = expandedRows.find(
+    (row) => row.type === 'track' && row.track.title === 'Root Song'
+  );
+  assert.equal(
+    nestedTrackRow?.type === 'track' ? nestedTrackRow.folderName : null,
+    'Album'
+  );
+  assert.equal(
+    rootTrackRow?.type === 'track' ? rootTrackRow.folderName : null,
+    'AstraTest'
+  );
 });

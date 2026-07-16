@@ -40,6 +40,25 @@ export interface Track {
   availabilityReason?: string;
 }
 
+export type PlaybackSourceKind =
+  | 'album'
+  | 'artist'
+  | 'playlist'
+  | 'favorites'
+  | 'library'
+  | 'folder'
+  | 'recently-played'
+  | 'search'
+  | 'signal'
+  | 'android-auto'
+  | 'sample';
+
+/** The collection or surface that created the current playback queue. */
+export interface PlaybackSource {
+  kind: PlaybackSourceKind;
+  label: string;
+}
+
 // Playback state
 export type PlaybackState = 'stopped' | 'playing' | 'paused' | 'loading';
 
