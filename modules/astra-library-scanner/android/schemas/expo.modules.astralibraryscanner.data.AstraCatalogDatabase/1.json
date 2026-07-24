@@ -1,0 +1,1149 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "cc1e0fc052cde984629b8c430c720f20",
+    "entities": [
+      {
+        "tableName": "catalog_meta",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `collation_version` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collationVersion",
+            "columnName": "collation_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "catalog_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`source_key` TEXT NOT NULL, `source_type` TEXT NOT NULL, `source_id` INTEGER NOT NULL, `active_generation_id` TEXT, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`source_key`))",
+        "fields": [
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "source_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activeGenerationId",
+            "columnName": "active_generation_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "source_key"
+          ]
+        }
+      },
+      {
+        "tableName": "scan_generations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `source_key` TEXT NOT NULL, `state` TEXT NOT NULL, `started_at` INTEGER NOT NULL, `finished_at` INTEGER, `error_message` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "source_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finished_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "error_message",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scan_generations_source_key_state",
+            "unique": false,
+            "columnNames": [
+              "source_key",
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scan_generations_source_key_state` ON `${TABLE_NAME}` (`source_key`, `state`)"
+          }
+        ]
+      },
+      {
+        "tableName": "tracks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `generation_id` TEXT NOT NULL, `source_key` TEXT NOT NULL, `path` TEXT NOT NULL, `folder_id` INTEGER, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `album` TEXT NOT NULL, `album_artist` TEXT, `album_identity_key` TEXT NOT NULL, `album_display_artist` TEXT, `duration` REAL NOT NULL, `track_number` INTEGER, `disc_number` INTEGER, `year` INTEGER, `genre` TEXT, `artwork_hash` TEXT, `format` TEXT NOT NULL, `sample_rate` INTEGER, `bit_depth` INTEGER, `bitrate` INTEGER, `channels` INTEGER, `codec` TEXT, `source_type` TEXT NOT NULL, `source_id` INTEGER, `source_track_id` TEXT, `source_path` TEXT, `artwork_source_id` TEXT, `file_name` TEXT NOT NULL, `parent_uri` TEXT, `size` INTEGER, `mtime` INTEGER NOT NULL, `added_at` INTEGER NOT NULL, `modified_at` INTEGER NOT NULL, `loudness_lufs` REAL, `sample_peak` REAL, `replay_gain_track_db` REAL, `replay_gain_album_db` REAL, `replay_gain_track_peak` REAL, `replay_gain_album_peak` REAL, `rg_scanned` INTEGER NOT NULL, `bpm` REAL, `musical_key` TEXT, `title_sort_key` TEXT NOT NULL, `artist_sort_key` TEXT NOT NULL, `album_sort_key` TEXT NOT NULL, `file_name_sort_key` TEXT NOT NULL, `disc_sort` INTEGER NOT NULL, `track_sort` INTEGER NOT NULL, `section_label` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generationId",
+            "columnName": "generation_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceKey",
+            "columnName": "source_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folder_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artist",
+            "columnName": "artist",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "album",
+            "columnName": "album",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumArtist",
+            "columnName": "album_artist",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumIdentityKey",
+            "columnName": "album_identity_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumDisplayArtist",
+            "columnName": "album_display_artist",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "duration",
+            "columnName": "duration",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackNumber",
+            "columnName": "track_number",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "discNumber",
+            "columnName": "disc_number",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "genre",
+            "columnName": "genre",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artworkHash",
+            "columnName": "artwork_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sampleRate",
+            "columnName": "sample_rate",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bitDepth",
+            "columnName": "bit_depth",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bitrate",
+            "columnName": "bitrate",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "channels",
+            "columnName": "channels",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "codec",
+            "columnName": "codec",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceTrackId",
+            "columnName": "source_track_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourcePath",
+            "columnName": "source_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artworkSourceId",
+            "columnName": "artwork_source_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "file_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentUri",
+            "columnName": "parent_uri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "mtime",
+            "columnName": "mtime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAt",
+            "columnName": "added_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loudnessLufs",
+            "columnName": "loudness_lufs",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "samplePeak",
+            "columnName": "sample_peak",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "replayGainTrackDb",
+            "columnName": "replay_gain_track_db",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "replayGainAlbumDb",
+            "columnName": "replay_gain_album_db",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "replayGainTrackPeak",
+            "columnName": "replay_gain_track_peak",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "replayGainAlbumPeak",
+            "columnName": "replay_gain_album_peak",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "replayGainScanned",
+            "columnName": "rg_scanned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bpm",
+            "columnName": "bpm",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "musicalKey",
+            "columnName": "musical_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "titleSortKey",
+            "columnName": "title_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistSortKey",
+            "columnName": "artist_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumSortKey",
+            "columnName": "album_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileNameSortKey",
+            "columnName": "file_name_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discSort",
+            "columnName": "disc_sort",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackSort",
+            "columnName": "track_sort",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sectionLabel",
+            "columnName": "section_label",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tracks_generation_id_path",
+            "unique": true,
+            "columnNames": [
+              "generation_id",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_tracks_generation_id_path` ON `${TABLE_NAME}` (`generation_id`, `path`)"
+          },
+          {
+            "name": "index_tracks_source_key_generation_id",
+            "unique": false,
+            "columnNames": [
+              "source_key",
+              "generation_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_source_key_generation_id` ON `${TABLE_NAME}` (`source_key`, `generation_id`)"
+          },
+          {
+            "name": "index_tracks_album_identity_key",
+            "unique": false,
+            "columnNames": [
+              "album_identity_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_album_identity_key` ON `${TABLE_NAME}` (`album_identity_key`)"
+          },
+          {
+            "name": "index_tracks_artist_sort_key_album_sort_key_disc_sort_track_sort_title_sort_key_path",
+            "unique": false,
+            "columnNames": [
+              "artist_sort_key",
+              "album_sort_key",
+              "disc_sort",
+              "track_sort",
+              "title_sort_key",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_artist_sort_key_album_sort_key_disc_sort_track_sort_title_sort_key_path` ON `${TABLE_NAME}` (`artist_sort_key`, `album_sort_key`, `disc_sort`, `track_sort`, `title_sort_key`, `path`)"
+          },
+          {
+            "name": "index_tracks_title_sort_key_path",
+            "unique": false,
+            "columnNames": [
+              "title_sort_key",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_title_sort_key_path` ON `${TABLE_NAME}` (`title_sort_key`, `path`)"
+          },
+          {
+            "name": "index_tracks_added_at_path",
+            "unique": false,
+            "columnNames": [
+              "added_at",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_added_at_path` ON `${TABLE_NAME}` (`added_at`, `path`)"
+          },
+          {
+            "name": "index_tracks_duration_path",
+            "unique": false,
+            "columnNames": [
+              "duration",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracks_duration_path` ON `${TABLE_NAME}` (`duration`, `path`)"
+          }
+        ]
+      },
+      {
+        "tableName": "album_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision` INTEGER NOT NULL, `identity_key` TEXT NOT NULL, `album` TEXT NOT NULL, `artist` TEXT NOT NULL, `year` INTEGER, `artwork_hash` TEXT, `source_type` TEXT, `source_id` INTEGER, `artwork_source_id` TEXT, `track_count` INTEGER NOT NULL, `total_duration` REAL NOT NULL, `latest_added_at` INTEGER NOT NULL, `name_sort_key` TEXT NOT NULL, `artist_sort_key` TEXT NOT NULL, `section_label` TEXT NOT NULL, `is_single` INTEGER NOT NULL, PRIMARY KEY(`revision`, `identity_key`))",
+        "fields": [
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identityKey",
+            "columnName": "identity_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "album",
+            "columnName": "album",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artist",
+            "columnName": "artist",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "artworkHash",
+            "columnName": "artwork_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "artworkSourceId",
+            "columnName": "artwork_source_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "trackCount",
+            "columnName": "track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalDuration",
+            "columnName": "total_duration",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latestAddedAt",
+            "columnName": "latest_added_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameSortKey",
+            "columnName": "name_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistSortKey",
+            "columnName": "artist_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sectionLabel",
+            "columnName": "section_label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSingle",
+            "columnName": "is_single",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision",
+            "identity_key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_album_summaries_revision_name_sort_key_identity_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "name_sort_key",
+              "identity_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_summaries_revision_name_sort_key_identity_key` ON `${TABLE_NAME}` (`revision`, `name_sort_key`, `identity_key`)"
+          },
+          {
+            "name": "index_album_summaries_revision_artist_sort_key_name_sort_key_identity_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "artist_sort_key",
+              "name_sort_key",
+              "identity_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_summaries_revision_artist_sort_key_name_sort_key_identity_key` ON `${TABLE_NAME}` (`revision`, `artist_sort_key`, `name_sort_key`, `identity_key`)"
+          },
+          {
+            "name": "index_album_summaries_revision_latest_added_at_identity_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "latest_added_at",
+              "identity_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_summaries_revision_latest_added_at_identity_key` ON `${TABLE_NAME}` (`revision`, `latest_added_at`, `identity_key`)"
+          },
+          {
+            "name": "index_album_summaries_revision_year_name_sort_key_identity_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "year",
+              "name_sort_key",
+              "identity_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_summaries_revision_year_name_sort_key_identity_key` ON `${TABLE_NAME}` (`revision`, `year`, `name_sort_key`, `identity_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "artist_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision` INTEGER NOT NULL, `artist_key` TEXT NOT NULL, `artist` TEXT NOT NULL, `grouping_mode` TEXT NOT NULL, `track_count` INTEGER NOT NULL, `primary_track_count` INTEGER NOT NULL, `album_count` INTEGER NOT NULL, `artwork_hash` TEXT, `source_type` TEXT, `source_id` INTEGER, `artwork_source_id` TEXT, `name_sort_key` TEXT NOT NULL, `section_label` TEXT NOT NULL, `is_collaboration` INTEGER NOT NULL, `artwork_hashes_json` TEXT NOT NULL, PRIMARY KEY(`revision`, `artist_key`, `grouping_mode`))",
+        "fields": [
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistKey",
+            "columnName": "artist_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artist",
+            "columnName": "artist",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupingMode",
+            "columnName": "grouping_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackCount",
+            "columnName": "track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryTrackCount",
+            "columnName": "primary_track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumCount",
+            "columnName": "album_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artworkHash",
+            "columnName": "artwork_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "artworkSourceId",
+            "columnName": "artwork_source_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nameSortKey",
+            "columnName": "name_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sectionLabel",
+            "columnName": "section_label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isCollaboration",
+            "columnName": "is_collaboration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artworkHashesJson",
+            "columnName": "artwork_hashes_json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision",
+            "artist_key",
+            "grouping_mode"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_artist_summaries_revision_grouping_mode_name_sort_key_artist_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "grouping_mode",
+              "name_sort_key",
+              "artist_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_artist_summaries_revision_grouping_mode_name_sort_key_artist_key` ON `${TABLE_NAME}` (`revision`, `grouping_mode`, `name_sort_key`, `artist_key`)"
+          },
+          {
+            "name": "index_artist_summaries_revision_grouping_mode_track_count_name_sort_key_artist_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "grouping_mode",
+              "track_count",
+              "name_sort_key",
+              "artist_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_artist_summaries_revision_grouping_mode_track_count_name_sort_key_artist_key` ON `${TABLE_NAME}` (`revision`, `grouping_mode`, `track_count`, `name_sort_key`, `artist_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "artist_track_index",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision` INTEGER NOT NULL, `grouping_mode` TEXT NOT NULL, `artist_key` TEXT NOT NULL, `track_id` INTEGER NOT NULL, `relationship` TEXT NOT NULL, PRIMARY KEY(`revision`, `grouping_mode`, `artist_key`, `track_id`))",
+        "fields": [
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupingMode",
+            "columnName": "grouping_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artistKey",
+            "columnName": "artist_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trackId",
+            "columnName": "track_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "relationship",
+            "columnName": "relationship",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision",
+            "grouping_mode",
+            "artist_key",
+            "track_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_artist_track_index_revision_grouping_mode_artist_key_relationship_track_id",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "grouping_mode",
+              "artist_key",
+              "relationship",
+              "track_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_artist_track_index_revision_grouping_mode_artist_key_relationship_track_id` ON `${TABLE_NAME}` (`revision`, `grouping_mode`, `artist_key`, `relationship`, `track_id`)"
+          },
+          {
+            "name": "index_artist_track_index_track_id",
+            "unique": false,
+            "columnNames": [
+              "track_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_artist_track_index_track_id` ON `${TABLE_NAME}` (`track_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "directory_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`revision` INTEGER NOT NULL, `node_id` TEXT NOT NULL, `folder_id` INTEGER NOT NULL, `parent_node_id` TEXT, `name` TEXT NOT NULL, `depth` INTEGER NOT NULL, `directory_path` TEXT NOT NULL, `document_uri` TEXT, `direct_track_count` INTEGER NOT NULL, `total_track_count` INTEGER NOT NULL, `name_sort_key` TEXT NOT NULL, PRIMARY KEY(`revision`, `node_id`))",
+        "fields": [
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folder_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentNodeId",
+            "columnName": "parent_node_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "depth",
+            "columnName": "depth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "directoryPath",
+            "columnName": "directory_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentUri",
+            "columnName": "document_uri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "directTrackCount",
+            "columnName": "direct_track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalTrackCount",
+            "columnName": "total_track_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameSortKey",
+            "columnName": "name_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "revision",
+            "node_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_directory_summaries_revision_folder_id_parent_node_id_name_sort_key",
+            "unique": false,
+            "columnNames": [
+              "revision",
+              "folder_id",
+              "parent_node_id",
+              "name_sort_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_directory_summaries_revision_folder_id_parent_node_id_name_sort_key` ON `${TABLE_NAME}` (`revision`, `folder_id`, `parent_node_id`, `name_sort_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "track_user_facts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`path` TEXT NOT NULL, `is_favorite` INTEGER NOT NULL, `play_count` INTEGER NOT NULL, `last_played_at` INTEGER, PRIMARY KEY(`path`))",
+        "fields": [
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFavorite",
+            "columnName": "is_favorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playCount",
+            "columnName": "play_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastPlayedAt",
+            "columnName": "last_played_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "path"
+          ]
+        }
+      },
+      {
+        "tableName": "waveform_peaks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`track_path` TEXT NOT NULL, `bins` INTEGER NOT NULL, `peaks` BLOB NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`track_path`))",
+        "fields": [
+          {
+            "fieldPath": "trackPath",
+            "columnName": "track_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bins",
+            "columnName": "bins",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peaks",
+            "columnName": "peaks",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "track_path"
+          ]
+        }
+      },
+      {
+        "tableName": "lyrics_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`track_path` TEXT NOT NULL, `metadata_signature` TEXT, `status` TEXT NOT NULL, `source` TEXT, `provider` TEXT, `format` TEXT, `plain_lyrics` TEXT, `synced_lyrics` TEXT, `synced_lines_json` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`track_path`))",
+        "fields": [
+          {
+            "fieldPath": "trackPath",
+            "columnName": "track_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "metadataSignature",
+            "columnName": "metadata_signature",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "plainLyrics",
+            "columnName": "plain_lyrics",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncedLyrics",
+            "columnName": "synced_lyrics",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncedLinesJson",
+            "columnName": "synced_lines_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "track_path"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_lyrics_cache_updated_at",
+            "unique": false,
+            "columnNames": [
+              "updated_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_lyrics_cache_updated_at` ON `${TABLE_NAME}` (`updated_at`)"
+          }
+        ]
+      },
+      {
+        "tableName": "track_fts",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS4(`title` TEXT NOT NULL, `artist` TEXT NOT NULL, `album` TEXT NOT NULL, `file_name` TEXT NOT NULL, tokenize=unicode61)",
+        "fields": [
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "artist",
+            "columnName": "artist",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "album",
+            "columnName": "album",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "file_name",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "rowid"
+          ]
+        },
+        "ftsVersion": "FTS4",
+        "ftsOptions": {
+          "tokenizer": "unicode61",
+          "tokenizerArgs": [],
+          "contentTable": "",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC"
+        },
+        "contentSyncTriggers": []
+      }
+    ],
+    "views": [
+      {
+        "viewName": "active_tracks",
+        "createSql": "CREATE VIEW `${VIEW_NAME}` AS SELECT t.*\n    FROM tracks t\n    INNER JOIN catalog_sources s\n      ON s.source_key = t.source_key\n     AND s.active_generation_id = t.generation_id"
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cc1e0fc052cde984629b8c430c720f20')"
+    ]
+  }
+}

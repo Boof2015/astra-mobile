@@ -34,11 +34,8 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
-import { buildArtistDetail } from '@/library/artistDetail';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { filterArtistBrowseList } from '@/library/artistGrouping';
-import { dbTrackToTrack } from '@/library/trackAdapter';
 import { albumArtworkSource, artworkUri } from '@/library/artwork';
 import {
   chooseHomeGreeting,
@@ -357,14 +354,14 @@ function RecentlyAddedAlbum({
 
 function RandomSpotlightCard({
   spotlight,
-  tracks,
+  hasTracks,
   onPlay,
   onShuffle,
   onReroll,
   onOpen,
 }: {
   spotlight: { kind: 'album'; album: Album } | { kind: 'artist'; artist: Artist };
-  tracks: DbTrack[];
+  hasTracks: boolean;
   onPlay: () => void;
   onShuffle: () => void;
   onReroll: () => void;
@@ -373,7 +370,7 @@ function RandomSpotlightCard({
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
-  const disabled = tracks.length === 0;
+  const disabled = !hasTracks;
   const title = spotlight.kind === 'album' ? spotlight.album.album : spotlight.artist.artist;
   const label = spotlight.kind === 'album' ? 'RANDOM ALBUM' : 'RANDOM ARTIST';
   const meta = spotlight.kind === 'album'
@@ -454,21 +451,44 @@ function RandomSpotlightCard({
 
 function EmptyHomeCard({
   scanError,
+  status,
   onManageFolders,
 }: {
   scanError: string | null;
+  status: 'initializing' | 'empty' | 'ready' | 'scanning' | 'rebuilding' | 'degraded' | 'fatalUserData';
   onManageFolders: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
+  const fatal = status === 'fatalUserData';
+  const rebuilding = status === 'rebuilding';
+  const degraded = status === 'degraded';
   return (
     <View style={styles.emptyCard}>
-      <Ionicons name="folder-open-outline" size={34} color={colors.textTertiary} />
+      <Ionicons
+        name={fatal || degraded ? 'warning-outline' : rebuilding ? 'construct-outline' : 'folder-open-outline'}
+        size={34}
+        color={fatal || degraded ? colors.warning : colors.textTertiary}
+      />
       <View style={styles.emptyCopy}>
-        <Text variant="heading">No music yet</Text>
+        <Text variant="heading">
+          {fatal
+            ? 'Library data unavailable'
+            : rebuilding
+              ? 'Rebuilding your library'
+              : degraded
+                ? 'Library temporarily unavailable'
+                : 'No music yet'}
+        </Text>
         <Text variant="body" color={colors.textSecondary}>
-          Add a local folder to fill Home with albums, history, favorites, and playlists.
+          {fatal
+            ? 'Astra could not restore your playlists, favorites, and settings from either safety snapshot. Your music files were not changed.'
+            : rebuilding
+              ? 'The damaged catalog was quarantined. Astra is rebuilding from available folders and remote sources.'
+              : degraded
+                ? 'Astra cannot currently read the catalog, so it will not treat your library as empty.'
+                : 'Add a local folder to fill Home with albums, history, favorites, and playlists.'}
         </Text>
         {scanError ? (
           <Text variant="caption" color={colors.warning} numberOfLines={2}>
@@ -482,9 +502,9 @@ function EmptyHomeCard({
         onPress={onManageFolders}
         accessibilityRole="button"
       >
-        <Ionicons name="folder-open-outline" size={18} color={colors.bgPrimary} />
+        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={colors.bgPrimary} />
         <Text variant="body" style={styles.primaryButtonText}>
-          Folder settings
+          {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
       </Pressable>
     </View>
@@ -494,12 +514,13 @@ function EmptyHomeCard({
 export default function HomeScreen() {
   const styles = useStyles();
   const router = useRouter();
-  const tracks = useLibraryStore((s) => s.tracks);
-  const albums = useLibraryStore((s) => s.albums);
-  const artists = useLibraryStore((s) => s.artists);
+  const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
+  const albums = useLibraryStore((s) => s.homeAlbums);
+  const artists = useLibraryStore((s) => s.homeArtists);
   const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const scanError = useLibraryStore((s) => s.scanError);
+  const libraryStatus = useLibraryStore((s) => s.status);
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -511,7 +532,7 @@ export default function HomeScreen() {
   const [randomSeeds] = useState(() => [Math.random(), Math.random()] as const);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
-  const hasLibrary = tracks.length > 0;
+  const hasLibrary = totalTrackCount > 0;
 
   const recentlyAddedAlbums = useMemo(
     () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
@@ -564,29 +585,6 @@ export default function HomeScreen() {
       ? ({ kind: 'artist', artist: randomArtist } as const)
       : null;
 
-  const randomAlbumNeedsTracks = hasLibrary && randomAlbum != null;
-  const tracksByAlbum = useMemo(() => {
-    if (!randomAlbumNeedsTracks) return null;
-    const map = new Map<string, DbTrack[]>();
-    for (const track of tracks) {
-      const list = map.get(track.album_identity_key) ?? [];
-      list.push(track);
-      map.set(track.album_identity_key, list);
-    }
-    // Store tracks are artist-ordered; a multi-artist compilation would play
-    // blocked by artist without an explicit album-order sort.
-    for (const list of map.values()) list.sort(compareTracksByDiscTrackTitle);
-    return map;
-  }, [randomAlbumNeedsTracks, tracks]);
-  const randomTracks =
-    randomAlbum && tracksByAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
-  const randomArtistDetail = useMemo(
-    () => randomArtist
-      ? buildArtistDetail(tracks, randomArtist.artist, artistGroupingMode)
-      : null,
-    [artistGroupingMode, randomArtist, tracks]
-  );
-  const spotlightTracks = randomAlbum ? randomTracks : randomArtistDetail?.playbackTracks ?? [];
   const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
   const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
 
@@ -606,22 +604,26 @@ export default function HomeScreen() {
 
   const playRecentlyPlayed = (list: DbTrack[], index = 0) => {
     if (list.length === 0) return;
-    void playTracks(list.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'recent' }, {
+      anchorPath: list[index]?.path,
       source: { kind: 'recently-played', label: 'Recently Played' },
     });
   };
 
   const playSpotlight = (shuffled = false) => {
-    if (spotlightTracks.length === 0) return;
+    if (!spotlightContent) return;
     const source = spotlightContent?.kind === 'album'
       ? { kind: 'album' as const, label: spotlightContent.album.album }
       : { kind: 'artist' as const, label: spotlightContent?.artist.artist ?? 'Artist' };
-    if (shuffled) {
-      void shuffleTracks(spotlightTracks.map(dbTrackToTrack), source);
-    } else {
-      void playTracks(spotlightTracks.map(dbTrackToTrack), { source });
-    }
+    const query = spotlightContent.kind === 'album'
+      ? { kind: 'album' as const, albumKey: spotlightContent.album.identity_key }
+      : {
+          kind: 'artist' as const,
+          artistKey: spotlightContent.artist.artist,
+          groupingMode: artistGroupingMode,
+          section: 'all' as const,
+        };
+    void playLibraryQuery(query, { shuffle: shuffled, source });
   };
 
   const rerollSpotlight = () => {
@@ -652,7 +654,10 @@ export default function HomeScreen() {
           {!hasLibrary ? (
             <EmptyHomeCard
               scanError={scanError}
-              onManageFolders={() => router.push('/settings')}
+              status={libraryStatus}
+              onManageFolders={() => router.push(
+                libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
+              )}
             />
           ) : (
             <>
@@ -660,7 +665,11 @@ export default function HomeScreen() {
               <View style={styles.topFeature}>
                 <RandomSpotlightCard
                   spotlight={spotlightContent}
-                  tracks={spotlightTracks}
+                  hasTracks={
+                    spotlightContent.kind === 'album'
+                      ? spotlightContent.album.track_count > 0
+                      : spotlightContent.artist.track_count > 0
+                  }
                   onOpen={() => spotlightContent.kind === 'album'
                     ? openAlbum(spotlightContent.album)
                     : openArtist(spotlightContent.artist)}

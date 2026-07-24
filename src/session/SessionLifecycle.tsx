@@ -13,12 +13,14 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
-import { buildArtistDetail } from '@/library/artistDetail';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   hasActiveNativePlaybackSession,
   restorePlaybackSession,
+  restoreVirtualPlaybackContext,
 } from '@/audio/playbackController';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
+import type { DbTrack } from '@/types/library';
 import {
   installMobileSessionPersistence,
   readPersistedMobileSession,
@@ -30,23 +32,51 @@ import {
   resolvePlaybackSession,
   shouldRestoreSavedRoute,
   stableHrefForRoute,
-  validateRestoredHref,
 } from './sessionState';
 
 interface SessionLifecycleProps {
   onReady: () => void;
 }
 
-function validateSavedHref(href: string): string {
-  const tracks = useLibraryStore.getState().tracks;
-  return validateRestoredHref(href, {
-    hasAlbum: (identityKey) => tracks.some((track) => track.album_identity_key === identityKey),
-    hasArtist: (name, credit) => {
-      const groupingMode = credit ? 'astra' : useSettingsStore.getState().artistGroupingMode;
-      return buildArtistDetail(tracks, name, groupingMode).tracks.length > 0;
-    },
-    hasPlaylist: (id) => usePlaylistStore.getState().playlists.some((playlist) => playlist.id === id),
-  });
+async function validateSavedHref(href: string): Promise<string> {
+  const normalized = normalizeStableHref(href) ?? '/';
+  const [pathname, query = ''] = normalized.split('?', 2);
+  const albumMatch = pathname.match(/^\/library\/album\/([^/]+)$/);
+  if (albumMatch) {
+    const key = decodeURIComponent(albumMatch[1]);
+    const result = await AstraLibraryData.getAlbumDetail<DbTrack, Record<string, unknown>>(
+      key,
+      null,
+      1
+    );
+    return result.summary ? normalized : '/library';
+  }
+  const artistMatch = pathname.match(
+    /^\/library\/artist\/([^/]+)(?:\/(?:albums|songs|appearances))?$/
+  );
+  if (artistMatch) {
+    const name = decodeURIComponent(artistMatch[1]);
+    const groupingMode = new URLSearchParams(query).get('credit') === '1'
+      ? 'astra'
+      : useSettingsStore.getState().artistGroupingMode;
+    const result = await AstraLibraryData.getArtistDetail<DbTrack, Record<string, unknown>>(
+      name,
+      groupingMode,
+      'all',
+      null,
+      1
+    );
+    return result.summary ? normalized : '/library';
+  }
+  const playlistMatch = pathname.match(/^\/library\/playlist\/(favorites|\d+)$/);
+  if (
+    playlistMatch &&
+    playlistMatch[1] !== 'favorites' &&
+    !usePlaylistStore.getState().playlists.some((playlist) => playlist.id === Number(playlistMatch[1]))
+  ) {
+    return '/library';
+  }
+  return normalized;
 }
 
 /** Restores once, then owns stable-route tracking and session autosave. */
@@ -100,19 +130,24 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
 
         const liveNativeSession = await hasActiveNativePlaybackSession();
         if (!cancelled && snapshot?.playback && !liveNativeSession) {
-          const resolved = resolvePlaybackSession(
-            snapshot.playback,
-            useLibraryStore.getState().tracks
-          );
-          restorePlaybackSession(
-            resolved
-              ? { ...resolved, tracks: resolved.tracks.map(dbTrackToTrack) }
-              : null
-          );
+          const nativeContext = await AstraLibraryData.restorePlaybackContext<DbTrack>();
+          if (nativeContext) {
+            restoreVirtualPlaybackContext(nativeContext, snapshot.playback);
+          } else {
+            const resolved = resolvePlaybackSession(
+              snapshot.playback,
+              useLibraryStore.getState().tracks
+            );
+            restorePlaybackSession(
+              resolved
+                ? { ...resolved, tracks: resolved.tracks.map(dbTrackToTrack) }
+                : null
+            );
+          }
         }
         if (cancelled) return;
 
-        const stableHref = validateSavedHref(snapshot?.lastStableHref ?? '/');
+        const stableHref = await validateSavedHref(snapshot?.lastStableHref ?? '/');
         setInitialStableHref(stableHref);
         if (shouldRestoreSavedRoute(initialPathname.current, initialUrl) && stableHref !== '/') {
           router.replace(stableHref as never);

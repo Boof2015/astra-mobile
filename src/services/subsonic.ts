@@ -26,6 +26,10 @@ export interface SubsonicRequestOptions {
 
 export interface SubsonicCatalogSyncOptions extends SubsonicRequestOptions {
   onProgress?: (progress: RemoteSyncProgress) => void;
+  /** Awaited after each bounded batch so callers can stream directly to native storage. */
+  onTracksBatch?: (tracks: RemoteCatalogTrack[]) => Promise<void>;
+  /** Defaults to true for compatibility; sync orchestration disables collection. */
+  collectTracks?: boolean;
 }
 
 export interface SubsonicCatalogSyncResult {
@@ -419,13 +423,22 @@ export async function syncSubsonicCatalog(
   options.onProgress?.({ phase: 'albums', current: 0, total: uniqueAlbumIds.length, detail: null });
 
   let albumsProcessed = 0;
-  const albumSongLists = await runWithConcurrency(
-    uniqueAlbumIds,
-    MAX_SYNC_CONCURRENCY,
-    async (albumId): Promise<SubsonicAlbumSongs> => {
-      const albumResponse = await requestSubsonicJson(config, 'getAlbum', { id: albumId }, options);
-      const albumContainer = albumResponse.album as Record<string, unknown> | undefined;
-      if (!albumContainer || typeof albumContainer !== 'object') {
+  const byTrackId = options.collectTracks === false
+    ? null
+    : new Map<string, RemoteCatalogTrack>();
+  const seenTrackIds = new Set<string>();
+  let tracksScanned = 0;
+  options.onProgress?.({ phase: 'tracks', current: 0, total: uniqueAlbumIds.length, detail: null });
+  let trackAlbumProcessed = 0;
+  const albumBatchSize = MAX_SYNC_CONCURRENCY * 6;
+  for (let start = 0; start < uniqueAlbumIds.length; start += albumBatchSize) {
+    const albumIds = uniqueAlbumIds.slice(start, start + albumBatchSize);
+    const albumSongLists = await runWithConcurrency(
+      albumIds,
+      MAX_SYNC_CONCURRENCY,
+      async (albumId): Promise<SubsonicAlbumSongs> => {
+        const albumResponse = await requestSubsonicJson(config, 'getAlbum', { id: albumId }, options);
+        const albumContainer = albumResponse.album as Record<string, unknown> | undefined;
         albumsProcessed += 1;
         options.onProgress?.({
           phase: 'albums',
@@ -433,45 +446,40 @@ export async function syncSubsonicCatalog(
           total: uniqueAlbumIds.length,
           detail: albumId,
         });
-        return { coverArtId: null, songs: [] };
+        if (!albumContainer || typeof albumContainer !== 'object') {
+          return { coverArtId: null, songs: [] };
+        }
+        return {
+          coverArtId: toTrimmedText(albumContainer.coverArt),
+          songs: asArray<SubsonicSong>(albumContainer.song),
+        };
       }
-      albumsProcessed += 1;
+    );
+    const trackBatch: RemoteCatalogTrack[] = [];
+    for (const albumSongs of albumSongLists) {
+      for (const song of albumSongs.songs) {
+        const mapped = mapSongToCatalogTrack(sourceId, song, albumSongs.coverArtId);
+        if (!mapped || !seenTrackIds.add(mapped.source_track_id)) continue;
+        trackBatch.push(mapped);
+        byTrackId?.set(mapped.source_track_id, mapped);
+        tracksScanned += 1;
+      }
+      trackAlbumProcessed += 1;
       options.onProgress?.({
-        phase: 'albums',
-        current: albumsProcessed,
+        phase: 'tracks',
+        current: trackAlbumProcessed,
         total: uniqueAlbumIds.length,
-        detail: albumId,
+        detail: null,
       });
-      return {
-        coverArtId: toTrimmedText(albumContainer.coverArt),
-        songs: asArray<SubsonicSong>(albumContainer.song),
-      };
     }
-  );
-
-  const byTrackId = new Map<string, RemoteCatalogTrack>();
-  options.onProgress?.({ phase: 'tracks', current: 0, total: albumSongLists.length, detail: null });
-  let trackAlbumProcessed = 0;
-  for (const albumSongs of albumSongLists) {
-    for (const song of albumSongs.songs) {
-      const mapped = mapSongToCatalogTrack(sourceId, song, albumSongs.coverArtId);
-      if (!mapped) continue;
-      byTrackId.set(mapped.source_track_id, mapped);
-    }
-    trackAlbumProcessed += 1;
-    options.onProgress?.({
-      phase: 'tracks',
-      current: trackAlbumProcessed,
-      total: albumSongLists.length,
-      detail: null,
-    });
+    if (trackBatch.length > 0) await options.onTracksBatch?.(trackBatch);
   }
 
-  const tracks = Array.from(byTrackId.values());
+  const tracks = byTrackId ? Array.from(byTrackId.values()) : [];
   return {
     artistsScanned: artistRefs.length,
     albumsScanned: uniqueAlbumIds.length,
-    tracksScanned: tracks.length,
+    tracksScanned,
     tracks,
   };
 }

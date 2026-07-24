@@ -30,7 +30,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { rgbaFromHex } from '@/theme/colorUtils';
-import { enqueueTop, playTracks } from '@/audio/playbackController';
+import { enqueueTop, playLibraryQuery } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   albumArtworkSource,
@@ -51,6 +51,8 @@ import type {
 } from '@/types/library';
 import type { Playlist } from '@/types/playlist';
 import { SETTINGS_SEARCH_ROUTES } from '@/components/search/settingsSearchRoutes';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type RouteHref =
@@ -572,11 +574,11 @@ function QuickSearchPanel({
   const { height } = useWindowDimensions();
   const inputRef = useRef<TextInput | null>(null);
 
-  const tracks = useLibraryStore((s) => s.tracks);
-  const albums = useLibraryStore((s) => s.albums);
-  const artists = useLibraryStore((s) => s.artists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const setViewMode = useLibraryStore((s) => s.setViewMode);
+  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
+  const includeSingles = useSettingsStore((s) => s.includeSingles);
+  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
 
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
@@ -584,10 +586,48 @@ function QuickSearchPanel({
 
   const [query, setQuery] = useState(initialQuery);
   const [showAllLibrary, setShowAllLibrary] = useState(false);
+  const [tracks, setTracks] = useState<DbTrack[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
   const [queuedTrackPaths, setQueuedTrackPaths] = useState<Set<string>>(() => new Set());
   const queuedFeedbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
+
+  useEffect(() => {
+    if (!hasQuery) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void AstraLibraryData.searchLibrary<DbTrack, Album, Artist>(
+        trimmedQuery,
+        showAllLibrary ? 100 : 20,
+        includeSingles,
+        artistGroupingMode,
+        includeCollabArtists
+      ).then((result) => {
+        if (cancelled) return;
+        setTracks(result.tracks);
+        setAlbums(result.albums);
+        setArtists(result.artists);
+      }).catch(() => {
+        if (cancelled) return;
+        setTracks([]);
+        setAlbums([]);
+        setArtists([]);
+      });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    artistGroupingMode,
+    hasQuery,
+    includeCollabArtists,
+    includeSingles,
+    showAllLibrary,
+    trimmedQuery,
+  ]);
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 80);
@@ -933,17 +973,17 @@ function QuickSearchPanel({
     close();
 
     if (result.kind === 'track') {
-      const context = hasQuery ? allTrackResults.map((entry) => entry.track) : recentTrackResults.map((entry) => entry.track);
-      const index = Math.max(
-        0,
-        context.findIndex((track) => track.path === result.track.path)
-      );
-      void playTracks(context.map(dbTrackToTrack), {
-        startIndex: index,
+      void playLibraryQuery(
+        hasQuery
+          ? { kind: 'search', query: trimmedQuery }
+          : { kind: 'recent' },
+        {
+        anchorPath: result.track.path,
         source: hasQuery
           ? { kind: 'search', label: `Search: ${trimmedQuery}` }
           : { kind: 'recently-played', label: 'Recently Played' },
-      });
+        }
+      );
       return;
     }
 

@@ -6,15 +6,16 @@
 // falls back to the expensive loudness decode when ReplayGain is off or absent — so a
 // fully tagged library normalizes with no decoding at all.
 
-import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
-import type { LibraryDatabase } from '@/db/database';
-import { openLibraryDb } from '@/db/database';
-import { getTrackLoudness, setTrackLoudness, setTrackReplayGain, type TrackLoudness } from '@/db/queries';
+import {
+  AstraLibraryData,
+  AstraLibraryScanner,
+  type NativeTrackLoudness,
+} from '../../modules/astra-library-scanner';
 import { hasUsableReplayGain, type LoudnessFacts } from '@/audio/normalization';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 
 /** Map a loudness DB row (or a miss) to the resolver's facts shape. */
-export function factsFromRow(row: TrackLoudness | null): LoudnessFacts {
+export function factsFromRow(row: NativeTrackLoudness | null): LoudnessFacts {
   return {
     loudnessLufs: row?.loudness_lufs ?? null,
     samplePeak: row?.sample_peak ?? null,
@@ -30,14 +31,13 @@ export function factsFromRow(row: TrackLoudness | null): LoudnessFacts {
  * re-measures). The decode is the expensive part; failures leave loudness NULL.
  */
 export async function measureAndStoreLoudness(
-  db: LibraryDatabase,
   path: string
 ): Promise<{ lufs: number | null; peak: number | null }> {
   try {
     const res = await AstraLibraryScanner.measureLoudness(path);
     const lufs = res?.lufs ?? null;
     const peak = res?.peak ?? null;
-    await setTrackLoudness(db, path, lufs, peak).catch(() => {});
+    await AstraLibraryData.setTrackLoudness(path, lufs, peak).catch(() => {});
     return { lufs, peak };
   } catch {
     return { lufs: null, peak: null };
@@ -60,8 +60,7 @@ export function ensureTrackLoudness(path: string): Promise<LoudnessFacts> {
 }
 
 async function run(path: string): Promise<LoudnessFacts> {
-  const db = await openLibraryDb();
-  const row = await getTrackLoudness(db, path);
+  const row = (await AstraLibraryData.getTrackLoudness([path]))[0] ?? null;
   let facts = factsFromRow(row);
 
   // 1. Read ReplayGain tags once per track (container-only, no decode). Decoupled
@@ -70,12 +69,13 @@ async function run(path: string): Promise<LoudnessFacts> {
   if (!row || row.rg_scanned !== 1) {
     try {
       const rg = await AstraLibraryScanner.readReplayGain(path);
-      await setTrackReplayGain(db, path, {
-        trackGainDb: rg.trackGainDb,
-        albumGainDb: rg.albumGainDb,
-        trackPeak: rg.trackPeak,
-        albumPeak: rg.albumPeak,
-      }).catch(() => {});
+      await AstraLibraryData.setTrackReplayGain(
+        path,
+        rg.trackGainDb,
+        rg.albumGainDb,
+        rg.trackPeak,
+        rg.albumPeak
+      ).catch(() => {});
       facts = {
         ...facts,
         replayGainTrackDb: rg.trackGainDb,
@@ -96,6 +96,6 @@ async function run(path: string): Promise<LoudnessFacts> {
   if (hasUsableReplayGain(facts, settings)) return facts;
 
   // 4. Otherwise measure loudness now (decode) and merge it in.
-  const measured = await measureAndStoreLoudness(db, path);
+  const measured = await measureAndStoreLoudness(path);
   return { ...facts, loudnessLufs: measured.lufs, samplePeak: measured.peak };
 }

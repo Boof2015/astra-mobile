@@ -13,11 +13,9 @@ import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
+import { useNativeAlbumDetail } from '@/library/nativePages';
 import { albumArtworkSource, artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
@@ -40,26 +38,15 @@ function DiscHeader({ disc }: { disc: number }) {
 export default function AlbumScreen() {
   const colors = useColors();
   const { key } = useLocalSearchParams<{ key: string }>();
-  const albums = useLibraryStore((s) => s.albums);
-  const allTracks = useLibraryStore((s) => s.tracks);
+  const { items: tracks, summary: album, totalCount, loadMore } = useNativeAlbumDetail(key);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const handleBack = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
 
-  const album = albums.find((entry) => entry.identity_key === key);
-  // Store tracks are artist-ordered, so a multi-artist group (Various Artists
-  // compilation) would come out blocked by artist — re-sort into album order.
-  const tracks = useMemo(
-    () =>
-      allTracks
-        .filter((track) => track.album_identity_key === key)
-        .sort(compareTracksByDiscTrackTitle),
-    [allTracks, key]
-  );
-
-  const totalDuration = tracks.reduce((sum, track) => sum + track.duration, 0);
+  const totalDuration =
+    album?.total_duration ?? tracks.reduce((sum, track) => sum + track.duration, 0);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   // Interleave "Disc N" headers only when the album spans multiple discs;
@@ -84,8 +71,8 @@ export default function AlbumScreen() {
   }, [tracks]);
 
   const playFrom = (index: number) => {
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'album', albumKey: key }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'album', label: album?.album ?? tracks[0]?.album ?? 'Album' },
     });
   };
@@ -109,7 +96,7 @@ export default function AlbumScreen() {
   const backdropUri = headerArtworkHash ? artworkThumbUri(headerArtworkHash) : artSource;
   const meta = [
     (album?.year ?? fallbackTrack?.year) ? String(album?.year ?? fallbackTrack?.year) : null,
-    `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`,
+    `${totalCount} ${totalCount === 1 ? 'track' : 'tracks'}`,
     formatDuration(totalDuration),
   ]
     .filter(Boolean)
@@ -124,6 +111,8 @@ export default function AlbumScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.6}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
@@ -167,9 +156,12 @@ export default function AlbumScreen() {
         disabled={tracks.length === 0}
         onBack={handleBack}
         onPlay={() => playFrom(0)}
-        onShuffle={() => void shuffleTracks(tracks.map(dbTrackToTrack), {
-          kind: 'album',
-          label: album?.album ?? tracks[0]?.album ?? 'Album',
+        onShuffle={() => void playLibraryQuery({ kind: 'album', albumKey: key }, {
+          shuffle: true,
+          source: {
+            kind: 'album',
+            label: album?.album ?? tracks[0]?.album ?? 'Album',
+          },
         })}
         scrollY={scrollY}
         heroFaded={heroFaded}

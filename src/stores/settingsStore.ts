@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 import {
   parseNowPlayingCompanion,
@@ -87,26 +86,25 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   load: async () => {
     if (get().loaded) return;
-    const db = await openLibraryDb();
-    const [
-      grouping,
-      includeSingles,
-      scope,
-      scopeStageVisible,
-      scopeStyle,
-      lyricsVisible,
-      nowPlayingCompanion,
-      homeGreetingTextMode,
-    ] = await Promise.all([
-      getSetting(db, ARTIST_GROUPING_KEY),
-      getSetting(db, INCLUDE_SINGLES_KEY),
-      getSetting(db, SCOPE_MODE_KEY),
-      getSetting(db, SCOPE_STAGE_VISIBLE_KEY),
-      getSetting(db, SCOPE_STYLE_KEY),
-      getSetting(db, LYRICS_VISIBLE_KEY),
-      getSetting(db, NOW_PLAYING_COMPANION_KEY),
-      getSetting(db, HOME_GREETING_TEXT_MODE_KEY),
+    await AstraLibraryData.initialize();
+    const values = await AstraLibraryData.getSettings([
+      ARTIST_GROUPING_KEY,
+      INCLUDE_SINGLES_KEY,
+      SCOPE_MODE_KEY,
+      SCOPE_STAGE_VISIBLE_KEY,
+      SCOPE_STYLE_KEY,
+      LYRICS_VISIBLE_KEY,
+      NOW_PLAYING_COMPANION_KEY,
+      HOME_GREETING_TEXT_MODE_KEY,
     ]);
+    const grouping = values[ARTIST_GROUPING_KEY] ?? null;
+    const includeSingles = values[INCLUDE_SINGLES_KEY] ?? null;
+    const scope = values[SCOPE_MODE_KEY] ?? null;
+    const scopeStageVisible = values[SCOPE_STAGE_VISIBLE_KEY] ?? null;
+    const scopeStyle = values[SCOPE_STYLE_KEY] ?? null;
+    const lyricsVisible = values[LYRICS_VISIBLE_KEY] ?? null;
+    const nowPlayingCompanion = values[NOW_PLAYING_COMPANION_KEY] ?? null;
+    const homeGreetingTextMode = values[HOME_GREETING_TEXT_MODE_KEY] ?? null;
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
@@ -123,57 +121,49 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setArtistGroupingMode: async (mode) => {
     if (get().artistGroupingMode === mode) return;
     set({ artistGroupingMode: mode });
-    const db = await openLibraryDb();
-    await setSetting(db, ARTIST_GROUPING_KEY, mode);
+    await AstraLibraryData.setSettings({ [ARTIST_GROUPING_KEY]: mode });
   },
 
   setIncludeSingles: async (include) => {
     if (get().includeSingles === include) return;
     set({ includeSingles: include });
-    const db = await openLibraryDb();
-    await setSetting(db, INCLUDE_SINGLES_KEY, include ? 'true' : 'false');
+    await AstraLibraryData.setSettings({ [INCLUDE_SINGLES_KEY]: include ? 'true' : 'false' });
   },
 
   setScopeMode: async (mode) => {
     if (get().scopeMode === mode) return;
     set({ scopeMode: mode });
-    const db = await openLibraryDb();
-    await setSetting(db, SCOPE_MODE_KEY, mode);
+    await AstraLibraryData.setSettings({ [SCOPE_MODE_KEY]: mode });
   },
 
   setScopeStageVisible: async (visible) => {
     if (get().scopeStageVisible === visible) return;
     set({ scopeStageVisible: visible });
-    const db = await openLibraryDb();
-    await setSetting(db, SCOPE_STAGE_VISIBLE_KEY, visible ? 'true' : 'false');
+    await AstraLibraryData.setSettings({ [SCOPE_STAGE_VISIBLE_KEY]: visible ? 'true' : 'false' });
   },
 
   setNowPlayingScopeStyle: async (style) => {
     if (get().nowPlayingScopeStyle === style) return;
     set({ nowPlayingScopeStyle: style });
-    const db = await openLibraryDb();
-    await setSetting(db, SCOPE_STYLE_KEY, style);
+    await AstraLibraryData.setSettings({ [SCOPE_STYLE_KEY]: style });
   },
 
   setLyricsVisible: async (visible) => {
     if (get().lyricsVisible === visible) return;
     set({ lyricsVisible: visible });
-    const db = await openLibraryDb();
-    await setSetting(db, LYRICS_VISIBLE_KEY, visible ? 'true' : 'false');
+    await AstraLibraryData.setSettings({ [LYRICS_VISIBLE_KEY]: visible ? 'true' : 'false' });
   },
 
   setNowPlayingCompanion: async (companion) => {
     if (get().nowPlayingCompanion === companion) return;
     set({ nowPlayingCompanion: companion });
-    const db = await openLibraryDb();
-    await setSetting(db, NOW_PLAYING_COMPANION_KEY, companion);
+    await AstraLibraryData.setSettings({ [NOW_PLAYING_COMPANION_KEY]: companion });
   },
 
   setHomeGreetingTextMode: async (mode) => {
     const nextMode = parseHomeGreetingTextMode(mode);
     if (get().homeGreetingTextMode === nextMode) return;
     set({ homeGreetingTextMode: nextMode });
-    const db = await openLibraryDb();
-    await setSetting(db, HOME_GREETING_TEXT_MODE_KEY, nextMode);
+    await AstraLibraryData.setSettings({ [HOME_GREETING_TEXT_MODE_KEY]: nextMode });
   },
 }));

@@ -28,17 +28,19 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import type { Palette } from '@/theme/palettes';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import {
   buildArtistDetail,
   type ArtistAlbum,
   type ArtistDetail
 } from '@/library/artistDetail';
+import {
+  useNativeArtistAlbums,
+  useNativeArtistDetail,
+} from '@/library/nativePages';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 
@@ -73,33 +75,74 @@ export default function ArtistScreen() {
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
-  const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
-  const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, detailGroupingMode),
-    [allTracks, name, detailGroupingMode]
+  const allPage = useNativeArtistDetail(name, detailGroupingMode, 'all');
+  const songsPage = useNativeArtistDetail(name, detailGroupingMode, 'songs');
+  const appearancesPage = useNativeArtistDetail(name, detailGroupingMode, 'appearances');
+  const albumsPage = useNativeArtistAlbums(name, detailGroupingMode);
+  const detail = useMemo(() => {
+    const base = buildArtistDetail(allPage.items, name, detailGroupingMode);
+    return {
+      ...base,
+      albums: albumsPage.items.map((album) => ({
+        ...album,
+        duration: album.total_duration ?? 0,
+      })),
+      tracks: allPage.items,
+      playbackTracks: allPage.items,
+      songTracks: songsPage.items,
+      appearanceTracks: appearancesPage.items,
+      showAppearances: appearancesPage.totalCount > 0,
+      artworkHashes: allPage.summary?.artwork_hashes ?? base.artworkHashes,
+    };
+  }, [
+    allPage.items,
+    allPage.summary,
+    albumsPage.items,
+    appearancesPage.items,
+    appearancesPage.totalCount,
+    detailGroupingMode,
+    name,
+    songsPage.items,
+  ]);
+
+  const listItems = useMemo(
+    () => buildListItems(detail, songsPage.totalCount, appearancesPage.totalCount),
+    [appearancesPage.totalCount, detail, songsPage.totalCount]
   );
 
-  const listItems = useMemo(() => buildListItems(detail), [detail]);
-
-  const playTrackListFrom = (tracks: readonly DbTrack[], index: number) => {
+  const playTrackListFrom = (
+    tracks: readonly DbTrack[],
+    index: number,
+    section: 'songs' | 'appearances' | 'all',
+  ) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({
+      kind: 'artist',
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section,
+    }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'artist', label: name },
     });
   };
 
-  const playArtist = () => playTrackListFrom(detail.playbackTracks, 0);
+  const playArtist = () => playTrackListFrom(detail.playbackTracks, 0, 'all');
   const shuffleArtist = () => {
     if (detail.playbackTracks.length === 0) return;
-    void shuffleTracks(detail.playbackTracks.map(dbTrackToTrack), {
+    void playLibraryQuery({
       kind: 'artist',
-      label: name,
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section: 'all',
+    }, {
+      shuffle: true,
+      source: { kind: 'artist', label: name },
     });
   };
 
@@ -142,7 +185,13 @@ export default function ArtistScreen() {
             track={item.track}
             subtitle={trackSubtitle(item.track, item.section)}
             active={item.track.path === currentPath}
-            onPress={() => playTrackListFrom(sourceTracks, item.index)}
+            onPress={() =>
+              playTrackListFrom(
+                sourceTracks,
+                item.index,
+                item.section === 'appearances' ? 'appearances' : 'songs',
+              )
+            }
             onLongPress={() => setActionTrack(item.track)}
             onOpenActions={() => setActionTrack(item.track)}
           />
@@ -184,10 +233,13 @@ export default function ArtistScreen() {
         title={name}
         heroMeta={
           <View style={styles.stats}>
-            {detail.albums.length > 0 ? (
-              <StatChip icon="albums-outline" label={formatCount(detail.albums.length, 'album')} />
+            {(allPage.summary?.album_count ?? detail.albums.length) > 0 ? (
+              <StatChip
+                icon="albums-outline"
+                label={formatCount(allPage.summary?.album_count ?? detail.albums.length, 'album')}
+              />
             ) : null}
-            <StatChip icon="musical-notes-outline" label={formatCount(detail.tracks.length, 'track')} />
+            <StatChip icon="musical-notes-outline" label={formatCount(allPage.totalCount, 'track')} />
             {detail.totalDuration > 0 ? (
               <StatChip icon="time-outline" label={formatRuntime(detail.totalDuration)} />
             ) : null}
@@ -208,7 +260,11 @@ export default function ArtistScreen() {
   );
 }
 
-function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
+function buildListItems(
+  detail: ArtistDetail,
+  songCount: number,
+  appearanceCount: number
+): ArtistPageItem[] {
   const items: ArtistPageItem[] = [];
 
   if (detail.tracks.length === 0) {
@@ -231,7 +287,7 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
     key: 'section-songs',
     type: 'section',
     title: 'Songs',
-    trailing: formatCount(detail.songTracks.length, 'track'),
+    trailing: formatCount(songCount, 'track'),
     target: 'songs',
   });
   detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
@@ -243,7 +299,7 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
       key: 'section-appearances',
       type: 'section',
       title: 'Appears On',
-      trailing: formatCount(detail.appearanceTracks.length, 'track'),
+      trailing: formatCount(appearanceCount, 'track'),
       target: 'appearances',
     });
     detail.appearanceTracks.slice(0, APPEARANCE_PREVIEW_LIMIT).forEach((track, index) => {

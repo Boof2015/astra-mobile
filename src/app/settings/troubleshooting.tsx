@@ -10,9 +10,8 @@ import {
   SettingsSectionScreen,
   type SettingsIconName,
 } from '@/components/settings/SettingsSectionScaffold';
-import { openLibraryDb } from '@/db/database';
 import { getLyricsCacheCount } from '@/db/lyricsQueries';
-import { getWaveformCacheCount } from '@/db/waveformQueries';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 import { clearAllLyricsCache } from '@/lyrics/lyrics';
 import { clearAllWaveformCache } from '@/scope/waveform';
 import { useLyricsStore } from '@/stores/lyricsStore';
@@ -45,10 +44,9 @@ export default function TroubleshootingSettingsScreen() {
   const disabled = isScanning || runningAction !== null;
 
   const refreshCounts = useCallback(async () => {
-    const db = await openLibraryDb();
     const [lyrics, waveforms] = await Promise.all([
-      getLyricsCacheCount(db),
-      getWaveformCacheCount(db),
+      getLyricsCacheCount(),
+      AstraLibraryData.countWaveforms(),
     ]);
     setCounts({ lyrics, waveforms });
   }, []);

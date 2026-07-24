@@ -49,6 +49,8 @@ import { artworkThumbFromSource } from '@/library/artwork';
 import { playHaptic } from '@/lib/haptics';
 import { useQueueStore } from '@/stores/queueStore';
 import {
+  getVirtualQueuePage,
+  getVirtualQueueState,
   jumpToQueueIndex,
   moveQueueItem,
   removeFromQueue,
@@ -74,6 +76,7 @@ interface QueueEntry {
   key: string;
   identity: string;
   track: RntpTrack;
+  absoluteIndex: number;
 }
 
 function rntpKey(track: RntpTrack): string {
@@ -108,7 +111,8 @@ function clampLocal(value: number, len: number): number {
 function reconcileQueueEntries(
   tracks: readonly RntpTrack[],
   previous: readonly QueueEntry[],
-  nextSerial: { current: number }
+  nextSerial: { current: number },
+  baseOffset: number,
 ): QueueEntry[] {
   const available = new Map<string, QueueEntry[]>();
   previous.forEach((entry) => {
@@ -117,19 +121,23 @@ function reconcileQueueEntries(
     else available.set(entry.identity, [entry]);
   });
 
-  return tracks.map((track) => {
+  return tracks.map((track, index) => {
     const identity = rntpKey(track);
+    const nativePosition = track.astraQueuePosition;
+    const absoluteIndex = typeof nativePosition === 'number'
+      ? nativePosition
+      : baseOffset + index;
     const reused = available.get(identity)?.shift();
     if (reused) {
       // Same track object → same entry object, so memo'd rows bail out when
       // only other parts of the queue changed (e.g. a track advance).
-      if (reused.track === track) return reused;
-      return { ...reused, track, identity };
+      if (reused.track === track && reused.absoluteIndex === absoluteIndex) return reused;
+      return { ...reused, track, identity, absoluteIndex };
     }
 
     const key = `${identity}:${nextSerial.current}`;
     nextSerial.current += 1;
-    return { key, identity, track };
+    return { key, identity, track, absoluteIndex };
   });
 }
 
@@ -189,13 +197,74 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const { tracks, activeIndex, hasSnapshot, refresh } = useQueue(true);
   const currentTrack = activeIndex >= 0 ? tracks[activeIndex] : undefined;
-  const upcomingTracks = useMemo(
+  const rollingUpcomingTracks = useMemo(
     () => (activeIndex >= 0 ? tracks.slice(activeIndex + 1) : tracks),
     [tracks, activeIndex]
   );
-  const upcomingTotal =
-    activeIndex >= 0 ? Math.max(0, tracks.length - activeIndex - 1) : tracks.length;
-  const baseOffset = activeIndex >= 0 ? activeIndex + 1 : 0;
+  const virtualState = getVirtualQueueState();
+  const virtualMode = virtualState !== null;
+  const virtualActivePosition = virtualState?.activePosition ?? -1;
+  const [virtualTracks, setVirtualTracks] = useState<RntpTrack[]>([]);
+  const virtualTracksRef = useRef<RntpTrack[]>([]);
+  const virtualLoadGeneration = useRef(0);
+  const virtualLoading = useRef(false);
+
+  const loadVirtualPage = useCallback(async (reset: boolean) => {
+    const state = getVirtualQueueState();
+    if (!state || (!reset && virtualLoading.current)) return;
+    virtualLoading.current = true;
+    const generation = reset ? ++virtualLoadGeneration.current : virtualLoadGeneration.current;
+    const existing = reset ? [] : virtualTracksRef.current;
+    const lastPosition = existing.length > 0
+      ? existing[existing.length - 1].astraQueuePosition
+      : state.activePosition;
+    const start = typeof lastPosition === 'number'
+      ? lastPosition + 1
+      : state.activePosition + 1;
+    try {
+      const page = await getVirtualQueuePage(start, 100);
+      if (
+        !page ||
+        generation !== virtualLoadGeneration.current ||
+        getVirtualQueueState()?.sessionId !== state.sessionId
+      ) return;
+      const next = reset ? page.items.map((item) => item.track) : [
+        ...existing,
+        ...page.items.map((item) => item.track),
+      ];
+      // Keep no more than five tray pages in JS.
+      const bounded = next.slice(-500);
+      virtualTracksRef.current = bounded;
+      setVirtualTracks(bounded);
+    } finally {
+      if (generation === virtualLoadGeneration.current) virtualLoading.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!virtualMode) {
+      virtualLoadGeneration.current += 1;
+      virtualTracksRef.current = [];
+      setVirtualTracks([]);
+      return;
+    }
+    void loadVirtualPage(true);
+  }, [loadVirtualPage, virtualActivePosition, virtualMode, virtualState?.sessionId]);
+
+  const upcomingTracks = virtualMode ? virtualTracks : rollingUpcomingTracks;
+  const upcomingTotal = virtualState
+    ? Math.max(0, virtualState.totalCount - virtualState.activePosition - 1)
+    : activeIndex >= 0
+      ? Math.max(0, tracks.length - activeIndex - 1)
+      : tracks.length;
+  const firstVirtualPosition = virtualTracks[0]?.astraQueuePosition;
+  const baseOffset = virtualState
+    ? typeof firstVirtualPosition === 'number'
+      ? firstVirtualPosition
+      : virtualState.activePosition + 1
+    : activeIndex >= 0
+      ? activeIndex + 1
+      : 0;
   // Row callbacks resolve indices at call time from refs so their identities
   // survive track advances — an index captured at render time would go stale.
   const baseOffsetRef = useRef(baseOffset);
@@ -206,7 +275,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   // Built synchronously so a warm mirror paints on the list's first frame; the
   // update effect below takes over from there.
   const [entries, setEntries] = useState<QueueEntry[]>(() =>
-    hasSnapshot ? reconcileQueueEntries(upcomingTracks, [], { current: 0 }) : []
+    hasSnapshot ? reconcileQueueEntries(upcomingTracks, [], { current: 0 }, baseOffset) : []
   );
   const entrySerial = useRef(entries.length);
   const entriesRef = useRef<QueueEntry[]>(entries);
@@ -289,9 +358,11 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const setOptimisticEntries = useCallback(
     (nextEntries: QueueEntry[]) => {
       setVisibleEntries(nextEntries);
-      useQueueStore.getState().replaceUpcoming(nextEntries.map((entry) => entry.track));
+      if (!virtualMode) {
+        useQueueStore.getState().replaceUpcoming(nextEntries.map((entry) => entry.track));
+      }
     },
-    [setVisibleEntries]
+    [setVisibleEntries, virtualMode]
   );
 
   useEffect(() => {
@@ -300,7 +371,8 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
         ? reconcileQueueEntries(
             upcomingTracks,
             entriesRef.current.length > 0 ? entriesRef.current : previous,
-            entrySerial
+            entrySerial,
+            baseOffset,
           )
         : [];
       // The mount-time reconcile of the synchronous initial state is a no-op;
@@ -315,7 +387,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       }
       return resolved;
     });
-  }, [hasSnapshot, upcomingTracks, updateDragIndexMap]);
+  }, [baseOffset, hasSnapshot, upcomingTracks, updateDragIndexMap]);
 
   const visibleSelectedKeys = useMemo(() => {
     if (selectedKeys.size === 0) return EMPTY_KEY_SET;
@@ -325,19 +397,27 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const retrySetUpcoming = useCallback(
     (nextTracks: RntpTrack[]) => {
+      if (virtualMode) {
+        void loadVirtualPage(true);
+        return;
+      }
       useQueueStore.getState().replaceUpcoming(nextTracks);
       void setUpcoming(nextTracks).catch(() => refresh());
     },
-    [refresh]
+    [loadVirtualPage, refresh, virtualMode]
   );
 
   const commitNativeMove = useCallback(
     (fromAbsolute: number, toAbsolute: number, nextTracks: RntpTrack[]) => {
-      void moveQueueItem(fromAbsolute, toAbsolute).catch(() => {
-        retrySetUpcoming(nextTracks);
-      });
+      void moveQueueItem(fromAbsolute, toAbsolute, { virtualPosition: virtualMode })
+        .then(() => {
+          if (virtualMode) void loadVirtualPage(true);
+        })
+        .catch(() => {
+          retrySetUpcoming(nextTracks);
+        });
     },
-    [retrySetUpcoming]
+    [loadVirtualPage, retrySetUpcoming, virtualMode]
   );
 
   const finishDrag = useCallback(
@@ -348,13 +428,18 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
         return;
       }
 
-      const nextEntries = moveQueueEntry(snapshot, from, to);
+      const positions = snapshot.map((entry) => entry.absoluteIndex);
+      const nextEntries = moveQueueEntry(snapshot, from, to).map((entry, index) => (
+        entry.absoluteIndex === positions[index]
+          ? entry
+          : { ...entry, absoluteIndex: positions[index] }
+      ));
       playHaptic('queueDrop');
       setVisibleEntries(nextEntries);
       clearDragAfterReorderCommit();
       commitNativeMove(
-        baseOffsetRef.current + from,
-        baseOffsetRef.current + to,
+        snapshot[from].absoluteIndex,
+        snapshot[to].absoluteIndex,
         nextEntries.map((entry) => entry.track)
       );
     },
@@ -492,18 +577,27 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const runAndRefresh = useCallback(
     (task: Promise<void>) => {
-      void task.catch(() => refresh());
+      void task.then(
+        () => {
+          if (virtualMode) void loadVirtualPage(true);
+        },
+        () => {
+          if (virtualMode) void loadVirtualPage(true);
+          else void refresh();
+        },
+      );
     },
-    [refresh]
+    [loadVirtualPage, refresh, virtualMode]
   );
 
   const jump = useCallback(
     (key: string) => {
       const localIndex = entriesRef.current.findIndex((entry) => entry.key === key);
       if (localIndex < 0) return;
-      runAndRefresh(jumpToQueueIndex(baseOffsetRef.current + localIndex));
+      const entry = entriesRef.current[localIndex];
+      runAndRefresh(jumpToQueueIndex(entry.absoluteIndex, { virtualPosition: virtualMode }));
     },
-    [runAndRefresh]
+    [runAndRefresh, virtualMode]
   );
 
   const playNext = useCallback(
@@ -512,9 +606,11 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       if (localIndex < 0) return;
       const nextEntries = moveQueueEntry(entriesRef.current, localIndex, 0);
       setOptimisticEntries(nextEntries);
-      runAndRefresh(requeueToTop(baseOffsetRef.current + localIndex));
+      runAndRefresh(requeueToTop(entriesRef.current[localIndex].absoluteIndex, {
+        virtualPosition: virtualMode,
+      }));
     },
-    [runAndRefresh, setOptimisticEntries]
+    [runAndRefresh, setOptimisticEntries, virtualMode]
   );
 
   const remove = useCallback(
@@ -525,9 +621,12 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       if (!action) return;
 
       setOptimisticEntries(action.nextEntries);
-      runAndRefresh(removeFromQueue(action.absoluteIndex, { updateMirror: false }));
+      runAndRefresh(removeFromQueue(
+        entriesRef.current[localIndex].absoluteIndex,
+        { updateMirror: false, virtualPosition: virtualMode },
+      ));
     },
-    [runAndRefresh, setOptimisticEntries]
+    [runAndRefresh, setOptimisticEntries, virtualMode]
   );
 
   const toggleSelect = useCallback((key: string) => {
@@ -554,27 +653,50 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const groupPlayNext = useCallback(() => {
     const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
-    if (action.absoluteIndices.length === 0) {
+    const absoluteIndices = entriesRef.current
+      .filter((entry) => visibleSelectedKeys.has(entry.key))
+      .map((entry) => entry.absoluteIndex);
+    if (absoluteIndices.length === 0) {
       clearSelection();
       return;
     }
 
     setOptimisticEntries(action.entriesWithSelectedFirst);
-    runAndRefresh(requeueManyToTop(action.absoluteIndices));
+    runAndRefresh(requeueManyToTop(absoluteIndices, { virtualPosition: virtualMode }));
     clearSelection();
-  }, [baseOffset, clearSelection, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
+  }, [
+    baseOffset,
+    clearSelection,
+    runAndRefresh,
+    setOptimisticEntries,
+    virtualMode,
+    visibleSelectedKeys,
+  ]);
 
   const groupRemove = useCallback(() => {
     const action = resolveSelectedQueueAction(entriesRef.current, visibleSelectedKeys, baseOffset);
-    if (action.absoluteIndices.length === 0) {
+    const absoluteIndices = entriesRef.current
+      .filter((entry) => visibleSelectedKeys.has(entry.key))
+      .map((entry) => entry.absoluteIndex);
+    if (absoluteIndices.length === 0) {
       clearSelection();
       return;
     }
 
     setOptimisticEntries(action.entriesWithoutSelected);
-    runAndRefresh(removeManyFromQueue(action.absoluteIndices, { updateMirror: false }));
+    runAndRefresh(removeManyFromQueue(absoluteIndices, {
+      updateMirror: false,
+      virtualPosition: virtualMode,
+    }));
     clearSelection();
-  }, [baseOffset, clearSelection, runAndRefresh, setOptimisticEntries, visibleSelectedKeys]);
+  }, [
+    baseOffset,
+    clearSelection,
+    runAndRefresh,
+    setOptimisticEntries,
+    virtualMode,
+    visibleSelectedKeys,
+  ]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -727,6 +849,8 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
             renderItem={renderItem}
             extraData={listExtraData}
             onLoad={onListLoad}
+            onEndReached={virtualMode ? () => void loadVirtualPage(false) : undefined}
+            onEndReachedThreshold={0.6}
             contentContainerStyle={embedded
               ? styles.embeddedListContent
               : editMode && selectedCount > 0

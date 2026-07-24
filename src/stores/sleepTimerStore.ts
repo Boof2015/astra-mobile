@@ -1,7 +1,6 @@
 import TrackPlayer from 'react-native-track-player';
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import { setPauseAtEndOfItem } from '@/audio/trackPlayerExtensions';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import {
@@ -37,8 +36,7 @@ function clearDeadlineTimer(): void {
 }
 
 async function persistTimer(timer: PersistedSleepTimerState | null): Promise<void> {
-  const db = await openLibraryDb();
-  await setSetting(db, SLEEP_TIMER_KEY, timer ? JSON.stringify(timer) : '');
+  await setNativeSetting(SLEEP_TIMER_KEY, timer ? JSON.stringify(timer) : '');
 }
 
 async function hasActivePhoneTrack(): Promise<boolean> {
@@ -77,8 +75,7 @@ export const useSleepTimerStore = create<SleepTimerStore>((set, get) => ({
     if (get().hydrated) return;
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
-      const db = await openLibraryDb();
-      const raw = await getSetting(db, SLEEP_TIMER_KEY);
+      const raw = await getNativeSetting(SLEEP_TIMER_KEY);
       let parsed: unknown = null;
       try {
         parsed = raw ? JSON.parse(raw) : null;

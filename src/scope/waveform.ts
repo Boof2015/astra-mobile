@@ -3,9 +3,7 @@
 // once per track and persists; extractWaveformPreview gives uncached local
 // tracks a fast first paint.
 
-import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
-import { openLibraryDb } from '@/db/database';
-import { clearWaveformCache, getWaveformPeaks, putWaveformPeaks } from '@/db/waveformQueries';
+import { AstraLibraryData, AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import { CacheInvalidationGate } from '@/lib/cacheInvalidation';
 
 export const WAVEFORM_BINS = 512;
@@ -32,9 +30,8 @@ async function loadWaveform(
   trackPath: string,
   options: WaveformLoadOptions
 ): Promise<Float32Array | null> {
-  const db = await openLibraryDb();
-  const cached = await getWaveformPeaks(db, trackPath);
-  if (cached && cached.length > 0) return cached;
+  const cached = await AstraLibraryData.getWaveform(trackPath);
+  if (cached && cached.length > 0) return Float32Array.from(cached);
 
   if (options.onPreview) {
     void getWaveformPreview(trackPath).then((preview) => {
@@ -64,9 +61,8 @@ async function decodeAccurateWaveform(trackPath: string, generation: number): Pr
   const peaks = Float32Array.from(raw);
   await cacheGate.enqueue(async () => {
     if (!cacheGate.isCurrent(generation)) return;
-    const db = await openLibraryDb();
     if (!cacheGate.isCurrent(generation)) return;
-    await putWaveformPeaks(db, trackPath, peaks);
+    await AstraLibraryData.putWaveform(trackPath, Array.from(peaks));
   }).catch(() => {
     /* cache write failure is non-fatal */
   });
@@ -78,8 +74,7 @@ export async function clearAllWaveformCache(): Promise<void> {
   inflight.clear();
   previewInflight.clear();
   await cacheGate.invalidate(async () => {
-    const db = await openLibraryDb();
-    await clearWaveformCache(db);
+    await AstraLibraryData.clearWaveforms();
   });
 }
 

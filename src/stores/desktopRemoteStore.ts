@@ -28,8 +28,7 @@ import {
   setDesktopRemoteConnection,
   setDesktopRemoteCredentials,
 } from '@/services/desktopRemoteCredentials';
-import { openLibraryDb } from '@/db/database';
-import { clearPlaylistSyncBaselines } from '@/db/desktopSyncQueries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { identityMatchesPinnedConnection } from '@/services/desktopSyncPolicy';
 import { ensureDesktopRemoteCredentialsFresh } from '@/services/desktopRemoteSession';
@@ -718,9 +717,7 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
       clearPairingPoll();
       await clearDesktopRemotePairing();
       // Sync baselines are meaningless against a different desktop.
-      void openLibraryDb()
-        .then((db) => clearPlaylistSyncBaselines(db))
-        .catch(() => {});
+      void AstraLibraryData.clearDesktopSyncBaselines().catch(() => {});
       set({
         connectionState: 'unpaired',
         connection: null,

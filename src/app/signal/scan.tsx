@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
@@ -15,17 +15,18 @@ import {
   type SignalScanPhase,
 } from '@/components/signal/SignalScanTransition';
 import { decodeSignalFromUri } from '@/audio/signalDecodeImage';
-import { matchSignalToLibrary } from '@/audio/signalLocalMatch';
+import type { SignalLocalMatchResult } from '@/audio/signalLocalMatch';
 import { SIGNAL_SCAN_GUIDE } from '@/audio/signalScanGeometry';
 import { encodeSignalWebUrl } from '@/audio/signalShare';
 import { enqueueEnd, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type { SignalPayload } from '@boof2015/astra-signal';
+import type { DbTrack } from '@/types/library';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 
 const MIN_READING_MS = 300;
 const FAILURE_RETURN_MS = 480;
@@ -35,8 +36,6 @@ export default function SignalScanScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
-  const libraryInitialized = useLibraryStore((state) => state.initialized);
-  const libraryTracks = useLibraryStore((state) => state.tracks);
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
@@ -47,10 +46,28 @@ export default function SignalScanScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const readingStartedAt = useRef(0);
-  const resolution = useMemo(
-    () => result && libraryInitialized ? matchSignalToLibrary(result, libraryTracks) : null,
-    [libraryInitialized, libraryTracks, result]
-  );
+  const [resolution, setResolution] = useState<SignalLocalMatchResult<DbTrack> | null>(null);
+
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    void AstraLibraryData.matchSignal<DbTrack>(
+      result.title,
+      result.artist,
+      result.durationSec > 0 ? result.durationSec : null
+    ).then((native) => {
+      if (cancelled) return;
+      if (native.kind === 'none') setResolution({ kind: 'none' });
+      else if (native.kind === 'match') {
+        setResolution({ kind: 'match', candidate: native.candidates[0] });
+      } else {
+        setResolution({ kind: 'ambiguous', candidates: native.candidates });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
 
   useEffect(() => {
     if (phase !== 'failure') return;
@@ -118,13 +135,14 @@ export default function SignalScanScreen() {
 
   const scanAnother = () => {
     setResult(null);
+    setResolution(null);
     setError(null);
     setActionState('idle');
     setActionError(null);
     setPhase('idle');
   };
 
-  const playMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+  const playMatchedTrack = async (track: DbTrack) => {
     if (actionState === 'playing' || actionState === 'queueing') return;
     playHaptic('confirm');
     setActionState('playing');
@@ -140,7 +158,7 @@ export default function SignalScanScreen() {
     }
   };
 
-  const queueMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+  const queueMatchedTrack = async (track: DbTrack) => {
     if (actionState !== 'idle') return;
     playHaptic('confirm');
     setActionState('queueing');

@@ -43,31 +43,26 @@ import { useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import {
   enqueueEndMany,
   enqueueTopMany,
-  playTracks
+  playLibraryQuery
 } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
 import {
-  sortTracks,
   TRACK_SORT_LABELS,
   type TrackSort
 } from '@/lib/trackSort';
 import {
-  sortAlbums,
   ALBUM_SORT_LABELS,
   type AlbumSort
 } from '@/lib/albumSort';
 import {
-  sortArtists,
   ARTIST_SORT_LABELS,
   type ArtistSort
 } from '@/lib/artistSort';
-import { buildLetterIndex, resolveJumpIndex } from '@/lib/letterIndex';
-import { filterArtistBrowseList } from '@/library/artistGrouping';
+import { RAIL_LETTERS } from '@/lib/letterIndex';
 import type {
   Album,
   Artist,
@@ -87,17 +82,21 @@ export default function LibraryScreen() {
   const albums = useLibraryStore((s) => s.albums);
   const artists = useLibraryStore((s) => s.artists);
   const tracks = useLibraryStore((s) => s.tracks);
-  const folders = useLibraryStore((s) => s.folders);
   const trackSort = useLibraryStore((s) => s.trackSort);
   const setTrackSort = useLibraryStore((s) => s.setTrackSort);
   const albumSort = useLibraryStore((s) => s.albumSort);
   const setAlbumSort = useLibraryStore((s) => s.setAlbumSort);
   const artistSort = useLibraryStore((s) => s.artistSort);
   const setArtistSort = useLibraryStore((s) => s.setArtistSort);
-  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
-  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
+  const loadNextTracks = useLibraryStore((s) => s.loadNextTracks);
+  const loadNextAlbums = useLibraryStore((s) => s.loadNextAlbums);
+  const loadNextArtists = useLibraryStore((s) => s.loadNextArtists);
+  const sectionAnchors = useLibraryStore((s) => s.sectionAnchors);
+  const jumpToSection = useLibraryStore((s) => s.jumpToSection);
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
+  const libraryStatus = useLibraryStore((s) => s.status);
+  const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
 
@@ -112,61 +111,47 @@ export default function LibraryScreen() {
   const albumsListRef = useRef<FlashListRef<Album>>(null);
   const artistsListRef = useRef<FlashListRef<Artist>>(null);
 
-  const isEmpty = tracks.length === 0 && folders.length === 0 && !isScanning;
+  const showLibraryStatus =
+    totalTrackCount === 0 &&
+    !isScanning &&
+    (
+      libraryStatus === 'empty' ||
+      libraryStatus === 'rebuilding' ||
+      libraryStatus === 'degraded' ||
+      libraryStatus === 'fatalUserData'
+    );
 
-  const sortedTracks = useMemo(
-    () => (viewMode === 'tracks' ? sortTracks(tracks, trackSort) : []),
-    [trackSort, tracks, viewMode]
-  );
-  const sortedAlbums = useMemo(
-    () => (viewMode === 'albums' ? sortAlbums(albums, albumSort) : []),
-    [albumSort, albums, viewMode]
-  );
-  const visibleArtists = useMemo(
-    () => filterArtistBrowseList(artists, artistGroupingMode, includeCollabArtists),
-    [artistGroupingMode, artists, includeCollabArtists]
-  );
-  const sortedArtists = useMemo(
-    () => (viewMode === 'artists' ? sortArtists(visibleArtists, artistSort) : []),
-    [artistSort, viewMode, visibleArtists]
-  );
+  const sortedTracks = viewMode === 'tracks' ? tracks : [];
+  const sortedAlbums = viewMode === 'albums' ? albums : [];
+  const sortedArtists = viewMode === 'artists' ? artists : [];
 
   // Tap index is within sortedTracks so the tapped row is the track that plays.
   const playAllFrom = (index: number) => {
-    void playTracks(sortedTracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'library', sort: trackSort }, {
+      anchorPath: sortedTracks[index]?.path,
       source: { kind: 'library', label: 'Library' },
     });
   };
   const openSearch = () => openQuickSearch();
 
-  // A-Z rail: only for sorts where a letter jump is meaningful.
-  const letterIndex = useMemo(() => {
-    if (viewMode === 'tracks' && (trackSort === 'artist' || trackSort === 'title')) {
-      return buildLetterIndex(sortedTracks, (t) => (trackSort === 'title' ? t.title : t.artist));
-    }
-    if (viewMode === 'albums' && (albumSort === 'artist' || albumSort === 'name')) {
-      return buildLetterIndex(sortedAlbums, (a) => (albumSort === 'name' ? a.album : a.artist));
-    }
-    if (viewMode === 'artists' && artistSort === 'name') {
-      return buildLetterIndex(sortedArtists, (a) => a.artist);
-    }
-    return [];
-  }, [albumSort, artistSort, sortedAlbums, sortedArtists, sortedTracks, trackSort, viewMode]);
-
-  const railVisible = letterIndex.length > 1;
+  const railVisible = sectionAnchors.length > 1;
   const railLetters = useMemo(
-    () => new Set(letterIndex.map((entry) => entry.letter)),
-    [letterIndex]
+    () => new Set(sectionAnchors.map((entry) => entry.label)),
+    [sectionAnchors]
   );
 
   const jumpToLetter = (letter: string) => {
-    const index = resolveJumpIndex(letterIndex, letter);
-    if (index == null) return;
-    // Fire-and-forget: letter-change granularity already throttles the calls.
-    if (viewMode === 'tracks') void tracksListRef.current?.scrollToIndex({ index, animated: false });
-    else if (viewMode === 'albums') void albumsListRef.current?.scrollToIndex({ index, animated: false });
-    else if (viewMode === 'artists') void artistsListRef.current?.scrollToIndex({ index, animated: false });
+    const requestedIndex = RAIL_LETTERS.indexOf(letter);
+    const anchor =
+      sectionAnchors.find((entry) => entry.label === letter) ??
+      sectionAnchors.find((entry) => RAIL_LETTERS.indexOf(entry.label) >= requestedIndex) ??
+      sectionAnchors.at(-1);
+    if (!anchor) return;
+    void jumpToSection(anchor.cursor).then(() => {
+      if (viewMode === 'tracks') tracksListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      else if (viewMode === 'albums') albumsListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      else if (viewMode === 'artists') artistsListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    });
   };
 
   // Multi-select (tracks view): long-press arms it, batch actions live in the
@@ -257,7 +242,7 @@ export default function LibraryScreen() {
           <Text variant="title" style={styles.heading}>
             Library
           </Text>
-          {!isEmpty ? (
+          {!showLibraryStatus ? (
             <Pressable android_ripple={ripple.bounded}
               hitSlop={8}
               onPress={() => openQuickSearch()}
@@ -269,7 +254,7 @@ export default function LibraryScreen() {
           ) : null}
         </View>
 
-        {isEmpty ? (
+        {showLibraryStatus ? (
           <EmptyLibrary />
         ) : (
           <>
@@ -325,6 +310,8 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  onEndReached={() => void loadNextAlbums()}
+                  onEndReachedThreshold={0.6}
                   renderItem={({ item }) => (
                     <View style={styles.gridCell}>
                       <AlbumGridItem
@@ -352,6 +339,8 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  onEndReached={() => void loadNextArtists()}
+                  onEndReachedThreshold={0.6}
                   renderItem={({ item }) => (
                     <View style={styles.gridCell}>
                       <ArtistGridItem
@@ -378,6 +367,8 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  onEndReached={() => void loadNextTracks()}
+                  onEndReachedThreshold={0.6}
                   extraData={selectMode ? selectedIds : undefined}
                   renderItem={({ item, index }) => (
                     <TrackRow

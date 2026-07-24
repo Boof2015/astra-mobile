@@ -3,7 +3,12 @@ import { syncCarNowPlayingFromTrackPlayer } from './carSync';
 import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
 import { startAudioProcessingWarmup } from './audioProcessingStartup';
-import { playForCar, skipToNext, skipToPrevious } from './playbackController';
+import {
+  handleVirtualPlaybackAdvance,
+  playForCar,
+  skipToNext,
+  skipToPrevious,
+} from './playbackController';
 import { nativeIndexToAbsolute } from './queueLoader';
 import { useQueueStore } from '@/stores/queueStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
@@ -63,6 +68,9 @@ export async function PlaybackService(): Promise<void> {
         event.index != null ? nativeIndexToAbsolute(event.index) : -1
       );
     }
+    void handleVirtualPlaybackAdvance(event.index).catch((error) => {
+      console.warn('[playback] virtual queue replenish failed', error);
+    });
     scheduleSync();
     // Apply normalization here too (not just in the UI hook) so playback started from
     // Android Auto / Bluetooth with the app closed is still normalized.

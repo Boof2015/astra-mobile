@@ -34,6 +34,10 @@ export interface JellyfinRequestOptions {
 export interface JellyfinCatalogSyncOptions extends JellyfinRequestOptions {
   authContext?: JellyfinAuthContext;
   onProgress?: (progress: RemoteSyncProgress) => void;
+  /** Awaited once per server page so callers can stream directly to native storage. */
+  onTracksBatch?: (tracks: RemoteCatalogTrack[]) => Promise<void>;
+  /** Defaults to true for compatibility; sync orchestration disables collection. */
+  collectTracks?: boolean;
 }
 
 export interface JellyfinCatalogSyncResult {
@@ -454,7 +458,11 @@ export async function syncJellyfinCatalog(
   options: JellyfinCatalogSyncOptions = {}
 ): Promise<JellyfinCatalogSyncResult> {
   const authContext = options.authContext ?? (await authenticateJellyfin(config, options));
-  const byTrackId = new Map<string, RemoteCatalogTrack>();
+  const byTrackId = options.collectTracks === false
+    ? null
+    : new Map<string, RemoteCatalogTrack>();
+  const seenTrackIds = new Set<string>();
+  let tracksScanned = 0;
   let startIndex = 0;
   let totalRecordCount: number | null = null;
 
@@ -482,11 +490,15 @@ export async function syncJellyfinCatalog(
     }
 
     const items = asArray<JellyfinAudioItem>(response.Items);
+    const trackBatch: RemoteCatalogTrack[] = [];
     for (const item of items) {
       const mapped = mapJellyfinItemToCatalogTrack(sourceId, item);
-      if (!mapped) continue;
-      byTrackId.set(mapped.source_track_id, mapped);
+      if (!mapped || !seenTrackIds.add(mapped.source_track_id)) continue;
+      byTrackId?.set(mapped.source_track_id, mapped);
+      trackBatch.push(mapped);
+      tracksScanned += 1;
     }
+    if (trackBatch.length > 0) await options.onTracksBatch?.(trackBatch);
 
     options.onProgress?.({
       phase: 'items',
@@ -501,10 +513,10 @@ export async function syncJellyfinCatalog(
     if (items.length < DEFAULT_PAGE_SIZE) break;
   }
 
-  const tracks = Array.from(byTrackId.values());
+  const tracks = byTrackId ? Array.from(byTrackId.values()) : [];
   return {
-    itemsScanned: totalRecordCount ?? tracks.length,
-    tracksScanned: tracks.length,
+    itemsScanned: totalRecordCount ?? tracksScanned,
+    tracksScanned,
     tracks,
   };
 }

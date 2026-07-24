@@ -4,7 +4,7 @@
 // matches the current track tags, so a retag re-fetches. Parsed lines are stored
 // as JSON and re-sanitized on read.
 
-import type { LibraryDatabase } from './database';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { sanitizeLyricsLines } from '@/lyrics/parsing';
 import type { LyricsFormat, LyricsLine, LyricsProvider, LyricsSource } from '@/lyrics/types';
 
@@ -31,14 +31,13 @@ export interface LyricsCacheWrite {
 }
 
 interface LyricsCacheRow {
-  metadata_signature: string | null;
   status: string;
   source: string | null;
   provider: string | null;
   format: string | null;
-  plain_lyrics: string | null;
-  synced_lyrics: string | null;
-  synced_lines_json: string;
+  plainLyrics: string | null;
+  syncedLyrics: string | null;
+  syncedLinesJson: string;
 }
 
 function parseSyncedLines(json: string): LyricsLine[] {
@@ -50,71 +49,44 @@ function parseSyncedLines(json: string): LyricsLine[] {
 }
 
 export async function getLyricsCache(
-  db: LibraryDatabase,
   trackPath: string,
   metadataSignature: string
 ): Promise<LyricsCacheEntry | null> {
-  const row = await db.get<LyricsCacheRow>(
-    `SELECT metadata_signature, status, source, provider, format, plain_lyrics, synced_lyrics, synced_lines_json
-       FROM lyrics_cache WHERE track_path = ?`,
-    [trackPath]
-  );
+  const row = await AstraLibraryData.getLyrics<LyricsCacheRow>(trackPath, metadataSignature);
   if (!row) return null;
-  // A metadata change (retag) invalidates the cached result.
-  if (row.metadata_signature !== metadataSignature) return null;
 
   return {
     status: row.status === 'hit' ? 'hit' : 'not_found',
     source: (row.source as LyricsSource | null) ?? 'lrclib',
     provider: (row.provider as LyricsProvider | null) ?? null,
     format: (row.format as LyricsFormat | null) ?? 'plain',
-    plainLyrics: row.plain_lyrics,
-    syncedLyrics: row.synced_lyrics,
-    syncedLines: parseSyncedLines(row.synced_lines_json),
+    plainLyrics: row.plainLyrics,
+    syncedLyrics: row.syncedLyrics,
+    syncedLines: parseSyncedLines(row.syncedLinesJson),
   };
 }
 
-export async function putLyricsCache(db: LibraryDatabase, entry: LyricsCacheWrite): Promise<void> {
-  await db.run(
-    `INSERT INTO lyrics_cache (
-       track_path, metadata_signature, status, source, provider, format,
-       plain_lyrics, synced_lyrics, synced_lines_json, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(track_path) DO UPDATE SET
-       metadata_signature = excluded.metadata_signature,
-       status = excluded.status,
-       source = excluded.source,
-       provider = excluded.provider,
-       format = excluded.format,
-       plain_lyrics = excluded.plain_lyrics,
-       synced_lyrics = excluded.synced_lyrics,
-       synced_lines_json = excluded.synced_lines_json,
-       updated_at = excluded.updated_at`,
-    [
-      entry.trackPath,
-      entry.metadataSignature,
-      entry.status,
-      entry.source,
-      entry.provider,
-      entry.format,
-      entry.plainLyrics,
-      entry.syncedLyrics,
-      JSON.stringify(entry.syncedLines),
-      Date.now(),
-    ]
-  );
+export async function putLyricsCache(entry: LyricsCacheWrite): Promise<void> {
+  await AstraLibraryData.putLyrics(entry.trackPath, {
+    metadataSignature: entry.metadataSignature,
+    status: entry.status,
+    source: entry.source,
+    provider: entry.provider,
+    format: entry.format,
+    plainLyrics: entry.plainLyrics,
+    syncedLyrics: entry.syncedLyrics,
+    syncedLinesJson: JSON.stringify(entry.syncedLines),
+  });
 }
 
-export async function getLyricsCacheCount(db: LibraryDatabase): Promise<number> {
-  const row = await db.get<{ count: number }>('SELECT COUNT(*) AS count FROM lyrics_cache');
-  return row?.count ?? 0;
+export async function getLyricsCacheCount(): Promise<number> {
+  return AstraLibraryData.countLyrics();
 }
 
-export async function deleteLyricsCache(db: LibraryDatabase, trackPath: string): Promise<void> {
-  await db.run('DELETE FROM lyrics_cache WHERE track_path = ?', [trackPath]);
+export async function deleteLyricsCache(trackPath: string): Promise<void> {
+  await AstraLibraryData.deleteLyrics(trackPath);
 }
 
-export async function clearLyricsCache(db: LibraryDatabase): Promise<void> {
-  await db.run('DELETE FROM lyrics_cache');
+export async function clearLyricsCache(): Promise<void> {
+  await AstraLibraryData.clearLyrics();
 }

@@ -30,8 +30,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
@@ -98,6 +97,7 @@ export default function PlaylistScreen() {
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
   const activeEntries = usePlaylistStore((s) => s.activeEntries);
   const openPlaylist = usePlaylistStore((s) => s.openPlaylist);
+  const loadNextEntries = usePlaylistStore((s) => s.loadNextEntries);
   const closePlaylist = usePlaylistStore((s) => s.closePlaylist);
   const moveTrack = usePlaylistStore((s) => s.moveTrack);
   const removeFromPlaylist = usePlaylistStore((s) => s.removeFromPlaylist);
@@ -164,8 +164,14 @@ export default function PlaylistScreen() {
 
   const startPlayback = (index: number) => {
     if (playable.length === 0) return;
-    void playTracks(playable.map(dbTrackToTrack), {
-      startIndex: index,
+    const query = isFavorites
+      ? { kind: 'favorites' as const }
+      : {
+          kind: isDynamic ? 'dynamicPlaylist' as const : 'playlist' as const,
+          playlistId: playlistId!,
+        };
+    void playLibraryQuery(query, {
+      anchorPath: playable[index]?.path,
       source: { kind: isFavorites ? 'favorites' : 'playlist', label: name },
     });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
@@ -173,9 +179,18 @@ export default function PlaylistScreen() {
 
   const startShuffle = () => {
     if (playable.length === 0) return;
-    void shuffleTracks(playable.map(dbTrackToTrack), {
-      kind: isFavorites ? 'favorites' : 'playlist',
-      label: name,
+    const query = isFavorites
+      ? { kind: 'favorites' as const }
+      : {
+          kind: isDynamic ? 'dynamicPlaylist' as const : 'playlist' as const,
+          playlistId: playlistId!,
+        };
+    void playLibraryQuery(query, {
+      shuffle: true,
+      source: {
+        kind: isFavorites ? 'favorites' : 'playlist',
+        label: name,
+      },
     });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
   };
@@ -266,6 +281,10 @@ export default function PlaylistScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        onEndReached={() => {
+          if (!isFavorites) void loadNextEntries();
+        }}
+        onEndReachedThreshold={0.6}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,

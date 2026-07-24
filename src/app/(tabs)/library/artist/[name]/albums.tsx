@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -13,9 +12,8 @@ import { AlbumGridItem } from '@/components/library/AlbumGridItem';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildArtistDetail } from '@/library/artistDetail';
+import { useNativeArtistAlbums } from '@/library/nativePages';
 
 export default function ArtistAlbumsScreen() {
   const colors = useColors();
@@ -25,14 +23,9 @@ export default function ArtistAlbumsScreen() {
     name: string;
     credit?: string;
   }>();
-  const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
-
-  const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, detailGroupingMode),
-    [allTracks, name, detailGroupingMode]
-  );
+  const page = useNativeArtistAlbums(name, detailGroupingMode);
 
   return (
     <Screen>
@@ -47,14 +40,18 @@ export default function ArtistAlbumsScreen() {
         <Text variant="title" numberOfLines={1}>
           Albums
         </Text>
-        <Text variant="label">{formatCount(detail.albums.length, 'album')}</Text>
+        <Text variant="label">
+          {formatCount(page.totalCount, 'album')}
+        </Text>
       </View>
 
       <FlashList
-        data={detail.albums}
+        data={page.items}
         numColumns={2}
         keyExtractor={(album) => album.identity_key}
         showsVerticalScrollIndicator={false}
+        onEndReached={() => void page.loadMore()}
+        onEndReachedThreshold={0.6}
         renderItem={({ item }) => (
           <View style={styles.gridCell}>
             <AlbumGridItem

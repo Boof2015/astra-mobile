@@ -1,6 +1,5 @@
 import { AppState } from 'react-native';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { getPlaybackSessionSnapshot } from '@/audio/playbackController';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
@@ -14,7 +13,6 @@ import {
   type PlaybackSessionSnapshotV1,
 } from './sessionState';
 
-const MOBILE_SESSION_SETTING_KEY = 'mobile_session_state_v1';
 const STRUCTURAL_SAVE_DEBOUNCE_MS = 250;
 const POSITION_SAVE_THROTTLE_MS = 2000;
 
@@ -23,13 +21,11 @@ let scheduleStructuralSave: (() => void) | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 
 export async function readPersistedMobileSession(): Promise<MobileSessionSnapshotV1 | null> {
-  const db = await openLibraryDb();
-  return parseMobileSessionSnapshot(await getSetting(db, MOBILE_SESSION_SETTING_KEY));
+  return parseMobileSessionSnapshot(await AstraLibraryData.readMobileSession());
 }
 
 async function writePersistedMobileSession(snapshot: MobileSessionSnapshotV1): Promise<void> {
-  const db = await openLibraryDb();
-  await setSetting(db, MOBILE_SESSION_SETTING_KEY, stringifyMobileSessionSnapshot(snapshot));
+  await AstraLibraryData.writeMobileSession(stringifyMobileSessionSnapshot(snapshot));
 }
 
 function enqueueSnapshotWrite(snapshot: MobileSessionSnapshotV1): Promise<void> {
@@ -153,7 +149,10 @@ export function installMobileSessionPersistence(
     }
   });
   const appStateSubscription = AppState.addEventListener('change', (state) => {
-    if (state === 'inactive' || state === 'background') saveNow();
+    if (state === 'inactive' || state === 'background') {
+      saveNow();
+      void AstraLibraryData.flushUserSnapshot().catch(() => {});
+    }
   });
 
   // Persist route validation and queue normalization from hydration. The

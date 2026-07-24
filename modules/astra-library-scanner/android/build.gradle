@@ -1,7 +1,15 @@
+buildscript {
+  dependencies {
+    classpath "com.google.devtools.ksp:symbol-processing-gradle-plugin:${rootProject["kspVersion"]}"
+  }
+}
+
 plugins {
   id 'com.android.library'
   id 'expo-module-gradle-plugin'
 }
+
+apply plugin: 'com.google.devtools.ksp'
 
 group = 'expo.modules.astralibraryscanner'
 version = '0.1.0'
@@ -11,6 +19,10 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+  }
+  sourceSets {
+    androidTest.assets.srcDirs += files("$projectDir/schemas")
   }
   lintOptions {
     abortOnError false
@@ -22,5 +34,19 @@ dependencies {
   // MetadataRetriever — parses ID3/Vorbis/MP4 container tags (ReplayGain) without
   // decoding audio. Transitively brings exoplayer-extractor (the frame classes).
   implementation 'com.google.android.exoplayer:exoplayer-core:2.19.0'
+  implementation 'androidx.room:room-runtime:2.8.4'
+  implementation 'androidx.room:room-ktx:2.8.4'
+  ksp 'androidx.room:room-compiler:2.8.4'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+
   testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.room:room-testing:2.8.4'
+  androidTestImplementation 'androidx.test:core:1.6.1'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+}
+
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+  arg("room.generateKotlin", "true")
 }

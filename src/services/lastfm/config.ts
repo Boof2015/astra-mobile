@@ -6,8 +6,7 @@
 // On load we re-attach the session keys before handing the config to the service,
 // so the ported service code (which reads `profile.sessionKey`) is unchanged.
 
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import type { LastFmServiceConfig } from '@/types/lastFm';
 import {
   deleteLastFmSessionKey,
@@ -32,8 +31,7 @@ function parseStringArray(value: string | null): string[] {
 
 /** Load the persisted config (with session keys re-attached), or null if none. */
 export async function loadLastFmConfig(): Promise<LastFmServiceConfig | null> {
-  const db = await openLibraryDb();
-  const json = await getSetting(db, CONFIG_KEY);
+  const json = await getNativeSetting(CONFIG_KEY);
   if (!json) return null;
 
   let parsed: LastFmServiceConfig;
@@ -57,9 +55,7 @@ export async function loadLastFmConfig(): Promise<LastFmServiceConfig | null> {
 
 /** Persist the config: secrets to secure-store, everything else to the settings KV. */
 export async function persistLastFmConfig(config: LastFmServiceConfig): Promise<void> {
-  const db = await openLibraryDb();
-
-  const previousSecretIds = parseStringArray(await getSetting(db, SECRET_IDS_KEY));
+  const previousSecretIds = parseStringArray(await getNativeSetting(SECRET_IDS_KEY));
   const currentSecretIds: string[] = [];
 
   for (const profile of config.profiles) {
@@ -76,7 +72,7 @@ export async function persistLastFmConfig(config: LastFmServiceConfig): Promise<
       await deleteLastFmSessionKey(id);
     }
   }
-  await setSetting(db, SECRET_IDS_KEY, JSON.stringify(currentSecretIds));
+  await setNativeSetting(SECRET_IDS_KEY, JSON.stringify(currentSecretIds));
 
   const sanitized: LastFmServiceConfig = {
     enabled: config.enabled,
@@ -87,5 +83,5 @@ export async function persistLastFmConfig(config: LastFmServiceConfig): Promise<
       pendingScrobbles: profile.pendingScrobbles.map((item) => ({ ...item })),
     })),
   };
-  await setSetting(db, CONFIG_KEY, JSON.stringify(sanitized));
+  await setNativeSetting(CONFIG_KEY, JSON.stringify(sanitized));
 }
