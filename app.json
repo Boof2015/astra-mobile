@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "io.github.boof2015.astra",
+      "allowBackup": false,
       "backgroundColor": "#000000",
       "adaptiveIcon": {
         "backgroundColor": "#05070A",
