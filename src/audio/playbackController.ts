@@ -76,6 +76,15 @@ export interface PlaybackStartOptions {
   source: PlaybackSource;
 }
 
+function toVirtualRntpTrack(
+  item: DbTrack & { queuePosition: number },
+): RntpTrack {
+  return {
+    ...toRntpTrack(dbTrackToTrack(item)),
+    astraQueuePosition: item.queuePosition,
+  };
+}
+
 const NEXT_REPEAT: Record<RepeatModeStr, RepeatModeStr> = {
   none: 'all',
   all: 'one',
@@ -337,7 +346,7 @@ export function restoreVirtualPlaybackContext(
     restorePlaybackSession(null);
     return;
   }
-  const queueTracks = tracks.map(toRntpTrack);
+  const queueTracks = window.items.map(toVirtualRntpTrack);
   const activeIndex = Math.max(
     0,
     Math.min(queueTracks.length - 1, window.activePosition - window.windowStart),
@@ -426,7 +435,7 @@ async function startVirtualWindow(
   shuffle: boolean,
 ): Promise<void> {
   const tracks = window.items.map(dbTrackToTrack);
-  const queueTracks = tracks.map(toRntpTrack);
+  const queueTracks = window.items.map(toVirtualRntpTrack);
   const startIndex = Math.max(
     0,
     Math.min(queueTracks.length - 1, window.activePosition - window.windowStart),
@@ -496,14 +505,22 @@ async function replenishVirtualContext(): Promise<void> {
     100,
   );
   if (virtualContext !== context || next.items.length === 0) return;
-  const additions = next.items.map(dbTrackToTrack).map(toRntpTrack);
+  const additions = next.items
+    .filter((item) => (
+      item.queuePosition >= context.loadedEnd &&
+      item.queuePosition < context.totalCount
+    ))
+    .map(toVirtualRntpTrack);
+  if (additions.length === 0) return;
+  const nextLoadedEnd = Number(additions[additions.length - 1].astraQueuePosition) + 1;
+  if (!Number.isFinite(nextLoadedEnd) || nextLoadedEnd <= context.loadedEnd) return;
   const before = useQueueStore.getState();
   await appendUpcomingChunked(additions, before.tracks.length);
   useQueueStore.getState().setSnapshot(
     [...before.tracks, ...additions],
     localIndex,
   );
-  context.loadedEnd = next.items[next.items.length - 1].queuePosition + 1;
+  context.loadedEnd = Math.min(context.totalCount, nextLoadedEnd);
 }
 
 /** Returns a bounded page from the native virtual queue, or null for ordinary queues. */
@@ -519,14 +536,17 @@ export async function getVirtualQueuePage(
     Math.max(1, Math.min(100, limit)),
   );
   if (virtualContext !== context) return null;
+  const boundedStart = Math.max(0, start);
   return {
-    items: window.items.map((item) => ({
-      track: {
-        ...toRntpTrack(dbTrackToTrack(item)),
-        astraQueuePosition: item.queuePosition,
-      },
-      queuePosition: item.queuePosition,
-    })),
+    items: window.items
+      .filter((item) => (
+        item.queuePosition >= boundedStart &&
+        item.queuePosition < window.totalCount
+      ))
+      .map((item) => ({
+        track: toVirtualRntpTrack(item),
+        queuePosition: item.queuePosition,
+      })),
     activePosition: window.activePosition,
     totalCount: window.totalCount,
   };
@@ -599,8 +619,7 @@ async function mutateVirtualQueue(
   const boundedActive = Math.max(0, activeLocal);
   const upcoming = window.items
     .filter((item) => item.queuePosition > window.activePosition)
-    .map(dbTrackToTrack)
-    .map(toRntpTrack);
+    .map(toVirtualRntpTrack);
   const before = useQueueStore.getState();
   const prefix = before.tracks.slice(0, boundedActive + 1);
 

@@ -172,6 +172,15 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun playbackWindowNeverClampsPastTheEndBackToTheLastTrack() {
+    assertEquals(0L, boundedPlaybackWindowStart(-10, 3))
+    assertEquals(2L, boundedPlaybackWindowStart(2, 3))
+    assertNull(boundedPlaybackWindowStart(3, 3))
+    assertNull(boundedPlaybackWindowStart(99, 3))
+    assertNull(boundedPlaybackWindowStart(0, 0))
+  }
+
+  @Test
   fun userSnapshotsRotateRejectDamageAndRestoreTheNewestValidCopy() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val snapshotDirectory = context.filesDir.resolve("astra-user-snapshots")

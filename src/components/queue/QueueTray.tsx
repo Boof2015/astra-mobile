@@ -212,7 +212,6 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const loadVirtualPage = useCallback(async (reset: boolean) => {
     const state = getVirtualQueueState();
     if (!state || (!reset && virtualLoading.current)) return;
-    virtualLoading.current = true;
     const generation = reset ? ++virtualLoadGeneration.current : virtualLoadGeneration.current;
     const existing = reset ? [] : virtualTracksRef.current;
     const lastPosition = existing.length > 0
@@ -221,6 +220,15 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     const start = typeof lastPosition === 'number'
       ? lastPosition + 1
       : state.activePosition + 1;
+    if (start >= state.totalCount) {
+      if (reset) {
+        virtualLoading.current = false;
+        virtualTracksRef.current = [];
+        setVirtualTracks([]);
+      }
+      return;
+    }
+    virtualLoading.current = true;
     try {
       const page = await getVirtualQueuePage(start, 100);
       if (
@@ -228,10 +236,15 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
         generation !== virtualLoadGeneration.current ||
         getVirtualQueueState()?.sessionId !== state.sessionId
       ) return;
-      const next = reset ? page.items.map((item) => item.track) : [
-        ...existing,
-        ...page.items.map((item) => item.track),
-      ];
+      const existingPositions = new Set(
+        existing.map((track) => track.astraQueuePosition).filter(
+          (position): position is number => typeof position === 'number'
+        )
+      );
+      const incoming = page.items
+        .filter((item) => item.queuePosition >= start && !existingPositions.has(item.queuePosition))
+        .map((item) => item.track);
+      const next = reset ? incoming : [...existing, ...incoming];
       // Keep no more than five tray pages in JS.
       const bounded = next.slice(-500);
       virtualTracksRef.current = bounded;

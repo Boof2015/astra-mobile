@@ -37,6 +37,11 @@ private const val ACTIVE_PLAYBACK_CONTEXT_ID = "active-context"
 
 class StaleRevisionException : IllegalStateException("STALE_REVISION")
 
+internal fun boundedPlaybackWindowStart(start: Long, total: Long): Long? {
+  val normalized = start.coerceAtLeast(0)
+  return normalized.takeIf { it < total }
+}
+
 private data class RemoteSyncHandle(
   val syncId: String,
   val sourceKey: String,
@@ -2208,8 +2213,13 @@ class AstraLibraryRepository private constructor(
     val session = userDao.getPlaybackSession(sessionId)
       ?: error("Playback context $sessionId does not exist")
     val total = userDao.countQueueEntries(sessionId)
-    val boundedStart = if (total == 0L) 0L else start.coerceIn(0, total - 1)
-    val entries = userDao.getQueueWindow(sessionId, boundedStart, limit)
+    val requestedStart = start.coerceAtLeast(0)
+    val boundedStart = boundedPlaybackWindowStart(requestedStart, total)
+    val entries = if (boundedStart == null) {
+      emptyList()
+    } else {
+      userDao.getQueueWindow(sessionId, boundedStart, limit)
+    }
     val tracks = LinkedHashMap<String, ActiveTrackView>()
     for (chunk in entries.map(PlaybackQueueEntryEntity::trackPath).distinct().chunked(MAX_PAGE_SIZE)) {
       requireCatalog().catalogDao().getActiveTracks(chunk).forEach { tracks[it.path] = it }
@@ -2222,7 +2232,7 @@ class AstraLibraryRepository private constructor(
     return mapOf(
       "sessionId" to session.id,
       "items" to items,
-      "windowStart" to boundedStart.toDouble(),
+      "windowStart" to (boundedStart ?: requestedStart).toDouble(),
       "activePosition" to session.activePosition.toDouble(),
       "totalCount" to total.toDouble(),
       "contextJson" to session.contextJson,
