@@ -1,7 +1,7 @@
 {
   "name": "astra-mobile",
   "main": "index.js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "dependencies": {
     "@boof2015/astra-signal": "0.3.0",
     "@boof2015/xlrc": "^0.2.1",
@@ -10,10 +10,8 @@
     "@expo/ui": "~56.0.13",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.14",
-    "@op-engineering/op-sqlite": "^16.2.1",
     "@shopify/flash-list": "2.0.2",
     "@shopify/react-native-skia": "2.6.2",
-    "encoding-japanese": "^2.2.0",
     "expo": "~56.0.4",
     "expo-asset": "~56.0.14",
     "expo-build-properties": "^56.0.19",
@@ -52,7 +50,6 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@types/encoding-japanese": "^2.2.1",
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
@@ -69,7 +66,7 @@
     "lint": "expo lint",
     "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/queue/queueActions.test.mts",
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts",
-    "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/db/dynamicPlaylistSql.test.mts",
+    "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts",
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",
     "test:artist-grouping": "node --experimental-strip-types --test src/library/artistGrouping.test.mts",
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/services/desktopSyncPolicy.test.mts src/shared/sync/conflictPreview.test.mts",
@@ -80,7 +77,7 @@
     "test:seek-bar": "node --experimental-strip-types --test src/audio/playbackClock.test.mts src/components/waveformScrubDetents.test.mts",
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts src/lyrics/embedded.test.mts src/lyrics/resolver.test.mts",
     "test:sleep": "node --experimental-strip-types --test src/audio/sleepTimerState.test.mts",
-    "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/db/libraryMaintenance.test.mts src/lib/cacheInvalidation.test.mts",
+    "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/cacheInvalidation.test.mts",
     "test:settings-search": "node --experimental-strip-types --test src/components/search/settingsSearchRoutes.test.mts",
     "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts src/components/player/nowPlayingDismiss.test.mts src/playback/playbackTargetPresentation.test.mts",
     "test:memory-lifecycle": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/delayedPresence.test.mts scripts/android-memory-profile.test.mjs",

@@ -20,13 +20,8 @@
 
 import { useQueueStore } from '@/stores/queueStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
-import { openLibraryDb } from '@/db/database';
-import {
-  getLibraryLoudnessStats,
-  getSetting,
-  getTrackLoudnessByPaths,
-  setSetting,
-} from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import {
   dbToLinear,
   hasUsableReplayGain,
@@ -41,8 +36,7 @@ const FALLBACK_DB_KEY = 'normalization_fallback_db';
 
 /** Single-setting cold-start read; no library aggregate or track analysis. */
 export async function loadPersistedFallbackGain(): Promise<number | null> {
-  const db = await openLibraryDb();
-  const raw = await getSetting(db, FALLBACK_DB_KEY);
+  const raw = await getNativeSetting(FALLBACK_DB_KEY);
   if (raw === null) return null;
   const gainDb = Number(raw);
   if (!Number.isFinite(gainDb)) return null;
@@ -132,19 +126,21 @@ async function registerQueueGains(): Promise<void> {
   }
 
   if (settings.enabled && localUrls.length > 0) {
-    const db = await openLibraryDb();
-    const rows = await getTrackLoudnessByPaths(db, localUrls);
-    if (gen !== generation) return; // a newer registration superseded this one
-    for (const url of localUrls) {
-      const row = rows.get(url);
-      if (!row) continue; // not in the library — leave unregistered (fallback)
-      const facts = factsFromRow(row);
-      if (facts.loudnessLufs != null || hasUsableReplayGain(facts, settings)) {
-        entries[url] = resolveNormalizationGain(facts, settings).linearGain;
+    for (let offset = 0; offset < localUrls.length; offset += 200) {
+      const chunk = localUrls.slice(offset, offset + 200);
+      const rows = await AstraLibraryData.getTrackLoudness(chunk);
+      if (gen !== generation) return; // a newer registration superseded this one
+      const byPath = new Map(rows.map((row) => [row.path, row]));
+      for (const url of chunk) {
+        const row = byPath.get(url);
+        if (!row) continue; // not in the library — leave unregistered (fallback)
+        const facts = factsFromRow(row);
+        if (facts.loudnessLufs != null || hasUsableReplayGain(facts, settings)) {
+          entries[url] = resolveNormalizationGain(facts, settings).linearGain;
+        }
       }
-      // No usable facts yet: deliberately NOT registered, so the transition
-      // activates the fallback gain. (resolveNormalizationGain returns unity for
-      // fact-less tracks — registering that would reintroduce the loud burst.)
+      // Fact-less tracks remain unregistered so transitions use the quiet
+      // fallback until analysis completes.
     }
   }
 
@@ -167,16 +163,14 @@ async function refreshFallbackGain(): Promise<void> {
     return;
   }
 
-  const db = await openLibraryDb();
-
   // Push the last persisted value first — closes the cold-start window where a
   // headless (Android Auto) start could hit a transition before the aggregate lands.
-  const persistedRaw = await getSetting(db, FALLBACK_DB_KEY).catch(() => null);
+  const persistedRaw = await getNativeSetting(FALLBACK_DB_KEY).catch(() => null);
   const persistedDb = persistedRaw === null ? NaN : Number(persistedRaw);
   if (Number.isFinite(persistedDb)) setFallbackGainNative(dbToLinear(persistedDb));
 
-  const stats = await getLibraryLoudnessStats(db);
+  const stats = await AstraLibraryData.getLibraryLoudnessStats();
   const resolved = resolveFallbackGain(stats, settings);
   setFallbackGainNative(resolved.linearGain);
-  await setSetting(db, FALLBACK_DB_KEY, String(resolved.gainDb)).catch(() => {});
+  await setNativeSetting(FALLBACK_DB_KEY, String(resolved.gainDb)).catch(() => {});
 }

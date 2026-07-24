@@ -1,8 +1,7 @@
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
 import { AstraSystemColors, type SystemPalette } from '../../modules/astra-system-colors';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import { parseAccentId, DEFAULT_ACCENT, type AccentId } from '@/theme/accents';
 import {
   parseBaseTheme,
@@ -71,11 +70,10 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
 
   load: async () => {
     if (get().loaded) return;
-    const db = await openLibraryDb();
     const [base, dark, accent] = await Promise.all([
-      getSetting(db, BASE_THEME_KEY),
-      getSetting(db, PREFERRED_DARK_KEY),
-      getSetting(db, ACCENT_KEY),
+      getNativeSetting(BASE_THEME_KEY),
+      getNativeSetting(PREFERRED_DARK_KEY),
+      getNativeSetting(ACCENT_KEY),
     ]);
     if (get().materialYouAvailable) {
       materialYouRamps = AstraSystemColors.getSystemPalette();
@@ -93,24 +91,21 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     if (get().baseTheme === id) return;
     const inputs: ResolutionInputs = { ...get(), baseTheme: id };
     set({ baseTheme: id, theme: recompute(inputs) });
-    const db = await openLibraryDb();
-    await setSetting(db, BASE_THEME_KEY, id);
+    await setNativeSetting(BASE_THEME_KEY, id);
   },
 
   setPreferredDark: async (id) => {
     if (get().preferredDark === id) return;
     const inputs: ResolutionInputs = { ...get(), preferredDark: id };
     set({ preferredDark: id, theme: recompute(inputs) });
-    const db = await openLibraryDb();
-    await setSetting(db, PREFERRED_DARK_KEY, id);
+    await setNativeSetting(PREFERRED_DARK_KEY, id);
   },
 
   setAccent: async (id) => {
     if (get().accentId === id) return;
     const inputs: ResolutionInputs = { ...get(), accentId: id };
     set({ accentId: id, theme: recompute(inputs) });
-    const db = await openLibraryDb();
-    await setSetting(db, ACCENT_KEY, id);
+    await setNativeSetting(ACCENT_KEY, id);
   },
 
   refreshSystemInputs: () => {

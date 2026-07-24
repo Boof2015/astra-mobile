@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import {
   DEFAULT_TARGET_LUFS,
   type NormalizationSettings,
@@ -46,12 +45,11 @@ export const useAudioSettingsStore = create<AudioSettingsStore>((set, get) => ({
 
   load: async () => {
     if (get().loaded) return;
-    const db = await openLibraryDb();
     const [enabled, target, rgEnabled, rgMode] = await Promise.all([
-      getSetting(db, NORMALIZATION_ENABLED_KEY),
-      getSetting(db, NORMALIZATION_TARGET_KEY),
-      getSetting(db, REPLAYGAIN_ENABLED_KEY),
-      getSetting(db, REPLAYGAIN_MODE_KEY),
+      getNativeSetting(NORMALIZATION_ENABLED_KEY),
+      getNativeSetting(NORMALIZATION_TARGET_KEY),
+      getNativeSetting(REPLAYGAIN_ENABLED_KEY),
+      getNativeSetting(REPLAYGAIN_MODE_KEY),
     ]);
     const targetNum = Number(target);
     set({
@@ -67,30 +65,26 @@ export const useAudioSettingsStore = create<AudioSettingsStore>((set, get) => ({
   setNormalizationEnabled: async (enabled) => {
     if (get().normalizationEnabled === enabled) return;
     set({ normalizationEnabled: enabled });
-    const db = await openLibraryDb();
-    await setSetting(db, NORMALIZATION_ENABLED_KEY, enabled ? 'true' : 'false');
+    await setNativeSetting(NORMALIZATION_ENABLED_KEY, enabled ? 'true' : 'false');
   },
 
   setNormalizationTargetLufs: async (lufs) => {
     const clamped = Math.max(-30, Math.min(-5, lufs));
     if (get().normalizationTargetLufs === clamped) return;
     set({ normalizationTargetLufs: clamped });
-    const db = await openLibraryDb();
-    await setSetting(db, NORMALIZATION_TARGET_KEY, String(clamped));
+    await setNativeSetting(NORMALIZATION_TARGET_KEY, String(clamped));
   },
 
   setReplayGainEnabled: async (enabled) => {
     if (get().replayGainEnabled === enabled) return;
     set({ replayGainEnabled: enabled });
-    const db = await openLibraryDb();
-    await setSetting(db, REPLAYGAIN_ENABLED_KEY, enabled ? 'true' : 'false');
+    await setNativeSetting(REPLAYGAIN_ENABLED_KEY, enabled ? 'true' : 'false');
   },
 
   setReplayGainMode: async (mode) => {
     if (get().replayGainMode === mode) return;
     set({ replayGainMode: mode });
-    const db = await openLibraryDb();
-    await setSetting(db, REPLAYGAIN_MODE_KEY, mode);
+    await setNativeSetting(REPLAYGAIN_MODE_KEY, mode);
   },
 
   asNormalizationSettings: () => {

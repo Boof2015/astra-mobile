@@ -16,8 +16,7 @@ import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
 import type { DbTrack } from '@/types/library';
 
 function formatCount(count: number, noun: string): string {
@@ -46,8 +45,8 @@ export default function RecentlyPlayedScreen() {
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'recent' }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'recently-played', label: 'Recently Played' },
     });
   };

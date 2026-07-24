@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import {
   DEFAULT_LYRICS_DISPLAY_SETTINGS,
   normalizeLyricsDisplaySettings,
@@ -42,8 +41,7 @@ function displaySettingsFromState(state: LyricsSettingsStore): LyricsDisplaySett
 }
 
 async function persistDisplaySettings(settings: LyricsDisplaySettings): Promise<void> {
-  const db = await openLibraryDb();
-  await setSetting(db, DISPLAY_SETTINGS_KEY, JSON.stringify(settings));
+  await setNativeSetting(DISPLAY_SETTINGS_KEY, JSON.stringify(settings));
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -57,10 +55,9 @@ export const useLyricsSettingsStore = create<LyricsSettingsStore>((set, get) => 
     if (get().loaded) return;
     if (loadPromise) return loadPromise;
     loadPromise = (async () => {
-      const db = await openLibraryDb();
       const [onlineValue, displayValue] = await Promise.all([
-        getSetting(db, ONLINE_LOOKUP_KEY),
-        getSetting(db, DISPLAY_SETTINGS_KEY),
+        getNativeSetting(ONLINE_LOOKUP_KEY),
+        getNativeSetting(DISPLAY_SETTINGS_KEY),
       ]);
       let parsed: unknown = null;
       try {
@@ -82,8 +79,7 @@ export const useLyricsSettingsStore = create<LyricsSettingsStore>((set, get) => 
   setOnlineLookupEnabled: async (enabled) => {
     await get().load();
     set({ onlineLookupEnabled: enabled });
-    const db = await openLibraryDb();
-    await setSetting(db, ONLINE_LOOKUP_KEY, enabled ? 'true' : 'false');
+    await setNativeSetting(ONLINE_LOOKUP_KEY, enabled ? 'true' : 'false');
   },
 
   setWordTimingEnabled: async (enabled) => {

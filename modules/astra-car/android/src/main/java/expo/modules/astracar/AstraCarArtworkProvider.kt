@@ -9,13 +9,8 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
 
 private const val TAG = "AstraCarArt"
-private const val DOWNLOAD_TIMEOUT_MS = 8_000
 
 /**
  * Serves artwork to Android Auto as `content://` URIs (the only scheme Auto accepts).
@@ -59,57 +54,11 @@ class AstraCarArtworkProvider : ContentProvider() {
   }
 
   private fun remoteFile(ctx: Context, sourceId: Long?, artworkSourceId: String?): File? {
-    if (sourceId == null || artworkSourceId.isNullOrBlank()) return null
-    val cacheDir = File(ctx.cacheDir, "astra-car-art").apply { mkdirs() }
-    val cacheFile = File(cacheDir, sha1("$sourceId:$artworkSourceId") + ".img")
-    if (cacheFile.exists() && cacheFile.length() > 0) return cacheFile
-
-    // art_auth is a full cover-art URL template with an id placeholder, built by JS from
-    // the (well-tested) Subsonic/Jellyfin URL builders so the provider stays auth-agnostic.
-    val template = artAuthTemplate(ctx, sourceId) ?: return null
-    val url = template.replace(AstraCarArtwork.ART_ID_PLACEHOLDER, Uri.encode(artworkSourceId))
-    return runCatching {
-      download(url, cacheFile)
-      cacheFile.takeIf { it.length() > 0 }
-    }.onFailure { Log.w(TAG, "remote art download failed for $sourceId/$artworkSourceId", it) }
-      .getOrNull()
+    // Credential-bearing remote artwork URLs live only in SecureStore. Remote
+    // covers are fetched by the app and become available here once cached as
+    // normal local artwork; the provider never reads or persists credentials.
+    return null
   }
-
-  private fun artAuthTemplate(ctx: Context, sourceId: Long): String? =
-    AstraCarDb.openReadable(ctx)?.use { db ->
-      db.rawQuery(
-        "SELECT art_auth FROM remote_sources WHERE id = ? LIMIT 1",
-        arrayOf(sourceId.toString()),
-      ).use { cursor ->
-        if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
-      }
-    }?.takeIf { it.isNotBlank() }
-
-  private fun download(url: String, dest: File) {
-    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-      connectTimeout = DOWNLOAD_TIMEOUT_MS
-      readTimeout = DOWNLOAD_TIMEOUT_MS
-      instanceFollowRedirects = true
-    }
-    try {
-      if (connection.responseCode !in 200..299) {
-        throw FileNotFoundException("HTTP ${connection.responseCode}")
-      }
-      val tmp = File(dest.absolutePath + ".tmp")
-      connection.inputStream.use { input -> FileOutputStream(tmp).use(input::copyTo) }
-      if (!tmp.renameTo(dest)) {
-        tmp.copyTo(dest, overwrite = true)
-        tmp.delete()
-      }
-    } finally {
-      connection.disconnect()
-    }
-  }
-
-  private fun sha1(value: String): String =
-    MessageDigest.getInstance("SHA-1")
-      .digest(value.toByteArray())
-      .joinToString("") { "%02x".format(it) }
 
   override fun getType(uri: Uri): String = "image/*"
 

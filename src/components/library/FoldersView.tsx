@@ -1,94 +1,98 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
   View,
   type GestureResponderEvent,
   type NativeScrollEvent,
-  type NativeSyntheticEvent
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
+import {
+  AstraLibraryData,
+  type NativeFolderNode,
+} from '../../../modules/astra-library-scanner';
 import { Text } from '@/components/Text';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import {
   AppSheet,
   AppSheetItem,
-  AppSheetTitle
+  AppSheetTitle,
 } from '@/components/sheets/AppSheet';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
-  playTracks,
-  shuffleTracks,
-  enqueueTopMany,
-  enqueueEndMany
+  enqueueLibraryQuery,
+  playLibraryQuery,
 } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
-import {
-  buildFolderTree,
-  flattenFolderTree,
-  type FlattenedFolderTreeRow,
-  type FolderTreeNode
-} from '@/library/folderTree';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
+
+const PAGE_SIZE = 100;
 
 interface FoldersViewProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
 }
 
-function FolderRow({
-  row,
+interface LoadedNode {
+  node: NativeFolderNode;
+  childIds: string[];
+  tracks: DbTrack[];
+  nextOffset: number | null;
+  loaded: boolean;
+  loading: boolean;
+}
+
+type FolderRow =
+  | { type: 'folder'; id: string; state: LoadedNode; expanded: boolean }
+  | { type: 'track'; id: string; track: DbTrack; node: NativeFolderNode }
+  | { type: 'more'; id: string; nodeId: string; depth: number };
+
+function FolderNodeRow({
+  state,
+  expanded,
   onToggle,
   onPlay,
   onShuffle,
   onOpenActions,
 }: {
-  row: Extract<FlattenedFolderTreeRow, { type: 'folder' }>;
-  onToggle: (nodeId: string) => void;
-  onPlay: (node: FolderTreeNode) => void;
-  onShuffle: (node: FolderTreeNode) => void;
-  onOpenActions: (node: FolderTreeNode) => void;
+  state: LoadedNode;
+  expanded: boolean;
+  onToggle: () => void;
+  onPlay: () => void;
+  onShuffle: () => void;
+  onOpenActions: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
-  const { node, depth, isExpanded } = row;
-
-  const play = (event: GestureResponderEvent) => {
+  const { node } = state;
+  const stop = (callback: () => void) => (event: GestureResponderEvent) => {
     event.stopPropagation();
-    onPlay(node);
+    callback();
   };
-  const shuffle = (event: GestureResponderEvent) => {
-    event.stopPropagation();
-    onShuffle(node);
-  };
-
   return (
     <Pressable
-      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      android_ripple={ripple.bounded}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.folderRow}
-      onPress={() => onToggle(node.id)}
+      onPress={onToggle}
       onLongPress={() => {
         playHaptic('holdAccepted');
-        onOpenActions(node);
+        onOpenActions();
       }}
       accessibilityRole="button"
-      accessibilityState={{ expanded: isExpanded }}
+      accessibilityState={{ expanded }}
     >
-      <View style={[styles.indent, { width: depth * 18 }]} />
+      <View style={[styles.indent, { width: node.depth * 18 }]} />
       <Ionicons
-        name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+        name={state.loading ? 'ellipsis-horizontal' : expanded ? 'chevron-down' : 'chevron-forward'}
         size={16}
         color={colors.textTertiary}
       />
@@ -98,22 +102,17 @@ function FolderRow({
         color={node.available ? colors.textSecondary : colors.warning}
       />
       <View style={styles.folderMeta}>
-        <Text variant="body" numberOfLines={1}>
-          {node.name}
-        </Text>
+        <Text variant="body" numberOfLines={1}>{node.name}</Text>
         {!node.available ? (
-          <Text variant="caption" color={colors.warning} numberOfLines={1}>
-            Access lost
-          </Text>
+          <Text variant="caption" color={colors.warning}>Access lost</Text>
         ) : null}
       </View>
-      <Text variant="mono" style={styles.count}>
-        {node.totalTrackCount}
-      </Text>
+      <Text variant="mono" style={styles.count}>{node.totalTrackCount}</Text>
       <Pressable
-        android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        android_ripple={ripple.icon(20)}
+        unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.folderButton}
-        onPress={play}
+        onPress={stop(onPlay)}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={`Play ${node.name}`}
@@ -121,9 +120,10 @@ function FolderRow({
         <Ionicons name="play" size={16} color={colors.accent} />
       </Pressable>
       <Pressable
-        android_ripple={ripple.icon(20)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        android_ripple={ripple.icon(20)}
+        unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.folderButton}
-        onPress={shuffle}
+        onPress={stop(onShuffle)}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={`Shuffle ${node.name}`}
@@ -135,61 +135,67 @@ function FolderRow({
 }
 
 function FolderTrackRow({
-  row,
+  track,
+  node,
   active,
   onOpenActions,
 }: {
-  row: Extract<FlattenedFolderTreeRow, { type: 'track' }>;
+  track: DbTrack;
+  node: NativeFolderNode;
   active: boolean;
   onOpenActions: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
-  const index = row.folderTracks.findIndex((track) => track.path === row.track.path);
-
-  const playFolderTrack = () => {
-    void playTracks(row.folderTracks.map(dbTrackToTrack), {
-      startIndex: Math.max(0, index),
-      source: { kind: 'folder', label: row.folderName },
-    });
-  };
-  const openActions = (event: GestureResponderEvent) => {
-    event.stopPropagation();
-    onOpenActions();
-  };
-
   return (
     <Pressable
-      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      android_ripple={ripple.bounded}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.trackRow, active && styles.trackRowActive]}
-      onPress={playFolderTrack}
+      onPress={() => {
+        void playLibraryQuery(
+          { kind: 'folder', folderNodeId: node.id },
+          {
+            anchorPath: track.path,
+            source: { kind: 'folder', label: node.name },
+          }
+        );
+      }}
       onLongPress={() => {
         playHaptic('holdAccepted');
         onOpenActions();
       }}
       accessibilityRole="button"
     >
-      <View style={[styles.indent, { width: row.depth * 18 + 16 }]} />
-      <Ionicons name={active ? 'volume-high' : 'musical-note'} size={15} color={active ? colors.accent : colors.textTertiary} />
+      <View style={[styles.indent, { width: (node.depth + 1) * 18 + 16 }]} />
+      <Ionicons
+        name={active ? 'volume-high' : 'musical-note'}
+        size={15}
+        color={active ? colors.accent : colors.textTertiary}
+      />
       <View style={styles.trackMeta}>
-        <Text variant="body" style={[styles.trackTitle, active && styles.trackTitleActive]} numberOfLines={1}>
-          {row.track.title}
+        <Text
+          variant="body"
+          style={[styles.trackTitle, active && styles.trackTitleActive]}
+          numberOfLines={1}
+        >
+          {track.title}
         </Text>
-        <Text variant="label" numberOfLines={1}>
-          {row.track.artist}
-        </Text>
+        <Text variant="label" numberOfLines={1}>{track.artist}</Text>
       </View>
-      <Text variant="mono" style={styles.duration}>
-        {formatDuration(row.track.duration)}
-      </Text>
+      <Text variant="mono" style={styles.duration}>{formatDuration(track.duration)}</Text>
       <Pressable
-        android_ripple={ripple.icon(21)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        android_ripple={ripple.icon(21)}
+        unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.actionsButton}
-        onPress={openActions}
+        onPress={(event) => {
+          event.stopPropagation();
+          onOpenActions();
+        }}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={`More actions for ${row.track.title}`}
+        accessibilityLabel={`More actions for ${track.title}`}
       >
         <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
       </Pressable>
@@ -200,52 +206,113 @@ function FolderTrackRow({
 export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps) {
   const styles = useStyles();
   const colors = useColors();
-  const folders = useLibraryStore((s) => s.folders);
-  const tracks = useLibraryStore((s) => s.tracks);
-  const currentPath = usePlayerStore((s) => s.currentTrack?.path);
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
+  const currentPath = usePlayerStore((state) => state.currentTrack?.path);
+  const [nodes, setNodes] = useState<Map<string, LoadedNode>>(() => new Map());
+  const [rootIds, setRootIds] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
-  const [actionFolder, setActionFolder] = useState<FolderTreeNode | null>(null);
+  const [actionFolder, setActionFolder] = useState<NativeFolderNode | null>(null);
 
-  const tree = useMemo(() => buildFolderTree(folders, tracks), [folders, tracks]);
-  const rows = useMemo(() => flattenFolderTree(tree, expandedNodeIds), [expandedNodeIds, tree]);
+  const replaceRoots = async () => {
+    const roots = await AstraLibraryData.getFolderNodes(null);
+    setNodes(new Map(roots.map((node) => [
+      node.id,
+      { node, childIds: [], tracks: [], nextOffset: 0, loaded: false, loading: false },
+    ])));
+    setRootIds(roots.map((node) => node.id));
+    setExpanded(new Set());
+  };
 
-  // Folder-level playback runs the whole subtree (subfolders included), in tree order.
-  const playFolder = (node: FolderTreeNode) => {
-    if (node.subtreeTracks.length === 0) return;
-    void playTracks(node.subtreeTracks.map(dbTrackToTrack), {
-      source: { kind: 'folder', label: node.name },
+  useEffect(() => {
+    queueMicrotask(() => void replaceRoots());
+    const subscription = AstraLibraryData.addListener('onCatalogChanged', () => {
+      void replaceRoots();
     });
-  };
-  const shuffleFolder = (node: FolderTreeNode) => {
-    if (node.subtreeTracks.length === 0) return;
-    void shuffleTracks(node.subtreeTracks.map(dbTrackToTrack), {
-      kind: 'folder',
-      label: node.name,
-    });
-  };
-  const playFolderNext = (node: FolderTreeNode) => {
-    if (node.subtreeTracks.length === 0) return;
-    void enqueueTopMany(node.subtreeTracks.map(dbTrackToTrack));
-  };
-  const queueFolder = (node: FolderTreeNode) => {
-    if (node.subtreeTracks.length === 0) return;
-    void enqueueEndMany(node.subtreeTracks.map(dbTrackToTrack));
-  };
+    return () => subscription.remove();
+  }, []);
 
-  const toggleFolder = (nodeId: string) => {
-    setExpandedNodeIds((current) => {
-      const next = new Set(current);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
+  const loadNode = async (nodeId: string, append = false) => {
+    const current = nodes.get(nodeId);
+    if (!current || current.loading || (append && current.nextOffset == null)) return;
+    setNodes((existing) => {
+      const next = new Map(existing);
+      next.set(nodeId, { ...current, loading: true });
+      return next;
+    });
+    const offset = append ? current.nextOffset ?? 0 : 0;
+    const [children, page] = await Promise.all([
+      append ? Promise.resolve([]) : AstraLibraryData.getFolderNodes(nodeId),
+      AstraLibraryData.getFolderTracks<DbTrack>(nodeId, offset, PAGE_SIZE),
+    ]);
+    setNodes((existing) => {
+      const next = new Map(existing);
+      for (const child of children) {
+        const old = next.get(child.id);
+        next.set(child.id, old ?? {
+          node: child,
+          childIds: [],
+          tracks: [],
+          nextOffset: 0,
+          loaded: false,
+          loading: false,
+        });
       }
+      const latest = next.get(nodeId) ?? current;
+      next.set(nodeId, {
+        ...latest,
+        childIds: append ? latest.childIds : children.map((child) => child.id),
+        tracks: append ? [...latest.tracks, ...page.items] : page.items,
+        nextOffset: page.nextOffset,
+        loaded: true,
+        loading: false,
+      });
       return next;
     });
   };
 
-  if (tree.length === 0) {
+  const toggleNode = (nodeId: string) => {
+    const opening = !expanded.has(nodeId);
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (opening) next.add(nodeId);
+      else next.delete(nodeId);
+      return next;
+    });
+    if (opening && !nodes.get(nodeId)?.loaded) void loadNode(nodeId);
+  };
+
+  const rows = useMemo(() => {
+    const result: FolderRow[] = [];
+    const visit = (id: string) => {
+      const state = nodes.get(id);
+      if (!state) return;
+      const isExpanded = expanded.has(id);
+      result.push({ type: 'folder', id, state, expanded: isExpanded });
+      if (!isExpanded) return;
+      for (const childId of state.childIds) visit(childId);
+      for (const track of state.tracks) {
+        result.push({ type: 'track', id: `track:${id}:${track.path}`, track, node: state.node });
+      }
+      if (state.nextOffset != null) {
+        result.push({ type: 'more', id: `more:${id}:${state.nextOffset}`, nodeId: id, depth: state.node.depth + 1 });
+      }
+    };
+    rootIds.forEach(visit);
+    return result;
+  }, [expanded, nodes, rootIds]);
+
+  const playFolder = (node: NativeFolderNode, shuffle = false) => {
+    if (node.totalTrackCount === 0) return;
+    void playLibraryQuery(
+      { kind: 'folder', folderNodeId: node.id },
+      {
+        shuffle,
+        source: { kind: 'folder', label: node.name },
+      }
+    );
+  };
+
+  if (rootIds.length === 0) {
     return (
       <View style={styles.empty}>
         <Ionicons name="folder-open-outline" size={36} color={colors.textTertiary} />
@@ -268,23 +335,38 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) =>
-          item.type === 'folder' ? (
-            <FolderRow
-              row={item}
-              onToggle={toggleFolder}
-              onPlay={playFolder}
-              onShuffle={shuffleFolder}
-              onOpenActions={setActionFolder}
-            />
-          ) : (
+        renderItem={({ item }) => {
+          if (item.type === 'folder') {
+            return (
+              <FolderNodeRow
+                state={item.state}
+                expanded={item.expanded}
+                onToggle={() => toggleNode(item.id)}
+                onPlay={() => playFolder(item.state.node)}
+                onShuffle={() => playFolder(item.state.node, true)}
+                onOpenActions={() => setActionFolder(item.state.node)}
+              />
+            );
+          }
+          if (item.type === 'more') {
+            return (
+              <Pressable
+                style={[styles.moreRow, { paddingLeft: item.depth * 18 + 16 }]}
+                onPress={() => void loadNode(item.nodeId, true)}
+              >
+                <Text variant="label" color={colors.accent}>Load more tracks</Text>
+              </Pressable>
+            );
+          }
+          return (
             <FolderTrackRow
-              row={item}
+              track={item.track}
+              node={item.node}
               active={item.track.path === currentPath}
               onOpenActions={() => setActionTrack(item.track)}
             />
-          )
-        }
+          );
+        }}
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
       {actionFolder ? (
@@ -305,7 +387,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
             label="Shuffle"
             icon="shuffle"
             onPress={() => {
-              shuffleFolder(actionFolder);
+              playFolder(actionFolder, true);
               setActionFolder(null);
             }}
           />
@@ -313,7 +395,10 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
             label="Play next"
             icon="play-skip-forward"
             onPress={() => {
-              playFolderNext(actionFolder);
+              void enqueueLibraryQuery(
+                { kind: 'folder', folderNodeId: actionFolder.id },
+                'next',
+              );
               setActionFolder(null);
             }}
           />
@@ -321,7 +406,10 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
             label="Add to queue"
             icon="list-outline"
             onPress={() => {
-              queueFolder(actionFolder);
+              void enqueueLibraryQuery(
+                { kind: 'folder', folderNodeId: actionFolder.id },
+                'end',
+              );
               setActionFolder(null);
             }}
           />
@@ -350,68 +438,62 @@ const useStyles = createThemedStyles((colors) => ({
   folderMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
   },
   count: {
-    minWidth: 34,
-    textAlign: 'right',
     color: colors.textTertiary,
-    fontSize: 12,
   },
   folderButton: {
-    width: 32,
-    height: 32,
-    flexShrink: 0,
-    borderRadius: radius.pill,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 17,
   },
   trackRow: {
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 46,
     gap: spacing.sm,
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.sm,
   },
   trackRowActive: {
-    backgroundColor: colors.accentGlow,
+    backgroundColor: colors.bgSecondary,
   },
   trackMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
   },
   trackTitle: {
-    fontSize: 15,
+    color: colors.textPrimary,
   },
   trackTitleActive: {
     color: colors.accent,
   },
   duration: {
-    minWidth: 42,
-    textAlign: 'right',
     color: colors.textTertiary,
-    fontSize: 12,
   },
   actionsButton: {
-    width: 34,
-    height: 34,
-    flexShrink: 0,
-    borderRadius: radius.pill,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 18,
+  },
+  moreRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
   emptyText: {
     textAlign: 'center',
-    maxWidth: 260,
   },
 }));

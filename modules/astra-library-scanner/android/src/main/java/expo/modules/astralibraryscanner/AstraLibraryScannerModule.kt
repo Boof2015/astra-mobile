@@ -32,6 +32,9 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.astralibraryscanner.data.AstraLibraryRepository
+import expo.modules.astralibraryscanner.data.LocalAudioFile
+import expo.modules.astralibraryscanner.data.LocalAudioMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -90,6 +93,54 @@ class AstraLibraryScannerModule : Module() {
         files.map { request ->
           async(Dispatchers.IO) { semaphore.withPermit { extractOne(request) } }
         }.awaitAll()
+      }
+    }
+
+    AsyncFunction("scanFolderNative") Coroutine {
+        folderId: Double,
+        mode: String,
+        extensions: List<String>,
+      ->
+      withContext(Dispatchers.IO) {
+        val repository = AstraLibraryRepository.get(requireContext())
+        repository.withUserRecovery { scanLocalFolder(
+          folderId = folderId.toLong(),
+          full = mode == "full",
+          discover = { treeUri ->
+            val listing = listAudioFiles(treeUri, extensions)
+            @Suppress("UNCHECKED_CAST")
+            val files = listing["files"] as? List<Map<String, Any?>> ?: emptyList()
+            @Suppress("UNCHECKED_CAST")
+            val covers = listing["covers"] as? Map<String, String> ?: emptyMap()
+            files.mapNotNull { file ->
+              val uri = file["uri"] as? String ?: return@mapNotNull null
+              val parentUri = file["parentUri"] as? String ?: ""
+              LocalAudioFile(
+                uri = uri,
+                name = file["name"] as? String ?: uri.substringAfterLast('/'),
+                size = (file["size"] as? Number)?.toLong(),
+                lastModified = (file["lastModified"] as? Number)?.toLong() ?: 0L,
+                mimeType = file["mimeType"] as? String,
+                parentUri = parentUri,
+                coverUri = covers[parentUri],
+              )
+            }
+          },
+          extract = { file ->
+            extractOne(file.uri, file.coverUri).toLocalAudioMetadata()
+          },
+          onProgress = { phase, processed, total, folderName ->
+            sendEvent(
+              "onScanProgress",
+              mapOf(
+                "phase" to phase,
+                "processed" to processed,
+                "total" to total,
+                "folderName" to folderName,
+              ),
+            )
+          },
+        ).toMap() }
       }
     }
 
@@ -483,9 +534,13 @@ class AstraLibraryScannerModule : Module() {
   // ---------------------------------------------------------------------------
 
   private fun extractOne(request: FileRequest): Map<String, Any?> {
+    return extractOne(request.uri, request.coverUri)
+  }
+
+  private fun extractOne(uriString: String, coverUri: String?): Map<String, Any?> {
     val context = requireContext()
-    val uri = Uri.parse(request.uri)
-    val result = mutableMapOf<String, Any?>("uri" to request.uri, "ok" to true)
+    val uri = Uri.parse(uriString)
+    val result = mutableMapOf<String, Any?>("uri" to uriString, "ok" to true)
 
     var embeddedPicture: ByteArray? = null
     val retriever = MediaMetadataRetriever()
@@ -519,7 +574,7 @@ class AstraLibraryScannerModule : Module() {
       embeddedPicture = retriever.embeddedPicture
     } catch (t: Throwable) {
       return mapOf(
-        "uri" to request.uri,
+        "uri" to uriString,
         "ok" to false,
         "error" to (t.message ?: t.javaClass.simpleName)
       )
@@ -558,13 +613,35 @@ class AstraLibraryScannerModule : Module() {
     }
 
     try {
-      result["artworkHash"] = resolveArtwork(embeddedPicture, request.coverUri)
+      result["artworkHash"] = resolveArtwork(embeddedPicture, coverUri)
     } catch (_: Throwable) {
       // Artwork failure never fails the track.
     }
 
     return result
   }
+
+  private fun Map<String, Any?>.toLocalAudioMetadata(): LocalAudioMetadata =
+    LocalAudioMetadata(
+      ok = this["ok"] as? Boolean ?: false,
+      title = this["title"] as? String,
+      artist = this["artist"] as? String,
+      album = this["album"] as? String,
+      albumArtist = this["albumArtist"] as? String,
+      genre = this["genre"] as? String,
+      mimeType = this["mimeType"] as? String,
+      durationMs = (this["durationMs"] as? Number)?.toLong(),
+      bitrate = (this["bitrate"] as? Number)?.toInt(),
+      trackNumber = (this["trackNumber"] as? Number)?.toInt(),
+      discNumber = (this["discNumber"] as? Number)?.toInt(),
+      year = (this["year"] as? Number)?.toInt(),
+      sampleRate = (this["sampleRate"] as? Number)?.toInt(),
+      channels = (this["channels"] as? Number)?.toInt(),
+      bitsPerSample = (this["bitsPerSample"] as? Number)?.toInt(),
+      codecMime = this["codecMime"] as? String,
+      artworkHash = this["artworkHash"] as? String,
+      error = this["error"] as? String,
+    )
 
   // ---------------------------------------------------------------------------
   // Waveform peaks (offline RMS bins)

@@ -17,7 +17,6 @@ import {
   groupTracksByAlbumIdentity,
   normalizeDisplay,
 } from '../shared/library/albumGrouping.ts';
-import type { LibraryDatabase, SqlParams } from '../db/database';
 
 export interface ProvisionalAlbumIdentity {
   key: string;
@@ -96,39 +95,6 @@ export function computeAlbumIdentityUpdates(
     }
   }
   return updates;
-}
-
-/**
- * Whole-library recompute: settle every track's album_identity_key and
- * album_display_artist. Runs after scans, folder/source removals, remote
- * syncs, and once at startup when the grouping algorithm version changes.
- * Returns the number of updated rows.
- */
-export async function recomputeAlbumIdentity(db: LibraryDatabase): Promise<number> {
-  const rows = await db.all<AlbumIdentityRow>(
-    `SELECT id, album, artist, album_artist, artwork_hash, source_type,
-            artwork_source_id, album_identity_key, album_display_artist
-     FROM tracks`
-  );
-  const updates = computeAlbumIdentityUpdates(rows);
-  if (updates.length === 0) return 0;
-
-  let changed = 0;
-  await db.transaction(async (tx) => {
-    for (const update of updates) {
-      for (let i = 0; i < update.ids.length; i += 500) {
-        const chunk = update.ids.slice(i, i + 500);
-        const placeholders = chunk.map(() => '?').join(', ');
-        await tx.run(
-          `UPDATE tracks SET album_identity_key = ?, album_display_artist = ?
-           WHERE id IN (${placeholders})`,
-          [update.identityKey, update.displayArtist, ...chunk] as SqlParams
-        );
-        changed += chunk.length;
-      }
-    }
-  });
-  return changed;
 }
 
 /**

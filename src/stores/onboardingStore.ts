@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getFolders, getSetting, setSetting } from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 
 /**
  * First-run wizard gate. SQLite (settings table) is the source of truth, mirrored
@@ -24,8 +24,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
 
   load: async () => {
     if (get().loaded) return;
-    const db = await openLibraryDb();
-    const value = await getSetting(db, ONBOARDING_COMPLETE_KEY);
+    const value = await getNativeSetting(ONBOARDING_COMPLETE_KEY);
     if (value !== null) {
       set({ onboardingComplete: value === 'true', loaded: true });
       return;
@@ -33,21 +32,19 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     // Flag never set: an install that already has library folders predates this
     // wizard — treat it as onboarded (and persist) so the wizard never ambushes
     // an upgrading user. A genuinely fresh install has no folders → show it.
-    const folders = await getFolders(db);
+    const folders = await AstraLibraryData.listFolders();
     const complete = folders.length > 0;
-    if (complete) await setSetting(db, ONBOARDING_COMPLETE_KEY, 'true');
+    if (complete) await setNativeSetting(ONBOARDING_COMPLETE_KEY, 'true');
     set({ onboardingComplete: complete, loaded: true });
   },
 
   markComplete: async () => {
     set({ onboardingComplete: true });
-    const db = await openLibraryDb();
-    await setSetting(db, ONBOARDING_COMPLETE_KEY, 'true');
+    await setNativeSetting(ONBOARDING_COMPLETE_KEY, 'true');
   },
 
   reset: async () => {
     set({ onboardingComplete: false });
-    const db = await openLibraryDb();
-    await setSetting(db, ONBOARDING_COMPLETE_KEY, 'false');
+    await setNativeSetting(ONBOARDING_COMPLETE_KEY, 'false');
   },
 }));

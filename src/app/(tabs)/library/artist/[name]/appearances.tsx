@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -14,12 +14,10 @@ import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
-import { buildArtistDetail } from '@/library/artistDetail';
+import { playLibraryQuery } from '@/audio/playbackController';
+import { useNativeArtistDetail } from '@/library/nativePages';
 import type { DbTrack } from '@/types/library';
 
 export default function ArtistAppearancesScreen() {
@@ -30,22 +28,26 @@ export default function ArtistAppearancesScreen() {
     name: string;
     credit?: string;
   }>();
-  const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
-  const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, detailGroupingMode),
-    [allTracks, name, detailGroupingMode]
+  const { items: tracks, totalCount, loadMore } = useNativeArtistDetail(
+    name,
+    detailGroupingMode,
+    'appearances'
   );
-  const tracks = detail.appearanceTracks;
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({
+      kind: 'artist',
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section: 'appearances',
+    }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'artist', label: name },
     });
   };
@@ -63,13 +65,15 @@ export default function ArtistAppearancesScreen() {
         <Text variant="title" numberOfLines={1}>
           Appears On
         </Text>
-        <Text variant="label">{formatCount(tracks.length, 'track')}</Text>
+        <Text variant="label">{formatCount(totalCount, 'track')}</Text>
       </View>
 
       <FlashList
         data={tracks}
         keyExtractor={(track) => String(track.id)}
         showsVerticalScrollIndicator={false}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.6}
         renderItem={({ item, index }) => (
           <TrackRow
             track={item}

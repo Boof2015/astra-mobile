@@ -2,8 +2,7 @@ import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player'
 import { DspStartupCoordinator, type DspWarmupInputs } from './dspStartupCoordinator';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useEQStore } from '@/stores/eqStore';
-import { openLibraryDb } from '@/db/database';
-import { getTrackLoudnessByPaths } from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { factsFromRow } from '@/audio/trackAnalysis';
 import type { NormalizationSettings } from '@/audio/normalization';
 import {
@@ -63,9 +62,8 @@ async function resolveTargetGain(
     return resolveStartupTargetGain('remote', null, settings, fallback);
   }
 
-  const db = await openLibraryDb();
-  const rows = await getTrackLoudnessByPaths(db, [target.url]);
-  const facts = factsFromRow(rows.get(target.url) ?? null);
+  const rows = await AstraLibraryData.getTrackLoudness([target.url]);
+  const facts = factsFromRow(rows[0] ?? null);
   return resolveStartupTargetGain('local', facts, settings, fallback);
 }
 

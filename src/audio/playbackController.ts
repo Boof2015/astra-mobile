@@ -4,6 +4,7 @@ import TrackPlayer, {
   type Track as RntpTrack,
 } from 'react-native-track-player';
 import type { PlaybackSource, PlaybackState, Track } from '@/types/audio';
+import type { DbTrack } from '@/types/library';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -27,6 +28,12 @@ import {
   primePreparedTrackForPlayback,
 } from './audioProcessingStartup';
 import { shouldRestartOnPrevious } from './playbackNavigation';
+import {
+  AstraLibraryData,
+  type LibraryQuery,
+  type NativePlaybackWindow,
+} from '../../modules/astra-library-scanner';
+import { dbTrackToTrack } from '@/library/trackAdapter';
 
 // If a background queue fill dies partway, the mirror no longer matches the
 // native queue — re-read the truth.
@@ -45,10 +52,37 @@ setQueueLoadErrorHandler(() => {
 // autoQueue + shuffledAutoIndices split, but over RNTP's flat native queue).
 let originalOrder: string[] | null = null;
 let restoredMaterializationPromise: Promise<void> | null = null;
+let virtualContext: {
+  sessionId: string;
+  windowStart: number;
+  loadedEnd: number;
+  totalCount: number;
+} | null = null;
+let virtualRefillPromise: Promise<void> | null = null;
+
+export interface VirtualQueuePageItem {
+  track: RntpTrack;
+  queuePosition: number;
+}
+
+export interface VirtualQueuePage {
+  items: VirtualQueuePageItem[];
+  activePosition: number;
+  totalCount: number;
+}
 
 export interface PlaybackStartOptions {
   startIndex?: number;
   source: PlaybackSource;
+}
+
+function toVirtualRntpTrack(
+  item: DbTrack & { queuePosition: number },
+): RntpTrack {
+  return {
+    ...toRntpTrack(dbTrackToTrack(item)),
+    astraQueuePosition: item.queuePosition,
+  };
 }
 
 const NEXT_REPEAT: Record<RepeatModeStr, RepeatModeStr> = {
@@ -299,6 +333,45 @@ export function restorePlaybackSession(
   player.setRestoredSessionPending(true);
 }
 
+/**
+ * Hydrates a persisted native virtual context without starting playback. The
+ * rolling window is materialized only when the user presses Play.
+ */
+export function restoreVirtualPlaybackContext(
+  window: NativePlaybackWindow<DbTrack>,
+  session: PlaybackSessionSnapshotV1,
+): void {
+  const tracks = window.items.map(dbTrackToTrack);
+  if (tracks.length === 0) {
+    restorePlaybackSession(null);
+    return;
+  }
+  const queueTracks = window.items.map(toVirtualRntpTrack);
+  const activeIndex = Math.max(
+    0,
+    Math.min(queueTracks.length - 1, window.activePosition - window.windowStart),
+  );
+  virtualContext = {
+    sessionId: window.sessionId,
+    windowStart: window.windowStart,
+    loadedEnd: window.items[window.items.length - 1].queuePosition + 1,
+    totalCount: window.totalCount,
+  };
+  originalOrder = session.shuffle ? null : tracks.map((track) => track.id);
+  useQueueStore.getState().setSnapshot(queueTracks, activeIndex, {
+    source: session.source,
+  });
+  const activeTrack = tracks[activeIndex];
+  const player = usePlayerStore.getState();
+  player.setCurrentTrack(activeTrack);
+  player.setProgress(session.position, activeTrack.duration);
+  player.clearPendingSeek();
+  player.setShuffle(session.shuffle);
+  player.setRepeat(session.repeat);
+  player.setPlaybackState('paused');
+  player.setRestoredSessionPending(true);
+}
+
 /** A live RNTP session (for example Android Auto) wins over an older disk snapshot. */
 export async function hasActiveNativePlaybackSession(): Promise<boolean> {
   try {
@@ -313,6 +386,7 @@ export async function playTracks(
   tracks: Track[],
   options: PlaybackStartOptions
 ): Promise<void> {
+  virtualContext = null;
   return playTracksInternal(tracks, options, { allowBackgroundSetup: false });
 }
 
@@ -321,7 +395,262 @@ export async function playTracksForCar(
   tracks: Track[],
   options: PlaybackStartOptions
 ): Promise<void> {
+  virtualContext = null;
   return playTracksInternal(tracks, options, { allowBackgroundSetup: true });
+}
+
+export interface LibraryPlaybackStartOptions extends PlaybackStartOptions {
+  anchorPath?: string | null;
+  shuffle?: boolean;
+  allowBackgroundSetup?: boolean;
+}
+
+/**
+ * Starts a native virtual library context. Only 25 previous + 200 upcoming
+ * tracks cross into JavaScript; the complete ordered path set remains in Room.
+ */
+export async function playLibraryQuery(
+  query: LibraryQuery,
+  options: LibraryPlaybackStartOptions,
+): Promise<void> {
+  selectPhonePlaybackTarget();
+  discardPendingRestoredSession();
+  await ensurePlayerReady({
+    allowBackgroundSetup: options.allowBackgroundSetup ?? false,
+    materializeRestored: false,
+  });
+  const window = await AstraLibraryData.createPlaybackContext<DbTrack>(
+    query,
+    options.anchorPath ?? null,
+    options.shuffle ?? false,
+    null,
+  );
+  if (window.items.length === 0) return;
+  await startVirtualWindow(window, options.source, options.shuffle ?? false);
+}
+
+async function startVirtualWindow(
+  window: NativePlaybackWindow<DbTrack>,
+  source: PlaybackSource,
+  shuffle: boolean,
+): Promise<void> {
+  const tracks = window.items.map(dbTrackToTrack);
+  const queueTracks = window.items.map(toVirtualRntpTrack);
+  const startIndex = Math.max(
+    0,
+    Math.min(queueTracks.length - 1, window.activePosition - window.windowStart),
+  );
+  virtualContext = {
+    sessionId: window.sessionId,
+    windowStart: window.windowStart,
+    loadedEnd: window.items.length === 0
+      ? window.windowStart
+      : window.items[window.items.length - 1].queuePosition + 1,
+    totalCount: window.totalCount,
+  };
+  originalOrder = shuffle ? null : tracks.map((track) => track.id);
+  usePlayerStore.getState().setShuffle(shuffle);
+  const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
+  useQueueStore.getState().setSnapshot(queueTracks, startIndex, { source });
+  setOptimisticTrack(queueTracks[startIndex], 'loading');
+  try {
+    await prepareAudioProcessingForPlayback(playbackTarget, 'virtual-queue-play');
+    await loadQueueChunked(queueTracks, startIndex);
+    await primePreparedTrackForPlayback(playbackTarget, 'virtual-queue-play');
+    await TrackPlayer.play();
+    usePlayerStore.getState().setPlaybackState('playing');
+  } catch (error) {
+    virtualContext = null;
+    await reconcilePlayerFromNative();
+    throw error;
+  }
+}
+
+/** Keeps the rolling native queue bounded while natural playback advances. */
+export function handleVirtualPlaybackAdvance(_nativeEventIndex?: number): Promise<void> {
+  if (!virtualContext) return Promise.resolve();
+  if (virtualRefillPromise) return virtualRefillPromise;
+  virtualRefillPromise = replenishVirtualContext().finally(() => {
+    virtualRefillPromise = null;
+  });
+  return virtualRefillPromise;
+}
+
+async function replenishVirtualContext(): Promise<void> {
+  const context = virtualContext;
+  if (!context) return;
+  await queueLoadSettled();
+  if (virtualContext !== context) return;
+  const nativeIndex = await TrackPlayer.getActiveTrackIndex() ?? -1;
+  if (nativeIndex < 0) return;
+  const activePosition = context.windowStart + nativeIndex;
+  void AstraLibraryData.updatePlaybackPosition(context.sessionId, activePosition).catch(() => {});
+
+  let localIndex = nativeIndex;
+  if (localIndex > 25) {
+    const removeCount = localIndex - 25;
+    const indices = Array.from({ length: removeCount }, (_, index) => index);
+    await TrackPlayer.remove(indices);
+    useQueueStore.getState().removeIndices(indices);
+    context.windowStart += removeCount;
+    localIndex -= removeCount;
+  }
+
+  const currentLength = useQueueStore.getState().tracks.length;
+  const upcoming = currentLength - localIndex - 1;
+  if (upcoming >= 50 || context.loadedEnd >= context.totalCount) return;
+  const next = await AstraLibraryData.getPlaybackWindow<DbTrack>(
+    context.sessionId,
+    context.loadedEnd,
+    100,
+  );
+  if (virtualContext !== context || next.items.length === 0) return;
+  const additions = next.items
+    .filter((item) => (
+      item.queuePosition >= context.loadedEnd &&
+      item.queuePosition < context.totalCount
+    ))
+    .map(toVirtualRntpTrack);
+  if (additions.length === 0) return;
+  const nextLoadedEnd = Number(additions[additions.length - 1].astraQueuePosition) + 1;
+  if (!Number.isFinite(nextLoadedEnd) || nextLoadedEnd <= context.loadedEnd) return;
+  const before = useQueueStore.getState();
+  await appendUpcomingChunked(additions, before.tracks.length);
+  useQueueStore.getState().setSnapshot(
+    [...before.tracks, ...additions],
+    localIndex,
+  );
+  context.loadedEnd = Math.min(context.totalCount, nextLoadedEnd);
+}
+
+/** Returns a bounded page from the native virtual queue, or null for ordinary queues. */
+export async function getVirtualQueuePage(
+  start: number,
+  limit = 100,
+): Promise<VirtualQueuePage | null> {
+  const context = virtualContext;
+  if (!context) return null;
+  const window = await AstraLibraryData.getPlaybackWindow<DbTrack>(
+    context.sessionId,
+    Math.max(0, start),
+    Math.max(1, Math.min(100, limit)),
+  );
+  if (virtualContext !== context) return null;
+  const boundedStart = Math.max(0, start);
+  return {
+    items: window.items
+      .filter((item) => (
+        item.queuePosition >= boundedStart &&
+        item.queuePosition < window.totalCount
+      ))
+      .map((item) => ({
+        track: toVirtualRntpTrack(item),
+        queuePosition: item.queuePosition,
+      })),
+    activePosition: window.activePosition,
+    totalCount: window.totalCount,
+  };
+}
+
+export function getVirtualQueueState(): {
+  sessionId: string;
+  activePosition: number;
+  totalCount: number;
+} | null {
+  const context = virtualContext;
+  if (!context) return null;
+  const localActive = useQueueStore.getState().activeIndex;
+  return {
+    sessionId: context.sessionId,
+    activePosition: context.windowStart + Math.max(0, localActive),
+    totalCount: context.totalCount,
+  };
+}
+
+async function adoptCurrentQueueAsVirtualContext(): Promise<boolean> {
+  if (virtualContext) return true;
+  const snapshot = await getQueueSnapshot();
+  if (snapshot.queue.length === 0) return false;
+  const activeIndex = Math.max(0, snapshot.activeIndex);
+  const paths = snapshot.queue.map(rntpTrackPath);
+  const window = await AstraLibraryData.createPlaybackContext<DbTrack>(
+    { kind: 'manual', paths },
+    paths[activeIndex] ?? null,
+    false,
+    null,
+  );
+  virtualContext = {
+    sessionId: window.sessionId,
+    windowStart: window.activePosition - activeIndex,
+    loadedEnd: Math.min(window.totalCount, snapshot.queue.length),
+    totalCount: window.totalCount,
+  };
+  originalOrder = null;
+  return true;
+}
+
+/**
+ * Applies a native virtual-queue edit without replacing the playing row. Only
+ * RNTP's bounded upcoming tail is rebuilt; the current audio item keeps playing.
+ */
+async function mutateVirtualQueue(
+  operation:
+    | 'insertAfterActive'
+    | 'append'
+    | 'insertQueryAfterActive'
+    | 'appendQuery'
+    | 'remove'
+    | 'move'
+    | 'moveManyAfterActive'
+    | 'shuffle',
+  values: Record<string, unknown>,
+): Promise<NativePlaybackWindow<DbTrack> | null> {
+  const context = virtualContext;
+  if (!context) return null;
+  await queueLoadSettled();
+  if (virtualContext !== context) return null;
+  const [window, nativeIndex] = await Promise.all([
+    AstraLibraryData.mutatePlaybackContext<DbTrack>(operation, values),
+    TrackPlayer.getActiveTrackIndex(),
+  ]);
+  if (!window || virtualContext !== context) return window;
+
+  const activeLocal = nativeIndex ?? useQueueStore.getState().activeIndex;
+  const boundedActive = Math.max(0, activeLocal);
+  const upcoming = window.items
+    .filter((item) => item.queuePosition > window.activePosition)
+    .map(toVirtualRntpTrack);
+  const before = useQueueStore.getState();
+  const prefix = before.tracks.slice(0, boundedActive + 1);
+
+  await TrackPlayer.removeUpcomingTracks();
+  if (upcoming.length > 0) {
+    await appendUpcomingChunked(upcoming, prefix.length);
+  }
+  useQueueStore.getState().setSnapshot(
+    [...prefix, ...upcoming],
+    boundedActive,
+  );
+  context.windowStart = window.activePosition - boundedActive;
+  context.loadedEnd = upcoming.length > 0
+    ? window.activePosition + upcoming.length + 1
+    : window.activePosition + 1;
+  context.totalCount = window.totalCount;
+  return window;
+}
+
+/** Adds an entire native query context without materializing it in JavaScript. */
+export async function enqueueLibraryQuery(
+  query: LibraryQuery,
+  placement: 'next' | 'end',
+): Promise<void> {
+  await ensurePlayerReady();
+  await queueLoadSettled();
+  if (!await adoptCurrentQueueAsVirtualContext()) return;
+  await mutateVirtualQueue(
+    placement === 'next' ? 'insertQueryAfterActive' : 'appendQuery',
+    { context: query },
+  );
 }
 
 async function playTracksInternal(
@@ -365,6 +694,7 @@ export async function shuffleTracks(
   source: PlaybackSource
 ): Promise<void> {
   if (tracks.length === 0) return;
+  virtualContext = null;
   selectPhonePlaybackTarget();
   discardPendingRestoredSession();
   await ensurePlayerReady({ materializeRestored: false });
@@ -563,6 +893,15 @@ export async function toggleShuffle(): Promise<void> {
   await ensurePlayerReady();
   await queueLoadSettled();
 
+  if (virtualContext) {
+    await mutateVirtualQueue('shuffle', {
+      enabled: next,
+      seed: next ? Date.now() : null,
+    });
+    store.setShuffle(next);
+    return;
+  }
+
   const snapshot = await getQueueSnapshot();
   const queue = snapshot.queue;
   const activeIndex = snapshot.activeIndex >= 0 ? snapshot.activeIndex : 0;
@@ -598,6 +937,10 @@ export async function toggleShuffle(): Promise<void> {
 export async function enqueueTop(track: Track): Promise<void> {
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    await mutateVirtualQueue('insertAfterActive', { paths: [track.path] });
+    return;
+  }
   const activeIndex = await TrackPlayer.getActiveTrackIndex();
   const activeTrack = await TrackPlayer.getActiveTrack();
   const insertBefore = activeIndex === undefined ? undefined : activeIndex + 1;
@@ -620,6 +963,10 @@ export async function enqueueTop(track: Track): Promise<void> {
 export async function enqueueEnd(track: Track): Promise<void> {
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    await mutateVirtualQueue('append', { paths: [track.path] });
+    return;
+  }
   const queueTrack = toRntpTrack(track);
   await TrackPlayer.add(queueTrack);
   if (useQueueStore.getState().hasSnapshot) {
@@ -635,6 +982,12 @@ export async function enqueueTopMany(tracks: Track[]): Promise<void> {
   if (tracks.length === 0) return;
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    await mutateVirtualQueue('insertAfterActive', {
+      paths: tracks.map((track) => track.path),
+    });
+    return;
+  }
   const activeIndex = await TrackPlayer.getActiveTrackIndex();
   const activeTrack = await TrackPlayer.getActiveTrack();
   const insertBefore = activeIndex === undefined ? undefined : activeIndex + 1;
@@ -655,6 +1008,12 @@ export async function enqueueEndMany(tracks: Track[]): Promise<void> {
   if (tracks.length === 0) return;
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    await mutateVirtualQueue('append', {
+      paths: tracks.map((track) => track.path),
+    });
+    return;
+  }
   await TrackPlayer.add(tracks.map(toRntpTrack));
   await useQueueStore.getState().refreshFromNative();
   if (originalOrder) originalOrder.push(...tracks.map((track) => track.id));
@@ -675,6 +1034,11 @@ function moveOriginalOrderIfUnshuffled(fromIndex: number, toIndex: number): void
 
 interface QueueRemoveOptions {
   updateMirror?: boolean;
+  virtualPosition?: boolean;
+}
+
+interface QueuePositionOptions {
+  virtualPosition?: boolean;
 }
 
 /** Replace everything after the current track with `upcoming` (in order). */
@@ -691,19 +1055,53 @@ export async function setUpcoming(upcoming: RntpTrack[]): Promise<void> {
 }
 
 /** Move a queued item by absolute RNTP queue index. */
-export async function moveQueueItem(fromAbsoluteIndex: number, toAbsoluteIndex: number): Promise<void> {
+export async function moveQueueItem(
+  fromAbsoluteIndex: number,
+  toAbsoluteIndex: number,
+  options: QueuePositionOptions = {},
+): Promise<void> {
   if (fromAbsoluteIndex === toAbsoluteIndex) return;
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    const from = options.virtualPosition
+      ? fromAbsoluteIndex
+      : virtualContext.windowStart + fromAbsoluteIndex;
+    const to = options.virtualPosition
+      ? toAbsoluteIndex
+      : virtualContext.windowStart + toAbsoluteIndex;
+    await mutateVirtualQueue('move', { from, to });
+    return;
+  }
   await TrackPlayer.move(fromAbsoluteIndex, toAbsoluteIndex);
   useQueueStore.getState().moveItem(fromAbsoluteIndex, toAbsoluteIndex);
   moveOriginalOrderIfUnshuffled(fromAbsoluteIndex, toAbsoluteIndex);
 }
 
 /** Jump to (and play) an absolute queue index. */
-export async function jumpToQueueIndex(index: number): Promise<void> {
+export async function jumpToQueueIndex(
+  index: number,
+  options: QueuePositionOptions = {},
+): Promise<void> {
   selectPhonePlaybackTarget();
   await ensurePlayerReady();
+  if (virtualContext) {
+    const context = virtualContext;
+    const position = options.virtualPosition ? index : context.windowStart + index;
+    const bounded = Math.max(0, Math.min(context.totalCount - 1, position));
+    await AstraLibraryData.updatePlaybackPosition(context.sessionId, bounded);
+    const window = await AstraLibraryData.getPlaybackWindow<DbTrack>(
+      context.sessionId,
+      Math.max(0, bounded - 25),
+      226,
+    );
+    await startVirtualWindow(
+      window,
+      useQueueStore.getState().source ?? { kind: 'library', label: 'Library' },
+      usePlayerStore.getState().shuffle,
+    );
+    return;
+  }
   // Mid-fill, the tapped row may not be in the native queue yet (or may sit at
   // a shifted native index while the head is still prepending) — translate,
   // waiting out the fill only when the target isn't loaded.
@@ -736,7 +1134,20 @@ async function getUpcoming(): Promise<{ activeIndex: number; upcoming: RntpTrack
 }
 
 /** Move an upcoming track (absolute index) to the front of the upcoming queue. */
-export async function requeueToTop(absoluteIndex: number): Promise<void> {
+export async function requeueToTop(
+  absoluteIndex: number,
+  options: QueuePositionOptions = {},
+): Promise<void> {
+  if (virtualContext) {
+    const position = options.virtualPosition
+      ? absoluteIndex
+      : virtualContext.windowStart + absoluteIndex;
+    await mutateVirtualQueue('move', {
+      from: position,
+      to: (getVirtualQueueState()?.activePosition ?? 0) + 1,
+    });
+    return;
+  }
   const { activeIndex, upcoming } = await getUpcoming();
   const local = absoluteIndex - (activeIndex + 1);
   if (local < 0 || local >= upcoming.length) return;
@@ -746,7 +1157,18 @@ export async function requeueToTop(absoluteIndex: number): Promise<void> {
 }
 
 /** Move a group of upcoming tracks (absolute indices) to the front, order kept. */
-export async function requeueManyToTop(absoluteIndices: number[]): Promise<void> {
+export async function requeueManyToTop(
+  absoluteIndices: number[],
+  options: QueuePositionOptions = {},
+): Promise<void> {
+  if (virtualContext) {
+    await mutateVirtualQueue('moveManyAfterActive', {
+      positions: options.virtualPosition
+        ? absoluteIndices
+        : absoluteIndices.map((index) => virtualContext!.windowStart + index),
+    });
+    return;
+  }
   const { activeIndex, upcoming } = await getUpcoming();
   const locals = new Set(absoluteIndices.map((i) => i - (activeIndex + 1)));
   const moved = upcoming.filter((_, i) => locals.has(i));
@@ -761,6 +1183,13 @@ export async function removeFromQueue(
 ): Promise<void> {
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    const position = options.virtualPosition
+      ? absoluteIndex
+      : virtualContext.windowStart + absoluteIndex;
+    await mutateVirtualQueue('remove', { positions: [position] });
+    return;
+  }
   await TrackPlayer.remove(absoluteIndex);
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices([absoluteIndex]);
@@ -776,6 +1205,14 @@ export async function removeManyFromQueue(
   if (absoluteIndices.length === 0) return;
   await ensurePlayerReady();
   await queueLoadSettled();
+  if (virtualContext) {
+    await mutateVirtualQueue('remove', {
+      positions: options.virtualPosition
+        ? absoluteIndices
+        : absoluteIndices.map((index) => virtualContext!.windowStart + index),
+    });
+    return;
+  }
   await TrackPlayer.remove(absoluteIndices);
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices(absoluteIndices);

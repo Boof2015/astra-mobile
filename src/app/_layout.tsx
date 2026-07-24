@@ -49,6 +49,7 @@ import { useTheme } from '@/theme/themed';
 import { SessionLifecycle } from '@/session/SessionLifecycle';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import { Text } from '@/components/Text';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -328,6 +329,8 @@ export default function RootLayout() {
   const themeLoaded = useThemeStore((s) => s.loaded);
   const onboardingLoaded = useOnboardingStore((s) => s.loaded);
   const onboardingComplete = useOnboardingStore((s) => s.onboardingComplete);
+  const libraryStatus = useLibraryStore((s) => s.status);
+  const fatalUserData = libraryStatus === 'fatalUserData';
   const theme = useTheme();
   const renderReady = (fontsLoaded && themeLoaded && onboardingLoaded) || splashTimedOut;
   const [sessionReady, setSessionReady] = useState(false);
@@ -390,7 +393,7 @@ export default function RootLayout() {
             needs a root navigator), but the playback/sync/desktop side-effects and
             overlays are gated off during the wizard — no LAN-discovery bursts or
             scrobbler running mid-onboarding. */}
-        {onboardingComplete ? (
+        {onboardingComplete && !fatalUserData ? (
           <>
             <ThemeSystemSync />
             <SleepTimerLifecycle />
@@ -411,8 +414,33 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(tabs)" />
         </Stack>
-        {onboardingComplete ? <SessionLifecycle onReady={handleSessionReady} /> : null}
-        {onboardingComplete ? (
+        {onboardingComplete && !fatalUserData ? <SessionLifecycle onReady={handleSessionReady} /> : null}
+        {fatalUserData ? (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: theme.colors.bgPrimary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 32,
+                gap: 12,
+              },
+            ]}
+          >
+            <Text variant="title" style={{ textAlign: 'center' }}>
+              Library data unavailable
+            </Text>
+            <Text
+              variant="body"
+              color={theme.colors.textSecondary}
+              style={{ maxWidth: 420, textAlign: 'center' }}
+            >
+              Astra could not restore your playlists, favorites, and settings from either safety
+              snapshot. Nothing was silently reset, and your music files were not changed.
+            </Text>
+          </View>
+        ) : onboardingComplete ? (
           <>
             {/* Always-mounted player overlay (store-gated); open/close is a pure
                 UI-thread slide with zero mount cost after the first mount. */}

@@ -1,6 +1,9 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["expo.modules.astralibraryscanner.AstraLibraryScannerModule"]
+    "modules": [
+      "expo.modules.astralibraryscanner.AstraLibraryScannerModule",
+      "expo.modules.astralibraryscanner.AstraLibraryDataModule"
+    ]
   }
 }
