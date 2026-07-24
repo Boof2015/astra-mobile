@@ -117,6 +117,7 @@ class AstraLibraryRepository private constructor(
       val catalogOpen = openCatalogDatabaseWithRecovery()
       catalogDatabase = catalogOpen
       val dao = catalogOpen.catalogDao()
+      val existingMeta = dao.getMeta()
       dao.insertMeta(
         CatalogMetaEntity(
           revision = 0,
@@ -124,6 +125,9 @@ class AstraLibraryRepository private constructor(
           updatedAt = System.currentTimeMillis(),
         ),
       )
+      if (existingMeta != null && existingMeta.collationVersion < COLLATION_VERSION) {
+        dao.migrateSectionLabels(COLLATION_VERSION, System.currentTimeMillis())
+      }
       dao.discardAbandonedGenerations()
       reconcileUserFacts()
 
@@ -2048,7 +2052,7 @@ class AstraLibraryRepository private constructor(
         "albums" -> {
           val rows = dao.getAllAlbumSummaries(revision).filter { includeSingles || !it.isSingle }
           rows.groupBy { row ->
-            if (sort == "artist") SortKeys.sectionLabel(row.artist) else row.sectionLabel
+            if (sort == "artist") SortKeys.sectionLabel(row.artist) else SortKeys.sectionLabel(row.album)
           }.map { (label, section) ->
             if (sort == "artist") {
               val first = section.minWith(compareBy<AlbumSummaryEntity>({ it.artistSortKey }, { it.nameSortKey }, { it.identityKey }))
@@ -2071,7 +2075,7 @@ class AstraLibraryRepository private constructor(
           val mode = if (groupingMode == "fileTags") "fileTags" else "astra"
           dao.getAllArtistSummaries(revision, mode)
             .filter { includeCollaborations || !it.isCollaboration }
-            .groupBy(ArtistSummaryEntity::sectionLabel)
+            .groupBy { row -> SortKeys.sectionLabel(row.artist) }
             .map { (label, section) ->
               val first = section.minWith(compareBy<ArtistSummaryEntity>({ it.nameSortKey }, { it.artistKey }))
               label to TrackPageCursor(
@@ -2082,31 +2086,25 @@ class AstraLibraryRepository private constructor(
             }
         }
         else -> {
-          dao.getAllActiveTracksForNativeMatching()
-            .groupBy { row ->
-              if (sort == "artist") SortKeys.sectionLabel(row.artist) else row.sectionLabel
-            }
-            .map { (label, section) ->
-              val first = if (sort == "artist") {
-                section.minWith(
-                  compareBy<ActiveTrackView>(
-                    { it.artistSortKey },
-                    { it.albumSortKey },
-                    { it.discSort },
-                    { it.trackSort },
-                    { it.titleSortKey },
-                    { it.path },
-                  ),
+          if (sort == "artist") {
+            dao.getArtistSectionAnchorCandidates()
+              .groupBy { candidate -> SortKeys.sectionLabel(candidate.artist) }
+              .map { (label, section) ->
+                label to TrackPageCursor(
+                  revision,
+                  "tracks:artist",
+                  text1 = section.minOf(ArtistSectionAnchorCandidate::sortKey),
                 )
-              } else {
-                section.minWith(compareBy<ActiveTrackView>({ it.titleSortKey }, { it.path }))
               }
-              label to if (sort == "artist") {
-                TrackPageCursor(revision, "tracks:artist", text1 = first.artistSortKey)
-              } else {
-                TrackPageCursor(revision, "tracks:title", text1 = first.titleSortKey)
-              }
+          } else {
+            dao.getTitleSectionAnchors().map { row ->
+              row.sectionLabel to TrackPageCursor(
+                revision,
+                "tracks:title",
+                text1 = row.sortKey,
+              )
             }
+          }
         }
       }
       anchors.sortedWith(compareBy<Pair<String, TrackPageCursor>> { it.second.text1 }.thenBy { it.first })

@@ -41,7 +41,12 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
   const bubbleY = useSharedValue(0);
 
   const scrubTo = (letter: string) => {
+    if (!activeLetters.has(letter)) {
+      setScrubLetter(null);
+      return;
+    }
     setScrubLetter(letter);
+    playHaptic('frequentStep');
     onJumpToLetter(letter);
   };
   const endScrub = () => setScrubLetter(null);
@@ -60,7 +65,6 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
         );
         const letter = RAIL_LETTERS[index];
         lastLetter.value = letter;
-        runOnJS(playHaptic)('frequentStep');
         runOnJS(scrubTo)(letter);
       })
       .onUpdate((event) => {
@@ -76,7 +80,6 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
         const letter = RAIL_LETTERS[index];
         if (letter === lastLetter.value) return;
         lastLetter.value = letter;
-        runOnJS(playHaptic)('frequentStep');
         runOnJS(scrubTo)(letter);
       })
       .onFinalize(() => {
@@ -85,8 +88,8 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
         runOnJS(endScrub)();
       });
     return pullSearchRef ? gesture.blocksExternalGesture(pullSearchRef) : gesture;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest onJumpToLetter via render closure
-  }, [lastLetter, bubbleY, railTop, pullSearchRef, onJumpToLetter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest props via render closure
+  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, onJumpToLetter]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: bubbleY.value - BUBBLE_SIZE / 2 }],

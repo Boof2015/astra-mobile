@@ -1,7 +1,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState
 } from 'react';
 import {
@@ -11,7 +10,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
@@ -62,10 +61,7 @@ import {
   ARTIST_SORT_LABELS,
   type ArtistSort
 } from '@/lib/artistSort';
-import { RAIL_LETTERS } from '@/lib/letterIndex';
 import type {
-  Album,
-  Artist,
   DbTrack
 } from '@/types/library';
 
@@ -92,6 +88,7 @@ export default function LibraryScreen() {
   const loadNextAlbums = useLibraryStore((s) => s.loadNextAlbums);
   const loadNextArtists = useLibraryStore((s) => s.loadNextArtists);
   const sectionAnchors = useLibraryStore((s) => s.sectionAnchors);
+  const sectionJumpRevision = useLibraryStore((s) => s.sectionJumpRevision);
   const jumpToSection = useLibraryStore((s) => s.jumpToSection);
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
@@ -106,10 +103,6 @@ export default function LibraryScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
   const scrollTop = useScrollTopGate();
-
-  const tracksListRef = useRef<FlashListRef<DbTrack>>(null);
-  const albumsListRef = useRef<FlashListRef<Album>>(null);
-  const artistsListRef = useRef<FlashListRef<Artist>>(null);
 
   const showLibraryStatus =
     totalTrackCount === 0 &&
@@ -141,16 +134,10 @@ export default function LibraryScreen() {
   );
 
   const jumpToLetter = (letter: string) => {
-    const requestedIndex = RAIL_LETTERS.indexOf(letter);
-    const anchor =
-      sectionAnchors.find((entry) => entry.label === letter) ??
-      sectionAnchors.find((entry) => RAIL_LETTERS.indexOf(entry.label) >= requestedIndex) ??
-      sectionAnchors.at(-1);
+    const anchor = sectionAnchors.find((entry) => entry.label === letter);
     if (!anchor) return;
-    void jumpToSection(anchor.cursor).then(() => {
-      if (viewMode === 'tracks') tracksListRef.current?.scrollToOffset({ offset: 0, animated: false });
-      else if (viewMode === 'albums') albumsListRef.current?.scrollToOffset({ offset: 0, animated: false });
-      else if (viewMode === 'artists') artistsListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    void jumpToSection(anchor.cursor).then((applied) => {
+      if (applied) scrollTop.setScrollAtTop(true);
     });
   };
 
@@ -301,7 +288,7 @@ export default function LibraryScreen() {
             <View style={styles.listArea}>
               {viewMode === 'albums' ? (
                 <FlashList
-                  ref={albumsListRef}
+                  key={`albums-${albumSort}-${sectionJumpRevision}`}
                   data={sortedAlbums}
                   numColumns={3}
                   keyExtractor={(album) => album.identity_key}
@@ -330,7 +317,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'artists' ? (
                 <FlashList
-                  ref={artistsListRef}
+                  key={`artists-${artistSort}-${sectionJumpRevision}`}
                   data={sortedArtists}
                   numColumns={3}
                   keyExtractor={(artist) => artist.artist}
@@ -359,7 +346,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'tracks' ? (
                 <FlashList
-                  ref={tracksListRef}
+                  key={`tracks-${trackSort}-${sectionJumpRevision}`}
                   data={sortedTracks}
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}

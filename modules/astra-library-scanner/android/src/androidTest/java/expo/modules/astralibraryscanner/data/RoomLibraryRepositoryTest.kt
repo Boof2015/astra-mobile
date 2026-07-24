@@ -181,6 +181,74 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun trackSectionAnchorsOpenOnTheRequestedTitleAndArtistBuckets() = runBlocking {
+    publish(
+      "anchors",
+      listOf(
+        track("anchors", 0, "//.xX_-=-FLUTE==-Xx.\\\\"),
+        track("anchors", 1, "Apple").copy(
+          artist = "Amber",
+          artistSortKey = SortKeys.forText("Amber"),
+        ),
+        track("anchors", 2, "Saturn").copy(
+          artist = "Sade",
+          artistSortKey = SortKeys.forText("Sade"),
+        ),
+        track("anchors", 3, "Zulu").copy(
+          artist = "Zero 7",
+          artistSortKey = SortKeys.forText("Zero 7"),
+        ),
+      ),
+    )
+    val dao = catalog.catalogDao()
+
+    assertFalse(dao.getTitleSectionAnchors().any { it.sectionLabel == "X" })
+    assertTrue(dao.getTitleSectionAnchors().any { it.sectionLabel == "#" })
+    val titleAnchor = dao.getTitleSectionAnchors().single { it.sectionLabel == "S" }
+    val titlePage = dao.getTitlePage(titleAnchor.sortKey, "", 100)
+    assertEquals("Saturn", titlePage.first().title)
+
+    val artistAnchor = dao.getArtistSectionAnchorCandidates()
+      .filter { SortKeys.sectionLabel(it.artist) == "S" }
+      .minOf(ArtistSectionAnchorCandidate::sortKey)
+    val artistPage = dao.getArtistOrderPage(artistAnchor, "", 0, 0, "", "", 100)
+    assertEquals("Sade", artistPage.first().artist)
+  }
+
+  @Test
+  fun sectionLabelsUseOnlyTheFirstVisibleCharacter() {
+    assertEquals("#", SortKeys.sectionLabel("//.xX_-=-FLUTE==-Xx.\\\\"))
+    assertEquals("#", SortKeys.sectionLabel("! PARTY SIRENS !"))
+    assertEquals("#", SortKeys.sectionLabel("#iwannadance"))
+    assertEquals("#", SortKeys.sectionLabel("7 Rings"))
+    assertEquals("E", SortKeys.sectionLabel("Élan"))
+    assertEquals("S", SortKeys.sectionLabel(" Saturn"))
+    assertEquals("#", SortKeys.sectionLabel("東京の夜"))
+  }
+
+  @Test
+  fun sectionLabelMigrationCorrectsExistingCatalogRows() = runBlocking {
+    val dao = catalog.catalogDao()
+    dao.insertMeta(CatalogMetaEntity(collationVersion = 1, updatedAt = 0))
+    dao.putSource(CatalogSourceEntity("local:1", "local", 1, "legacy", 0))
+    dao.insertGeneration(ScanGenerationEntity("legacy", "local:1", "active", 0))
+    dao.putTracks(
+      listOf(
+        track("legacy", 1, "//.xX_-=-FLUTE==-Xx.\\\\").copy(sectionLabel = "X"),
+        track("legacy", 2, "Xylophone").copy(sectionLabel = "X"),
+      ),
+    )
+
+    dao.migrateSectionLabels(COLLATION_VERSION, 1)
+
+    assertEquals(COLLATION_VERSION, dao.getMeta()?.collationVersion)
+    assertEquals(
+      mapOf("//.xX_-=-FLUTE==-Xx.\\\\" to "#", "Xylophone" to "X"),
+      dao.getActiveTracks(dao.getAllPathsByTitle()).associate { it.title to it.sectionLabel },
+    )
+  }
+
+  @Test
   fun userSnapshotsRotateRejectDamageAndRestoreTheNewestValidCopy() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val snapshotDirectory = context.filesDir.resolve("astra-user-snapshots")

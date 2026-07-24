@@ -7,7 +7,7 @@ import java.util.Locale
 import org.json.JSONObject
 import org.json.JSONArray
 
-const val COLLATION_VERSION = 1
+const val COLLATION_VERSION = 2
 const val DEFAULT_PAGE_SIZE = 100
 const val MAX_PAGE_SIZE = 200
 
@@ -59,9 +59,9 @@ object SortKeys {
 
   fun sectionLabel(value: String): String {
     val normalized = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
-    val first = normalized.firstOrNull { Character.isLetterOrDigit(it) } ?: return "#"
+    val first = normalized.firstOrNull() ?: return "#"
     val upper = first.uppercaseChar()
-    return if (upper in 'A'..'Z' || upper in '0'..'9') upper.toString() else "#"
+    return if (upper in 'A'..'Z') upper.toString() else "#"
   }
 }
 

@@ -22,6 +22,17 @@ data class SectionAnchorRow(
   @androidx.room.ColumnInfo(name = "sort_key") val sortKey: String,
 )
 
+data class ArtistSectionAnchorCandidate(
+  val artist: String,
+  @androidx.room.ColumnInfo(name = "sort_key") val sortKey: String,
+)
+
+data class TrackSectionLabelCandidate(
+  val id: Long,
+  val title: String,
+  @androidx.room.ColumnInfo(name = "section_label") val sectionLabel: String,
+)
+
 data class LibraryLoudnessStatsRow(
   val lufsCount: Long,
   val medianLufs: Double?,
@@ -49,6 +60,16 @@ interface CatalogDao {
 
   @Query("SELECT revision FROM catalog_meta WHERE id = 1")
   suspend fun getRevision(): Long
+
+  @Query(
+    """
+      UPDATE catalog_meta
+      SET collation_version = :version,
+          updated_at = :updatedAt
+      WHERE id = 1
+    """,
+  )
+  suspend fun setCollationVersion(version: Int, updatedAt: Long)
 
   @Query("SELECT * FROM catalog_sources WHERE source_key = :sourceKey")
   suspend fun getSource(sourceKey: String): CatalogSourceEntity?
@@ -471,13 +492,30 @@ interface CatalogDao {
 
   @Query(
     """
-      SELECT section_label, MIN(artist_sort_key) AS sort_key
+      SELECT artist, MIN(artist_sort_key) AS sort_key
       FROM active_tracks
-      GROUP BY section_label
+      GROUP BY artist
       ORDER BY sort_key
     """,
   )
-  suspend fun getArtistSectionAnchors(): List<SectionAnchorRow>
+  suspend fun getArtistSectionAnchorCandidates(): List<ArtistSectionAnchorCandidate>
+
+  @Query(
+    """
+      SELECT id, title, section_label
+      FROM tracks
+      WHERE id > :afterId
+      ORDER BY id
+      LIMIT :limit
+    """,
+  )
+  suspend fun getTrackSectionLabelCandidates(
+    afterId: Long,
+    limit: Int,
+  ): List<TrackSectionLabelCandidate>
+
+  @Query("UPDATE tracks SET section_label = :sectionLabel WHERE id = :trackId")
+  suspend fun updateTrackSectionLabel(trackId: Long, sectionLabel: String)
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun putAlbumSummaries(rows: List<AlbumSummaryEntity>)
@@ -1025,6 +1063,22 @@ interface CatalogDao {
   suspend fun discardAbandonedGenerations() {
     deleteAbandonedGenerationTracks()
     deleteAbandonedGenerationRecords()
+  }
+
+  @Transaction
+  suspend fun migrateSectionLabels(version: Int, updatedAt: Long) {
+    var afterId = 0L
+    do {
+      val rows = getTrackSectionLabelCandidates(afterId, 1_000)
+      for (row in rows) {
+        val corrected = SortKeys.sectionLabel(row.title)
+        if (corrected != row.sectionLabel) {
+          updateTrackSectionLabel(row.id, corrected)
+        }
+      }
+      afterId = rows.lastOrNull()?.id ?: afterId
+    } while (rows.size == 1_000)
+    setCollationVersion(version, updatedAt)
   }
 
   @Transaction
