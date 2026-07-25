@@ -5,6 +5,7 @@ import {
   TAB_TRANSITION_SETTLE_MS,
   TAB_TRANSITION_SPEC,
 } from '@/navigation/tabTransition';
+import { popToTop } from '@/navigation/stackActions';
 import { useColors } from '@/theme/themed';
 
 export default function TabsLayout() {
@@ -46,10 +47,21 @@ export default function TabsLayout() {
             target: item.key,
             canPreventDefault: true,
           });
-          if (!item.focused && !event.defaultPrevented) {
-            lastSwitchAt.current = now;
-            navigation.navigate(item.name);
+          if (event.defaultPrevented) return;
+
+          if (item.focused) {
+            // Re-tapping the active tab resets its nested stack. This is the
+            // one-tap escape from a deep library chain (artist → album →
+            // another artist), which is why back itself only pops one level.
+            const nested = state.routes[state.index]?.state;
+            if (nested?.key && (nested.index ?? 0) > 0) {
+              navigation.dispatch({ ...popToTop(), target: nested.key });
+            }
+            return;
           }
+
+          lastSwitchAt.current = now;
+          navigation.navigate(item.name);
         };
 
         return <TabBar items={items} onPress={handlePress} />;

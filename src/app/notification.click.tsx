@@ -1,28 +1,31 @@
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { resolveNotificationClick } from '@/audio/notificationIntent';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { createThemedStyles } from '@/theme/themed';
 
 export default function NotificationClickRoute() {
   const styles = useStyles();
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
 
+  // This route is a root-stack sibling of `(tabs)`, and it is entered often
+  // (media-notification and widget taps). A bare replace toward a tab route
+  // therefore left a duplicate `(tabs)` behind on every single tap.
   useEffect(() => {
     let cancelled = false;
 
     resolveNotificationClick()
       .then((href) => {
-        if (!cancelled) router.replace(href);
+        if (!cancelled) returnToTabs(href);
       })
       .catch(() => {
-        if (!cancelled) router.replace('/');
+        if (!cancelled) returnToTabs('/');
       });
 
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [returnToTabs]);
 
   return <View style={styles.root} />;
 }

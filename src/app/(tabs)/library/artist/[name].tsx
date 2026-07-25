@@ -71,7 +71,7 @@ export default function ArtistScreen() {
     name: string;
     credit?: string;
   }>();
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
@@ -246,7 +246,8 @@ export default function ArtistScreen() {
           </View>
         }
         disabled={disabled}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onPlay={playArtist}
         onShuffle={shuffleArtist}
         scrollY={scrollY}

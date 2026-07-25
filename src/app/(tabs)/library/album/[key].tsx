@@ -40,7 +40,7 @@ export default function AlbumScreen() {
   const { key } = useLocalSearchParams<{ key: string }>();
   const { items: tracks, summary: album, totalCount, loadMore } = useNativeAlbumDetail(key);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
@@ -154,7 +154,8 @@ export default function AlbumScreen() {
           </>
         }
         disabled={tracks.length === 0}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onPlay={() => playFrom(0)}
         onShuffle={() => void playLibraryQuery({ kind: 'album', albumKey: key }, {
           shuffle: true,

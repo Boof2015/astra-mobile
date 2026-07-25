@@ -126,6 +126,7 @@ export function CollapsingHeader({
   heroExtra,
   disabled,
   onBack,
+  backLabel,
   onMore,
   onPlay,
   onShuffle,
@@ -145,6 +146,8 @@ export function CollapsingHeader({
   heroExtra?: ReactNode;
   disabled?: boolean;
   onBack: () => void;
+  /** Names the screen `onBack` returns to; must track the real action. */
+  backLabel: string;
   onMore?: () => void;
   onPlay: () => void;
   onShuffle: () => void;
@@ -282,8 +285,17 @@ export function CollapsingHeader({
       >
         <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
       </Pressable>
-      <Animated.Text style={[styles.label, { top: barCenterY - 10, left: spacing.md + 26 }, labelStyle]}>
-        Library
+      <Animated.Text
+        numberOfLines={1}
+        style={[
+          styles.label,
+          // Bounded so a long artist name ellipsizes instead of running off the
+          // edge; clears the overflow button when the screen has one.
+          { top: barCenterY - 10, left: spacing.md + 26, right: onMore ? 56 : spacing.md },
+          labelStyle,
+        ]}
+      >
+        {backLabel}
       </Animated.Text>
 
       <Animated.Text

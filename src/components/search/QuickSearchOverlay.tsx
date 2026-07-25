@@ -17,7 +17,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -569,7 +569,7 @@ function QuickSearchPanel({
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const inputRef = useRef<TextInput | null>(null);
@@ -956,8 +956,11 @@ function QuickSearchPanel({
     onClose();
   };
 
+  // The quick-search overlay renders above the navigator, so it can fire while a
+  // root-stack sibling of `(tabs)` is focused — a bare push there mints a second
+  // copy of the whole tab tree and back-navigation dead-ends on the stale one.
   const navigateTo = (href: RouteHref) => {
-    router.push(href as never);
+    returnToTabs(href as never, 'push');
   };
 
   const executeResult = (result: SearchResult) => {
@@ -988,26 +991,26 @@ function QuickSearchPanel({
     }
 
     if (result.kind === 'album') {
-      router.push({
-        pathname: '/library/album/[key]',
-        params: { key: result.album.identity_key },
-      });
+      returnToTabs(
+        { pathname: '/library/album/[key]', params: { key: result.album.identity_key } },
+        'push'
+      );
       return;
     }
 
     if (result.kind === 'artist') {
-      router.push({
-        pathname: '/library/artist/[name]',
-        params: { name: result.artist.artist },
-      });
+      returnToTabs(
+        { pathname: '/library/artist/[name]', params: { name: result.artist.artist } },
+        'push'
+      );
       return;
     }
 
     if (result.kind === 'playlist') {
-      router.push({
-        pathname: '/library/playlist/[id]',
-        params: { id: result.playlist.id },
-      });
+      returnToTabs(
+        { pathname: '/library/playlist/[id]', params: { id: result.playlist.id } },
+        'push'
+      );
       return;
     }
 

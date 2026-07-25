@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
@@ -17,7 +18,7 @@ export default function EQPresetImportScreen() {
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const importPreset = useEQStore((state) => state.importPreset);
   const { data } = useLocalSearchParams<{ data?: string }>();
 
@@ -30,7 +31,9 @@ export default function EQPresetImportScreen() {
     }
   }, [data]);
 
-  const goToEq = () => router.replace('/eq' as never);
+  // `/eq` is a tab, and this screen is a root-stack sibling of `(tabs)`, so a
+  // bare replace here mints a second copy of the whole tab tree.
+  const goToEq = () => returnToTabs('/eq' as never);
 
   if (!preset) {
     return (

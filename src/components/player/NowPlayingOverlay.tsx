@@ -42,6 +42,11 @@ import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
 import { resolveNowPlayingDismissSpring } from '@/components/player/nowPlayingDismiss';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import {
+  NOW_PLAYING_CLOSE_COMMIT_MS,
+  NOW_PLAYING_OPEN_SETTLE_MS,
+} from '@/components/renderPresenceTiming';
+import { useAppForeground } from '@/lib/useAppForeground';
 import { SleepTimerControls } from '@/components/player/SleepTimerControls';
 import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
@@ -63,6 +68,7 @@ import {
   NOW_PLAYING_WAVEFORM_TOUCH_PADDING,
   NOW_PLAYING_WIDE_PANE_GAP,
 } from '@/components/player/nowPlayingLayout';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { resolveNavigationArtist, splitCollaborators } from '@/library/artistGrouping';
 import { buildArtistNameTokens } from '@/shared/library/artistCredits';
 import {
@@ -76,6 +82,7 @@ import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import type { DbTrack } from '@/types/library';
@@ -125,10 +132,19 @@ export function NowPlayingOverlay() {
   const colors = useColors();
   const ripple = useRipple();
   const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
-  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
+  const phase = usePlayerUiStore((s) => s.phase);
+  const openRequest = usePlayerUiStore((s) => s.openRequest);
+  const exitAnimated = usePlayerUiStore((s) => s.exitAnimated);
+  const playerOpen = isPlayerOnScreen(phase);
+  // Heavy scope/spectrum surfaces release their native backing in the
+  // background. The overlay itself stays mounted — unmounting it mid-close used
+  // to tear down the exit animation and strand the phase.
+  const foreground = useAppForeground();
+  const surfacesLive = playerOpen && foreground;
   const [queueOpen, setQueueOpen] = useState(false);
   // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
   const closeQueue = useCallback(() => setQueueOpen(false), []);
@@ -181,13 +197,19 @@ export function NowPlayingOverlay() {
   });
   const isDesktopTarget = activePresentation.target === 'desktop';
   const effectiveScopeStageVisible = !isDesktopTarget && scopeStageVisible;
+  // Backgrounding drops these two subtrees, which is what actually releases the
+  // scope TextureViews and the decoded artwork. The overlay shell around them
+  // deliberately stays mounted instead — dropping the whole tree used to tear
+  // down the close animation mid-flight and strand the player unopenable.
   const renderScopeSurfaces = useDelayedUnmountPresence(
     effectiveScopeStageVisible,
-    motion.snap.duration
+    motion.snap.duration,
+    !foreground
   );
   const renderArtworkFace = useDelayedUnmountPresence(
     railStyle || !effectiveScopeStageVisible,
-    motion.snap.duration
+    motion.snap.duration,
+    !foreground
   );
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
   const transitionTrackKey = isDesktopTarget ? activeTrack?.id ?? '' : track?.id ?? '';
@@ -295,23 +317,26 @@ export function NowPlayingOverlay() {
       .getState()
       .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum');
 
+  // The player is an overlay, so it can be open over a root-stack sibling of
+  // `(tabs)` (e.g. desktop-remote). Going straight to a library route from there
+  // diverges at the root stack and mints a second copy of the whole tab tree.
   const navigateToArtist = (targetArtist = artistName, credit = false) => {
     if (!targetArtist) return;
     // Slide the overlay away while the library detail loads underneath.
     dismissSheet();
-    router.navigate({
-      pathname: '/library/artist/[name]',
-      params: { name: targetArtist, ...(credit ? { credit: '1' } : {}) },
-    });
+    returnToTabs(
+      {
+        pathname: '/library/artist/[name]',
+        params: { name: targetArtist, ...(credit ? { credit: '1' } : {}) },
+      },
+      'push'
+    );
   };
 
   const navigateToAlbum = () => {
     if (!albumKey) return;
     dismissSheet();
-    router.navigate({
-      pathname: '/library/album/[key]',
-      params: { key: albumKey },
-    });
+    returnToTabs({ pathname: '/library/album/[key]', params: { key: albumKey } }, 'push');
   };
 
   const menuItems: NowPlayingMenuItem[] = [];
@@ -400,12 +425,20 @@ export function NowPlayingOverlay() {
   useEffect(() => {
     stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
   }, [effectiveScopeStageVisible, stageProgress]);
-  // Closing is a store toggle, not navigation. Reset the inner layers so a
-  // reopen starts from the plain player (parity with the old per-open mount).
-  const dismiss = () => {
+  const commitClosed = () => usePlayerUiStore.getState().commitClosed();
+  /**
+   * Enter the closing phase and drop the inner layers. Split out from
+   * `dismissSheet` so the pan gesture can commit the phase without handing the
+   * offset back to a fresh animation — it is already driving `translateY`.
+   * Clearing the layers here rather than at the end also unpins the menu card,
+   * which renders outside the translating content.
+   */
+  const beginDismiss = () => {
     setMenuOpen(false);
     setQueueOpen(false);
-    usePlayerUiStore.getState().closePlayer();
+    // `true`: this path drives the sheet away itself, so the effect below must
+    // not overwrite the offset with a competing generic slide-out.
+    usePlayerUiStore.getState().closePlayer(true);
   };
   const finishCloseMenu = () => setMenuOpen(false);
 
@@ -422,7 +455,14 @@ export function NowPlayingOverlay() {
     });
   }
 
+  // Closing is a store transition, not navigation. The phase moves to `closing`
+  // BEFORE the animation starts — a spring that gets cancelled never reports
+  // completion, and depending on that callback is what used to leave the player
+  // flagged open with the sheet parked off-screen, unopenable for the rest of
+  // the session. The completion callback now only commits the release early;
+  // a fallback timer commits it otherwise.
   const dismissSheet = (velocity = 0) => {
+    beginDismiss();
     translateY.value = withSpring(
       windowHeight,
       {
@@ -432,7 +472,7 @@ export function NowPlayingOverlay() {
         overshootClamping: true,
       },
       (finished) => {
-        if (finished) runOnJS(dismiss)();
+        if (finished) runOnJS(commitClosed)();
       }
     );
   };
@@ -450,6 +490,9 @@ export function NowPlayingOverlay() {
           e.velocityY,
           windowHeight - translateY.value
         );
+        // Same commit-first contract as dismissSheet, with the release spring's
+        // velocity-matched shaping preserved.
+        runOnJS(beginDismiss)();
         translateY.value = withSpring(
           windowHeight,
           {
@@ -460,7 +503,7 @@ export function NowPlayingOverlay() {
             energyThreshold: 1e-4,
           },
           (finished) => {
-            if (finished) runOnJS(dismiss)();
+            if (finished) runOnJS(commitClosed)();
           }
         );
       } else {
@@ -468,27 +511,72 @@ export function NowPlayingOverlay() {
       }
     });
 
-  // Open animation (close normally animates via dismissSheet's spring first;
-  // the else branch covers direct closePlayer calls and keeps the resting
-  // offset pinned to the current window height across rotation). NOTE: this
-  // effect must stay BELOW every direct `translateY.value` write — the react
-  // compiler forbids mutations after an effect that depends on the value.
+  // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
+  // a player that already believes it is open still re-runs the slide-in — that
+  // is the recovery path for a sheet stranded off-screen by an interrupted
+  // close. `windowHeight` is deliberately NOT a dependency: a dimension change
+  // (rotation, or an RN Modal like the output picker) would re-run this effect
+  // and cancel an in-flight exit spring. NOTE: this effect must stay BELOW
+  // every direct `translateY.value` write — the react compiler forbids
+  // mutations after an effect that depends on the value.
   useEffect(() => {
-    if (playerOpen) {
-      translateY.value = withTiming(0, { duration: 240 });
-    } else {
-      translateY.value = withTiming(windowHeight, { duration: 200 });
+    if (phase === 'closing') {
+      // The gesture and button paths own the exit animation, including its
+      // velocity-matched spring shaping. Only animate here when `closing`
+      // arrived from a direct closePlayer() with no animation attached.
+      if (!exitAnimated) {
+        translateY.value = withTiming(windowHeight, { duration: 200 });
+      }
+      return;
     }
-  }, [playerOpen, windowHeight, translateY]);
+    translateY.value = withTiming(0, { duration: 240 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
+  }, [phase, openRequest, exitAnimated, translateY]);
+
+  // `closing` → `closed`, and `opening` → `open`. Both are timers rather than
+  // animation callbacks, so a cancelled animation can never strand the phase.
+  // The store guards each transition, and this cleanup cancels a pending commit
+  // if the user reopens mid-close. The store actions are read through getState
+  // so this effect's identity never changes between playback ticks — a restarted
+  // timer would mean the commit never lands.
+  useEffect(() => {
+    if (phase === 'closing') {
+      const timer = setTimeout(
+        () => usePlayerUiStore.getState().commitClosed(),
+        NOW_PLAYING_CLOSE_COMMIT_MS
+      );
+      return () => clearTimeout(timer);
+    }
+    if (phase === 'opening') {
+      const timer = setTimeout(
+        () => usePlayerUiStore.getState().settleOpen(),
+        NOW_PLAYING_OPEN_SETTLE_MS
+      );
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [phase, openRequest]);
 
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
   // — e.g. the library-detail back interceptor underneath.
   useEffect(() => {
-    if (!playerOpen) return;
+    if (!playerOpen) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (menuOpen) {
         closeMenu();
+        return true;
+      }
+      if (targetPickerOpen) {
+        setTargetPickerOpen(false);
+        return true;
+      }
+      if (sleepTimerOpen) {
+        setSleepTimerOpen(false);
+        return true;
+      }
+      if (playlistActionTrack) {
+        setPlaylistActionTrack(null);
         return true;
       }
       if (queueOpen) {
@@ -499,7 +587,16 @@ export function NowPlayingOverlay() {
       return true;
     });
     return () => sub.remove();
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeMenu/dismissSheet are re-created every render; re-subscribing on each would thrash the LIFO chain. windowHeight is listed because dismissSheet captures it.
+  }, [
+    playerOpen,
+    menuOpen,
+    targetPickerOpen,
+    sleepTimerOpen,
+    playlistActionTrack,
+    queueOpen,
+    windowHeight,
+  ]);
 
   const contentStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -636,7 +733,7 @@ export function NowPlayingOverlay() {
             {lyricsMode && track ? (
               <LyricsView
                 track={track}
-                active={playerOpen}
+                active={surfacesLive}
                 isPlaying={isPlaying}
                 isLoading={isLoading}
                 isFavorite={isFavorite}
@@ -994,7 +1091,7 @@ export function NowPlayingOverlay() {
                           stripWidth={layout.scopeWidth}
                           artworkUri={backdropArtworkUri}
                           spectrumSmoothing={NOW_PLAYING_SPECTRUM_SMOOTHING}
-                          paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                          paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         />
                       </Animated.View>
                     )}
@@ -1017,7 +1114,7 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
@@ -1039,7 +1136,7 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
@@ -1059,7 +1156,7 @@ export function NowPlayingOverlay() {
                     {lyricPeekEnabled ? (
                       <CachedLyricPeek
                         track={track}
-                        active={playerOpen && !queueOpen}
+                        active={surfacesLive && !queueOpen}
                         hidden={
                           hasTabletCompanion && nowPlayingCompanion === 'lyrics'
                         }
@@ -1136,7 +1233,7 @@ export function NowPlayingOverlay() {
                     </Animated.View>
 
                     <WaveformSeekBar
-                      active={playerOpen}
+                      active={surfacesLive}
                       height={layout.waveformHeight}
                       touchPadding={WAVEFORM_TOUCH_PADDING}
                       trackPath={track.path}
@@ -1347,7 +1444,7 @@ export function NowPlayingOverlay() {
                   ]}
                 >
                   <NowPlayingCompanionPane
-                    active={playerOpen}
+                    active={surfacesLive}
                     desktopTarget={isDesktopTarget}
                     track={track}
                   />

@@ -14,6 +14,7 @@ import { useRipple } from '@/theme/ripple';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore, type PlaybackTarget } from '@/stores/playbackTargetStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { usePlayerUiStore } from '@/stores/playerUiStore';
 import {
   desktopConnectionLabel,
   hostFromBaseUrl,
@@ -52,6 +53,10 @@ export function PlaybackTargetPicker({ visible, onClose }: PlaybackTargetPickerP
 
   const pairDesktop = () => {
     onClose();
+    // This picker is usually open above the full-screen now-playing overlay,
+    // which would cover the pushed screen completely — the tap looked like a
+    // no-op. Close the player so the route is actually visible.
+    usePlayerUiStore.getState().closePlayer();
     router.push('/desktop-remote' as never);
   };
 

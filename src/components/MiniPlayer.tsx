@@ -16,7 +16,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { usePlayerOnScreen, usePlayerUiStore } from '@/stores/playerUiStore';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
 import { SpectrumCurve } from './SpectrumCurve';
@@ -118,7 +118,7 @@ export function MiniPlayer() {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
-  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
+  const playerOpen = usePlayerOnScreen();
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackState = usePlayerStore((s) => s.playbackState);

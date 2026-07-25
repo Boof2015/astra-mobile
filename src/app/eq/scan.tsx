@@ -11,6 +11,7 @@ import {
 } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
@@ -30,6 +31,7 @@ export default function EQPresetScanScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const importPreset = useEQStore((state) => state.importPreset);
   const [permission, requestPermission] = useCameraPermissions();
   const [pendingPreset, setPendingPreset] = useState<EQPreset | null>(null);
@@ -109,7 +111,8 @@ export default function EQPresetScanScreen() {
           onConfirm={() => {
             importPreset(pendingPreset);
             setPendingPreset(null);
-            router.replace('/eq' as never);
+            // `/eq` is a tab; see useReturnToTabs.
+            returnToTabs('/eq' as never);
           }}
           onClose={() => setPendingPreset(null)}
         />

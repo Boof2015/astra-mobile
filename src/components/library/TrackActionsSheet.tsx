@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { usePathname } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import {
   AppSheet,
   AppSheetItem,
@@ -42,13 +43,19 @@ function TrackActionsSheetInner({
   initialStep = 'menu',
   extraItems = [],
 }: TrackActionsSheetProps & { track: DbTrack }) {
-  const router = useRouter();
+  // This sheet also renders from `recently-played` and from inside the
+  // now-playing overlay, i.e. while a root-stack sibling of `(tabs)` is focused,
+  // where a bare push would mint a second copy of the whole tab tree.
+  const returnToTabs = useReturnToTabs();
+  const pathname = usePathname();
   const [step, setStep] = useState<'menu' | 'pickPlaylist'>(initialStep);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const isFavorite = usePlaylistStore((s) => s.favoritePaths.has(track.path));
   const toggleFavorite = usePlaylistStore((s) => s.toggleFavorite);
 
   const artistName = resolveNavigationArtist(track, groupingMode);
+  const albumHref = `/library/album/${encodeURIComponent(track.album_identity_key)}`;
+  const artistHref = `/library/artist/${encodeURIComponent(artistName)}`;
 
   const closeAndRun = (run: () => void) => {
     onClose();
@@ -79,24 +86,28 @@ function TrackActionsSheetInner({
       label: 'View album',
       icon: 'albums-outline',
       onPress: () =>
-        closeAndRun(() =>
-          router.push({
-            pathname: '/library/album/[key]',
-            params: { key: track.album_identity_key },
-          })
-        ),
+        closeAndRun(() => {
+          // Already here (this sheet also opens from the album screen itself):
+          // pushing would stack a duplicate of the current screen.
+          if (pathname === albumHref) return;
+          returnToTabs(
+            { pathname: '/library/album/[key]', params: { key: track.album_identity_key } },
+            'push'
+          );
+        }),
     },
     {
       key: 'view-artist',
       label: 'View artist',
       icon: 'person-outline',
       onPress: () =>
-        closeAndRun(() =>
-          router.push({
-            pathname: '/library/artist/[name]',
-            params: { name: artistName },
-          })
-        ),
+        closeAndRun(() => {
+          if (pathname === artistHref) return;
+          returnToTabs(
+            { pathname: '/library/artist/[name]', params: { name: artistName } },
+            'push'
+          );
+        }),
     },
     {
       key: 'favorite',

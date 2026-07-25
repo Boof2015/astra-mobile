@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useCallback,
   useMemo,
   useState
 } from 'react';
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { ViewModeSwitcher } from '@/components/library/ViewModeSwitcher';
@@ -165,14 +165,20 @@ export default function LibraryScreen() {
     setPlaylistPickerOpen(false);
   };
 
-  useEffect(() => {
-    if (!selectMode) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      exitSelection();
-      return true;
-    });
-    return () => sub.remove();
-  }, [selectMode]);
+  // Focus-gated, not a plain effect: the tabs layout keeps this screen mounted
+  // while blurred (`detachInactiveScreens={false}` + `freezeOnBlur: false`), so
+  // an ungated handler swallowed one back press anywhere in the app — any other
+  // tab, any settings screen — whenever selection happened to be active.
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectMode) return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        exitSelection();
+        return true;
+      });
+      return () => sub.remove();
+    }, [selectMode])
+  );
 
   const selectedDbTracks = () => sortedTracks.filter((track) => selectedIds.has(track.id));
 

@@ -4,9 +4,9 @@ import {
   useGlobalSearchParams,
   usePathname,
   useRootNavigationState,
-  useRouter,
   useSegments,
 } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -81,7 +81,7 @@ async function validateSavedHref(href: string): Promise<string> {
 
 /** Restores once, then owns stable-route tracking and session autosave. */
 export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const pathname = usePathname();
   const segments = useSegments();
   const params = useGlobalSearchParams<{
@@ -124,8 +124,12 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
         if (cancelled) return;
 
         // Every relaunch begins at rest even when a React activity was rebuilt
-        // inside a still-live JS process.
-        usePlayerUiStore.setState({ playerOpen: false });
+        // inside a still-live JS process — unless something already asked for the
+        // player during startup (a notification or widget tap resolves before
+        // these awaits finish, and used to be silently overridden here).
+        if (usePlayerUiStore.getState().openRequest === 0) {
+          usePlayerUiStore.setState({ phase: 'closed' });
+        }
         useSearchStore.getState().closeQuickSearch();
 
         const liveNativeSession = await hasActiveNativePlaybackSession();
@@ -150,7 +154,11 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
         const stableHref = await validateSavedHref(snapshot?.lastStableHref ?? '/');
         setInitialStableHref(stableHref);
         if (shouldRestoreSavedRoute(initialPathname.current, initialUrl) && stableHref !== '/') {
-          router.replace(stableHref as never);
+          // Never `replace` here. A root-level saved route (`/settings/audio`,
+          // `/sources`, …) would overwrite `(tabs)` at index 0 and destroy the
+          // anchor the root stack is built around, so back would exit the app;
+          // an in-tab saved route would mint a second `(tabs)` instead.
+          returnToTabs(stableHref as never);
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
 
@@ -185,7 +193,7 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
       uninstallPersistence.current?.();
       uninstallPersistence.current = null;
     };
-  }, [navigationKey, onReady, router]);
+  }, [navigationKey, onReady, returnToTabs]);
 
   useEffect(() => {
     if (!hydrated) return;

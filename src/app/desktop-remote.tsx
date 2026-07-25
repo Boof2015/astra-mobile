@@ -18,6 +18,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Screen } from '@/components/Screen';
@@ -225,6 +226,7 @@ export default function DesktopRemoteScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const pairingParams = useLocalSearchParams<{
     pair?: string;
     baseUrl?: string;
@@ -620,7 +622,7 @@ export default function DesktopRemoteScreen() {
                 // screen so it slides in above wherever the user came from.
                 usePlayerUiStore.getState().openPlayer();
                 if (router.canGoBack()) router.back();
-                else router.replace('/');
+                else returnToTabs('/');
               }}
             >
               <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />

@@ -89,7 +89,7 @@ export default function PlaylistScreen() {
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const isFavorites = id === 'favorites';
   const playlistId = isFavorites ? null : Number(id);
 
@@ -219,7 +219,7 @@ export default function PlaylistScreen() {
           void (async () => {
             try {
               await deletePlaylist(target.id);
-              handleBack();
+              goBack();
             } catch (err) {
               Alert.alert('Delete failed', errorMessage(err));
             }
@@ -340,7 +340,8 @@ export default function PlaylistScreen() {
           ) : null
         }
         disabled={playable.length === 0}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onMore={() => setOptionsOpen(true)}
         onPlay={() => startPlayback(0)}
         onShuffle={startShuffle}
