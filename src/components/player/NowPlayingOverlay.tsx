@@ -1650,12 +1650,12 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
   },
   eyebrow: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     letterSpacing: 1.5,
     fontSize: 10,
   },
   source: {
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     marginTop: 1,
   },
   menuLayer: {
