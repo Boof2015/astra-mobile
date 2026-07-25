@@ -73,7 +73,7 @@ export default function ArtistSongsScreen() {
         keyExtractor={(track) => String(track.id)}
         showsVerticalScrollIndicator={false}
         onEndReached={() => void loadMore()}
-        onEndReachedThreshold={0.6}
+        onEndReachedThreshold={2}
         renderItem={({ item, index }) => (
           <TrackRow
             track={item}

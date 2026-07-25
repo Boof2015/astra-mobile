@@ -596,39 +596,7 @@ class AstraLibraryRepository private constructor(
         limit = limit,
       )
     }
-    val next = rows.lastOrNull()?.let { row ->
-      when (sort) {
-        "artist" -> TrackPageCursor(
-          revision = revision,
-          kind = "tracks:$sort",
-          text1 = row.artistSortKey,
-          text2 = row.albumSortKey,
-          text3 = "${row.titleSortKey}\u0000${row.path}",
-          number1 = row.discSort.toLong(),
-          number2 = row.trackSort.toLong(),
-          // Artist cursor needs one extra string. Encode the path alongside the
-          // title key with a NUL delimiter; SAF paths cannot contain NUL.
-        )
-        "recently_added" -> TrackPageCursor(
-          revision = revision,
-          kind = "tracks:$sort",
-          text1 = row.path,
-          number1 = row.addedAt,
-        )
-        "duration" -> TrackPageCursor(
-          revision = revision,
-          kind = "tracks:$sort",
-          text1 = row.path,
-          decimal1 = row.duration,
-        )
-        else -> TrackPageCursor(
-          revision = revision,
-          kind = "tracks:$sort",
-          text1 = row.titleSortKey,
-          text2 = row.path,
-        )
-      }.encode()
-    }
+    val next = rows.lastOrNull()?.let { row -> trackCursor(revision, sort, row).encode() }
     mapOf(
       "items" to rows.map(ActiveTrackView::toBridgeMap),
       "nextCursor" to next,
@@ -637,6 +605,93 @@ class AstraLibraryRepository private constructor(
       "catalogRevision" to revision.toString(),
     )
   }
+
+  /**
+   * The page immediately *above* [cursorRaw] — the backward twin of [getTrackPage].
+   * An A-Z rail jump drops the list into the middle of the catalog; this is what the
+   * rows above it are fetched with when the user scrolls back up. Items come back
+   * ascending, like every other page.
+   *
+   * `previousCursor` is non-null only on a full page: a short one means we walked off
+   * the head of the catalog, so the caller knows to stop asking.
+   *
+   * Only the sorts the rail is offered for (`title`, `artist`) can be walked backwards;
+   * anything else returns an empty page.
+   */
+  suspend fun getTrackPageBefore(
+    sort: String,
+    cursorRaw: String?,
+    requestedLimit: Int,
+  ): Map<String, Any?> = withCatalogRecovery { database ->
+    initialize()
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    val cursor = validateCursor(cursorRaw, revision, "tracks:$sort")
+    val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
+    val descending = when {
+      cursor == null -> emptyList()
+      sort == "artist" -> dao.getArtistOrderPageBefore(
+        beforeArtistKey = cursor.text1.orEmpty(),
+        beforeAlbumKey = cursor.text2.orEmpty(),
+        beforeDisc = cursor.number1?.toInt() ?: 0,
+        beforeTrack = cursor.number2?.toInt() ?: 0,
+        beforeTitleKey = cursorTitleKey(cursor),
+        beforePath = cursorPath(cursor),
+        limit = limit,
+      )
+      sort == "title" -> dao.getTitlePageBefore(
+        beforeTitleKey = cursor.text1.orEmpty(),
+        beforePath = cursor.text2.orEmpty(),
+        limit = limit,
+      )
+      else -> emptyList()
+    }
+    // The DESC result's last row is the topmost one — the cursor for the page above this one.
+    val previous = descending.takeIf { it.size == limit }
+      ?.lastOrNull()
+      ?.let { row -> trackCursor(revision, sort, row).encode() }
+    mapOf(
+      "items" to descending.reversed().map(ActiveTrackView::toBridgeMap),
+      "nextCursor" to null,
+      "previousCursor" to previous,
+      "totalCount" to dao.countActiveTracks().toDouble(),
+      "catalogRevision" to revision.toString(),
+    )
+  }
+
+  /** Shared by the forward and backward track pages so the two can never disagree. */
+  private fun trackCursor(revision: Long, sort: String, row: ActiveTrackView): TrackPageCursor =
+    when (sort) {
+      "artist" -> TrackPageCursor(
+        revision = revision,
+        kind = "tracks:$sort",
+        text1 = row.artistSortKey,
+        text2 = row.albumSortKey,
+        text3 = "${row.titleSortKey}\u0000${row.path}",
+        number1 = row.discSort.toLong(),
+        number2 = row.trackSort.toLong(),
+        // Artist cursor needs one extra string. Encode the path alongside the
+        // title key with a NUL delimiter; SAF paths cannot contain NUL.
+      )
+      "recently_added" -> TrackPageCursor(
+        revision = revision,
+        kind = "tracks:$sort",
+        text1 = row.path,
+        number1 = row.addedAt,
+      )
+      "duration" -> TrackPageCursor(
+        revision = revision,
+        kind = "tracks:$sort",
+        text1 = row.path,
+        decimal1 = row.duration,
+      )
+      else -> TrackPageCursor(
+        revision = revision,
+        kind = "tracks:$sort",
+        text1 = row.titleSortKey,
+        text2 = row.path,
+      )
+    }
 
   suspend fun getTrack(path: String): Map<String, Any?>? =
     withCatalogRecovery { database -> database.catalogDao().getActiveTrack(path)?.toBridgeMap() }
@@ -1674,36 +1729,7 @@ class AstraLibraryRepository private constructor(
         limit,
       )
     }
-    val next = rows.lastOrNull()?.let { row ->
-      when (sort) {
-        "artist" -> TrackPageCursor(
-          revision,
-          kind,
-          text1 = row.artistSortKey,
-          text2 = row.nameSortKey,
-          text3 = row.identityKey,
-        )
-        "recently_added" -> TrackPageCursor(
-          revision,
-          kind,
-          text1 = row.identityKey,
-          number1 = row.latestAddedAt,
-        )
-        "year" -> TrackPageCursor(
-          revision,
-          kind,
-          text1 = row.nameSortKey,
-          text2 = row.identityKey,
-          number1 = (row.year ?: 0).toLong(),
-        )
-        else -> TrackPageCursor(
-          revision,
-          kind,
-          text1 = row.nameSortKey,
-          text2 = row.identityKey,
-        )
-      }.encode()
-    }
+    val next = rows.lastOrNull()?.let { row -> albumCursor(revision, kind, sort, row).encode() }
     mapOf(
       "items" to rows.map(AlbumSummaryEntity::toBridgeMap),
       "nextCursor" to next,
@@ -1712,6 +1738,85 @@ class AstraLibraryRepository private constructor(
       "catalogRevision" to revision.toString(),
     )
   }
+
+  /** Backward twin of [getAlbumPage]; see [getTrackPageBefore] for the contract. */
+  suspend fun getAlbumPageBefore(
+    sort: String,
+    includeSingles: Boolean,
+    cursorRaw: String?,
+    requestedLimit: Int,
+  ): Map<String, Any?> = withCatalogRecovery { database ->
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    val kind = "albums:$sort:${if (includeSingles) 1 else 0}"
+    val cursor = validateCursor(cursorRaw, revision, kind)
+    val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
+    val descending = when {
+      cursor == null -> emptyList()
+      sort == "artist" -> dao.getAlbumArtistPageBefore(
+        revision,
+        includeSingles,
+        cursor.text1.orEmpty(),
+        cursor.text2.orEmpty(),
+        cursor.text3.orEmpty(),
+        limit,
+      )
+      sort == "name" -> dao.getAlbumNamePageBefore(
+        revision,
+        includeSingles,
+        cursor.text1.orEmpty(),
+        cursor.text2.orEmpty(),
+        limit,
+      )
+      else -> emptyList()
+    }
+    val previous = descending.takeIf { it.size == limit }
+      ?.lastOrNull()
+      ?.let { row -> albumCursor(revision, kind, sort, row).encode() }
+    mapOf(
+      "items" to descending.reversed().map(AlbumSummaryEntity::toBridgeMap),
+      "nextCursor" to null,
+      "previousCursor" to previous,
+      "totalCount" to dao.countAlbums(revision, includeSingles).toDouble(),
+      "catalogRevision" to revision.toString(),
+    )
+  }
+
+  /** Shared by the forward and backward album pages so the two can never disagree. */
+  private fun albumCursor(
+    revision: Long,
+    kind: String,
+    sort: String,
+    row: AlbumSummaryEntity,
+  ): TrackPageCursor =
+    when (sort) {
+      "artist" -> TrackPageCursor(
+        revision,
+        kind,
+        text1 = row.artistSortKey,
+        text2 = row.nameSortKey,
+        text3 = row.identityKey,
+      )
+      "recently_added" -> TrackPageCursor(
+        revision,
+        kind,
+        text1 = row.identityKey,
+        number1 = row.latestAddedAt,
+      )
+      "year" -> TrackPageCursor(
+        revision,
+        kind,
+        text1 = row.nameSortKey,
+        text2 = row.identityKey,
+        number1 = (row.year ?: 0).toLong(),
+      )
+      else -> TrackPageCursor(
+        revision,
+        kind,
+        text1 = row.nameSortKey,
+        text2 = row.identityKey,
+      )
+    }
 
   suspend fun getArtistPage(
     sort: String,
@@ -1746,15 +1851,7 @@ class AstraLibraryRepository private constructor(
         limit,
       )
     }
-    val next = rows.lastOrNull()?.let { row ->
-      TrackPageCursor(
-        revision,
-        kind,
-        text1 = row.nameSortKey,
-        text2 = row.artistKey,
-        number1 = if (sort == "track_count") row.trackCount else null,
-      ).encode()
-    }
+    val next = rows.lastOrNull()?.let { row -> artistCursor(revision, kind, sort, row).encode() }
     mapOf(
       "items" to rows.map(ArtistSummaryEntity::toBridgeMap),
       "nextCursor" to next,
@@ -1763,6 +1860,59 @@ class AstraLibraryRepository private constructor(
       "catalogRevision" to revision.toString(),
     )
   }
+
+  /** Backward twin of [getArtistPage]; see [getTrackPageBefore] for the contract. */
+  suspend fun getArtistPageBefore(
+    sort: String,
+    groupingMode: String,
+    includeCollaborations: Boolean,
+    cursorRaw: String?,
+    requestedLimit: Int,
+  ): Map<String, Any?> = withCatalogRecovery { database ->
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    val mode = if (groupingMode == "fileTags") "fileTags" else "astra"
+    val kind = "artists:$sort:$mode:${if (includeCollaborations) 1 else 0}"
+    val cursor = validateCursor(cursorRaw, revision, kind)
+    val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
+    val descending = if (cursor == null || sort == "track_count") {
+      emptyList()
+    } else {
+      dao.getArtistNamePageBefore(
+        revision,
+        mode,
+        includeCollaborations,
+        cursor.text1.orEmpty(),
+        cursor.text2.orEmpty(),
+        limit,
+      )
+    }
+    val previous = descending.takeIf { it.size == limit }
+      ?.lastOrNull()
+      ?.let { row -> artistCursor(revision, kind, sort, row).encode() }
+    mapOf(
+      "items" to descending.reversed().map(ArtistSummaryEntity::toBridgeMap),
+      "nextCursor" to null,
+      "previousCursor" to previous,
+      "totalCount" to dao.countArtists(revision, mode, includeCollaborations).toDouble(),
+      "catalogRevision" to revision.toString(),
+    )
+  }
+
+  /** Shared by the forward and backward artist pages so the two can never disagree. */
+  private fun artistCursor(
+    revision: Long,
+    kind: String,
+    sort: String,
+    row: ArtistSummaryEntity,
+  ): TrackPageCursor =
+    TrackPageCursor(
+      revision,
+      kind,
+      text1 = row.nameSortKey,
+      text2 = row.artistKey,
+      number1 = if (sort == "track_count") row.trackCount else null,
+    )
 
   suspend fun getAlbumDetail(
     albumKey: String,

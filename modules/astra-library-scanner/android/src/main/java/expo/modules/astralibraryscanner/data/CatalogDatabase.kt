@@ -360,6 +360,26 @@ interface CatalogDao {
     limit: Int,
   ): List<ActiveTrackView>
 
+  /**
+   * Mirror of [getTitlePage] walking backwards. Rows come out DESC — the caller
+   * reverses them so `items` is ascending like every other page. Backward paging
+   * always has a cursor (there is nothing before the head), so no NULL branch.
+   */
+  @Query(
+    """
+      SELECT * FROM active_tracks
+      WHERE title_sort_key < :beforeTitleKey
+        OR (title_sort_key = :beforeTitleKey AND path < :beforePath)
+      ORDER BY title_sort_key DESC, path DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getTitlePageBefore(
+    beforeTitleKey: String,
+    beforePath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
   @Query(
     """
       SELECT * FROM active_tracks
@@ -384,6 +404,34 @@ interface CatalogDao {
     afterTrack: Int,
     afterTitleKey: String,
     afterPath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  /** Mirror of [getArtistOrderPage] walking backwards; rows come out DESC. */
+  @Query(
+    """
+      SELECT * FROM active_tracks
+      WHERE artist_sort_key < :beforeArtistKey
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key < :beforeAlbumKey)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort < :beforeDisc)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort < :beforeTrack)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort = :beforeTrack AND title_sort_key < :beforeTitleKey)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort = :beforeTrack AND title_sort_key = :beforeTitleKey AND path < :beforePath)
+      ORDER BY artist_sort_key DESC, album_sort_key DESC, disc_sort DESC, track_sort DESC,
+        title_sort_key DESC, path DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistOrderPageBefore(
+    beforeArtistKey: String,
+    beforeAlbumKey: String,
+    beforeDisc: Int,
+    beforeTrack: Int,
+    beforeTitleKey: String,
+    beforePath: String,
     limit: Int,
   ): List<ActiveTrackView>
 
@@ -543,6 +591,26 @@ interface CatalogDao {
     limit: Int,
   ): List<AlbumSummaryEntity>
 
+  /** Mirror of [getAlbumNamePage] walking backwards; rows come out DESC. */
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (name_sort_key < :beforeKey
+          OR (name_sort_key = :beforeKey AND identity_key < :beforeId))
+      ORDER BY name_sort_key DESC, identity_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumNamePageBefore(
+    revision: Long,
+    includeSingles: Boolean,
+    beforeKey: String,
+    beforeId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
   @Query(
     """
       SELECT * FROM album_summaries
@@ -563,6 +631,29 @@ interface CatalogDao {
     afterArtistKey: String?,
     afterNameKey: String,
     afterId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  /** Mirror of [getAlbumArtistPage] walking backwards; rows come out DESC. */
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (artist_sort_key < :beforeArtistKey
+          OR (artist_sort_key = :beforeArtistKey AND name_sort_key < :beforeNameKey)
+          OR (artist_sort_key = :beforeArtistKey AND name_sort_key = :beforeNameKey
+              AND identity_key < :beforeId))
+      ORDER BY artist_sort_key DESC, name_sort_key DESC, identity_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumArtistPageBefore(
+    revision: Long,
+    includeSingles: Boolean,
+    beforeArtistKey: String,
+    beforeNameKey: String,
+    beforeId: String,
     limit: Int,
   ): List<AlbumSummaryEntity>
 
@@ -649,6 +740,28 @@ interface CatalogDao {
     includeCollaborations: Boolean,
     afterKey: String?,
     afterId: String,
+    limit: Int,
+  ): List<ArtistSummaryEntity>
+
+  /** Mirror of [getArtistNamePage] walking backwards; rows come out DESC. */
+  @Query(
+    """
+      SELECT * FROM artist_summaries
+      WHERE revision = :revision
+        AND grouping_mode = :groupingMode
+        AND (:includeCollaborations OR is_collaboration = 0)
+        AND (name_sort_key < :beforeKey
+          OR (name_sort_key = :beforeKey AND artist_key < :beforeId))
+      ORDER BY name_sort_key DESC, artist_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistNamePageBefore(
+    revision: Long,
+    groupingMode: String,
+    includeCollaborations: Boolean,
+    beforeKey: String,
+    beforeId: String,
     limit: Int,
   ): List<ArtistSummaryEntity>
 

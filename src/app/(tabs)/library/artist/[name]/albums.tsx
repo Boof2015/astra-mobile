@@ -51,7 +51,7 @@ export default function ArtistAlbumsScreen() {
         keyExtractor={(album) => album.identity_key}
         showsVerticalScrollIndicator={false}
         onEndReached={() => void page.loadMore()}
-        onEndReachedThreshold={0.6}
+        onEndReachedThreshold={2}
         renderItem={({ item }) => (
           <View style={styles.gridCell}>
             <AlbumGridItem

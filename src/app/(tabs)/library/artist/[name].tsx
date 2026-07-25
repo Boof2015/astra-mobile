@@ -221,6 +221,16 @@ export default function ArtistScreen() {
         renderItem={renderItem}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        // This screen composes four paged sources into one list and had no paging
+        // trigger at all, so anything past the first page was unreachable. Each
+        // loadMore no-ops once its own cursor runs out.
+        onEndReached={() => {
+          void allPage.loadMore();
+          void songsPage.loadMore();
+          void appearancesPage.loadMore();
+          void albumsPage.loadMore();
+        }}
+        onEndReachedThreshold={2}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,

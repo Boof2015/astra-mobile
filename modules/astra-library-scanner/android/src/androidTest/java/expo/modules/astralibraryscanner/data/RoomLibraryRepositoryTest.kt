@@ -381,6 +381,95 @@ class RoomLibraryRepositoryTest {
     assertTrue(first.map { it.path }.intersect(second.map { it.path }.toSet()).isEmpty())
   }
 
+  /**
+   * Walking backwards has to reproduce the forward ordering exactly — an off-by-one in
+   * the reversed tie-break tuple would either duplicate a row or silently skip one when
+   * the list refills upwards after an A-Z jump.
+   */
+  @Test
+  fun backwardTitlePagesMirrorForwardPages() = runBlocking {
+    publish("g1", seedAlphabet())
+    val dao = catalog.catalogDao()
+
+    val forward = mutableListOf<ActiveTrackView>()
+    var afterKey: String? = null
+    var afterPath = ""
+    while (true) {
+      val page = dao.getTitlePage(afterKey, afterPath, 40)
+      if (page.isEmpty()) break
+      forward += page
+      afterKey = page.last().titleSortKey
+      afterPath = page.last().path
+    }
+    assertEquals(ALPHABET_SEED_SIZE, forward.size)
+
+    val backward = mutableListOf<ActiveTrackView>()
+    var beforeKey = forward.last().titleSortKey
+    var beforePath = forward.last().path
+    while (true) {
+      val page = dao.getTitlePageBefore(beforeKey, beforePath, 40)
+      if (page.isEmpty()) break
+      backward += page
+      beforeKey = page.last().titleSortKey
+      beforePath = page.last().path
+    }
+    // Backward pages are exclusive of the anchor row and come back descending.
+    assertEquals(
+      forward.dropLast(1).map { it.path }.reversed(),
+      backward.map { it.path },
+    )
+    // Nothing above the very first row.
+    assertTrue(dao.getTitlePageBefore(forward.first().titleSortKey, forward.first().path, 40).isEmpty())
+  }
+
+  /**
+   * The exact shape a rail jump uses: a section anchor carries only the leading sort key
+   * with an empty path tie-break, so the forward page starts at the letter and the
+   * backward page must be the slice immediately above it — no overlap, no gap.
+   */
+  @Test
+  fun sectionAnchorSplitsCatalogWithoutOverlapOrGap() = runBlocking {
+    publish("g1", seedAlphabet())
+    val dao = catalog.catalogDao()
+
+    val all = mutableListOf<ActiveTrackView>()
+    var afterKey: String? = null
+    var afterPath = ""
+    while (true) {
+      val page = dao.getTitlePage(afterKey, afterPath, 100)
+      if (page.isEmpty()) break
+      all += page
+      afterKey = page.last().titleSortKey
+      afterPath = page.last().path
+    }
+
+    val anchor = dao.getTitleSectionAnchors().first { it.sectionLabel == "F" }
+    val at = dao.getTitlePage(anchor.sortKey, "", 40)
+    val above = dao.getTitlePageBefore(anchor.sortKey, "", 40)
+
+    assertEquals("F", SortKeys.sectionLabel(at.first().title))
+    assertTrue(above.all { SortKeys.sectionLabel(it.title) != "F" })
+
+    val anchorIndex = all.indexOfFirst { it.path == at.first().path }
+    assertEquals(40, above.size)
+    assertEquals(
+      all.subList(anchorIndex - above.size, anchorIndex).map { it.path },
+      above.reversed().map { it.path },
+    )
+  }
+
+  /** 10 tracks under each of A-Z, so every section has rows above and below it. */
+  private fun seedAlphabet(): List<TrackEntity> =
+    (0 until ALPHABET_SEED_SIZE).map { index ->
+      val letter = 'A' + (index / 10)
+      track(
+        generation = "g1",
+        index = index,
+        title = "$letter${"%03d".format(index)} Song",
+        path = "content://track/$index.flac",
+      )
+    }
+
   private suspend fun publish(
     generation: String,
     tracks: List<TrackEntity>,
@@ -442,4 +531,9 @@ class RoomLibraryRepositoryTest {
     trackSort = index,
     sectionLabel = SortKeys.sectionLabel(title),
   )
+
+  private companion object {
+    /** 26 letters x 10 tracks. */
+    const val ALPHABET_SEED_SIZE = 260
+  }
 }

@@ -26,8 +26,7 @@ const TRACK_SORT_KEY = 'library_track_sort';
 const ALBUM_SORT_KEY = 'library_album_sort';
 const ARTIST_SORT_KEY = 'library_artist_sort';
 const INCLUDE_COLLAB_ARTISTS_KEY = 'library_include_collab_artists';
-const PAGE_SIZE = 100;
-const MAX_WINDOW_ITEMS = PAGE_SIZE * 5;
+const PAGE_SIZE = 200;
 
 const VIEW_MODES: readonly ViewMode[] = ['tracks', 'albums', 'artists', 'playlists', 'folders'];
 
@@ -80,20 +79,32 @@ interface LibraryStore {
   artistSort: ArtistSort;
   includeCollabArtists: boolean;
   isScanning: boolean;
-  isPageLoading: boolean;
   scanProgress: ScanProgressState;
   scanError: string | null;
   trackNextCursor: string | null;
   albumNextCursor: string | null;
   artistNextCursor: string | null;
+  /** Non-null only after a rail jump left rows above the loaded window. */
+  trackPrevCursor: string | null;
+  albumPrevCursor: string | null;
+  artistPrevCursor: string | null;
   sectionAnchors: LibrarySectionAnchor[];
   sectionJumpRevision: number;
+  /**
+   * Where the jumped-to letter sits in the freshly built window — fed to the list's
+   * `initialScrollIndex` on the remount that `sectionJumpRevision` triggers, so the
+   * letter lands at the top with a page of rows already above it to scroll back into.
+   */
+  jumpAnchorIndex: number;
 
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   loadNextTracks: () => Promise<void>;
   loadNextAlbums: () => Promise<void>;
   loadNextArtists: () => Promise<void>;
+  loadPreviousTracks: () => Promise<void>;
+  loadPreviousAlbums: () => Promise<void>;
+  loadPreviousArtists: () => Promise<void>;
   jumpToSection: (cursor: string) => Promise<boolean>;
   recordTrackPlayed: (path: string) => Promise<void>;
   recomputeArtists: () => void;
@@ -112,14 +123,44 @@ interface LibraryStore {
 let initPromise: Promise<void> | null = null;
 let nativeSubscriptionsInstalled = false;
 
+// These grow without a cap on purpose. A sliding window that dropped items off the
+// head shrank the content height mid-scroll, which read as the list flinging itself
+// to the bottom (worst on the 3-column grids, where dropping a page is not a whole
+// number of rows), and left rows above unreachable. Worst case is the whole catalog
+// in memory — what the pre-Room build did unconditionally — and only for a list you
+// actually scrolled end to end.
 function appendWindow<T>(
   current: T[],
   incoming: T[],
   key: (item: T) => string
 ): T[] {
   const known = new Set(current.map(key));
-  const merged = [...current, ...incoming.filter((item) => !known.has(key(item)))];
-  return merged.length > MAX_WINDOW_ITEMS ? merged.slice(merged.length - MAX_WINDOW_ITEMS) : merged;
+  return [...current, ...incoming.filter((item) => !known.has(key(item)))];
+}
+
+function prependWindow<T>(
+  current: T[],
+  incoming: T[],
+  key: (item: T) => string
+): T[] {
+  const known = new Set(current.map(key));
+  return [...incoming.filter((item) => !known.has(key(item))), ...current];
+}
+
+/**
+ * Dropping back to page 1 under a live scroll offset leaves the list looking at an
+ * offset past the new content end, which lands the user at the bottom of a list they
+ * were reading the middle of. Bumping the revision remounts it (the revision is part
+ * of the list's key) so it comes back at the top instead.
+ */
+function remountIfShorter(
+  current: { sectionJumpRevision: number },
+  previousLength: number,
+  nextLength: number
+): { sectionJumpRevision: number } | Record<string, never> {
+  return previousLength > nextLength
+    ? { sectionJumpRevision: current.sectionJumpRevision + 1 }
+    : {};
 }
 
 export const useLibraryStore = create<LibraryStore>((set, get) => {
@@ -129,17 +170,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     artists: 0,
   };
   let anchorGeneration = 0;
-  let loadingGeneration = 0;
 
-  const beginLoading = () => {
-    const generation = ++loadingGeneration;
-    set({ isPageLoading: true });
-    return generation;
-  };
-
-  const finishLoading = (generation: number) => {
-    if (generation === loadingGeneration) set({ isPageLoading: false });
-  };
+  // Re-entrancy guards, per list and per direction, so a backward refill, a forward
+  // page and a different view's load never block one another — the single shared flag
+  // this replaced serialised all three lists and made outrunning the loader likelier.
+  // A jump needs no guard: it bumps the list's generation, which voids anything already
+  // in flight.
+  type ListKey = 'tracks' | 'albums' | 'artists';
+  const forwardBusy: Record<ListKey, boolean> = { tracks: false, albums: false, artists: false };
+  const backwardBusy: Record<ListKey, boolean> = { tracks: false, albums: false, artists: false };
 
   const onProgress = (progress: ScanProgress) => {
     set({ scanProgress: progress });
@@ -177,16 +216,52 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       PAGE_SIZE
     );
 
+  // Backward readers only exist for the sorts the A-Z rail is offered for, which are
+  // the only sorts a jump can leave rows above the window in.
+  const readTrackPageBefore = (
+    cursor: string,
+    sort: 'artist' | 'title',
+  ) => AstraLibraryData.getTrackPageBefore<DbTrack>(sort, cursor, PAGE_SIZE);
+
+  const readAlbumPageBefore = (
+    cursor: string,
+    sort: 'artist' | 'name',
+    includeSingles = useSettingsStore.getState().includeSingles,
+  ) => AstraLibraryData.getAlbumPageBefore<Album>(sort, includeSingles, cursor, PAGE_SIZE);
+
+  const readArtistPageBefore = (
+    cursor: string,
+    groupingMode = useSettingsStore.getState().artistGroupingMode,
+    includeCollaborations = get().includeCollabArtists,
+  ) =>
+    AstraLibraryData.getArtistPageBefore<Artist>(
+      'name',
+      groupingMode,
+      includeCollaborations,
+      cursor,
+      PAGE_SIZE
+    );
+
+  const backwardTrackSort = (sort: TrackSort): 'artist' | 'title' | null =>
+    sort === 'artist' || sort === 'title' ? sort : null;
+
+  const backwardAlbumSort = (sort: AlbumSort): 'artist' | 'name' | null =>
+    sort === 'artist' || sort === 'name' ? sort : null;
+
   const resetTracks = async () => {
     const sort = get().trackSort;
     const generation = ++pageGenerations.tracks;
     const page = await readTrackPage(null, sort);
     if (generation !== pageGenerations.tracks || get().trackSort !== sort) return false;
-    set({
-      tracks: page.items ?? [],
+    const items = page.items ?? [];
+    set((current) => ({
+      tracks: items,
       trackNextCursor: page.nextCursor ?? null,
+      trackPrevCursor: null,
       totalTrackCount: page.totalCount ?? 0,
-    });
+      jumpAnchorIndex: 0,
+      ...remountIfShorter(current, current.tracks.length, items.length),
+    }));
     return true;
   };
 
@@ -200,7 +275,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       get().albumSort !== sort ||
       useSettingsStore.getState().includeSingles !== includeSingles
     ) return false;
-    set({ albums: page.items ?? [], albumNextCursor: page.nextCursor ?? null });
+    const items = page.items ?? [];
+    set((current) => ({
+      albums: items,
+      albumNextCursor: page.nextCursor ?? null,
+      albumPrevCursor: null,
+      jumpAnchorIndex: 0,
+      ...remountIfShorter(current, current.albums.length, items.length),
+    }));
     return true;
   };
 
@@ -216,7 +298,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       useSettingsStore.getState().artistGroupingMode !== groupingMode ||
       get().includeCollabArtists !== includeCollaborations
     ) return false;
-    set({ artists: page.items ?? [], artistNextCursor: page.nextCursor ?? null });
+    const items = page.items ?? [];
+    set((current) => ({
+      artists: items,
+      artistNextCursor: page.nextCursor ?? null,
+      artistPrevCursor: null,
+      jumpAnchorIndex: 0,
+      ...remountIfShorter(current, current.artists.length, items.length),
+    }));
     return true;
   };
 
@@ -299,14 +388,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     artistSort: 'name',
     includeCollabArtists: false,
     isScanning: false,
-    isPageLoading: false,
     scanProgress: { ...IDLE_PROGRESS },
     scanError: null,
     trackNextCursor: null,
     albumNextCursor: null,
     artistNextCursor: null,
+    trackPrevCursor: null,
+    albumPrevCursor: null,
+    artistPrevCursor: null,
     sectionAnchors: [],
     sectionJumpRevision: 0,
+    jumpAnchorIndex: 0,
 
     initialize: () => {
       if (!initPromise) {
@@ -455,20 +547,30 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         useSettingsStore.getState().artistGroupingMode === groupingMode &&
         current.includeCollabArtists === includeCollaborations &&
         activeGeneration === pageGenerations.artists;
+      const collapsesWindow =
+        (!!trackPage && canApplyTrackPage && current.tracks.length > (trackPage.items?.length ?? 0)) ||
+        (!!albumPage && canApplyAlbumPage && current.albums.length > (albumPage.items?.length ?? 0)) ||
+        (!!artistPage && canApplyArtistPage && current.artists.length > (artistPage.items?.length ?? 0));
       set({
         ...(trackPage && canApplyTrackPage ? {
           tracks: trackPage.items ?? [],
           trackNextCursor: trackPage.nextCursor ?? null,
+          trackPrevCursor: null,
           totalTrackCount: trackPage.totalCount ?? current.totalTrackCount,
         } : {}),
         ...(albumPage && canApplyAlbumPage ? {
           albums: albumPage.items ?? [],
           albumNextCursor: albumPage.nextCursor ?? null,
+          albumPrevCursor: null,
         } : {}),
         ...(artistPage && canApplyArtistPage ? {
           artists: artistPage.items ?? [],
           artistNextCursor: artistPage.nextCursor ?? null,
+          artistPrevCursor: null,
         } : {}),
+        ...(collapsesWindow
+          ? { jumpAnchorIndex: 0, sectionJumpRevision: current.sectionJumpRevision + 1 }
+          : {}),
         homeAlbums: homeAlbumPage.items ?? [],
         homeArtists: homeArtistPage.items ?? [],
         folders,
@@ -480,10 +582,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     loadNextTracks: async () => {
       const state = get();
       const cursor = state.trackNextCursor;
-      if (!cursor || state.isPageLoading) return;
+      if (!cursor || forwardBusy.tracks) return;
       const sort = state.trackSort;
       const pageGeneration = pageGenerations.tracks;
-      const loading = beginLoading();
+      forwardBusy.tracks = true;
       try {
         const page = await readTrackPage(cursor, sort);
         if (
@@ -500,18 +602,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           trackNextCursor: page.nextCursor,
         }));
       } finally {
-        finishLoading(loading);
+        forwardBusy.tracks = false;
       }
     },
 
     loadNextAlbums: async () => {
       const state = get();
       const cursor = state.albumNextCursor;
-      if (!cursor || state.isPageLoading) return;
+      if (!cursor || forwardBusy.albums) return;
       const sort = state.albumSort;
       const includeSingles = useSettingsStore.getState().includeSingles;
       const pageGeneration = pageGenerations.albums;
-      const loading = beginLoading();
+      forwardBusy.albums = true;
       try {
         const page = await readAlbumPage(cursor, sort, includeSingles);
         if (
@@ -529,19 +631,19 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           albumNextCursor: page.nextCursor,
         }));
       } finally {
-        finishLoading(loading);
+        forwardBusy.albums = false;
       }
     },
 
     loadNextArtists: async () => {
       const state = get();
       const cursor = state.artistNextCursor;
-      if (!cursor || state.isPageLoading) return;
+      if (!cursor || forwardBusy.artists) return;
       const sort = state.artistSort;
       const groupingMode = useSettingsStore.getState().artistGroupingMode;
       const includeCollaborations = state.includeCollabArtists;
       const pageGeneration = pageGenerations.artists;
-      const loading = beginLoading();
+      forwardBusy.artists = true;
       try {
         const page = await readArtistPage(cursor, sort, groupingMode, includeCollaborations);
         if (
@@ -560,97 +662,202 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           artistNextCursor: page.nextCursor,
         }));
       } finally {
-        finishLoading(loading);
+        forwardBusy.artists = false;
       }
     },
 
+    loadPreviousTracks: async () => {
+      const state = get();
+      const cursor = state.trackPrevCursor;
+      const sort = backwardTrackSort(state.trackSort);
+      if (!cursor || !sort || backwardBusy.tracks) return;
+      const pageGeneration = pageGenerations.tracks;
+      backwardBusy.tracks = true;
+      try {
+        const page = await readTrackPageBefore(cursor, sort);
+        if (
+          pageGeneration !== pageGenerations.tracks ||
+          get().trackSort !== sort ||
+          get().trackPrevCursor !== cursor
+        ) return;
+        if (page.error === 'STALE_REVISION') {
+          await resetTracks();
+          return;
+        }
+        set((current) => ({
+          tracks: prependWindow(current.tracks, page.items, (track) => track.path),
+          trackPrevCursor: page.previousCursor,
+        }));
+      } finally {
+        backwardBusy.tracks = false;
+      }
+    },
+
+    loadPreviousAlbums: async () => {
+      const state = get();
+      const cursor = state.albumPrevCursor;
+      const sort = backwardAlbumSort(state.albumSort);
+      if (!cursor || !sort || backwardBusy.albums) return;
+      const includeSingles = useSettingsStore.getState().includeSingles;
+      const pageGeneration = pageGenerations.albums;
+      backwardBusy.albums = true;
+      try {
+        const page = await readAlbumPageBefore(cursor, sort, includeSingles);
+        if (
+          pageGeneration !== pageGenerations.albums ||
+          get().albumSort !== sort ||
+          useSettingsStore.getState().includeSingles !== includeSingles ||
+          get().albumPrevCursor !== cursor
+        ) return;
+        if (page.error === 'STALE_REVISION') {
+          await resetAlbums();
+          return;
+        }
+        set((current) => ({
+          albums: prependWindow(current.albums, page.items, (album) => album.identity_key),
+          albumPrevCursor: page.previousCursor,
+        }));
+      } finally {
+        backwardBusy.albums = false;
+      }
+    },
+
+    loadPreviousArtists: async () => {
+      const state = get();
+      const cursor = state.artistPrevCursor;
+      if (!cursor || state.artistSort !== 'name' || backwardBusy.artists) return;
+      const groupingMode = useSettingsStore.getState().artistGroupingMode;
+      const includeCollaborations = state.includeCollabArtists;
+      const pageGeneration = pageGenerations.artists;
+      backwardBusy.artists = true;
+      try {
+        const page = await readArtistPageBefore(cursor, groupingMode, includeCollaborations);
+        if (
+          pageGeneration !== pageGenerations.artists ||
+          get().artistSort !== 'name' ||
+          useSettingsStore.getState().artistGroupingMode !== groupingMode ||
+          get().includeCollabArtists !== includeCollaborations ||
+          get().artistPrevCursor !== cursor
+        ) return;
+        if (page.error === 'STALE_REVISION') {
+          await resetArtists();
+          return;
+        }
+        set((current) => ({
+          artists: prependWindow(current.artists, page.items, (artist) => artist.artist),
+          artistPrevCursor: page.previousCursor,
+        }));
+      } finally {
+        backwardBusy.artists = false;
+      }
+    },
+
+    // A jump rebuilds the window around the letter: the letter's own page, plus the
+    // page immediately above it. Without that page above, the list would remount with
+    // the letter as row 0 and there would be nothing to scroll back up into — and
+    // `onStartReached` would fire the moment the list mounted at offset 0, cascading
+    // backwards to the head of the catalog.
     jumpToSection: async (cursor) => {
       const state = get();
       const viewMode = state.viewMode;
       if (viewMode !== 'tracks' && viewMode !== 'albums' && viewMode !== 'artists') return false;
       const generation = ++pageGenerations[viewMode];
-      const loading = beginLoading();
-      try {
-        if (viewMode === 'tracks') {
-          const sort = state.trackSort;
-          const page = await readTrackPage(cursor, sort);
-          if (
-            generation !== pageGenerations.tracks ||
-            get().viewMode !== viewMode ||
-            get().trackSort !== sort
-          ) return false;
-          if (page.error === 'STALE_REVISION') {
-            await resetTracks();
-            return false;
-          }
-          if (page.items.length === 0) {
-            void resetSectionAnchors();
-            return false;
-          }
-          set((current) => ({
-            tracks: page.items,
-            trackNextCursor: page.nextCursor,
-            totalTrackCount: page.totalCount,
-            sectionJumpRevision: current.sectionJumpRevision + 1,
-          }));
-        } else if (viewMode === 'albums') {
-          const sort = state.albumSort;
-          const includeSingles = useSettingsStore.getState().includeSingles;
-          const page = await readAlbumPage(cursor, sort, includeSingles);
-          if (
-            generation !== pageGenerations.albums ||
-            get().viewMode !== viewMode ||
-            get().albumSort !== sort ||
-            useSettingsStore.getState().includeSingles !== includeSingles
-          ) return false;
-          if (page.error === 'STALE_REVISION') {
-            await resetAlbums();
-            return false;
-          }
-          if (page.items.length === 0) {
-            void resetSectionAnchors();
-            return false;
-          }
-          set((current) => ({
-            albums: page.items,
-            albumNextCursor: page.nextCursor,
-            sectionJumpRevision: current.sectionJumpRevision + 1,
-          }));
-        } else {
-          const sort = state.artistSort;
-          const groupingMode = useSettingsStore.getState().artistGroupingMode;
-          const includeCollaborations = state.includeCollabArtists;
-          const page = await readArtistPage(
-            cursor,
-            sort,
-            groupingMode,
-            includeCollaborations,
-          );
-          if (
-            generation !== pageGenerations.artists ||
-            get().viewMode !== viewMode ||
-            get().artistSort !== sort ||
-            useSettingsStore.getState().artistGroupingMode !== groupingMode ||
-            get().includeCollabArtists !== includeCollaborations
-          ) return false;
-          if (page.error === 'STALE_REVISION') {
-            await resetArtists();
-            return false;
-          }
-          if (page.items.length === 0) {
-            void resetSectionAnchors();
-            return false;
-          }
-          set((current) => ({
-            artists: page.items,
-            artistNextCursor: page.nextCursor,
-            sectionJumpRevision: current.sectionJumpRevision + 1,
-          }));
+      if (viewMode === 'tracks') {
+        const sort = state.trackSort;
+        const backwardSort = backwardTrackSort(sort);
+        const [page, before] = await Promise.all([
+          readTrackPage(cursor, sort),
+          backwardSort ? readTrackPageBefore(cursor, backwardSort) : Promise.resolve(null),
+        ]);
+        if (
+          generation !== pageGenerations.tracks ||
+          get().viewMode !== viewMode ||
+          get().trackSort !== sort
+        ) return false;
+        if (page.error === 'STALE_REVISION') {
+          await resetTracks();
+          return false;
         }
-        return true;
-      } finally {
-        finishLoading(loading);
+        if (page.items.length === 0) {
+          void resetSectionAnchors();
+          return false;
+        }
+        const above = before && !before.error ? before : null;
+        set((current) => ({
+          tracks: [...(above?.items ?? []), ...page.items],
+          trackNextCursor: page.nextCursor,
+          trackPrevCursor: above?.previousCursor ?? null,
+          totalTrackCount: page.totalCount,
+          jumpAnchorIndex: above?.items.length ?? 0,
+          sectionJumpRevision: current.sectionJumpRevision + 1,
+        }));
+      } else if (viewMode === 'albums') {
+        const sort = state.albumSort;
+        const includeSingles = useSettingsStore.getState().includeSingles;
+        const backwardSort = backwardAlbumSort(sort);
+        const [page, before] = await Promise.all([
+          readAlbumPage(cursor, sort, includeSingles),
+          backwardSort
+            ? readAlbumPageBefore(cursor, backwardSort, includeSingles)
+            : Promise.resolve(null),
+        ]);
+        if (
+          generation !== pageGenerations.albums ||
+          get().viewMode !== viewMode ||
+          get().albumSort !== sort ||
+          useSettingsStore.getState().includeSingles !== includeSingles
+        ) return false;
+        if (page.error === 'STALE_REVISION') {
+          await resetAlbums();
+          return false;
+        }
+        if (page.items.length === 0) {
+          void resetSectionAnchors();
+          return false;
+        }
+        const above = before && !before.error ? before : null;
+        set((current) => ({
+          albums: [...(above?.items ?? []), ...page.items],
+          albumNextCursor: page.nextCursor,
+          albumPrevCursor: above?.previousCursor ?? null,
+          jumpAnchorIndex: above?.items.length ?? 0,
+          sectionJumpRevision: current.sectionJumpRevision + 1,
+        }));
+      } else {
+        const sort = state.artistSort;
+        const groupingMode = useSettingsStore.getState().artistGroupingMode;
+        const includeCollaborations = state.includeCollabArtists;
+        const [page, before] = await Promise.all([
+          readArtistPage(cursor, sort, groupingMode, includeCollaborations),
+          sort === 'name'
+            ? readArtistPageBefore(cursor, groupingMode, includeCollaborations)
+            : Promise.resolve(null),
+        ]);
+        if (
+          generation !== pageGenerations.artists ||
+          get().viewMode !== viewMode ||
+          get().artistSort !== sort ||
+          useSettingsStore.getState().artistGroupingMode !== groupingMode ||
+          get().includeCollabArtists !== includeCollaborations
+        ) return false;
+        if (page.error === 'STALE_REVISION') {
+          await resetArtists();
+          return false;
+        }
+        if (page.items.length === 0) {
+          void resetSectionAnchors();
+          return false;
+        }
+        const above = before && !before.error ? before : null;
+        set((current) => ({
+          artists: [...(above?.items ?? []), ...page.items],
+          artistNextCursor: page.nextCursor,
+          artistPrevCursor: above?.previousCursor ?? null,
+          jumpAnchorIndex: above?.items.length ?? 0,
+          sectionJumpRevision: current.sectionJumpRevision + 1,
+        }));
       }
+      return true;
     },
 
     recordTrackPlayed: async (path) => {
@@ -678,7 +885,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     setTrackSort: (trackSort) => {
       anchorGeneration += 1;
-      set({ trackSort, tracks: [], trackNextCursor: null, sectionAnchors: [] });
+      set({
+        trackSort,
+        tracks: [],
+        trackNextCursor: null,
+        trackPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
       persistSetting(TRACK_SORT_KEY, trackSort);
       void resetTracks();
       void resetSectionAnchors();
@@ -686,7 +900,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     setAlbumSort: (albumSort) => {
       anchorGeneration += 1;
-      set({ albumSort, albums: [], albumNextCursor: null, sectionAnchors: [] });
+      set({
+        albumSort,
+        albums: [],
+        albumNextCursor: null,
+        albumPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
       persistSetting(ALBUM_SORT_KEY, albumSort);
       void resetAlbums();
       void resetSectionAnchors();
@@ -694,7 +915,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     setArtistSort: (artistSort) => {
       anchorGeneration += 1;
-      set({ artistSort, artists: [], artistNextCursor: null, sectionAnchors: [] });
+      set({
+        artistSort,
+        artists: [],
+        artistNextCursor: null,
+        artistPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
       persistSetting(ARTIST_SORT_KEY, artistSort);
       void resetArtists();
       void resetSectionAnchors();
@@ -706,6 +934,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         includeCollabArtists,
         artists: [],
         artistNextCursor: null,
+        artistPrevCursor: null,
+        jumpAnchorIndex: 0,
         sectionAnchors: [],
       });
       persistSetting(INCLUDE_COLLAB_ARTISTS_KEY, includeCollabArtists ? 'true' : 'false');

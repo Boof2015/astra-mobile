@@ -112,7 +112,7 @@ export default function AlbumScreen() {
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => void loadMore()}
-        onEndReachedThreshold={0.6}
+        onEndReachedThreshold={2}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,

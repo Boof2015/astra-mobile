@@ -1,9 +1,12 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   View,
   Pressable,
@@ -68,6 +71,14 @@ import type {
 const TRACK_SORT_OPTIONS: TrackSort[] = ['artist', 'title', 'recently_added', 'duration'];
 const ALBUM_SORT_OPTIONS: AlbumSort[] = ['artist', 'name', 'recently_added', 'year'];
 const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
+/** How long the finger has to settle on a rail letter before the list jumps. */
+const JUMP_DEBOUNCE_MS = 100;
+/**
+ * Screens of runway to keep ahead of the scroll. The old 0.6 was less than a fling
+ * covers before a page comes back, so the list hit a wall that looked like the end.
+ */
+const END_REACHED_THRESHOLD = 2;
+const START_REACHED_THRESHOLD = 0.5;
 
 export default function LibraryScreen() {
   const colors = useColors();
@@ -87,8 +98,15 @@ export default function LibraryScreen() {
   const loadNextTracks = useLibraryStore((s) => s.loadNextTracks);
   const loadNextAlbums = useLibraryStore((s) => s.loadNextAlbums);
   const loadNextArtists = useLibraryStore((s) => s.loadNextArtists);
+  const loadPreviousTracks = useLibraryStore((s) => s.loadPreviousTracks);
+  const loadPreviousAlbums = useLibraryStore((s) => s.loadPreviousAlbums);
+  const loadPreviousArtists = useLibraryStore((s) => s.loadPreviousArtists);
+  const trackNextCursor = useLibraryStore((s) => s.trackNextCursor);
+  const albumNextCursor = useLibraryStore((s) => s.albumNextCursor);
+  const artistNextCursor = useLibraryStore((s) => s.artistNextCursor);
   const sectionAnchors = useLibraryStore((s) => s.sectionAnchors);
   const sectionJumpRevision = useLibraryStore((s) => s.sectionJumpRevision);
+  const jumpAnchorIndex = useLibraryStore((s) => s.jumpAnchorIndex);
   const jumpToSection = useLibraryStore((s) => s.jumpToSection);
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scanError = useLibraryStore((s) => s.scanError);
@@ -127,19 +145,64 @@ export default function LibraryScreen() {
   };
   const openSearch = () => openQuickSearch();
 
+  // Sits at the end of the loaded window whenever more pages exist, so a fling that
+  // outruns the loader stops on a spinner rather than on what looks like the end of
+  // the list. Gated on the cursor rather than on an in-flight flag so it does not
+  // blink between pages.
+  const listFooter = useMemo(
+    () => (
+      <View style={styles.listFooter}>
+        <ActivityIndicator size="small" color={colors.textTertiary} />
+      </View>
+    ),
+    [colors.textTertiary]
+  );
+
   const railVisible = sectionAnchors.length > 1;
   const railLetters = useMemo(
     () => new Set(sectionAnchors.map((entry) => entry.label)),
     [sectionAnchors]
   );
 
-  const jumpToLetter = (letter: string) => {
-    const anchor = sectionAnchors.find((entry) => entry.label === letter);
+  // A jump refills the window and remounts the list, so firing one per letter crossed
+  // made a fast scrub ~27 rebuilds. The bubble and haptic still track every letter
+  // (they live in the rail); only the jump itself waits for the finger to settle, and
+  // lifting off flushes it immediately.
+  const pendingJump = useRef<{ letter: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  const runJump = useCallback((letter: string) => {
+    const anchor = useLibraryStore.getState().sectionAnchors.find((entry) => entry.label === letter);
     if (!anchor) return;
     void jumpToSection(anchor.cursor).then((applied) => {
-      if (applied) scrollTop.setScrollAtTop(true);
+      // A jump usually lands with a page of rows above it, so the list is not at true
+      // top and pull-to-search must stay disarmed.
+      if (applied) scrollTop.setScrollAtTop(useLibraryStore.getState().jumpAnchorIndex === 0);
     });
-  };
+  }, [jumpToSection, scrollTop]);
+
+  const jumpToLetter = useCallback((letter: string) => {
+    if (pendingJump.current) clearTimeout(pendingJump.current.timer);
+    pendingJump.current = {
+      letter,
+      timer: setTimeout(() => {
+        pendingJump.current = null;
+        runJump(letter);
+      }, JUMP_DEBOUNCE_MS),
+    };
+  }, [runJump]);
+
+  const flushJump = useCallback(() => {
+    const pending = pendingJump.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingJump.current = null;
+    runJump(pending.letter);
+  }, [runJump]);
+
+  useEffect(() => () => {
+    if (pendingJump.current) clearTimeout(pendingJump.current.timer);
+    pendingJump.current = null;
+  }, []);
 
   // Multi-select (tracks view): long-press arms it, batch actions live in the
   // bottom bar, selection order follows the current display order.
@@ -303,8 +366,12 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  initialScrollIndex={jumpAnchorIndex}
                   onEndReached={() => void loadNextAlbums()}
-                  onEndReachedThreshold={0.6}
+                  onEndReachedThreshold={END_REACHED_THRESHOLD}
+                  onStartReached={() => void loadPreviousAlbums()}
+                  onStartReachedThreshold={START_REACHED_THRESHOLD}
+                  ListFooterComponent={albumNextCursor ? listFooter : null}
                   renderItem={({ item }) => (
                     <View style={styles.gridCell}>
                       <AlbumGridItem
@@ -332,8 +399,12 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  initialScrollIndex={jumpAnchorIndex}
                   onEndReached={() => void loadNextArtists()}
-                  onEndReachedThreshold={0.6}
+                  onEndReachedThreshold={END_REACHED_THRESHOLD}
+                  onStartReached={() => void loadPreviousArtists()}
+                  onStartReachedThreshold={START_REACHED_THRESHOLD}
+                  ListFooterComponent={artistNextCursor ? listFooter : null}
                   renderItem={({ item }) => (
                     <View style={styles.gridCell}>
                       <ArtistGridItem
@@ -360,8 +431,12 @@ export default function LibraryScreen() {
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  initialScrollIndex={jumpAnchorIndex}
                   onEndReached={() => void loadNextTracks()}
-                  onEndReachedThreshold={0.6}
+                  onEndReachedThreshold={END_REACHED_THRESHOLD}
+                  onStartReached={() => void loadPreviousTracks()}
+                  onStartReachedThreshold={START_REACHED_THRESHOLD}
+                  ListFooterComponent={trackNextCursor ? listFooter : null}
                   extraData={selectMode ? selectedIds : undefined}
                   renderItem={({ item, index }) => (
                     <TrackRow
@@ -393,7 +468,11 @@ export default function LibraryScreen() {
               ) : null}
 
               {railVisible ? (
-                <AlphabetRail activeLetters={railLetters} onJumpToLetter={jumpToLetter} />
+                <AlphabetRail
+                  activeLetters={railLetters}
+                  onJumpToLetter={jumpToLetter}
+                  onScrubEnd={flushJump}
+                />
               ) : null}
             </View>
           </>
@@ -480,5 +559,9 @@ const styles = StyleSheet.create({
   },
   listArea: {
     flex: 1,
+  },
+  listFooter: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
   },
 });

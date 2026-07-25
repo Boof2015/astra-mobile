@@ -4,8 +4,7 @@ import { normalizeKey } from '@/shared/library/albumGrouping';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 import type { Album, Artist, DbTrack } from '@/types/library';
 
-const DETAIL_PAGE_SIZE = 100;
-const MAX_DETAIL_ITEMS = 500;
+const DETAIL_PAGE_SIZE = 200;
 
 export type NativeAlbumSummary = Album & { total_duration?: number };
 
@@ -17,12 +16,12 @@ interface PagedDetail<T, S> {
   loadMore: () => Promise<void>;
 }
 
+// Grows without a cap: trimming the head shrank content height mid-scroll, which
+// read as the list snapping to the bottom, and these lists have no way to page back
+// upwards. See the same note on appendWindow in libraryStore.
 function appendTracks(current: DbTrack[], incoming: DbTrack[]): DbTrack[] {
   const paths = new Set(current.map((track) => track.path));
-  const merged = [...current, ...incoming.filter((track) => !paths.has(track.path))];
-  return merged.length > MAX_DETAIL_ITEMS
-    ? merged.slice(merged.length - MAX_DETAIL_ITEMS)
-    : merged;
+  return [...current, ...incoming.filter((track) => !paths.has(track.path))];
 }
 
 export function useNativeAlbumDetail(albumKey: string): PagedDetail<DbTrack, NativeAlbumSummary> {
@@ -191,8 +190,7 @@ export function useNativeArtistAlbums(
       );
       setItems((current) => {
         const known = new Set(current.map((album) => album.identity_key));
-        const merged = [...current, ...page.items.filter((album) => !known.has(album.identity_key))];
-        return merged.slice(-MAX_DETAIL_ITEMS);
+        return [...current, ...page.items.filter((album) => !known.has(album.identity_key))];
       });
       setTotalCount(page.totalCount);
       setNextOffset(page.nextOffset);

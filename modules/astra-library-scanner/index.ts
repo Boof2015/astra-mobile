@@ -288,6 +288,16 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T>>;
+  /**
+   * The page immediately above `cursor` — how the lists refill upwards after an A-Z
+   * jump lands mid-catalog. Items come back ascending; `previousCursor` is null once
+   * there is nothing left above. Only the rail's sorts can be walked backwards.
+   */
+  getTrackPageBefore<T>(
+    sort: 'artist' | 'title',
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
   getTrack<T>(path: string): Promise<T | null>;
   getTrackLoudness(paths: string[]): Promise<NativeTrackLoudness[]>;
   setTrackLoudness(path: string, lufs: number | null, samplePeak: number | null): Promise<void>;
@@ -402,8 +412,23 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T>>;
+  /** Backward twin of `getAlbumPage`; see `getTrackPageBefore`. */
+  getAlbumPageBefore<T>(
+    sort: 'artist' | 'name',
+    includeSingles: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
   getArtistPage<T>(
     sort: 'name' | 'track_count',
+    groupingMode: 'astra' | 'fileTags',
+    includeCollaborations: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  /** Backward twin of `getArtistPage`; see `getTrackPageBefore`. */
+  getArtistPageBefore<T>(
+    sort: 'name',
     groupingMode: 'astra' | 'fileTags',
     includeCollaborations: boolean,
     cursor: string | null,

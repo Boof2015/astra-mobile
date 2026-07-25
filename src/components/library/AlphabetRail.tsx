@@ -20,6 +20,12 @@ interface AlphabetRailProps {
   /** Letters present in the current list — the rest render dimmed. */
   activeLetters: ReadonlySet<string>;
   onJumpToLetter: (letter: string) => void;
+  /**
+   * Fired when the finger lifts. The screen debounces `onJumpToLetter` so a fast
+   * scrub does not rebuild the list once per letter crossed; this is its cue to
+   * commit the last letter immediately instead of waiting out the debounce.
+   */
+  onScrubEnd?: () => void;
 }
 
 /**
@@ -30,7 +36,7 @@ interface AlphabetRailProps {
  * changes on a letter-cross). Blocks the pull-to-search gesture so a scrub at
  * scroll-top never arms the search indicator.
  */
-export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProps) {
+export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: AlphabetRailProps) {
   const styles = useStyles();
   const pullSearchRef = usePullSearchGestureRef();
   const [scrubLetter, setScrubLetter] = useState<string | null>(null);
@@ -49,7 +55,10 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
     playHaptic('frequentStep');
     onJumpToLetter(letter);
   };
-  const endScrub = () => setScrubLetter(null);
+  const endScrub = () => {
+    setScrubLetter(null);
+    onScrubEnd?.();
+  };
 
   const pan = useMemo(() => {
     const gesture = Gesture.Pan()
@@ -89,7 +98,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter }: AlphabetRailProp
       });
     return pullSearchRef ? gesture.blocksExternalGesture(pullSearchRef) : gesture;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest props via render closure
-  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, onJumpToLetter]);
+  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, onJumpToLetter, onScrubEnd]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: bubbleY.value - BUBBLE_SIZE / 2 }],

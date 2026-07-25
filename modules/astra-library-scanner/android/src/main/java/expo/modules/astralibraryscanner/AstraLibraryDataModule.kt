@@ -90,6 +90,18 @@ class AstraLibraryDataModule : Module() {
       }
     }
 
+    AsyncFunction("getTrackPageBefore") Coroutine {
+        sort: String,
+        cursor: String?,
+        limit: Int,
+      ->
+      try {
+        repository().getTrackPageBefore(sort, cursor, limit)
+      } catch (_: StaleRevisionException) {
+        mapOf("error" to "STALE_REVISION")
+      }
+    }
+
     AsyncFunction("getTrack") Coroutine { path: String ->
       repository().getTrack(path)
     }
@@ -367,6 +379,19 @@ class AstraLibraryDataModule : Module() {
       }
     }
 
+    AsyncFunction("getAlbumPageBefore") Coroutine {
+        sort: String,
+        includeSingles: Boolean,
+        cursor: String?,
+        limit: Int,
+      ->
+      try {
+        repository().getAlbumPageBefore(sort, includeSingles, cursor, limit)
+      } catch (_: StaleRevisionException) {
+        mapOf("error" to "STALE_REVISION")
+      }
+    }
+
     AsyncFunction("getArtistPage") Coroutine {
         sort: String,
         groupingMode: String,
@@ -376,6 +401,20 @@ class AstraLibraryDataModule : Module() {
       ->
       try {
         repository().getArtistPage(sort, groupingMode, includeCollaborations, cursor, limit)
+      } catch (_: StaleRevisionException) {
+        mapOf("error" to "STALE_REVISION")
+      }
+    }
+
+    AsyncFunction("getArtistPageBefore") Coroutine {
+        sort: String,
+        groupingMode: String,
+        includeCollaborations: Boolean,
+        cursor: String?,
+        limit: Int,
+      ->
+      try {
+        repository().getArtistPageBefore(sort, groupingMode, includeCollaborations, cursor, limit)
       } catch (_: StaleRevisionException) {
         mapOf("error" to "STALE_REVISION")
       }
