@@ -2,8 +2,7 @@ import { useEffect } from 'react';
 import {
   Pressable,
   StyleSheet,
-  View,
-  type LayoutChangeEvent
+  View
 } from 'react-native';
 import Animated, {
   interpolateColor,
@@ -34,40 +33,15 @@ interface SegmentedControlProps {
 }
 
 /**
- * Equal-width segmented control on the TabBar "playhead" pattern: one glass
- * track, a thumb that glides to the active segment, labels cross-fading to the
- * accent via interpolateColor on Animated.Text. Spring-free per theme/motion.
+ * Equal-width segmented control with a selection pill anchored inside the
+ * active segment. The structural tie to `focused` keeps the pill and content
+ * selection synchronized; labels still cross-fade via Animated.Text.
  */
 export function SegmentedControl({ segments, value, onChange }: SegmentedControlProps) {
   const styles = useStyles();
-  const count = segments.length;
-  const activeIndex = Math.max(
-    0,
-    segments.findIndex((segment) => segment.key === value),
-  );
-
-  const trackWidth = useSharedValue(0);
-  const position = useSharedValue(activeIndex);
-
-  useEffect(() => {
-    position.value = withTiming(activeIndex, motion.snap);
-  }, [activeIndex, position]);
-
-  const thumbStyle = useAnimatedStyle(() => {
-    const segment = count > 0 ? (trackWidth.value - THUMB_INSET * 2) / count : 0;
-    return {
-      width: segment,
-      transform: [{ translateX: position.value * segment }],
-    };
-  });
-
-  const onTrackLayout = (e: LayoutChangeEvent) => {
-    trackWidth.value = e.nativeEvent.layout.width;
-  };
 
   return (
-    <View style={styles.track} onLayout={onTrackLayout}>
-      <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
+    <View style={styles.track}>
       {segments.map((segment) => (
         <SegmentButton
           key={segment.key}
@@ -121,6 +95,7 @@ function SegmentButton({
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
+      {focused ? <View style={styles.thumb} pointerEvents="none" /> : null}
       <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
         {label}
       </Animated.Text>
@@ -139,9 +114,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   thumb: {
     position: 'absolute',
-    top: THUMB_INSET,
-    bottom: THUMB_INSET,
-    left: THUMB_INSET,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: colors.glassHighlight,
     borderColor: colors.accent,
     borderWidth: StyleSheet.hairlineWidth,

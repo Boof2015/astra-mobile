@@ -2,8 +2,7 @@ import { useEffect } from 'react';
 import {
   View,
   Pressable,
-  StyleSheet,
-  type LayoutChangeEvent
+  StyleSheet
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,32 +52,6 @@ export function TabBar({ items, onPress }: TabBarProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
-  const count = tabs.length;
-  const activeIndex = Math.max(
-    0,
-    tabs.findIndex((item) => item.focused),
-  );
-
-  // The "playhead": a single accent bar that glides along the top edge to the
-  // active tab, travelling in the same direction as the scene transition.
-  const barWidth = useSharedValue(0);
-  const position = useSharedValue(activeIndex);
-
-  useEffect(() => {
-    position.value = withTiming(activeIndex, motion.snap);
-  }, [activeIndex, position]);
-
-  const indicatorStyle = useAnimatedStyle(() => {
-    const segment = count > 0 ? barWidth.value / count : 0;
-    return {
-      width: segment,
-      transform: [{ translateX: position.value * segment }],
-    };
-  });
-
-  const onBarLayout = (e: LayoutChangeEvent) => {
-    barWidth.value = e.nativeEvent.layout.width;
-  };
 
   return (
     <View style={styles.wrap}>
@@ -88,11 +61,7 @@ export function TabBar({ items, onPress }: TabBarProps) {
           styles.bar,
           { paddingBottom: insets.bottom, height: layout.tabBarHeight + insets.bottom },
         ]}
-        onLayout={onBarLayout}
       >
-        <Animated.View style={[styles.indicator, indicatorStyle]} pointerEvents="none">
-          <View style={styles.indicatorBar} />
-        </Animated.View>
         {tabs.map((item) => {
           const meta = TAB_META[item.name];
           if (!meta) return null;
@@ -169,6 +138,11 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
+      {focused ? (
+        <View style={styles.indicator} pointerEvents="none">
+          <View style={styles.indicatorBar} />
+        </View>
+      ) : null}
       <Animated.View style={depressStyle}>
         <Ionicons name={meta.icon} size={22} color={colors.textTertiary} />
         <Animated.View style={[StyleSheet.absoluteFill, accentStyle]}>
@@ -194,6 +168,7 @@ const useStyles = createThemedStyles((colors) => ({
     position: 'absolute',
     top: 0,
     left: 0,
+    right: 0,
     alignItems: 'center',
   },
   indicatorBar: {
