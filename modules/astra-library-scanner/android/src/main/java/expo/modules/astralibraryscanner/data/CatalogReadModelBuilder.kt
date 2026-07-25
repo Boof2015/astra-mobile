@@ -57,6 +57,7 @@ data class NativeScanResult(
   val errors: Int,
   val total: Int,
   val revision: Long,
+  val cancelled: Boolean = false,
 ) {
   fun toMap(): Map<String, Any> = mapOf(
     "added" to added,
@@ -65,6 +66,7 @@ data class NativeScanResult(
     "errors" to errors,
     "total" to total,
     "catalogRevision" to revision.toString(),
+    "cancelled" to cancelled,
   )
 }
 

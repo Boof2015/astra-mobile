@@ -41,6 +41,7 @@ import expo.modules.kotlin.records.Record
 import expo.modules.astralibraryscanner.data.AstraLibraryRepository
 import expo.modules.astralibraryscanner.data.LocalAudioFile
 import expo.modules.astralibraryscanner.data.LocalAudioMetadata
+import expo.modules.astralibraryscanner.data.ScanCancelledException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -111,6 +112,11 @@ class AstraLibraryScannerModule : Module() {
   // decode can be cancelled too.
   private val activeAnalyses = ConcurrentHashMap<String, AtomicBoolean>()
 
+  // Scans are serialized by the repository, but register before acquiring that lock so
+  // cancelScan also stops a queued scan. A set keeps the native boundary robust if a
+  // caller ever bypasses the JS single-scan guard.
+  private val activeScans = ConcurrentHashMap.newKeySet<AtomicBoolean>()
+
   override fun definition() = ModuleDefinition {
     Name("AstraLibraryScanner")
 
@@ -134,47 +140,60 @@ class AstraLibraryScannerModule : Module() {
         mode: String,
         extensions: List<String>,
       ->
-      withContext(Dispatchers.IO) {
-        val repository = AstraLibraryRepository.get(requireContext())
-        repository.withUserRecovery { scanLocalFolder(
-          folderId = folderId.toLong(),
-          full = mode == "full",
-          discover = { treeUri ->
-            val listing = listAudioFiles(treeUri, extensions)
-            @Suppress("UNCHECKED_CAST")
-            val files = listing["files"] as? List<Map<String, Any?>> ?: emptyList()
-            @Suppress("UNCHECKED_CAST")
-            val covers = listing["covers"] as? Map<String, String> ?: emptyMap()
-            files.mapNotNull { file ->
-              val uri = file["uri"] as? String ?: return@mapNotNull null
-              val parentUri = file["parentUri"] as? String ?: ""
-              LocalAudioFile(
-                uri = uri,
-                name = file["name"] as? String ?: uri.substringAfterLast('/'),
-                size = (file["size"] as? Number)?.toLong(),
-                lastModified = (file["lastModified"] as? Number)?.toLong() ?: 0L,
-                mimeType = file["mimeType"] as? String,
-                parentUri = parentUri,
-                coverUri = covers[parentUri],
+      val cancelFlag = AtomicBoolean(false)
+      activeScans.add(cancelFlag)
+      try {
+        withContext(Dispatchers.IO) {
+          val repository = AstraLibraryRepository.get(requireContext())
+          repository.withUserRecovery { scanLocalFolder(
+            folderId = folderId.toLong(),
+            full = mode == "full",
+            discover = { treeUri ->
+              val listing = listAudioFiles(treeUri, extensions, cancelFlag)
+              @Suppress("UNCHECKED_CAST")
+              val files = listing["files"] as? List<Map<String, Any?>> ?: emptyList()
+              @Suppress("UNCHECKED_CAST")
+              val covers = listing["covers"] as? Map<String, String> ?: emptyMap()
+              files.mapNotNull { file ->
+                val uri = file["uri"] as? String ?: return@mapNotNull null
+                val parentUri = file["parentUri"] as? String ?: ""
+                LocalAudioFile(
+                  uri = uri,
+                  name = file["name"] as? String ?: uri.substringAfterLast('/'),
+                  size = (file["size"] as? Number)?.toLong(),
+                  lastModified = (file["lastModified"] as? Number)?.toLong() ?: 0L,
+                  mimeType = file["mimeType"] as? String,
+                  parentUri = parentUri,
+                  coverUri = covers[parentUri],
+                )
+              }
+            },
+            extract = { file ->
+              extractOne(file.uri, file.coverUri).toLocalAudioMetadata()
+            },
+            onProgress = { phase, processed, total, folderName ->
+              sendEvent(
+                "onScanProgress",
+                mapOf(
+                  "phase" to phase,
+                  "processed" to processed,
+                  "total" to total,
+                  "folderName" to folderName,
+                ),
               )
-            }
-          },
-          extract = { file ->
-            extractOne(file.uri, file.coverUri).toLocalAudioMetadata()
-          },
-          onProgress = { phase, processed, total, folderName ->
-            sendEvent(
-              "onScanProgress",
-              mapOf(
-                "phase" to phase,
-                "processed" to processed,
-                "total" to total,
-                "folderName" to folderName,
-              ),
-            )
-          },
-        ).toMap() }
+            },
+            isCancelled = cancelFlag::get,
+          ).toMap() }
+        }
+      } finally {
+        activeScans.remove(cancelFlag)
       }
+    }
+
+    // Request cooperative cancellation for every active or queued library scan.
+    // Each scan unwinds at a safe checkpoint and discards its staging generation.
+    Function("cancelScan") {
+      activeScans.forEach { it.set(true) }
     }
 
     // ONE whole-file PCM decode producing waveform peaks and (when withLoudness) gated
@@ -494,7 +513,11 @@ class AstraLibraryScannerModule : Module() {
   private val coverBaseNames = listOf("cover", "folder", "front", "albumart")
   private val coverExtensions = setOf("jpg", "jpeg", "png", "webp")
 
-  private fun listAudioFiles(treeUri: String, extensions: List<String>): Map<String, Any> {
+  private fun listAudioFiles(
+    treeUri: String,
+    extensions: List<String>,
+    cancelFlag: AtomicBoolean? = null,
+  ): Map<String, Any> {
     coverHashMemo.clear()
 
     val resolver = requireContext().contentResolver
@@ -517,6 +540,7 @@ class AstraLibraryScannerModule : Module() {
     queue.add(DocumentsContract.getTreeDocumentId(tree))
 
     while (queue.isNotEmpty()) {
+      if (cancelFlag?.get() == true) throw ScanCancelledException()
       val dirDocId = queue.removeFirst()
       val parentUri = DocumentsContract.buildDocumentUriUsingTree(tree, dirDocId).toString()
       val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirDocId)
@@ -525,6 +549,7 @@ class AstraLibraryScannerModule : Module() {
         ?: continue // directory disappeared mid-walk; skip it
       cursor.use {
         while (it.moveToNext()) {
+          if (cancelFlag?.get() == true) throw ScanCancelledException()
           val docId = it.getString(0) ?: continue
           val name = it.getString(1) ?: continue
           val mime = it.getString(2) ?: ""

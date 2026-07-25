@@ -87,6 +87,7 @@ export interface NativeScanResult {
   errors: number;
   total: number;
   catalogRevision: string;
+  cancelled: boolean;
 }
 
 /**
@@ -135,6 +136,8 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
     mode: 'incremental' | 'full',
     extensions: string[]
   ): Promise<NativeScanResult>;
+  /** Cooperatively stop every active or queued library scan at its next safe checkpoint. */
+  cancelScan(): void;
   /**
    * ONE whole-file PCM decode producing `bins` RMS waveform peaks and, when
    * `withLoudness`, gated integrated LUFS + sample peak. Both analyses need every

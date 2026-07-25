@@ -23,6 +23,7 @@ const TEST_SCRIPTS = [
   'test:haptics',
   'test:home-greeting',
   'test:session',
+  'test:library-scan',
 ];
 
 for (const script of TEST_SCRIPTS) {

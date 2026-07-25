@@ -7,9 +7,12 @@ import {
 import type { Album, Artist, DbTrack, LibraryFolder } from '@/types/library';
 import {
   addFolderViaPicker,
+  cancelActiveScan,
+  createScanCancellationController,
   loadFolders,
   removeFolder as scannerRemoveFolder,
   rescanAll,
+  type ScanCancellationSignal,
   type ScanProgress,
   type ScanResult,
 } from '@/library/scanner';
@@ -79,6 +82,7 @@ interface LibraryStore {
   artistSort: ArtistSort;
   includeCollabArtists: boolean;
   isScanning: boolean;
+  isCancelling: boolean;
   scanProgress: ScanProgressState;
   scanError: string | null;
   trackNextCursor: string | null;
@@ -118,10 +122,12 @@ interface LibraryStore {
   removeFolder: (folderId: number) => Promise<void>;
   rescan: () => Promise<void>;
   rebuildLocalIndex: () => Promise<void>;
+  cancelScan: () => void;
 }
 
 let initPromise: Promise<void> | null = null;
 let nativeSubscriptionsInstalled = false;
+let activeScanCancellation: ReturnType<typeof createScanCancellationController> | null = null;
 
 // These grow without a cap on purpose. A sliding window that dropped items off the
 // head shrank the content height mid-scroll, which read as the list flinging itself
@@ -353,18 +359,30 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     set({ sectionAnchors: anchors });
   };
 
-  const runScan = async (scan: () => Promise<ScanResult | null>) => {
+  const runScan = async (scan: (cancellation: ScanCancellationSignal) => Promise<ScanResult | null>) => {
     if (get().isScanning) return;
-    set({ isScanning: true, scanError: null, scanProgress: { ...IDLE_PROGRESS } });
+    const cancellation = createScanCancellationController();
+    activeScanCancellation = cancellation;
+    set({
+      isScanning: true,
+      isCancelling: false,
+      scanError: null,
+      scanProgress: { ...IDLE_PROGRESS },
+    });
     try {
-      await scan();
+      await scan(cancellation.signal);
     } catch (error) {
       set({ scanError: error instanceof Error ? error.message : String(error) });
     } finally {
       try {
         await get().refresh();
       } finally {
-        set({ isScanning: false, scanProgress: { ...IDLE_PROGRESS } });
+        if (activeScanCancellation === cancellation) activeScanCancellation = null;
+        set({
+          isScanning: false,
+          isCancelling: false,
+          scanProgress: { ...IDLE_PROGRESS },
+        });
         endScanService();
       }
     }
@@ -388,6 +406,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     artistSort: 'name',
     includeCollabArtists: false,
     isScanning: false,
+    isCancelling: false,
     scanProgress: { ...IDLE_PROGRESS },
     scanError: null,
     trackNextCursor: null,
@@ -943,7 +962,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       void resetSectionAnchors();
     },
 
-    addFolder: () => runScan(() => addFolderViaPicker({ onProgress })),
+    addFolder: () =>
+      runScan((cancellation) => addFolderViaPicker({ onProgress }, cancellation)),
 
     removeFolder: async (folderId) => {
       const folder = get().folders.find((entry) => entry.id === folderId);
@@ -952,8 +972,19 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       await get().refresh();
     },
 
-    rescan: () => runScan(() => rescanAll({ callbacks: { onProgress } })),
+    rescan: () =>
+      runScan((cancellation) => rescanAll({ callbacks: { onProgress }, cancellation })),
 
-    rebuildLocalIndex: () => runScan(() => rescanAll({ mode: 'full', callbacks: { onProgress } })),
+    rebuildLocalIndex: () =>
+      runScan((cancellation) =>
+        rescanAll({ mode: 'full', callbacks: { onProgress }, cancellation })
+      ),
+
+    cancelScan: () => {
+      if (!get().isScanning || get().isCancelling || !activeScanCancellation) return;
+      set({ isCancelling: true });
+      activeScanCancellation.cancel();
+      cancelActiveScan();
+    },
   };
 });

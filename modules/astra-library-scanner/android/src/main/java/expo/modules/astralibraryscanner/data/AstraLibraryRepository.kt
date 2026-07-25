@@ -36,10 +36,15 @@ private const val MOBILE_SESSION_ID = "mobile"
 private const val ACTIVE_PLAYBACK_CONTEXT_ID = "active-context"
 
 class StaleRevisionException : IllegalStateException("STALE_REVISION")
+internal class ScanCancelledException : IllegalStateException("SCAN_CANCELLED")
 
 internal fun boundedPlaybackWindowStart(start: Long, total: Long): Long? {
   val normalized = start.coerceAtLeast(0)
   return normalized.takeIf { it < total }
+}
+
+private fun throwIfScanCancelled(isCancelled: () -> Boolean) {
+  if (isCancelled()) throw ScanCancelledException()
 }
 
 private data class RemoteSyncHandle(
@@ -355,6 +360,7 @@ class AstraLibraryRepository private constructor(
     discover: suspend (String) -> List<LocalAudioFile>,
     extract: suspend (LocalAudioFile) -> LocalAudioMetadata,
     onProgress: (phase: String, processed: Int, total: Int, folderName: String) -> Unit,
+    isCancelled: () -> Boolean = { false },
   ): NativeScanResult {
     initialize()
     return catalogWriterMutex.withLock {
@@ -387,8 +393,10 @@ class AstraLibraryRepository private constructor(
       updateOperationalStatus(LibraryStatus.SCANNING)
 
       try {
+        throwIfScanCancelled(isCancelled)
         onProgress("discovering", 0, 0, folder.displayName)
         val files = discover(folder.treeUri)
+        throwIfScanCancelled(isCancelled)
         onProgress("discovering", files.size, files.size, folder.displayName)
 
         val existing = dao.getActiveTrackEntitiesForSource(sourceKey)
@@ -401,9 +409,11 @@ class AstraLibraryRepository private constructor(
         var processed = 0
 
         for (batch in files.chunked(24)) {
+          throwIfScanCancelled(isCancelled)
           val rows = coroutineScope {
             batch.map { file ->
               async(Dispatchers.IO) {
+                throwIfScanCancelled(isCancelled)
                 val old = existingByPath[file.uri]
                 val unchanged = !full &&
                   old != null &&
@@ -422,6 +432,7 @@ class AstraLibraryRepository private constructor(
                   ) to false
                 } else {
                   val metadata = extract(file)
+                  throwIfScanCancelled(isCancelled)
                   if (!metadata.ok) {
                     if (old != null) {
                       old.copy(id = 0, generationId = generationId, sourceKey = sourceKey) to true
@@ -442,6 +453,7 @@ class AstraLibraryRepository private constructor(
               }
             }.awaitAll()
           }
+          throwIfScanCancelled(isCancelled)
           val insertRows = ArrayList<TrackEntity>(rows.size)
           for ((row, failed) in rows) {
             if (failed) errors += 1
@@ -454,6 +466,7 @@ class AstraLibraryRepository private constructor(
           onProgress("extracting", processed, files.size, folder.displayName)
         }
 
+        throwIfScanCancelled(isCancelled)
         val prospective = dao.getProspectiveTracks(sourceKey, generationId)
         val nextRevision = dao.getRevision() + 1
         onProgress("indexing", prospective.size, prospective.size, folder.displayName)
@@ -464,6 +477,9 @@ class AstraLibraryRepository private constructor(
             userDao.getFolders().associateBy(FolderEntity::id),
           )
         }
+        // Publishing is one Room transaction. Honour cancellation immediately before
+        // it starts; once inside, let it finish so the active catalog stays coherent.
+        throwIfScanCancelled(isCancelled)
         val revision = dao.publishGeneration(
           sourceKey = sourceKey,
           generationId = generationId,
@@ -487,6 +503,26 @@ class AstraLibraryRepository private constructor(
           errors = errors,
           total = files.size,
           revision = revision,
+        )
+      } catch (_: ScanCancelledException) {
+        dao.deleteGenerationTracks(generationId)
+        dao.deleteGeneration(generationId)
+        userDao.updateFolderScanState(
+          folderId,
+          folder.lastScannedAt,
+          folder.lastScanStatus,
+          folder.lastScanError,
+        )
+        refreshReadyStatus()
+        scheduleSnapshot()
+        NativeScanResult(
+          added = 0,
+          updated = 0,
+          removed = 0,
+          errors = 0,
+          total = 0,
+          revision = dao.getRevision(),
+          cancelled = true,
         )
       } catch (error: Throwable) {
         runCatching {

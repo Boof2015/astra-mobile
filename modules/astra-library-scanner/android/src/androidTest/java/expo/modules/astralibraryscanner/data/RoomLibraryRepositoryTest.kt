@@ -128,6 +128,43 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun cancelledScanDiscardsStagingAndRestoresFolderWithoutPublishing() = runBlocking {
+    publish("active", listOf(track("active", 1, "Last known good")))
+    val catalogDao = catalog.catalogDao()
+    val userDao = user.userDao()
+    val revision = catalogDao.getRevision()
+    val scannedAt = 1234L
+    val folderId = userDao.insertFolder(
+      FolderEntity(
+        treeUri = "content://music",
+        displayName = "Music",
+        addedAt = 1,
+        lastScannedAt = scannedAt,
+        lastScanStatus = "ready",
+      ),
+    )
+
+    catalogDao.insertGeneration(ScanGenerationEntity("cancelled", "local:1", "staging", 2))
+    catalogDao.putTracks(listOf(track("cancelled", 2, "Half written scan")))
+    userDao.updateFolderScanState(folderId, scannedAt, "scanning", null)
+
+    catalogDao.deleteGenerationTracks("cancelled")
+    catalogDao.deleteGeneration("cancelled")
+    userDao.updateFolderScanState(folderId, scannedAt, "ready", null)
+
+    assertNull(catalogDao.getGeneration("cancelled"))
+    assertEquals(revision, catalogDao.getRevision())
+    assertEquals(
+      listOf("Last known good"),
+      catalogDao.getTitlePage(null, "", 10).map { it.title },
+    )
+    val restored = userDao.getFolder(folderId)
+    assertEquals(scannedAt, restored?.lastScannedAt)
+    assertEquals("ready", restored?.lastScanStatus)
+    assertNull(restored?.lastScanError)
+  }
+
+  @Test
   fun userMutationsAndVirtualQueueAreAtomicAndDurable() = runBlocking {
     val dao = user.userDao()
     val playlistId = dao.insertPlaylist(

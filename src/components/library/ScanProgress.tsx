@@ -1,6 +1,7 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
+import { useRipple } from '@/theme/ripple';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 
@@ -8,8 +9,11 @@ import { useLibraryStore } from '@/stores/libraryStore';
 export function ScanProgress() {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const isScanning = useLibraryStore((s) => s.isScanning);
+  const isCancelling = useLibraryStore((s) => s.isCancelling);
   const progress = useLibraryStore((s) => s.scanProgress);
+  const cancelScan = useLibraryStore((s) => s.cancelScan);
 
   if (!isScanning) return null;
 
@@ -29,9 +33,33 @@ export function ScanProgress() {
 
   return (
     <View style={styles.container}>
-      <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-        {label}
-      </Text>
+      <View style={styles.labelRow}>
+        <Text
+          variant="caption"
+          color={colors.textSecondary}
+          numberOfLines={1}
+          style={styles.label}
+        >
+          {label}
+        </Text>
+        <Pressable
+          android_ripple={ripple.bounded}
+          disabled={isCancelling}
+          onPress={cancelScan}
+          accessibilityRole="button"
+          accessibilityLabel={isCancelling ? 'Cancelling library scan' : 'Cancel library scan'}
+          accessibilityState={{ disabled: isCancelling, busy: isCancelling }}
+          hitSlop={6}
+          style={styles.cancelButton}
+        >
+          <Text
+            variant="caption"
+            color={isCancelling ? colors.textTertiary : colors.warning}
+          >
+            {isCancelling ? 'Cancelling…' : 'Cancel'}
+          </Text>
+        </Pressable>
+      </View>
       <View style={styles.track}>
         <View
           style={[
@@ -49,6 +77,20 @@ const useStyles = createThemedStyles((colors) => ({
   container: {
     gap: spacing.xs,
     marginBottom: spacing.md,
+  },
+  labelRow: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  label: {
+    flex: 1,
+  },
+  cancelButton: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   track: {
     height: 2,

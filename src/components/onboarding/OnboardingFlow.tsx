@@ -368,8 +368,11 @@ function StepHeader({
 function ScanBanner() {
   const styles = useStyles();
   const colors = useColors();
+  const ripple = useRipple();
   const isScanning = useLibraryStore((s) => s.isScanning);
+  const isCancelling = useLibraryStore((s) => s.isCancelling);
   const progress = useLibraryStore((s) => s.scanProgress);
+  const cancelScan = useLibraryStore((s) => s.cancelScan);
   if (!isScanning) return null;
   const detail =
     (progress.phase === 'extracting' || progress.phase === 'analyzing') && progress.total > 0
@@ -388,8 +391,27 @@ function ScanBanner() {
         numberOfLines={1}
         style={styles.scanBannerText}
       >
-        Scanning your library{detail ? ` · ${detail}` : '…'}
+        {isCancelling
+          ? 'Cancelling library scan…'
+          : `Scanning your library${detail ? ` · ${detail}` : '…'}`}
       </Text>
+      <Pressable
+        android_ripple={ripple.bounded}
+        disabled={isCancelling}
+        onPress={cancelScan}
+        accessibilityRole="button"
+        accessibilityLabel={isCancelling ? 'Cancelling library scan' : 'Cancel library scan'}
+        accessibilityState={{ disabled: isCancelling, busy: isCancelling }}
+        hitSlop={6}
+        style={styles.scanBannerCancel}
+      >
+        <Text
+          variant="caption"
+          color={isCancelling ? colors.textTertiary : colors.warning}
+        >
+          {isCancelling ? 'Cancelling…' : 'Cancel'}
+        </Text>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -431,7 +453,12 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
   },
   scanBannerText: {
-    maxWidth: 240,
+    flexShrink: 1,
+  },
+  scanBannerCancel: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   scroll: {
     flex: 1,
