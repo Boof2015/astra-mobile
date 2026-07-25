@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import {
+  TAB_SCENE_ANIMATION,
   TAB_TRANSITION_SETTLE_MS,
   TAB_TRANSITION_SPEC,
 } from '@/navigation/tabTransition';
@@ -19,8 +20,8 @@ export default function TabsLayout() {
       headerShown: false,
       freezeOnBlur: false,
       sceneStyle: { backgroundColor: colors.bgPrimary },
-      // Directional slide + cross-fade between tabs, following tab order.
-      animation: 'shift' as const,
+      // Retained scenes cross-fade without translating two full pages.
+      animation: TAB_SCENE_ANIMATION,
       transitionSpec: TAB_TRANSITION_SPEC,
     }),
     [colors.bgPrimary]
@@ -37,7 +38,7 @@ export default function TabsLayout() {
         }));
 
         const handlePress = (item: TabItem) => {
-          // Interrupting the native-driver shift animation can drop its
+          // Interrupting the native-driver scene animation can drop its
           // completion frame and leave the incoming scene invisible; swallow
           // taps until the current transition has finished.
           const now = Date.now();

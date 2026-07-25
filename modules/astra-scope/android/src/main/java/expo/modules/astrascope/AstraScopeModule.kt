@@ -90,5 +90,34 @@ class AstraScopeModule : Module() {
     Function("setFallbackGain") { linear: Double ->
       GainBridge.fallbackGain = linear.toFloat()
     }
+
+    View(AstraScopeView::class) {
+      Prop("mode") { view, value: String -> view.mode = ScopeMode.from(value) }
+      Prop("source") { view, value: String -> view.source = ScopeSource.from(value) }
+      Prop("active") { view, value: Boolean -> view.requestedActive = value }
+      Prop("reducedMotion") { view, value: Boolean -> view.reducedMotion = value }
+      Prop("frameMs") { view, value: Double -> view.frameMs = value }
+      Prop("analysisFrameMs") { view, value: Double -> view.analysisFrameMs = value }
+      Prop("smoothing") { view, value: Double -> view.smoothing = value.toFloat() }
+      Prop("pointCount") { view, value: Int -> view.pointCount = value }
+      Prop("dbMin") { view, value: Double -> view.dbMin = value.toFloat() }
+      Prop("dbMax") { view, value: Double -> view.dbMax = value.toFloat() }
+      Prop("tiltDbPerOctave") { view, value: Double -> view.tiltDbPerOctave = value.toFloat() }
+      Prop("color") { view, value: Int -> view.scopeColor = value }
+      Prop("lineWidth") { view, value: Double -> view.lineWidthDp = value.toFloat() }
+      Prop("lineOpacity") { view, value: Double -> view.lineOpacity = value.toFloat() }
+      Prop("fillOpacity") { view, value: Double -> view.fillOpacity = value.toFloat() }
+      Prop("glow") { view, value: Boolean -> view.glow = value }
+      Prop("glowOpacity") { view, value: Double -> view.glowOpacity = value.toFloat() }
+      Prop("edgeFade") { view, value: Boolean -> view.edgeFade = value }
+      Prop("edgeFadeWidth") { view, value: Double -> view.edgeFadeWidthDp = value.toFloat() }
+      Prop("gain") { view, value: Double -> view.gain = value.toFloat() }
+      Prop("values") { view, value: List<Double>? ->
+        view.staticValues = value?.let { values ->
+          FloatArray(values.size) { index -> values[index].toFloat() }
+        }
+      }
+      OnViewDidUpdateProps { view -> view.commitProps() }
+    }
   }
 }

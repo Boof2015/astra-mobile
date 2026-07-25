@@ -67,8 +67,12 @@ import {
   resolveSelectedQueueAction,
   type QueueIndexByKey,
 } from './queueActions';
+import {
+  QUEUE_RENDER_DISTANCE,
+  QUEUE_ROW_HEIGHT,
+  queuePreviewRowCount,
+} from './queuePerformance';
 
-const QUEUE_ROW_HEIGHT = 64;
 const ART = 42;
 const EMPTY_KEY_SET = new Set<string>();
 
@@ -183,7 +187,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   // fires a frame after first layout completes, so rows are already underneath).
   const [listPainted, setListPainted] = useState(false);
   const onListLoad = useCallback(() => setListPainted(true), []);
-  const previewCount = Math.ceil(windowHeight / QUEUE_ROW_HEIGHT);
+  const previewCount = queuePreviewRowCount(windowHeight);
   // Bottom padding clears the gesture-nav inset so the last row is fully
   // scrollable into view at the 100% snap.
   const listContentStyle = useMemo(
@@ -856,7 +860,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
             data={entries}
             scrollEnabled
             keyExtractor={(item) => item.key}
-            drawDistance={QUEUE_ROW_HEIGHT * 12}
+            drawDistance={QUEUE_RENDER_DISTANCE}
             maintainVisibleContentPosition={{ disabled: true }}
             renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
             renderItem={renderItem}

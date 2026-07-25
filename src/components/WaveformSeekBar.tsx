@@ -17,6 +17,7 @@ import {
   Skia,
   rect
 } from '@shopify/react-native-skia';
+import { useDerivedValue } from 'react-native-reanimated';
 import { Text } from './Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -27,7 +28,7 @@ import {
   mergeProgressiveWaveform,
   subscribeWaveformProgress,
 } from '@/scope/waveform';
-import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playHaptic } from '@/lib/haptics';
 import {
@@ -95,7 +96,15 @@ export function WaveformSeekBar({
   const scrubRef = useRef<number | null>(null);
   const grantRef = useRef({ fraction: 0, pageX: 0 });
   const detentRef = useRef<ScrubDetentState | null>(null);
-  const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
+  const heldFraction = pendingSeek && duration > 0 ? clamp(pendingSeek.target / duration) : null;
+  const progress = useAnimatedPlaybackProgress({
+    currentTime,
+    duration,
+    isPlaying,
+    active,
+    trackKey: trackPath,
+    overrideFraction: scrubFraction ?? heldFraction,
+  });
   // The coarse preview is kept aside as well as rendered: it's the amplitude reference the
   // partially-decoded prefix is scaled against, and it supplies the not-yet-decoded tail.
   const previewRef = useRef<{ path: string; peaks: Float32Array } | null>(null);
@@ -209,8 +218,7 @@ export function WaveformSeekBar({
   // Displayed position: scrub > pending seek target > live progress. The player
   // store clears pendingSeek only after native progress acknowledges the target
   // or the guard times out, so stale RNTP progress cannot bounce the UI back.
-  const liveFraction = duration > 0 ? Math.min(1, smoothTime / duration) : 0;
-  const heldFraction = pendingSeek && duration > 0 ? clamp(pendingSeek.target / duration) : null;
+  const liveFraction = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const fraction = scrubFraction ?? heldFraction ?? liveFraction;
   const shownTime = fraction * duration;
 
@@ -235,11 +243,21 @@ export function WaveformSeekBar({
     return path;
   }, [source, barCount, barWidth, height]);
 
-  const splitX = fraction * barWidth;
-  const playheadX = Math.min(
-    Math.max(0, barWidth - PLAYHEAD_WIDTH),
-    Math.max(0, splitX - PLAYHEAD_WIDTH / 2)
+  const playedClip = useDerivedValue(
+    () => rect(0, 0, progress.value * barWidth, height),
+    [barWidth, height]
   );
+  const unplayedClip = useDerivedValue(() => {
+    const splitX = progress.value * barWidth;
+    return rect(splitX, 0, Math.max(0, barWidth - splitX), height);
+  }, [barWidth, height]);
+  const playheadX = useDerivedValue(() => {
+    const splitX = progress.value * barWidth;
+    return Math.min(
+      Math.max(0, barWidth - PLAYHEAD_WIDTH),
+      Math.max(0, splitX - PLAYHEAD_WIDTH / 2)
+    );
+  }, [barWidth]);
 
   return (
     <View>
@@ -258,10 +276,10 @@ export function WaveformSeekBar({
         accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(shownTime) }}
       >
         <Canvas style={{ width: '100%', height }}>
-          <Group clip={rect(0, 0, splitX, height)}>
+          <Group clip={playedClip}>
             <Path path={barsPath} color={colors.accent} />
           </Group>
-          <Group clip={rect(splitX, 0, Math.max(0, barWidth - splitX), height)}>
+          <Group clip={unplayedClip}>
             <Path path={barsPath} color={colors.glassBorder} />
           </Group>
           {barWidth > 0 ? (

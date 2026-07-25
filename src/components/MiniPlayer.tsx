@@ -33,7 +33,7 @@ import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
 import { useScopeActive } from '@/scope/scopeStore';
 import { artworkThumbFromSource } from '@/library/artwork';
-import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
 import { useAppForeground } from '@/lib/useAppForeground';
 import { playHaptic } from '@/lib/haptics';
 import { PlaybackTargetPicker } from './PlaybackTargetPicker';
@@ -87,26 +87,47 @@ function MiniProgress({
   currentTime,
   duration,
   isPlaying,
+  active,
+  trackKey,
 }: {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  active: boolean;
+  trackKey: string | null;
 }) {
   const styles = useStyles();
-  const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
-  const progress = duration > 0 ? Math.min(1, smoothTime / duration) : 0;
+  const progress = useAnimatedPlaybackProgress({
+    currentTime,
+    duration,
+    isPlaying,
+    active,
+    trackKey,
+  });
+  const progressStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: progress.value }],
+  }));
   return (
     <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+      <Animated.View style={[styles.progressFill, progressStyle]} />
     </View>
   );
 }
 
 /** Phone-target progress: subscribes here so the 2Hz tick skips the whole pill. */
-function PhoneMiniProgress({ isPlaying }: { isPlaying: boolean }) {
+function PhoneMiniProgress({ isPlaying, active }: { isPlaying: boolean; active: boolean }) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
-  return <MiniProgress currentTime={currentTime} duration={duration} isPlaying={isPlaying} />;
+  const trackKey = usePlayerStore((s) => s.currentTrack?.path ?? null);
+  return (
+    <MiniProgress
+      currentTime={currentTime}
+      duration={duration}
+      isPlaying={isPlaying}
+      active={active}
+      trackKey={trackKey}
+    />
+  );
 }
 
 /**
@@ -520,9 +541,11 @@ export function MiniPlayer() {
                   currentTime={presentation.currentTime}
                   duration={presentation.duration}
                   isPlaying={isPlaying}
+                  active={!playerOpen}
+                  trackKey={presentation.trackKey}
                 />
               ) : (
-                <PhoneMiniProgress isPlaying={isPlaying} />
+                <PhoneMiniProgress isPlaying={isPlaying} active={!playerOpen} />
               )
             ) : null}
           </Pressable>
@@ -632,6 +655,11 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBorder,
   },
   progressFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    transformOrigin: 'left center',
     height: 2,
     backgroundColor: colors.accent,
   },

@@ -2,16 +2,16 @@
 
 // Process-wide scope driver: a single-producer / single-consumer bridge between
 // the ExoPlayer audio thread (which pushes PCM via the tap AudioProcessor) and
-// the JS render thread (which pulls the latest spectrum frame once per frame).
+// the serialized native scope worker (or a compatibility JS getter).
 //
 // Threading contract:
 //   - pushInterleaved() + configure() run on the AUDIO thread. They are
 //     allocation-free and lock-free: they only touch the ring (atomic write
 //     position) and an atomic pending-sample-rate. They NEVER touch the
 //     analyzer (no FFT on the audio callback).
-//   - fillSpectrum() runs on the single JS/render thread. It owns the analyzer
-//     and all consumer-only state. It snapshots the most recent fftSize mono
-//     samples from the ring and runs Visualizer::Spectrum::process there.
+//   - fill methods own analyzer/consumer state. A consumer mutex serializes the
+//     native renderer with legacy synchronous JS getters without ever touching
+//     the audio-thread producer path.
 //
 // The ring holds mono samples (the producer downmixes), sized well above the
 // FFT window so a 60fps consumer never misses recent audio; on a snapshot we
@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 namespace astra {
@@ -69,6 +70,7 @@ class ScopeDriver {
   // samples, run the FFT, copy up to `cap` dB magnitudes into `out`.
   // Returns the number of bins written.
   size_t fillSpectrum(float* out, size_t cap, float smoothing) {
+    std::lock_guard<std::mutex> lock(consumerMutex_);
     if (out == nullptr || cap == 0) {
       return 0;
     }
@@ -110,6 +112,7 @@ class ScopeDriver {
   // pitch-locked trigger. We drain a bounded recent slice into its internal
   // circular buffer, then return render-ready points from the triggered window.
   size_t fillOscilloscope(float* out, size_t cap) {
+    std::lock_guard<std::mutex> lock(consumerMutex_);
     if (out == nullptr || cap == 0) {
       return 0;
     }
@@ -212,6 +215,7 @@ class ScopeDriver {
 
   // Render thread. Latest post-EQ spectrum window -> `out` (dB magnitudes).
   size_t fillSpectrumPostEq(float* out, size_t cap, float smoothing) {
+    std::lock_guard<std::mutex> lock(consumerMutex_);
     if (out == nullptr || cap == 0) {
       return 0;
     }
@@ -250,6 +254,7 @@ class ScopeDriver {
   size_t binCount() const { return spectrum_.getFFTSize() / 2; }
 
   void reset() {
+    std::lock_guard<std::mutex> lock(consumerMutex_);
     spectrum_.reset();
     postEqSpectrum_.reset();
     osc_.reset();
@@ -339,6 +344,7 @@ class ScopeDriver {
   std::atomic<int> pendingSampleRate_{44100};
 
   // Consumer-only state.
+  std::mutex consumerMutex_;
   std::vector<float> scratch_;
   Visualizer::Spectrum spectrum_;
   int appliedSampleRate_{0};

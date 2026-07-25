@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  type ReactNode
+} from 'react';
 import {
   StyleSheet,
-  View,
-  type LayoutChangeEvent
+  View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -24,8 +26,15 @@ type IconName = keyof typeof Ionicons.glyphMap;
 
 const SWIPE_ACTIVE_OFFSET_X = 10;
 // Scroll-slop-sized: at 30 every vertical drag starting on a row had to travel
-// 30px before the pan failed and the surrounding scrollable could win.
-const SWIPE_FAIL_OFFSET_Y = 12;
+// 30px before the pan failed and the surrounding scrollable could win. Keep
+// this tighter than the horizontal activation threshold so vertical intent
+// yields immediately, especially inside the queue's BottomSheet scrollable.
+const SWIPE_FAIL_OFFSET_Y = 6;
+// A fixed reveal distance avoids an onLayout -> setState -> gesture rebuild for
+// every recycled list row. It is also more predictable on wide tablet rows than
+// using half of the full row width.
+const SWIPE_MAX_TRANSLATION = 168;
+const SWIPE_ARM_TRANSLATION = 84;
 
 export interface SwipeAction {
   icon: IconName;
@@ -67,32 +76,32 @@ export function SwipeableRow({
   const colors = useColors();
   const tx = useSharedValue(0);
   const armed = useSharedValue(false);
-  const [rowWidth, setRowWidth] = useState(0);
 
-  const max = rowWidth / 2;
-  const arm = rowWidth / 4;
   const hasRight = !!swipeRight;
   const hasLeft = !!swipeLeft;
+  const rightCommit = swipeRight?.onCommit;
+  const leftCommit = swipeLeft?.onCommit;
 
-  const onLayout = (e: LayoutChangeEvent) => setRowWidth(e.nativeEvent.layout.width);
-
-  const onCommit = (direction: 'right' | 'left') => {
-    if (direction === 'right') swipeRight?.onCommit();
-    else swipeLeft?.onCommit();
-    playHaptic('confirm');
-  };
+  const onCommit = useCallback(
+    (direction: 'right' | 'left') => {
+      if (direction === 'right') rightCommit?.();
+      else leftCommit?.();
+      playHaptic('confirm');
+    },
+    [leftCommit, rightCommit]
+  );
 
   const pan = Gesture.Pan()
-    .enabled(enabled && rowWidth > 0 && (hasRight || hasLeft))
+    .enabled(enabled && (hasRight || hasLeft))
     .activeOffsetX([-SWIPE_ACTIVE_OFFSET_X, SWIPE_ACTIVE_OFFSET_X])
     .failOffsetY([-SWIPE_FAIL_OFFSET_Y, SWIPE_FAIL_OFFSET_Y])
     .onUpdate((e) => {
       let t = e.translationX;
       if (t > 0 && !hasRight) t = 0;
       if (t < 0 && !hasLeft) t = 0;
-      t = Math.max(-max, Math.min(max, t));
+      t = Math.max(-SWIPE_MAX_TRANSLATION, Math.min(SWIPE_MAX_TRANSLATION, t));
       tx.value = t;
-      const nowArmed = Math.abs(t) >= arm;
+      const nowArmed = Math.abs(t) >= SWIPE_ARM_TRANSLATION;
       if (nowArmed !== armed.value) {
         armed.value = nowArmed;
         runOnJS(playHaptic)('threshold');
@@ -100,8 +109,13 @@ export function SwipeableRow({
     })
     .onEnd(() => {
       const t = tx.value;
-      if (t >= arm && hasRight) runOnJS(onCommit)('right');
-      else if (t <= -arm && hasLeft) runOnJS(onCommit)('left');
+      if (t >= SWIPE_ARM_TRANSLATION && hasRight) runOnJS(onCommit)('right');
+      else if (t <= -SWIPE_ARM_TRANSLATION && hasLeft) runOnJS(onCommit)('left');
+      armed.value = false;
+      tx.value = withTiming(0, motion.quick);
+    })
+    .onFinalize((_event, success) => {
+      if (success) return;
       armed.value = false;
       tx.value = withTiming(0, motion.quick);
     });
@@ -111,26 +125,24 @@ export function SwipeableRow({
   const gesture = dragGesture ? Gesture.Race(dragGesture, pan) : pan;
 
   const contentStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
-  const leftLaneStyle = useAnimatedStyle(() => ({ opacity: tx.value > 1 ? 1 : 0 }));
-  const rightLaneStyle = useAnimatedStyle(() => ({ opacity: tx.value < -1 ? 1 : 0 }));
 
   return (
-    <View style={styles.wrap} onLayout={onLayout}>
+    <View style={styles.wrap}>
       {swipeRight ? (
-        <Animated.View
+        <View
           pointerEvents="none"
-          style={[styles.lane, styles.laneLeft, { backgroundColor: swipeRight.color }, leftLaneStyle]}
+          style={[styles.lane, styles.laneLeft, { backgroundColor: swipeRight.color }]}
         >
           <Ionicons name={swipeRight.icon} size={22} color={swipeRight.iconColor ?? colors.bgPrimary} />
-        </Animated.View>
+        </View>
       ) : null}
       {swipeLeft ? (
-        <Animated.View
+        <View
           pointerEvents="none"
-          style={[styles.lane, styles.laneRight, { backgroundColor: swipeLeft.color }, rightLaneStyle]}
+          style={[styles.lane, styles.laneRight, { backgroundColor: swipeLeft.color }]}
         >
           <Ionicons name={swipeLeft.icon} size={22} color={swipeLeft.iconColor ?? colors.bgPrimary} />
-        </Animated.View>
+        </View>
       ) : null}
       <GestureDetector gesture={gesture}>
         <Animated.View style={contentStyle}>{children}</Animated.View>
@@ -146,18 +158,21 @@ const styles = StyleSheet.create({
   },
   lane: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    // Keep the always-mounted action colors out from under translucent row
+    // separators; otherwise each half of the lane tints the resting hairline.
+    top: StyleSheet.hairlineWidth,
+    bottom: StyleSheet.hairlineWidth,
+    width: '50%',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   laneLeft: {
+    left: 0,
     justifyContent: 'flex-start',
   },
   laneRight: {
+    right: 0,
     justifyContent: 'flex-end',
   },
 });

@@ -425,7 +425,10 @@ export function NowPlayingOverlay() {
   useEffect(() => {
     stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
   }, [effectiveScopeStageVisible, stageProgress]);
-  const commitClosed = () => usePlayerUiStore.getState().commitClosed();
+  const commitClosed = useCallback(
+    () => usePlayerUiStore.getState().commitClosed(),
+    []
+  );
   /**
    * Enter the closing phase and drop the inner layers. Split out from
    * `dismissSheet` so the pan gesture can commit the phase without handing the
@@ -433,13 +436,13 @@ export function NowPlayingOverlay() {
    * Clearing the layers here rather than at the end also unpins the menu card,
    * which renders outside the translating content.
    */
-  const beginDismiss = () => {
+  const beginDismiss = useCallback(() => {
     setMenuOpen(false);
     setQueueOpen(false);
     // `true`: this path drives the sheet away itself, so the effect below must
     // not overwrite the offset with a competing generic slide-out.
     usePlayerUiStore.getState().closePlayer(true);
-  };
+  }, []);
   const finishCloseMenu = () => setMenuOpen(false);
 
   function openMenu() {
@@ -478,6 +481,10 @@ export function NowPlayingOverlay() {
   };
 
   const pan = Gesture.Pan()
+    // A child sheet owns vertical gestures while it is visible. Replacing this
+    // gesture during the queue-button touch used to cancel a partially active
+    // pan and leave translateY off-screen while phase still said "open".
+    .enabled(playerOpen && !queueOpen)
     .activeOffsetY(14) // engage only on a downward drag
     .failOffsetY(-14)
     .failOffsetX([-24, 24]) // let the horizontal seek drag through
@@ -509,15 +516,21 @@ export function NowPlayingOverlay() {
       } else {
         translateY.value = withTiming(0, motion.snap);
       }
+    })
+    .onFinalize((_event, success) => {
+      // RNGH does not call onEnd for a cancelled gesture. Never leave the
+      // overlay at its last partial translation in that path.
+      if (!success) translateY.value = withTiming(0, motion.snap);
     });
 
   // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
   // a player that already believes it is open still re-runs the slide-in — that
   // is the recovery path for a sheet stranded off-screen by an interrupted
-  // close. `windowHeight` is deliberately NOT a dependency: a dimension change
-  // (rotation, or an RN Modal like the output picker) would re-run this effect
-  // and cancel an in-flight exit spring. NOTE: this effect must stay BELOW
-  // every direct `translateY.value` write — the react compiler forbids
+  // close. `queueOpen` also re-anchors the player before its modal BottomSheet
+  // appears. `windowHeight` is deliberately NOT a dependency: a dimension
+  // change (rotation, or an RN Modal like the output picker) would re-run this
+  // effect and cancel an in-flight exit spring. NOTE: this effect must stay
+  // BELOW every direct `translateY.value` write — the react compiler forbids
   // mutations after an effect that depends on the value.
   useEffect(() => {
     if (phase === 'closing') {
@@ -531,7 +544,7 @@ export function NowPlayingOverlay() {
     }
     translateY.value = withTiming(0, { duration: 240 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
-  }, [phase, openRequest, exitAnimated, translateY]);
+  }, [phase, openRequest, exitAnimated, queueOpen, translateY]);
 
   // `closing` → `closed`, and `opening` → `open`. Both are timers rather than
   // animation callbacks, so a cancelled animation can never strand the phase.
@@ -666,7 +679,7 @@ export function NowPlayingOverlay() {
   );
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'auto' : 'none'}>
+    <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'box-none' : 'none'}>
       <GestureDetector gesture={pan}>
         <Animated.View
           style={[

@@ -1,4 +1,9 @@
-import { requireNativeModule, type NativeModule } from 'expo-modules-core';
+import {
+  requireNativeModule,
+  requireNativeViewManager,
+  type NativeModule,
+} from 'expo-modules-core';
+import type { ViewProps } from 'react-native';
 
 /** Number of spectrum bins returned by getSpectrumFrame (fftSize/2, fftSize=2048). */
 export const SPECTRUM_BINS = 1024;
@@ -70,3 +75,32 @@ declare class AstraScopeModuleType extends NativeModule {
 }
 
 export const AstraScope = requireNativeModule<AstraScopeModuleType>('AstraScope');
+
+/** Internal prop contract for the allocation-free Android scope surface. */
+export interface AstraScopeViewProps extends ViewProps {
+  mode: 'spectrum' | 'oscilloscope';
+  source?: 'pre' | 'post';
+  active: boolean;
+  reducedMotion?: boolean;
+  frameMs: number;
+  analysisFrameMs?: number;
+  smoothing?: number;
+  pointCount?: number;
+  dbMin?: number;
+  dbMax?: number;
+  tiltDbPerOctave?: number;
+  /** Android ARGB color produced by React Native's processColor(). */
+  color: number;
+  lineWidth?: number;
+  lineOpacity?: number;
+  fillOpacity?: number;
+  glow?: boolean;
+  glowOpacity?: number;
+  edgeFade?: boolean;
+  edgeFadeWidth?: number;
+  gain?: number;
+  values?: number[];
+}
+
+export const AstraScopeView =
+  requireNativeViewManager<AstraScopeViewProps>('AstraScope');
