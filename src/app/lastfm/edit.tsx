@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   radius,
   spacing,
@@ -176,21 +176,21 @@ export default function LastFmEditScreen() {
 
   const onRemove = () => {
     if (!editing) return;
-    Alert.alert(
-      `Remove ${editing.name}?`,
-      'This deletes the scrobble destination and its queued scrobbles from this device. Your history on the service is unaffected.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: `Remove ${editing.name}?`,
+      message: 'This deletes the scrobble destination and its queued scrobbles from this device. Your history on the service is unaffected.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Remove',
-          style: 'destructive',
+          label: 'Remove',
+          role: 'destructive',
           onPress: () => {
             void deleteCustomProfile(editing.id);
             router.back();
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const backLabel = step === 'details' && !editing ? 'Service' : 'Scrobbling';

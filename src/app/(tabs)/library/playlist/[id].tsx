@@ -6,8 +6,7 @@ import {
 import {
   View,
   Pressable,
-  StyleSheet,
-  Alert
+  StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +23,7 @@ import {
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -199,34 +199,38 @@ export default function PlaylistScreen() {
     try {
       const result = await exportM3u(target);
       if (result) {
-        Alert.alert(
-          'Playlist exported',
-          `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`
-        );
+        showAppDialog({
+          title: 'Playlist exported',
+          message: `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`,
+        });
       }
     } catch (err) {
-      Alert.alert('Export failed', errorMessage(err));
+      showAppDialog({ title: 'Export failed', message: errorMessage(err) });
     }
   };
 
   const confirmDelete = (target: Playlist) => {
-    Alert.alert('Delete playlist?', `"${target.name}" will be deleted. Tracks are not touched.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            try {
-              await deletePlaylist(target.id);
-              goBack();
-            } catch (err) {
-              Alert.alert('Delete failed', errorMessage(err));
-            }
-          })();
+    showAppDialog({
+      title: 'Delete playlist?',
+      message: `"${target.name}" will be deleted. Tracks are not touched.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Delete',
+          role: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await deletePlaylist(target.id);
+                goBack();
+              } catch (err) {
+                showAppDialog({ title: 'Delete failed', message: errorMessage(err) });
+              }
+            })();
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   // Move/remove only exist on real playlists; favorites rows use the standard

@@ -1,5 +1,4 @@
 import {
-  Alert,
   Pressable,
   StyleSheet,
   View,
@@ -27,6 +26,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { playHaptic } from '@/lib/haptics';
 import type { HomeGreetingTextMode } from '@/home/homeGreeting';
 
@@ -251,14 +251,18 @@ function LibraryFoldersSettings() {
   const totalTracks = folders.reduce((sum, folder) => sum + folder.track_count, 0);
 
   const confirmRemove = (folder: FolderWithCount) => {
-    Alert.alert(
-      'Remove folder?',
-      `"${folder.display_name}" and its ${formatTrackCount(folder.track_count)} will be removed from the library. Files on disk are not touched.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => void removeFolder(folder.id) },
-      ]
-    );
+    showAppDialog({
+      title: 'Remove folder?',
+      message: `"${folder.display_name}" and its ${formatTrackCount(folder.track_count)} will be removed from the library. Files on disk are not touched.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Remove',
+          role: 'destructive',
+          onPress: () => void removeFolder(folder.id),
+        },
+      ],
+    });
   };
 
   return (

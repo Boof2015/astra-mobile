@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import {
   SettingsNavRow,
@@ -80,35 +81,35 @@ export default function TroubleshootingSettingsScreen() {
   };
 
   const confirmRebuild = () => {
-    Alert.alert(
-      'Rebuild local library index?',
-      'A foreground scan will re-read every local track. Folders, playlists, favorites, history, remote sources, and settings are preserved.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: 'Rebuild local library index?',
+      message: 'A foreground scan will re-read every local track. Folders, playlists, favorites, history, remote sources, and settings are preserved.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Rebuild',
+          label: 'Rebuild',
           onPress: () => void run(
             'rebuild',
             () => useLibraryStore.getState().rebuildLocalIndex(),
             'Local library index rebuilt.',
           ),
         },
-      ]
-    );
+      ],
+    });
   };
 
   const confirmOnboarding = () => {
-    Alert.alert(
-      'Replay onboarding?',
-      'The first-run setup opens immediately. Your library and settings are kept.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: 'Replay onboarding?',
+      message: 'The first-run setup opens immediately. Your library and settings are kept.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Replay',
+          label: 'Replay',
           onPress: () => void run('onboarding', () => useOnboardingStore.getState().reset(), 'Opening onboarding…'),
         },
-      ]
-    );
+      ],
+    });
   };
 
   return (

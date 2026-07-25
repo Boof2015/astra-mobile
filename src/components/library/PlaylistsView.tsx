@@ -3,7 +3,6 @@ import {
   View,
   Pressable,
   StyleSheet,
-  Alert,
   type NativeScrollEvent,
   type NativeSyntheticEvent
 } from 'react-native';
@@ -17,6 +16,7 @@ import {
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
@@ -67,13 +67,13 @@ export function PlaylistsView({
     try {
       const result = await exportM3u(target);
       if (result) {
-        Alert.alert(
-          'Playlist exported',
-          `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`
-        );
+        showAppDialog({
+          title: 'Playlist exported',
+          message: `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`,
+        });
       }
     } catch (err) {
-      Alert.alert('Export failed', errorMessage(err));
+      showAppDialog({ title: 'Export failed', message: errorMessage(err) });
     }
   };
 
@@ -85,17 +85,28 @@ export function PlaylistsView({
       const parts = [`${matched} of ${summary.total} entries matched the library`];
       if (summary.missing > 0) parts.push(`${summary.missing} kept as missing`);
       if (summary.ambiguous > 0) parts.push(`${summary.ambiguous} ambiguous`);
-      Alert.alert(`Imported "${summary.name}"`, `${parts.join(', ')}.`);
+      showAppDialog({
+        title: `Imported "${summary.name}"`,
+        message: `${parts.join(', ')}.`,
+      });
     } catch (err) {
-      Alert.alert('Import failed', errorMessage(err));
+      showAppDialog({ title: 'Import failed', message: errorMessage(err) });
     }
   };
 
   const confirmDelete = (playlist: Playlist) => {
-    Alert.alert('Delete playlist?', `"${playlist.name}" will be deleted. Tracks are not touched.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void deletePlaylist(playlist.id) },
-    ]);
+    showAppDialog({
+      title: 'Delete playlist?',
+      message: `"${playlist.name}" will be deleted. Tracks are not touched.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Delete',
+          role: 'destructive',
+          onPress: () => void deletePlaylist(playlist.id),
+        },
+      ],
+    });
   };
 
   const menuItems =

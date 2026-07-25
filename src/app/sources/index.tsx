@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
 import {
   radius,
@@ -52,18 +52,18 @@ export default function SourcesScreen() {
   const [actionFor, setActionFor] = useState<RemoteSourceRow | null>(null);
 
   const confirmRemove = (source: RemoteSourceRow) => {
-    Alert.alert(
-      `Remove ${source.name}?`,
-      'This removes the server and all of its tracks from your library. Favorites and playlist entries are kept but will show as missing.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: `Remove ${source.name}?`,
+      message: 'This removes the server and all of its tracks from your library. Favorites and playlist entries are kept but will show as missing.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Remove',
-          style: 'destructive',
+          label: 'Remove',
+          role: 'destructive',
           onPress: () => void deleteSource(source.id, true),
         },
-      ]
-    );
+      ],
+    });
   };
 
   const actionItems: ActionSheetItem[] = actionFor

@@ -50,6 +50,7 @@ import { SessionLifecycle } from '@/session/SessionLifecycle';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { Text } from '@/components/Text';
+import { AppDialogHost } from '@/components/dialogs/AppDialog';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -459,6 +460,7 @@ export default function RootLayout() {
             />
           </View>
         )}
+        <AppDialogHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

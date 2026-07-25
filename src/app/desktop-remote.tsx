@@ -5,7 +5,6 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -23,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   radius,
   spacing,
@@ -339,10 +339,14 @@ export default function DesktopRemoteScreen() {
   }, [connection, discoveryAvailable, discoveryRunning, message]);
 
   const confirmForget = () => {
-    Alert.alert('Forget desktop?', 'This removes the saved desktop pairing from this phone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Forget', style: 'destructive', onPress: () => void forget() },
-    ]);
+    showAppDialog({
+      title: 'Forget desktop?',
+      message: 'This removes the saved desktop pairing from this phone.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        { label: 'Forget', role: 'destructive', onPress: () => void forget() },
+      ],
+    });
   };
 
   const pairDiscovered = (desktop: DesktopRemoteDiscoveredDesktop) => {

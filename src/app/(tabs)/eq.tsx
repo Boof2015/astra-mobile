@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import {
-  Alert,
   InteractionManager,
   Pressable,
   StyleSheet,
@@ -20,6 +19,7 @@ import {
 } from 'expo-file-system/legacy';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { EQGraph } from '@/components/eq/EQGraph';
 import { BandStrip } from '@/components/eq/BandStrip';
 import { BandDetailPanel, type EQEditableValue } from '@/components/eq/BandDetailPanel';
@@ -171,7 +171,7 @@ export default function EQScreen() {
   };
 
   const showPresetImportError = useCallback((message = 'That file is not an Astra EQ preset.') => {
-    Alert.alert('Could not import preset', message);
+    showAppDialog({ title: 'Could not import preset', message });
   }, []);
 
   const deletePreset = useCallback((preset: EQPreset) => {
@@ -188,14 +188,18 @@ export default function EQScreen() {
       finishDelete();
       return;
     }
-    Alert.alert(
-      `Delete ${preset.name}?`,
-      `This will also clear ${assignmentCount} device assignment${assignmentCount === 1 ? '' : 's'}. The current sound will not change.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: finishDelete },
-      ]
-    );
+    showAppDialog({
+      title: `Delete ${preset.name}?`,
+      message: `This will also clear ${assignmentCount} device assignment${assignmentCount === 1 ? '' : 's'}. The current sound will not change.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Delete',
+          role: 'destructive',
+          onPress: finishDelete,
+        },
+      ],
+    });
   }, []);
 
   const runCurrentPresetAction = useCallback(async (action: CurrentPresetAction, name: string) => {
@@ -211,18 +215,24 @@ export default function EQScreen() {
           EQ_PRESET_MIME_TYPE
         );
         await writeAsStringAsync(fileUri, stringifyEQPresetFileContents(preset));
-        Alert.alert('Preset exported', `Saved ${fileName}.`);
+        showAppDialog({ title: 'Preset exported', message: `Saved ${fileName}.` });
         return;
       }
 
       if (action === 'share') {
         const available = await Sharing.isAvailableAsync();
         if (!available) {
-          Alert.alert('Share unavailable', 'This device cannot open a share sheet right now.');
+          showAppDialog({
+            title: 'Share unavailable',
+            message: 'This device cannot open a share sheet right now.',
+          });
           return;
         }
         if (!cacheDirectory) {
-          Alert.alert('Share unavailable', 'Astra could not create a temporary preset file.');
+          showAppDialog({
+            title: 'Share unavailable',
+            message: 'Astra could not create a temporary preset file.',
+          });
           return;
         }
         const fileUri = `${cacheDirectory}${buildEQPresetFileName(preset.name)}`;
@@ -238,7 +248,10 @@ export default function EQScreen() {
       setQrPreset({ name: preset.name, value: encodeEQPresetQr(preset) });
       setSheet('qr');
     } catch {
-      Alert.alert('Preset sharing failed', 'Astra could not finish that preset sharing action.');
+      showAppDialog({
+        title: 'Preset sharing failed',
+        message: 'Astra could not finish that preset sharing action.',
+      });
     }
   }, []);
 

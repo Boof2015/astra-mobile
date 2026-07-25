@@ -4,7 +4,6 @@ import {
   useState,
 } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,6 +18,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   AppSheet,
   AppSheetItem,
@@ -784,7 +784,10 @@ export default function DynamicPlaylistEditorScreen() {
       })
       .catch((err) => {
         if (!didCancel) {
-          Alert.alert('Rules unavailable', err instanceof Error ? err.message : String(err));
+          showAppDialog({
+            title: 'Rules unavailable',
+            message: err instanceof Error ? err.message : String(err),
+          });
           router.back();
         }
       })
@@ -864,10 +867,14 @@ export default function DynamicPlaylistEditorScreen() {
       apply();
       return;
     }
-    Alert.alert('Replace rules?', 'This preset will replace the current filters and result order.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Replace', style: 'destructive', onPress: apply },
-    ]);
+    showAppDialog({
+      title: 'Replace rules?',
+      message: 'This preset will replace the current filters and result order.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        { label: 'Replace', role: 'destructive', onPress: apply },
+      ],
+    });
   };
 
   const openFieldPicker = (target: 'new' | ConditionEditorTarget) => {
@@ -961,7 +968,10 @@ export default function DynamicPlaylistEditorScreen() {
         const createdPlaylist = await createDynamicPlaylist(trimmedName, normalizedRules);
         router.replace(`/library/playlist/${createdPlaylist.id}`);
       } catch (err) {
-        Alert.alert('Save failed', err instanceof Error ? err.message : String(err));
+        showAppDialog({
+          title: 'Save failed',
+          message: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setIsSaving(false);
       }

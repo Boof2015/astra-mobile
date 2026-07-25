@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   radius,
   spacing,
@@ -66,24 +66,28 @@ export default function LastFmScreen() {
 
   const connectOfficial = (profile: LastFmProfileStatus) => {
     if (status && !status.hasApiCredentials) {
-      Alert.alert(
-        'Last.fm not configured',
-        'This build has no Last.fm API key. Set EXPO_PUBLIC_LASTFM_API_KEY / _SHARED_SECRET, or add a custom Last.fm-compatible / ListenBrainz destination instead.'
-      );
+      showAppDialog({
+        title: 'Last.fm not configured',
+        message: 'This build has no Last.fm API key. Set EXPO_PUBLIC_LASTFM_API_KEY / _SHARED_SECRET, or add a custom Last.fm-compatible / ListenBrainz destination instead.',
+      });
       return;
     }
     void beginAuth(profile.id);
   };
 
   const confirmDisconnect = (profile: LastFmProfileStatus) => {
-    Alert.alert(`Disconnect ${profile.name}?`, 'Astra will stop scrobbling to this destination.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect',
-        style: 'destructive',
-        onPress: () => void disconnectProfile(profile.id),
-      },
-    ]);
+    showAppDialog({
+      title: `Disconnect ${profile.name}?`,
+      message: 'Astra will stop scrobbling to this destination.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Disconnect',
+          role: 'destructive',
+          onPress: () => void disconnectProfile(profile.id),
+        },
+      ],
+    });
   };
 
   const renderOfficial = (profile: LastFmProfileStatus) => {
