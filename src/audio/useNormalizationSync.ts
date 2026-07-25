@@ -13,7 +13,11 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { resolveNormalizationGain, type LoudnessFacts } from '@/audio/normalization';
-import { ensureTrackLoudness } from '@/audio/trackAnalysis';
+import {
+  activeAnalysisPaths,
+  cancelTrackAnalysis,
+  ensureTrackAnalysis,
+} from '@/audio/trackAnalysis';
 import {
   setNormalizationGainNative,
   setTrackGainNative,
@@ -61,13 +65,13 @@ export function useNormalizationSync(): void {
         return;
       }
 
-      // ensureTrackLoudness is cheap when already analyzed (single DB read) and
-      // decodes+stores on a miss (lazy backfill for pre-scan tracks). During the
+      // ensureTrackAnalysis is cheap when already analyzed (two DB reads) and decodes on a
+      // miss — one pass covering both loudness and the seek bar's waveform. During the
       // await the track is already playing at the conservative fallback gain
       // (gainRegistry) — never at unity/full volume.
       let facts = EMPTY_FACTS;
       try {
-        facts = await ensureTrackLoudness(path);
+        ({ facts } = await ensureTrackAnalysis(path));
         if (cancelled) return;
         // Track changed during the await — let the newer recompute win.
         if (usePlayerStore.getState().currentTrack?.path !== path) return;
@@ -91,27 +95,38 @@ export function useNormalizationSync(): void {
       useScopeStore.getState().setOscGain(computeOscilloscopeGain(basePeak, resolved.linearGain));
     }
 
-    // MEASURE the next several upcoming tracks' loudness while the current one plays
-    // (decode-ahead for tracks with no facts yet), and register each late-arriving
-    // result natively by URL — so when the player advances, the gain is in the map
-    // and applies at the transition with no JS in the loop. Already-analyzed tracks
-    // are bulk-registered by gainRegistry; re-registering them here is a harmless
-    // cheap DB hit with the same value. Looking a few ahead (not just the immediate
-    // next) means a song added several positions back is still measured with plenty
-    // of lead time. Derived from the queue mirror, so it re-runs on reorder /
-    // add-next / advance. Deduped + DB-cached + native-semaphore-capped.
+    // ANALYZE the next several upcoming tracks while the current one plays (decode-ahead
+    // for tracks with no facts yet), and register each late-arriving gain natively by URL —
+    // so when the player advances, the gain is in the map and applies at the transition with
+    // no JS in the loop. Already-analyzed tracks are bulk-registered by gainRegistry;
+    // re-registering them here is a harmless cheap DB hit with the same value. Looking a few
+    // ahead (not just the immediate next) means a song added several positions back is still
+    // analyzed with plenty of lead time. Derived from the queue mirror, so it re-runs on
+    // reorder / add-next / advance. Deduped + DB-cached + native-semaphore-capped.
+    //
+    // The same pass fills the seek bar's waveform, which is why the waveform is usually
+    // already cached by the time you open now-playing: it used to only start decoding when
+    // WaveformSeekBar mounted, from cold, queued behind these very decodes.
     function prefetchUpcoming(): void {
       const { tracks, activeIndex } = useQueueStore.getState();
       if (activeIndex < 0) return;
       const settings = useAudioSettingsStore.getState().asNormalizationSettings();
+
+      // The set of tracks worth spending a decode on right now. Everything else that is
+      // still decoding has been skipped past.
+      const wanted = new Set<string>();
+      const currentPath = usePlayerStore.getState().currentTrack?.path;
+      if (currentPath) wanted.add(currentPath);
+
       for (let i = 1; i <= PREFETCH_AHEAD; i++) {
         const queued = tracks[activeIndex + i];
         const url = queued?.url;
         if (typeof url !== 'string' || url.length === 0) continue;
         // Remote tracks: unity gain, and decoding the stream URL would download it.
         if (queued?.sourceType && queued.sourceType !== 'local') continue;
-        void ensureTrackLoudness(url)
-          .then((facts) => {
+        wanted.add(url);
+        void ensureTrackAnalysis(url)
+          .then(({ facts }) => {
             if (cancelled) return;
             const resolved = resolveNormalizationGain(facts, settings);
             setTrackGainNative(url, resolved.linearGain);
@@ -119,6 +134,12 @@ export function useNormalizationSync(): void {
           .catch(() => {
             /* leave unregistered — defaults to unity at the transition */
           });
+      }
+
+      // Free the native decode permits: a decode for a track the user has skipped past is
+      // pure waste, and it would otherwise block the track they're actually on.
+      for (const path of activeAnalysisPaths()) {
+        if (!wanted.has(path)) cancelTrackAnalysis(path);
       }
     }
 

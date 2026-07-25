@@ -1,18 +1,28 @@
-// Per-track normalization facts: ReplayGain tags (cheap, container-only) + measured
-// integrated LUFS / sample peak (a decode, only when ReplayGain can't cover the track).
+// Per-track analysis facts: waveform peaks + ReplayGain tags + measured integrated LUFS /
+// sample peak.
 //
-// ensureTrackLoudness is the single deduped entry point used by the normalization sync
-// (current track + queue prefetch). It reads ReplayGain tags once per track, and only
-// falls back to the expensive loudness decode when ReplayGain is off or absent — so a
-// fully tagged library normalizes with no decoding at all.
+// Peaks and loudness come from ONE native decode pass (analyzeTrack). Both need every
+// sample, so running them as separate whole-file decodes meant decoding each track twice —
+// and the two decodes then competed for the same native concurrency permits, which is why
+// the waveform used to arrive so late. Peaks fall out of the pass regardless, so we persist
+// them even when loudness was the only reason we decoded.
+//
+// ensureTrackAnalysis is the single deduped entry point. It reads what's already cached,
+// decodes only what's missing, and stores both halves. ReplayGain tags are read first
+// (container-only, no decode), so a fully tagged library still normalizes without decoding.
 
 import {
   AstraLibraryData,
   AstraLibraryScanner,
   type NativeTrackLoudness,
+  type TrackAnalysis,
 } from '../../modules/astra-library-scanner';
 import { hasUsableReplayGain, type LoudnessFacts } from '@/audio/normalization';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
+import { CacheInvalidationGate } from '@/lib/cacheInvalidation';
+
+/** Stored waveform resolution. Downsampled to the bar count at render time. */
+export const WAVEFORM_BINS = 512;
 
 /** Map a loudness DB row (or a miss) to the resolver's facts shape. */
 export function factsFromRow(row: NativeTrackLoudness | null): LoudnessFacts {
@@ -26,46 +36,80 @@ export function factsFromRow(row: NativeTrackLoudness | null): LoudnessFacts {
   };
 }
 
-/**
- * Measure + store integrated loudness + sample peak for one track (always
- * re-measures). The decode is the expensive part; failures leave loudness NULL.
- */
-export async function measureAndStoreLoudness(
-  path: string
-): Promise<{ lufs: number | null; peak: number | null }> {
-  try {
-    const res = await AstraLibraryScanner.measureLoudness(path);
-    const lufs = res?.lufs ?? null;
-    const peak = res?.peak ?? null;
-    await AstraLibraryData.setTrackLoudness(path, lufs, peak).catch(() => {});
-    return { lufs, peak };
-  } catch {
-    return { lufs: null, peak: null };
-  }
+export interface TrackAnalysisResult {
+  /** Normalized [0,1] peaks, or null when unavailable / not requested and uncached. */
+  peaks: Float32Array | null;
+  facts: LoudnessFacts;
 }
 
-const inflight = new Map<string, Promise<LoudnessFacts>>();
+export interface EnsureAnalysisOptions {
+  /**
+   * Decode for waveform peaks when they're missing. Pass false from headless paths
+   * (Android Auto / Bluetooth with no UI) that only need loudness — peaks are still
+   * persisted if a loudness decode happens to run, since they come out free.
+   */
+  peaks?: boolean;
+}
+
+interface InflightRun {
+  promise: Promise<TrackAnalysisResult>;
+  wantPeaks: boolean;
+}
+
+const inflight = new Map<string, InflightRun>();
+// Paths cancelled while their run was still in its DB-read phase. The native cancel flag
+// only exists once analyzeTrack has been called, so without this a cancel landing in that
+// window would be silently lost and the decode would run to completion anyway.
+const cancelledPaths = new Set<string>();
+const cacheGate = new CacheInvalidationGate();
 
 /**
- * Loudness facts for a track, reading ReplayGain tags and decoding only as needed
- * (deduped by path). Cheap when already analyzed (single DB read). The normalization
- * sync uses this so tracks from a pre-M4 library still normalize before a full rescan.
+ * Analysis facts for a track, decoding at most once and only for what's actually missing
+ * (deduped by path). Cheap when already analyzed — two DB reads and no decode.
  */
-export function ensureTrackLoudness(path: string): Promise<LoudnessFacts> {
+export function ensureTrackAnalysis(
+  path: string,
+  options: EnsureAnalysisOptions = {}
+): Promise<TrackAnalysisResult> {
+  const wantPeaks = options.peaks !== false;
   const existing = inflight.get(path);
-  if (existing) return existing;
-  const task = run(path).finally(() => inflight.delete(path));
-  inflight.set(path, task);
-  return task;
+  // A run that already covers what we need — join it.
+  if (existing && (existing.wantPeaks || !wantPeaks)) return existing.promise;
+  // A loudness-only run is going and we need peaks: let it finish (so we don't decode the
+  // same file twice concurrently), then fill in the peaks.
+  if (existing) return existing.promise.then(() => start(path, wantPeaks));
+  return start(path, wantPeaks);
 }
 
-async function run(path: string): Promise<LoudnessFacts> {
-  const row = (await AstraLibraryData.getTrackLoudness([path]))[0] ?? null;
-  let facts = factsFromRow(row);
+function start(path: string, wantPeaks: boolean): Promise<TrackAnalysisResult> {
+  const existing = inflight.get(path);
+  if (existing?.wantPeaks) return existing.promise;
+  const promise = run(path, wantPeaks).finally(() => {
+    if (inflight.get(path)?.promise === promise) {
+      inflight.delete(path);
+      cancelledPaths.delete(path);
+    }
+  });
+  inflight.set(path, { promise, wantPeaks });
+  return promise;
+}
 
-  // 1. Read ReplayGain tags once per track (container-only, no decode). Decoupled
-  //    from loudness so a track measured before ReplayGain was enabled still picks
-  //    up its tags; rg_scanned stays unset on failure so it retries next touch.
+async function run(path: string, wantPeaks: boolean): Promise<TrackAnalysisResult> {
+  const generation = cacheGate.capture();
+
+  const [row, cachedPeaks] = await Promise.all([
+    AstraLibraryData.getTrackLoudness([path])
+      .then((rows) => rows[0] ?? null)
+      .catch(() => null),
+    AstraLibraryData.getWaveform(path).catch(() => null),
+  ]);
+
+  let facts = factsFromRow(row);
+  let peaks = cachedPeaks && cachedPeaks.length > 0 ? Float32Array.from(cachedPeaks) : null;
+
+  // ReplayGain tags: container-only, no decode. Decoupled from loudness so a track measured
+  // before ReplayGain was enabled still picks up its tags; rg_scanned stays unset on failure
+  // so it retries next touch.
   if (!row || row.rg_scanned !== 1) {
     try {
       const rg = await AstraLibraryScanner.readReplayGain(path);
@@ -88,14 +132,162 @@ async function run(path: string): Promise<LoudnessFacts> {
     }
   }
 
-  // 2. Loudness already measured — nothing more to do.
-  if (facts.loudnessLufs != null) return facts;
-
-  // 3. ReplayGain alone can normalize this track — skip the expensive decode.
+  // Loudness only needs measuring when it's unknown AND ReplayGain can't cover the track.
   const settings = useAudioSettingsStore.getState().asNormalizationSettings();
-  if (hasUsableReplayGain(facts, settings)) return facts;
+  const needLoudness = facts.loudnessLufs == null && !hasUsableReplayGain(facts, settings);
+  const needPeaks = wantPeaks && !peaks;
+  if (!needLoudness && !needPeaks) return { peaks, facts };
+  // Skipped past while we were reading the DB — don't start the decode at all.
+  if (cancelledPaths.has(path)) return { peaks, facts };
 
-  // 4. Otherwise measure loudness now (decode) and merge it in.
-  const measured = await measureAndStoreLoudness(path);
-  return { ...facts, loudnessLufs: measured.lufs, samplePeak: measured.peak };
+  let analysis: TrackAnalysis;
+  try {
+    analysis = await AstraLibraryScanner.analyzeTrack(path, WAVEFORM_BINS, needLoudness);
+  } catch {
+    return { peaks, facts };
+  }
+  recordTiming(path, analysis);
+  // Skipped past / timed out: peaks are truncated and loudness is partial. Cache neither.
+  if (analysis.cancelled) return { peaks, facts };
+
+  if (analysis.peaks && analysis.peaks.length > 0) {
+    peaks = Float32Array.from(analysis.peaks);
+    await persistPeaks(path, peaks, generation);
+  }
+  if (needLoudness) {
+    await AstraLibraryData.setTrackLoudness(path, analysis.lufs, analysis.peak).catch(() => {});
+    facts = { ...facts, loudnessLufs: analysis.lufs, samplePeak: analysis.peak };
+  }
+  return { peaks, facts };
+}
+
+async function persistPeaks(
+  path: string,
+  peaks: Float32Array,
+  generation: number
+): Promise<void> {
+  await cacheGate
+    .enqueue(async () => {
+      if (!cacheGate.isCurrent(generation)) return;
+      await AstraLibraryData.putWaveform(path, Array.from(peaks));
+    })
+    .catch(() => {
+      /* cache write failure is non-fatal */
+    });
+}
+
+/**
+ * Loudness facts only — the normalization path's entry point. Does not decode purely to
+ * fill in a missing waveform, but keeps the peaks if a loudness decode produces them.
+ */
+export async function ensureTrackLoudness(path: string): Promise<LoudnessFacts> {
+  const { facts } = await ensureTrackAnalysis(path, { peaks: false });
+  return facts;
+}
+
+/**
+ * Stop an in-flight analysis for a track we've skipped past, so it stops burning CPU and
+ * frees a native decode permit for the track the user is actually on.
+ */
+export function cancelTrackAnalysis(path: string): void {
+  if (!inflight.has(path)) return;
+  cancelledPaths.add(path);
+  void AstraLibraryScanner.cancelAnalysis(path).catch(() => {});
+}
+
+/** Paths with an analysis currently running or queued. */
+export function activeAnalysisPaths(): string[] {
+  return Array.from(inflight.keys());
+}
+
+/**
+ * Whether a decode for this path is already under way — i.e. progress events are about to
+ * start arriving, so a second "fast preview" decode would only land late and cause a
+ * visible rescale rather than buying a faster first paint.
+ */
+export function isAnalysisRunning(path: string): boolean {
+  return inflight.has(path);
+}
+
+/** Drops cached waveform rows and stops in-flight decodes from writing them back. */
+export async function clearWaveformCache(): Promise<void> {
+  inflight.clear();
+  cancelledPaths.clear();
+  await cacheGate.invalidate(async () => {
+    await AstraLibraryData.clearWaveforms();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Timing instrumentation
+// ---------------------------------------------------------------------------
+
+export interface AnalysisTiming {
+  path: string;
+  /** 'preview' entries are the sparse first-paint decode, 'analysis' the real pass. */
+  kind: 'analysis' | 'preview';
+  decodeMs: number;
+  durationMs: number | null;
+  /** durationMs / decodeMs — how many times faster than realtime the decode ran. */
+  realtimeFactor: number | null;
+  decoderName: string | null;
+  mime: string | null;
+  withLoudness: boolean;
+  at: number;
+}
+
+const MAX_TIMINGS = 20;
+const recentTimings: AnalysisTiming[] = [];
+
+function push(timing: AnalysisTiming): void {
+  recentTimings.unshift(timing);
+  if (recentTimings.length > MAX_TIMINGS) recentTimings.length = MAX_TIMINGS;
+}
+
+/**
+ * Record how long the sparse preview decode took, measured end to end from JS (so it
+ * includes the wait for a native permit — which is the number that decides whether the
+ * preview can still beat the real decode's first progress event to the screen).
+ */
+export function recordPreviewTiming(path: string, elapsedMs: number): void {
+  push({
+    path,
+    kind: 'preview',
+    decodeMs: elapsedMs,
+    durationMs: null,
+    realtimeFactor: null,
+    decoderName: null,
+    mime: null,
+    withLoudness: false,
+    at: Date.now(),
+  });
+  if (__DEV__) console.log(`[analysis] preview ${elapsedMs.toFixed(0)}ms`);
+}
+
+function recordTiming(path: string, analysis: TrackAnalysis): void {
+  if (analysis.cancelled || analysis.decodeMs == null) return;
+  push({
+    path,
+    kind: 'analysis',
+    decodeMs: analysis.decodeMs,
+    durationMs: analysis.durationMs,
+    realtimeFactor: analysis.realtimeFactor,
+    decoderName: analysis.decoderName,
+    mime: analysis.mime,
+    withLoudness: analysis.withLoudness,
+    at: Date.now(),
+  });
+  if (__DEV__) {
+    const rt = analysis.realtimeFactor;
+    console.log(
+      `[analysis] ${analysis.mime ?? '?'} ${analysis.decodeMs.toFixed(0)}ms` +
+        `${rt ? ` (${rt.toFixed(0)}x realtime)` : ''}` +
+        ` via ${analysis.decoderName ?? '?'}${analysis.withLoudness ? ' +loudness' : ''}`
+    );
+  }
+}
+
+/** Most recent decodes, newest first — surfaced in Settings → Troubleshooting. */
+export function getRecentAnalysisTimings(): readonly AnalysisTiming[] {
+  return recentTimings;
 }

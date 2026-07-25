@@ -21,7 +21,12 @@ import { Text } from './Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatDuration } from '@/lib/format';
-import { downsampleWaveform, getWaveform } from '@/scope/waveform';
+import {
+  downsampleWaveform,
+  getWaveform,
+  mergeProgressiveWaveform,
+  subscribeWaveformProgress,
+} from '@/scope/waveform';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playHaptic } from '@/lib/haptics';
@@ -36,7 +41,8 @@ const BAR_WIDTH = 3;
 const BAR_GAP = 2;
 const MIN_BAR = 0.05; // floor so silent/idle sections still show a sliver
 const PLAYHEAD_WIDTH = 2;
-type WaveformQuality = 'preview' | 'accurate';
+/** Ascending confidence — a lower quality never overwrites a higher one for the same track. */
+type WaveformQuality = 'preview' | 'partial' | 'accurate';
 
 interface WaveformSeekBarProps {
   onSeek: (seconds: number) => void;
@@ -90,16 +96,47 @@ export function WaveformSeekBar({
   const grantRef = useRef({ fraction: 0, pageX: 0 });
   const detentRef = useRef<ScrubDetentState | null>(null);
   const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
+  // The coarse preview is kept aside as well as rendered: it's the amplitude reference the
+  // partially-decoded prefix is scaled against, and it supplies the not-yet-decoded tail.
+  const previewRef = useRef<{ path: string; peaks: Float32Array } | null>(null);
+  // Whether progressive fill has already begun for the current track. A preview that shows
+  // up after that point is worse than useless: adopting it mid-fill rescales every bar at
+  // once (the prefix is scaled against the preview's amplitude), which reads as two
+  // different waveforms fighting. Once we're filling, the preview is dropped.
+  const progressStartedRef = useRef(false);
 
-  // Load (cache-first) the offline peaks whenever the track changes.
+  // Load (cache-first) the offline peaks whenever the track changes, and follow the decode
+  // as it runs so the bars resolve left-to-right rather than snapping in at the end. The
+  // progress subscription is independent of who started the decode — usually the queue
+  // prefetch got there first, in which case this only ever sees the cache hit.
   useEffect(() => {
     if (!trackPath) return;
     let cancelled = false;
+    previewRef.current = null;
+    progressStartedRef.current = false;
+
+    const unsubscribe = subscribeWaveformProgress(trackPath, ({ peaks, totalBins }) => {
+      if (cancelled) return;
+      progressStartedRef.current = true;
+      const preview = previewRef.current?.path === trackPath ? previewRef.current.peaks : null;
+      const merged = mergeProgressiveWaveform(peaks, totalBins, preview);
+      setLoaded((current) => {
+        if (current?.path === trackPath && current.quality === 'accurate' && current.peaks) {
+          return current;
+        }
+        return { path: trackPath, peaks: merged, quality: 'partial' };
+      });
+    });
+
     void getWaveform(trackPath, {
       onPreview: (peaks) => {
         if (cancelled) return;
+        // Lost the race — the real decode is already painting. Adopting the preview now
+        // would rescale the whole bar in one frame.
+        if (progressStartedRef.current) return;
+        previewRef.current = { path: trackPath, peaks };
         setLoaded((current) => {
-          if (current?.path === trackPath && current.quality === 'accurate' && current.peaks) {
+          if (current?.path === trackPath && current.quality !== 'preview' && current.peaks) {
             return current;
           }
           return { path: trackPath, peaks, quality: 'preview' };
@@ -108,12 +145,15 @@ export function WaveformSeekBar({
     }).then((peaks) => {
       if (cancelled) return;
       setLoaded((current) => {
-        if (!peaks && current?.path === trackPath && current.quality === 'preview') return current;
+        // A failed decode must not wipe a good preview or partial fill.
+        if (!peaks && current?.path === trackPath && current.peaks) return current;
         return { path: trackPath, peaks, quality: 'accurate' };
       });
     });
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [trackPath]);
 

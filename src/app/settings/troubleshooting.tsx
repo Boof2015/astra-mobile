@@ -14,6 +14,7 @@ import { getLyricsCacheCount } from '@/db/lyricsQueries';
 import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 import { clearAllLyricsCache } from '@/lyrics/lyrics';
 import { clearAllWaveformCache } from '@/scope/waveform';
+import { getRecentAnalysisTimings, type AnalysisTiming } from '@/audio/trackAnalysis';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
@@ -183,7 +184,56 @@ export default function TroubleshootingSettingsScreen() {
         subtitle="Audition semantic feedback, device primitives, and signature candidates."
         onPress={() => router.push('/settings/haptics-lab' as never)}
       />
+      <AnalysisTimingPanel />
     </SettingsSectionScreen>
+  );
+}
+
+/**
+ * How fast waveform/loudness decodes are actually running, per format and decoder. The
+ * realtime multiple is the number that decides whether MediaCodec is fast enough or whether
+ * the analysis path needs its own in-process decoder.
+ */
+function AnalysisTimingPanel() {
+  const styles = useStyles();
+  const colors = useColors();
+  const [timings, setTimings] = useState<readonly AnalysisTiming[]>([]);
+
+  useEffect(() => {
+    const read = () => setTimings(getRecentAnalysisTimings().slice(0, 6));
+    read();
+    const timer = setInterval(read, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (timings.length === 0) {
+    return (
+      <Text variant="caption" color={colors.textSecondary} style={styles.timingEmpty}>
+        Decode speed appears here after a track with no cached waveform plays.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.timingPanel}>
+      {timings.map((timing) => (
+        <View key={`${timing.path}-${timing.at}`} style={styles.timingRow}>
+          <Text variant="mono" color={colors.textPrimary}>
+            {timing.kind === 'preview'
+              ? `preview · ${Math.round(timing.decodeMs)}ms`
+              : `${(timing.mime ?? 'audio/?').replace('audio/', '')} · ${Math.round(timing.decodeMs)}ms` +
+                (timing.realtimeFactor ? ` · ${Math.round(timing.realtimeFactor)}× realtime` : '')}
+          </Text>
+          <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
+            {timing.kind === 'preview'
+              ? 'sparse first-paint pass'
+              : `${timing.decoderName ?? 'unknown decoder'}${
+                  timing.withLoudness ? ' · loudness folded in' : ''
+                }`}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -247,4 +297,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   errorFeedback: { borderColor: colors.warning },
   feedbackText: { flex: 1 },
+  timingPanel: {
+    gap: spacing.sm, padding: spacing.md, borderRadius: radius.sm,
+    borderWidth: 1, borderColor: colors.glassBorder, backgroundColor: colors.glassBg,
+  },
+  timingRow: { gap: 1 },
+  timingEmpty: { paddingHorizontal: spacing.md, lineHeight: 16 },
 }));

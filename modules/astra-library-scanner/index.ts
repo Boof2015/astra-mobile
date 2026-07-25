@@ -89,9 +89,43 @@ export interface NativeScanResult {
   catalogRevision: string;
 }
 
+/**
+ * Partial waveform emitted while `analyzeTrack` decodes, so the seek bar can fill in
+ * left-to-right. `peaks` holds RAW (un-normalized) RMS for bins `[0, filledBins)` — the
+ * global max isn't known until the decode ends, so callers normalize against the max of
+ * what they've received so far and accept a slight rescale as louder material arrives.
+ */
+export interface WaveformProgressEvent {
+  /** Track URI this partial belongs to — callers must filter, decodes overlap. */
+  uri: string;
+  filledBins: number;
+  totalBins: number;
+  peaks: number[];
+}
+
 type AstraLibraryScannerEvents = {
   onScanProgress: (event: ScanProgressEvent) => void;
+  onWaveformProgress: (event: WaveformProgressEvent) => void;
 };
+
+/** One decode pass: waveform peaks + (optionally) loudness, plus timing. */
+export interface TrackAnalysis {
+  /** `bins` RMS peaks normalized to [0,1]; empty on failure. */
+  peaks: number[];
+  /** Integrated LUFS; null when unmeasured (withLoudness false) or unmeasurable. */
+  lufs: number | null;
+  /** Absolute sample peak, linear [0,1]; null when unmeasured. */
+  peak: number | null;
+  /** True if the decode bailed early — do NOT persist peaks or loudness. */
+  cancelled: boolean;
+  decodeMs: number | null;
+  durationMs: number | null;
+  /** durationMs / decodeMs — how many times faster than realtime the decode ran. */
+  realtimeFactor: number | null;
+  decoderName: string | null;
+  mime: string | null;
+  withLoudness: boolean;
+}
 
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
   listAudioFiles(treeUri: string, extensions: string[]): Promise<ListResult>;
@@ -102,21 +136,23 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
     extensions: string[]
   ): Promise<NativeScanResult>;
   /**
-   * Decode the file's PCM and return `bins` RMS peaks normalized to [0,1] for
-   * the waveform seek bar. Whole-file decode (heavy); returns [] on failure.
+   * ONE whole-file PCM decode producing `bins` RMS waveform peaks and, when
+   * `withLoudness`, gated integrated LUFS + sample peak. Both analyses need every
+   * sample, so they share a pass — ask for loudness here whenever you'd otherwise
+   * measure it separately. Heavy; concurrency is capped natively at 2 and results
+   * should be cached. Emits `onWaveformProgress` as bins finalize.
    */
-  extractWaveform(uri: string, bins: number): Promise<number[]>;
+  analyzeTrack(uri: string, bins: number, withLoudness: boolean): Promise<TrackAnalysis>;
+  /**
+   * Stop an in-flight (or still-queued) `analyzeTrack` for this URI so a skipped-past
+   * track stops burning CPU. Safe to call when nothing is running.
+   */
+  cancelAnalysis(uri: string): Promise<void>;
   /**
    * Decode short windows across the file and return approximate RMS peaks for
    * immediate seek-bar paint. Cheap preview only; callers should not persist it.
    */
   extractWaveformPreview(uri: string, bins: number): Promise<number[]>;
-  /**
-   * Fast integrated loudness (M4): decodes only a few short windows across the
-   * track + gated K-weighting -> integrated LUFS + absolute sample peak. Null on
-   * failure / unmeasurable audio. Waveform peaks are separate (extractWaveform).
-   */
-  measureLoudness(uri: string): Promise<{ lufs: number | null; peak: number | null }>;
   /**
    * Read ReplayGain track/album gain (dB) + peak (linear) from container tags
    * (ID3 TXXX / Vorbis comments / MP4 freeform) without decoding audio. All fields
