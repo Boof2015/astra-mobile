@@ -42,6 +42,7 @@ import {
   HOME_GREETING_ROTATION_MS,
   type HomeGreetingTextMode,
 } from '@/home/homeGreeting';
+import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import type { Album, Artist, DbTrack } from '@/types/library';
 
 const RECENT_ALBUM_LIMIT = 8;
@@ -514,6 +515,7 @@ function EmptyHomeCard({
 export default function HomeScreen() {
   const styles = useStyles();
   const router = useRouter();
+  const openLibrary = useHomeLibraryNavigation();
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
   const albums = useLibraryStore((s) => s.homeAlbums);
   const artists = useLibraryStore((s) => s.homeArtists);
@@ -589,17 +591,11 @@ export default function HomeScreen() {
   const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
 
   const openAlbum = (album: Album) => {
-    router.push({
-      pathname: '/library/album/[key]',
-      params: { key: album.identity_key },
-    });
+    openLibrary({ kind: 'album', key: album.identity_key });
   };
 
   const openArtist = (artist: Artist) => {
-    router.push({
-      pathname: '/library/artist/[name]',
-      params: { name: artist.artist },
-    });
+    openLibrary({ kind: 'artist', name: artist.artist });
   };
 
   const playRecentlyPlayed = (list: DbTrack[], index = 0) => {
@@ -735,7 +731,7 @@ export default function HomeScreen() {
                       trackCount={favoriteTracks.length}
                       coverHash={favoriteTracks[0]?.artwork_hash ?? null}
                       pinned
-                      onPress={() => router.push('/library/playlist/favorites')}
+                      onPress={() => openLibrary({ kind: 'playlist', id: 'favorites' })}
                     />
                   ) : null}
                   {homePlaylists.map((playlist) => (
@@ -745,7 +741,7 @@ export default function HomeScreen() {
                       trackCount={playlist.track_count}
                       missingCount={playlist.missing_track_count}
                       coverHash={playlist.auto_cover_hash}
-                      onPress={() => router.push(`/library/playlist/${playlist.id}`)}
+                      onPress={() => openLibrary({ kind: 'playlist', id: playlist.id })}
                     />
                   ))}
                 </View>

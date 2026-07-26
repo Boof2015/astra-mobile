@@ -1,4 +1,8 @@
 import { Stack } from 'expo-router';
+import {
+  hasHomeLibraryHandoff,
+  withoutHomeLibraryHandoff,
+} from '@/navigation/homeLibraryNavigation';
 import { useColors } from '@/theme/themed';
 
 /**
@@ -19,10 +23,23 @@ export default function LibraryLayout() {
   const colors = useColors();
   return (
     <Stack
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         contentStyle: { backgroundColor: colors.bgPrimary },
-      }}
+        // The tab cross-fade is the only transition needed for a Home handoff.
+        // Suppressing the nested push prevents the replaced detail from being
+        // visible underneath the incoming screen.
+        animation: hasHomeLibraryHandoff(route.params) ? 'none' : undefined,
+      })}
+      screenListeners={({ route, navigation }) => ({
+        transitionEnd: (event) => {
+          if (event.data.closing || !hasHomeLibraryHandoff(route.params)) return;
+          // Re-enable ordinary Library push/pop animations after this arrival.
+          navigation.replaceParams(
+            withoutHomeLibraryHandoff(route.params as Record<string, unknown> | undefined)
+          );
+        },
+      })}
     />
   );
 }
