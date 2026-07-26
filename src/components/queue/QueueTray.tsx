@@ -40,6 +40,10 @@ import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SwipeableRow } from '@/components/SwipeableRow';
 import {
+  SWIPE_ACTIVE_OFFSET_X,
+  SWIPE_FAIL_OFFSET_Y,
+} from '@/components/swipeableRowState';
+import {
   radius,
   spacing,
 } from '@/theme';
@@ -621,11 +625,13 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const playNext = useCallback(
     (key: string) => {
-      const localIndex = entriesRef.current.findIndex((entry) => entry.key === key);
+      const snapshot = entriesRef.current;
+      const localIndex = snapshot.findIndex((entry) => entry.key === key);
       if (localIndex < 0) return;
-      const nextEntries = moveQueueEntry(entriesRef.current, localIndex, 0);
+      const absoluteIndex = snapshot[localIndex].absoluteIndex;
+      const nextEntries = moveQueueEntry(snapshot, localIndex, 0);
       setOptimisticEntries(nextEntries);
-      runAndRefresh(requeueToTop(entriesRef.current[localIndex].absoluteIndex, {
+      runAndRefresh(requeueToTop(absoluteIndex, {
         virtualPosition: virtualMode,
       }));
     },
@@ -634,14 +640,15 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
 
   const remove = useCallback(
     (key: string) => {
-      const localIndex = entriesRef.current.findIndex((entry) => entry.key === key);
+      const snapshot = entriesRef.current;
+      const localIndex = snapshot.findIndex((entry) => entry.key === key);
       if (localIndex < 0) return;
-      const action = removeQueueEntryAt(entriesRef.current, localIndex, baseOffsetRef.current);
+      const action = removeQueueEntryAt(snapshot, localIndex, baseOffsetRef.current);
       if (!action) return;
 
       setOptimisticEntries(action.nextEntries);
       runAndRefresh(removeFromQueue(
-        entriesRef.current[localIndex].absoluteIndex,
+        action.absoluteIndex,
         { updateMirror: false, virtualPosition: virtualMode },
       ));
     },
@@ -963,6 +970,10 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       enablePanDownToClose
       enableContentPanningGesture={!editMode}
       enableHandlePanningGesture
+      // Mirror SwipeableRow's axis lock so the sheet yields to an intentional
+      // horizontal row swipe while vertical movement still scrolls immediately.
+      activeOffsetY={[-SWIPE_FAIL_OFFSET_Y, SWIPE_FAIL_OFFSET_Y]}
+      failOffsetX={[-SWIPE_ACTIVE_OFFSET_X, SWIPE_ACTIVE_OFFSET_X]}
       onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}

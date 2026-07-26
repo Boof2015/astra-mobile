@@ -21,16 +21,14 @@ import Animated, {
 import { useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
-import { swipeLaneOpacity } from '@/components/swipeableRowState';
+import {
+  SWIPE_ACTIVE_OFFSET_X,
+  SWIPE_FAIL_OFFSET_Y,
+  swipeLaneOpacity,
+} from '@/components/swipeableRowState';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-const SWIPE_ACTIVE_OFFSET_X = 10;
-// Scroll-slop-sized: at 30 every vertical drag starting on a row had to travel
-// 30px before the pan failed and the surrounding scrollable could win. Keep
-// this tighter than the horizontal activation threshold so vertical intent
-// yields immediately, especially inside the queue's BottomSheet scrollable.
-const SWIPE_FAIL_OFFSET_Y = 6;
 // A fixed reveal distance avoids an onLayout -> setState -> gesture rebuild for
 // every recycled list row. It is also more predictable on wide tablet rows than
 // using half of the full row width.
