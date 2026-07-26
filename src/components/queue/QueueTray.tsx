@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  type BottomSheetHandleProps,
   useBottomSheetScrollableCreator
 } from '@gorhom/bottom-sheet';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
@@ -72,6 +73,7 @@ import {
   QUEUE_ROW_HEIGHT,
   queuePreviewRowCount,
 } from './queuePerformance';
+import { QueueSheetHandle } from './QueueSheetHandle';
 
 const ART = 42;
 const EMPTY_KEY_SET = new Set<string>();
@@ -805,7 +807,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const selectedCount = visibleSelectedKeys.size;
   const canEdit = queueReady && entries.length > 0;
 
-  const body = (
+  const topSection = useMemo(() => (
     <>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
@@ -853,7 +855,20 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       <Text variant="caption" style={[styles.sectionLabel, styles.upcomingLabel]}>
         Up next
       </Text>
+    </>
+  ), [
+    canEdit,
+    colors.accent,
+    currentTrack,
+    editMode,
+    exitEdit,
+    ripple.bounded,
+    styles,
+    upcomingTotal,
+  ]);
 
+  const content = (
+    <>
       <View style={listAreaStyle}>
         {listReady ? (
           <FlashList
@@ -922,8 +937,22 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     </>
   );
 
+  const renderSheetHandle = useCallback(
+    (props: BottomSheetHandleProps) => (
+      <QueueSheetHandle {...props}>
+        {topSection}
+      </QueueSheetHandle>
+    ),
+    [topSection]
+  );
+
   if (embedded) {
-    return <View style={styles.embeddedRoot}>{body}</View>;
+    return (
+      <View style={styles.embeddedRoot}>
+        {topSection}
+        {content}
+      </View>
+    );
   }
 
   return (
@@ -938,9 +967,10 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBg}
+      handleComponent={renderSheetHandle}
       handleIndicatorStyle={styles.handle}
     >
-      {body}
+      {content}
     </BottomSheet>
   );
 });

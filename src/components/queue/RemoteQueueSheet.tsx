@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  type BottomSheetHandleProps,
   useBottomSheetScrollableCreator,
 } from '@gorhom/bottom-sheet';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
@@ -21,6 +22,7 @@ import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
+import { QueueSheetHandle } from './QueueSheetHandle';
 
 interface RemoteQueueSheetProps {
   onClose: () => void;
@@ -102,34 +104,52 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
     [playItem, colors, styles, ripple]
   );
 
-  const body = (
-    <>
+  const topSection = useMemo(
+    () => (
       <View style={styles.headerRow}>
         <Text variant="heading">Desktop queue</Text>
         <Text variant="label" color={colors.textTertiary}>
           {upcomingCount === 1 ? '1 song up next' : `${upcomingCount} songs up next`}
         </Text>
       </View>
-      <FlashList
-        data={items}
-        keyExtractor={(item) => item.queueId}
-        renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text variant="body" color={colors.textSecondary}>
-              The desktop queue is empty.
-            </Text>
-          </View>
-        }
-      />
-    </>
+    ),
+    [colors.textTertiary, styles.headerRow, upcomingCount]
+  );
+
+  const content = (
+    <FlashList
+      data={items}
+      keyExtractor={(item) => item.queueId}
+      renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
+      renderItem={renderItem}
+      contentContainerStyle={styles.listContent}
+      showsVerticalScrollIndicator={false}
+      ListEmptyComponent={
+        <View style={styles.empty}>
+          <Text variant="body" color={colors.textSecondary}>
+            The desktop queue is empty.
+          </Text>
+        </View>
+      }
+    />
+  );
+
+  const renderSheetHandle = useCallback(
+    (props: BottomSheetHandleProps) => (
+      <QueueSheetHandle {...props}>
+        {topSection}
+      </QueueSheetHandle>
+    ),
+    [topSection]
   );
 
   if (embedded) {
-    return <View style={styles.embeddedRoot}>{body}</View>;
+    return (
+      <View style={styles.embeddedRoot}>
+        {topSection}
+        {content}
+      </View>
+    );
   }
 
   return (
@@ -141,9 +161,10 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBg}
+      handleComponent={renderSheetHandle}
       handleIndicatorStyle={styles.handle}
     >
-      {body}
+      {content}
     </BottomSheet>
   );
 }
