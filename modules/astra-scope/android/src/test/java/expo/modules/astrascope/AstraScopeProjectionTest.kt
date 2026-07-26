@@ -46,6 +46,37 @@ class AstraScopeProjectionTest {
     assertEquals(16L, AstraScopeProjection.cadenceMs(16.0, 120f))
     assertEquals(8L, AstraScopeProjection.cadenceMs(0.0, 120f))
     assertEquals(17L, AstraScopeProjection.cadenceMs(0.0, 60f))
+    assertEquals(16_000_000L, AstraScopeProjection.cadenceNanos(16.0, 120f))
+    assertEquals(8_333_333L, AstraScopeProjection.cadenceNanos(0.0, 120f))
+    assertEquals(11_111_111L, AstraScopeProjection.cadenceNanos(0.0, 90f))
+  }
+
+  @Test
+  fun adaptiveOscilloscopeUsesNinetyFpsOnFastDisplaysAndSixtyWhenConstrained() {
+    assertEquals(60f, AstraScopeProjection.adaptiveOscilloscopeFps(60f, false), 0f)
+    assertEquals(90f, AstraScopeProjection.adaptiveOscilloscopeFps(90f, false), 0f)
+    assertEquals(90f, AstraScopeProjection.adaptiveOscilloscopeFps(120f, false), 0f)
+    assertEquals(90f, AstraScopeProjection.adaptiveOscilloscopeFps(144f, false), 0f)
+
+    assertEquals(60f, AstraScopeProjection.adaptiveOscilloscopeFps(120f, true), 0f)
+    assertEquals(60f, AstraScopeProjection.adaptiveOscilloscopeFps(90f, true), 0f)
+    assertEquals(60f, AstraScopeProjection.adaptiveOscilloscopeFps(Float.NaN, false), 0f)
+  }
+
+  @Test
+  fun fractionalDeadlineProducesNineFramesAcrossTwelve120HzVsyncs() {
+    val deadline = AdaptiveFrameDeadline()
+    val vsyncCadence = AstraScopeProjection.cadenceNanos(0.0, 120f)
+    val renderCadence = AstraScopeProjection.cadenceNanos(0.0, 90f)
+    var rendered = 0
+
+    repeat(12) { frame ->
+      if (deadline.isDue(frame * vsyncCadence, renderCadence, 500_000L)) rendered += 1
+    }
+
+    assertEquals(9, rendered)
+    deadline.reset()
+    assertTrue(deadline.isDue(200_000_000L, renderCadence))
   }
 
   @Test

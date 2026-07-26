@@ -12,9 +12,10 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useScopeActive } from '@/scope/scopeStore';
 
 const CANVAS_HEIGHT = 96;
-// 60fps cap: display-sync (0) pinned the JS thread at 120Hz on high-refresh
-// devices and starved every other animation.
-const STAGE_FRAME_MS = 16;
+// Spectrum remains intentionally capped; native oscilloscope rendering follows
+// the display up to 90 Hz and falls back to at most 60 Hz under system pressure.
+const SPECTRUM_FRAME_MS = 16;
+const OSCILLOSCOPE_FRAME_MS = 0;
 
 type Mode = 'spectrum' | 'scope';
 
@@ -73,7 +74,7 @@ export function Visualizer({
         {mode === 'spectrum' ? (
           <SpectrumCurve
             active={spectrumActive}
-            frameMs={STAGE_FRAME_MS}
+            frameMs={SPECTRUM_FRAME_MS}
             smoothing={spectrumSmoothing}
             width={width}
             height={height}
@@ -83,7 +84,7 @@ export function Visualizer({
         ) : (
           <OscilloscopeWave
             active={scopeWaveActive}
-            frameMs={STAGE_FRAME_MS}
+            frameMs={OSCILLOSCOPE_FRAME_MS}
             width={width}
             height={height}
             glow

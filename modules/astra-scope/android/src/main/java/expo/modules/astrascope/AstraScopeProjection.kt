@@ -5,6 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 internal enum class ScopeMode {
   SPECTRUM,
@@ -34,6 +35,7 @@ internal object AstraScopeProjection {
   const val OSCILLOSCOPE_POINTS = 256
   const val DECAY_PER_FRAME = 0.72f
   const val REST_EPSILON = 0.004f
+  const val MAX_ADAPTIVE_OSCILLOSCOPE_FPS = 90f
 
   private const val MIN_FREQUENCY = 20.0
   private const val MAX_FREQUENCY = 20_000.0
@@ -42,8 +44,25 @@ internal object AstraScopeProjection {
 
   fun cadenceMs(requestedMs: Double, refreshRate: Float): Long {
     if (requestedMs > 0.0) return max(1L, requestedMs.roundToInt().toLong())
-    val safeRate = if (refreshRate.isFinite() && refreshRate >= 30f) refreshRate else 60f
+    val safeRate = safeRefreshRate(refreshRate)
     return max(1L, (1_000.0 / safeRate).roundToInt().toLong())
+  }
+
+  fun cadenceNanos(requestedMs: Double, refreshRate: Float): Long {
+    if (requestedMs > 0.0) {
+      return max(1L, (requestedMs * NANOS_PER_MILLISECOND).roundToLong())
+    }
+    return max(1L, (NANOS_PER_SECOND / safeRefreshRate(refreshRate)).roundToLong())
+  }
+
+  /**
+   * Follows 60 Hz displays directly and uses the measured 90 fps scope budget
+   * on faster panels. Power or thermal pressure constrains rendering to 60 fps.
+   */
+  fun adaptiveOscilloscopeFps(refreshRate: Float, constrained: Boolean): Float {
+    val safeRate = safeRefreshRate(refreshRate)
+    val limit = if (constrained) 60f else MAX_ADAPTIVE_OSCILLOSCOPE_FPS
+    return min(safeRate, limit)
   }
 
   fun clamp01(value: Float): Float = when {
@@ -115,6 +134,9 @@ internal object AstraScopeProjection {
   private fun frequencyAt(t: Double, minFrequency: Double, maxFrequency: Double): Double =
     minFrequency * (maxFrequency / minFrequency).pow(t)
 
+  private fun safeRefreshRate(refreshRate: Float): Float =
+    if (refreshRate.isFinite() && refreshRate >= 30f) refreshRate else 60f
+
   private fun interpolated(
     values: java.nio.FloatBuffer,
     count: Int,
@@ -138,6 +160,9 @@ internal object AstraScopeProjection {
     for (index in (start + 1)..end) result = max(result, values.get(index))
     return result
   }
+
+  private const val NANOS_PER_MILLISECOND = 1_000_000.0
+  private const val NANOS_PER_SECOND = 1_000_000_000.0
 }
 
 /**
@@ -162,4 +187,30 @@ internal class ScopeRenderGate {
   fun isCurrent(token: Int): Boolean = eligible && generation == token
 
   fun currentGeneration(): Int = generation
+}
+
+/**
+ * Keeps fractional target cadences phase-locked to vsync instead of resetting
+ * the deadline after each rendered frame (which would turn 90-on-120 into 60).
+ */
+internal class AdaptiveFrameDeadline {
+  private var nextFrameAtNanos = Long.MIN_VALUE
+
+  fun reset() {
+    nextFrameAtNanos = Long.MIN_VALUE
+  }
+
+  fun isDue(frameTimeNanos: Long, cadenceNanos: Long, toleranceNanos: Long = 0L): Boolean {
+    val cadence = max(1L, cadenceNanos)
+    if (nextFrameAtNanos == Long.MIN_VALUE) {
+      nextFrameAtNanos = frameTimeNanos + cadence
+      return true
+    }
+    if (frameTimeNanos + max(0L, toleranceNanos) < nextFrameAtNanos) return false
+
+    do {
+      nextFrameAtNanos += cadence
+    } while (nextFrameAtNanos <= frameTimeNanos)
+    return true
+  }
 }

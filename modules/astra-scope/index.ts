@@ -82,6 +82,7 @@ export interface AstraScopeViewProps extends ViewProps {
   source?: 'pre' | 'post';
   active: boolean;
   reducedMotion?: boolean;
+  /** Positive milliseconds for a fixed cadence; 0 enables native display sync. */
   frameMs: number;
   analysisFrameMs?: number;
   smoothing?: number;

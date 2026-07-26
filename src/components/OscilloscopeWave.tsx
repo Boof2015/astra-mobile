@@ -8,7 +8,7 @@ interface OscilloscopeWaveProps {
   active: boolean;
   width: number;
   height: number;
-  /** Live render cadence; 0 means display-sync. */
+  /** Live render cadence; 0 uses native adaptive display synchronization. */
   frameMs?: number;
   color?: string;
   lineWidth?: number;
@@ -27,7 +27,7 @@ export function OscilloscopeWave({
   active,
   width,
   height,
-  frameMs = 16,
+  frameMs = 0,
   color: colorProp,
   lineWidth = 2,
   glow = false,

@@ -10,9 +10,13 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.Shader
 import android.graphics.SurfaceTexture
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.PowerManager
 import android.os.SystemClock
+import android.view.Choreographer
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import android.view.TextureView
@@ -29,12 +33,24 @@ import kotlin.math.roundToInt
 private object ScopeRenderDispatcher {
   private val thread = HandlerThread("AstraScopeRender").apply { start() }
   val handler = Handler(thread.looper)
+
+  fun postFrameCallback(callback: Choreographer.FrameCallback) {
+    handler.post {
+      Choreographer.getInstance().postFrameCallback(callback)
+    }
+  }
+
+  fun removeFrameCallback(callback: Choreographer.FrameCallback) {
+    handler.post {
+      Choreographer.getInstance().removeFrameCallback(callback)
+    }
+  }
 }
 
 /**
  * Android-native spectrum/oscilloscope surface. The shared worker owns every
- * FFT read and path mutation; the UI thread only paints the most recently
- * prepared front path.
+ * FFT read, path mutation, and hardware-surface draw; no audio frame crosses
+ * React or the JavaScript thread.
  */
 internal class AstraScopeView(
   context: Context,
@@ -84,16 +100,66 @@ internal class AstraScopeView(
   private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val textureView = TextureView(context)
   private val renderGate = ScopeRenderGate()
+  private val powerManager =
+    context.getSystemService(Context.POWER_SERVICE) as PowerManager
   private var attached = false
   private var windowVisible = false
   @Volatile
   private var surfaceAvailable = false
+  @Volatile
+  private var renderSurface: Surface? = null
   private var scheduledToken = 0
   private var lastAnalysisAt = 0L
   private var lastDrawAt = 0L
+  private var lastAnalysisAtNanos = 0L
+  private var lastAdaptivePolicyAt = 0L
+  private var appliedFrameRate = Float.NaN
   private var hasNewFrame = false
+  private val adaptiveFrameDeadline = AdaptiveFrameDeadline()
   @Volatile
   private var displayRefreshRate = 60f
+  @Volatile
+  private var cadenceConstrained = false
+
+  private val adaptiveFrameCallback = object : Choreographer.FrameCallback {
+    override fun doFrame(frameTimeNanos: Long) {
+      val token = scheduledToken
+      if (!renderGate.isCurrent(token)) return
+
+      refreshAdaptivePolicy(SystemClock.uptimeMillis())
+      val targetFps = AstraScopeProjection.adaptiveOscilloscopeFps(
+        displayRefreshRate,
+        cadenceConstrained
+      )
+      val analysisCadence =
+        AstraScopeProjection.cadenceNanos(analysisFrameMs, targetFps)
+      val renderThisVsync = adaptiveFrameDeadline.isDue(
+        frameTimeNanos,
+        AstraScopeProjection.cadenceNanos(frameMs, targetFps),
+        VSYNC_TOLERANCE_NANOS
+      )
+
+      val analyzeThisVsync = if (analysisFrameMs <= 0.0) {
+        renderThisVsync
+      } else {
+        isFrameDue(frameTimeNanos, lastAnalysisAtNanos, analysisCadence)
+      }
+      if (analyzeThisVsync) {
+        lastAnalysisAtNanos = frameTimeNanos
+        hasNewFrame = readScopeFrame()
+      }
+      if (hasNewFrame && renderThisVsync) {
+        if (!renderGate.isCurrent(token)) return
+        preparePaths()
+        hasNewFrame = false
+        publishFrame()
+      }
+
+      if (renderGate.isCurrent(token)) {
+        Choreographer.getInstance().postFrameCallback(this)
+      }
+    }
+  }
 
   private val renderRunnable = object : Runnable {
     override fun run() {
@@ -134,6 +200,9 @@ internal class AstraScopeView(
     textureView.isOpaque = false
     textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
       override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+        renderSurface?.release()
+        renderSurface = Surface(surface)
+        appliedFrameRate = Float.NaN
         surfaceAvailable = true
         restartRendering()
       }
@@ -146,6 +215,8 @@ internal class AstraScopeView(
       override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
         surfaceAvailable = false
         cancelRendering()
+        renderSurface?.release()
+        renderSurface = null
         return true
       }
 
@@ -195,19 +266,33 @@ internal class AstraScopeView(
 
   private fun restartRendering() {
     ScopeRenderDispatcher.handler.removeCallbacks(renderRunnable)
+    ScopeRenderDispatcher.removeFrameCallback(adaptiveFrameCallback)
     lastAnalysisAt = 0L
     lastDrawAt = 0L
+    lastAnalysisAtNanos = 0L
+    adaptiveFrameDeadline.reset()
     hasNewFrame = false
 
     val eligible = attached && windowVisible && surfaceAvailable && width > 0 && height > 0
-    displayRefreshRate = display?.refreshRate ?: 60f
+    refreshAdaptivePolicy(SystemClock.uptimeMillis(), force = true)
     scheduledToken = renderGate.update(eligible)
-    if (eligible) ScopeRenderDispatcher.handler.post(renderRunnable)
+    applyFrameRateVote(
+      if (eligible && usesAdaptiveVsync()) adaptiveOscilloscopeFps() else 0f
+    )
+    if (eligible) {
+      if (usesAdaptiveVsync()) {
+        ScopeRenderDispatcher.postFrameCallback(adaptiveFrameCallback)
+      } else {
+        ScopeRenderDispatcher.handler.post(renderRunnable)
+      }
+    }
   }
 
   private fun cancelRendering() {
     scheduledToken = renderGate.update(false)
+    applyFrameRateVote(0f)
     ScopeRenderDispatcher.handler.removeCallbacks(renderRunnable)
+    ScopeRenderDispatcher.removeFrameCallback(adaptiveFrameCallback)
   }
 
   private fun readScopeFrame(): Boolean {
@@ -295,10 +380,82 @@ internal class AstraScopeView(
     publishFrame()
 
     if (peak >= AstraScopeProjection.REST_EPSILON && renderGate.isCurrent(token)) {
-      val cadence = AstraScopeProjection.cadenceMs(frameMs, displayRefreshRate)
+      val decayFrameMs = if (frameMs > 0.0) frameMs else FALLBACK_FRAME_MS
+      val cadence = AstraScopeProjection.cadenceMs(decayFrameMs, displayRefreshRate)
       ScopeRenderDispatcher.handler.postDelayed(renderRunnable, cadence)
     }
   }
+
+  private fun usesAdaptiveVsync(): Boolean =
+    requestedActive && mode == ScopeMode.OSCILLOSCOPE && frameMs <= 0.0
+
+  private fun refreshAdaptivePolicy(now: Long, force: Boolean = false) {
+    if (!force && now - lastAdaptivePolicyAt < ADAPTIVE_POLICY_POLL_MS) return
+    val previousTarget = adaptiveOscilloscopeFps()
+    lastAdaptivePolicyAt = now
+    displayRefreshRate = display?.refreshRate ?: 60f
+    cadenceConstrained = powerManager.isPowerSaveMode ||
+      (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+          powerManager.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+        )
+    val nextTarget = adaptiveOscilloscopeFps()
+    if (!force && abs(nextTarget - previousTarget) >= FRAME_RATE_CHANGE_EPSILON) {
+      textureView.post {
+        applyFrameRateVote(
+          if (renderGate.eligible && usesAdaptiveVsync()) nextTarget else 0f
+        )
+      }
+    }
+  }
+
+  private fun adaptiveOscilloscopeFps(): Float =
+    AstraScopeProjection.adaptiveOscilloscopeFps(
+      displayRefreshRate,
+      cadenceConstrained
+    )
+
+  private fun applyFrameRateVote(requestedRate: Float) {
+    if (
+      appliedFrameRate.isFinite() &&
+      abs(appliedFrameRate - requestedRate) < FRAME_RATE_CHANGE_EPSILON
+    ) {
+      return
+    }
+    appliedFrameRate = requestedRate
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+      textureView.setRequestedFrameRate(
+        if (requestedRate > 0f) {
+          requestedRate
+        } else {
+          View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+        }
+      )
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      val surface = renderSurface ?: return
+      if (!surface.isValid) return
+      try {
+        if (requestedRate > 0f) {
+          surface.setFrameRate(
+            requestedRate,
+            Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
+          )
+        } else {
+          surface.clearFrameRate()
+        }
+      } catch (_: IllegalArgumentException) {
+        // The TextureView may detach while a frame-rate vote is being updated.
+      } catch (_: IllegalStateException) {
+        // The TextureView may detach while a frame-rate vote is being updated.
+      }
+    }
+  }
+
+  private fun isFrameDue(now: Long, previous: Long, cadence: Long): Boolean =
+    previous == 0L || now - previous >= max(1L, cadence - VSYNC_TOLERANCE_NANOS)
 
   private fun preparePaths() {
     val count = renderedPointCount
@@ -361,13 +518,21 @@ internal class AstraScopeView(
   }
 
   /**
-   * SurfaceTexture publication does not invalidate the React/Android view tree.
-   * The serialized scope worker prepares and rasterizes this small transparent
-   * layer; the platform compositor presents it with the retained scene.
+   * The serialized scope worker prepares and hardware-rasterizes this small
+   * transparent layer. TextureView publication may schedule a platform frame,
+   * but it never schedules React work or rebuilds the surrounding scene.
    */
   private fun publishFrame() {
     if (!surfaceAvailable) return
-    val canvas = textureView.lockCanvas() ?: return
+    val surface = renderSurface ?: return
+    if (!surface.isValid) return
+    val canvas = try {
+      surface.lockHardwareCanvas()
+    } catch (_: IllegalArgumentException) {
+      return
+    } catch (_: IllegalStateException) {
+      return
+    }
     try {
       canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
       synchronized(pathLock) {
@@ -378,7 +543,13 @@ internal class AstraScopeView(
         canvas.drawPath(linePaths[frontPath], strokePaint)
       }
     } finally {
-      textureView.unlockCanvasAndPost(canvas)
+      try {
+        surface.unlockCanvasAndPost(canvas)
+      } catch (_: IllegalArgumentException) {
+        // The TextureView may detach between lock and post.
+      } catch (_: IllegalStateException) {
+        // The TextureView may detach between lock and post.
+      }
     }
   }
 
@@ -447,5 +618,9 @@ internal class AstraScopeView(
 
   companion object {
     private const val MAX_RENDER_POINTS = 512
+    private const val ADAPTIVE_POLICY_POLL_MS = 1_000L
+    private const val VSYNC_TOLERANCE_NANOS = 1_000_000L
+    private const val FALLBACK_FRAME_MS = 1_000.0 / 60.0
+    private const val FRAME_RATE_CHANGE_EPSILON = 0.5f
   }
 }

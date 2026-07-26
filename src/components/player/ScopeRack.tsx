@@ -16,9 +16,10 @@ import { useScopeActive } from '@/scope/scopeStore';
 import { spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 
-// 60fps cap, matching Visualizer — display-sync starved the JS thread on
-// high-refresh devices.
-const STAGE_FRAME_MS = 16;
+// Spectrum stays capped at 60 fps. The native oscilloscope follows the display
+// up to 90 Hz and falls back to at most 60 Hz under system pressure.
+const SPECTRUM_FRAME_MS = 16;
+const OSCILLOSCOPE_FRAME_MS = 0;
 // The rack artwork is atmosphere, not a second cover card. It bleeds beyond
 // the old frame, stays softly defocused, and contributes restrained color.
 const BACKDROP_BLUR_RADIUS = 10;
@@ -111,7 +112,7 @@ export function ScopeRack({
       <View style={[styles.strips, { width, left: (size - width) / 2 }]}>
         <OscilloscopeWave
           active={active}
-          frameMs={STAGE_FRAME_MS}
+          frameMs={OSCILLOSCOPE_FRAME_MS}
           width={width}
           height={stripHeight}
           glow
@@ -120,7 +121,7 @@ export function ScopeRack({
         />
         <SpectrumCurve
           active={active}
-          frameMs={STAGE_FRAME_MS}
+          frameMs={SPECTRUM_FRAME_MS}
           smoothing={spectrumSmoothing}
           width={width}
           height={stripHeight}
