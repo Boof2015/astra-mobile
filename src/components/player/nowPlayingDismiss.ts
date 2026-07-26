@@ -14,6 +14,19 @@ interface NowPlayingDismissSpring {
 }
 
 /**
+ * The overlay pan must briefly yield when its body is being replaced. Otherwise
+ * RNGH can cancel the old child tree after it has already written a partial
+ * translateY, leaving the newly mounted body parked off-screen.
+ */
+export function shouldEnableNowPlayingPan(
+  playerOpen: boolean,
+  childSheetOpen: boolean,
+  bodySwitching: boolean
+): boolean {
+  return playerOpen && !childSheetOpen && !bodySwitching;
+}
+
+/**
  * Preserve the exact release velocity, then make the spring progressively
  * stronger and more damped for hard flicks so it sheds speed after handoff.
  */

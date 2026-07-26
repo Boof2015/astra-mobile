@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { resolveNowPlayingDismissSpring } from './nowPlayingDismiss.ts';
+import {
+  resolveNowPlayingDismissSpring,
+  shouldEnableNowPlayingPan,
+} from './nowPlayingDismiss.ts';
+
+test('player pan yields to child sheets and body replacements', () => {
+  assert.equal(shouldEnableNowPlayingPan(true, false, false), true);
+  assert.equal(shouldEnableNowPlayingPan(true, true, false), false);
+  assert.equal(shouldEnableNowPlayingPan(true, false, true), false);
+  assert.equal(shouldEnableNowPlayingPan(false, false, false), false);
+});
 
 test('preserves ordinary downward release velocity and spring', () => {
   for (const velocity of [0, 1, 500, 999, 1000]) {

@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
@@ -40,7 +41,10 @@ import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
-import { resolveNowPlayingDismissSpring } from '@/components/player/nowPlayingDismiss';
+import {
+  resolveNowPlayingDismissSpring,
+  shouldEnableNowPlayingPan,
+} from '@/components/player/nowPlayingDismiss';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
 import {
   NOW_PLAYING_CLOSE_COMMIT_MS,
@@ -146,6 +150,7 @@ export function NowPlayingOverlay() {
   const foreground = useAppForeground();
   const surfacesLive = playerOpen && foreground;
   const [queueOpen, setQueueOpen] = useState(false);
+  const [lyricsBodySwitching, setLyricsBodySwitching] = useState(false);
   // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
   const closeQueue = useCallback(() => setQueueOpen(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -293,14 +298,6 @@ export function NowPlayingOverlay() {
     hasTabletCompanion,
   ]);
 
-  const showLyrics = () => {
-    if (hasTabletCompanion) {
-      void setNowPlayingCompanion('lyrics');
-      return;
-    }
-    void setLyricsVisible(!lyricsVisible);
-  };
-
   const showQueue = () => {
     if (hasTabletCompanion) {
       if (!isDesktopTarget) {
@@ -416,6 +413,34 @@ export function NowPlayingOverlay() {
   // both faces for the 220 ms transition, then release the invisible surface.
   const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
 
+  /**
+   * Swapping the phone player body unmounts every normal control underneath the
+   * parent pan detector. Suspend that pan for the commit frame and synchronously
+   * restore its anchor first, so a cancelled child gesture cannot carry a stale
+   * translateY into the lyrics tree (or back into the standard player).
+   */
+  const setPhoneLyricsVisible = (visible: boolean) => {
+    if (!playerOpen) return;
+    cancelAnimation(translateY);
+    translateY.value = 0;
+    setLyricsBodySwitching(true);
+    void setLyricsVisible(visible);
+  };
+
+  const showLyrics = () => {
+    if (hasTabletCompanion) {
+      void setNowPlayingCompanion('lyrics');
+      return;
+    }
+    setPhoneLyricsVisible(!lyricsVisible);
+  };
+
+  useEffect(() => {
+    if (!lyricsBodySwitching) return undefined;
+    const frame = requestAnimationFrame(() => setLyricsBodySwitching(false));
+    return () => cancelAnimationFrame(frame);
+  }, [lyricsBodySwitching, lyricsMode]);
+
   useEffect(() => {
     if (!transitionTrackKey) return;
     trackProgress.value = 0;
@@ -484,7 +509,7 @@ export function NowPlayingOverlay() {
     // A child sheet owns vertical gestures while it is visible. Replacing this
     // gesture during the queue-button touch used to cancel a partially active
     // pan and leave translateY off-screen while phase still said "open".
-    .enabled(playerOpen && !queueOpen)
+    .enabled(shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching))
     .activeOffsetY(14) // engage only on a downward drag
     .failOffsetY(-14)
     .failOffsetX([-24, 24]) // let the horizontal seek drag through
@@ -526,12 +551,13 @@ export function NowPlayingOverlay() {
   // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
   // a player that already believes it is open still re-runs the slide-in — that
   // is the recovery path for a sheet stranded off-screen by an interrupted
-  // close. `queueOpen` also re-anchors the player before its modal BottomSheet
-  // appears. `windowHeight` is deliberately NOT a dependency: a dimension
-  // change (rotation, or an RN Modal like the output picker) would re-run this
-  // effect and cancel an in-flight exit spring. NOTE: this effect must stay
-  // BELOW every direct `translateY.value` write — the react compiler forbids
-  // mutations after an effect that depends on the value.
+  // close. `queueOpen` re-anchors the player before its modal BottomSheet
+  // appears, and `lyricsMode` provides the same backstop after the phone body
+  // swap. `windowHeight` is deliberately NOT a dependency: a dimension change
+  // (rotation, or an RN Modal like the output picker) would re-run this effect
+  // and cancel an in-flight exit spring. NOTE: this effect must stay BELOW every
+  // direct `translateY.value` write — the react compiler forbids mutations
+  // after an effect that depends on the value.
   useEffect(() => {
     if (phase === 'closing') {
       // The gesture and button paths own the exit animation, including its
@@ -544,7 +570,7 @@ export function NowPlayingOverlay() {
     }
     translateY.value = withTiming(0, { duration: 240 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
-  }, [phase, openRequest, exitAnimated, queueOpen, translateY]);
+  }, [phase, openRequest, exitAnimated, queueOpen, lyricsMode, translateY]);
 
   // `closing` → `closed`, and `opening` → `open`. Both are timers rather than
   // animation callbacks, so a cancelled animation can never strand the phase.
@@ -755,7 +781,7 @@ export function NowPlayingOverlay() {
                 onNext={skipToNext}
                 onPrev={skipToPrevious}
                 onToggleFavorite={() => void toggleFavorite(track)}
-                onExitLyrics={() => void setLyricsVisible(false)}
+                onExitLyrics={() => setPhoneLyricsVisible(false)}
                 onDismiss={() => dismissSheet()}
               />
             ) : isDesktopTarget ? (

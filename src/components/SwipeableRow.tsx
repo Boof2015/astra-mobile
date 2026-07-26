@@ -21,6 +21,7 @@ import Animated, {
 import { useColors } from '@/theme/themed';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
+import { swipeLaneOpacity } from '@/components/swipeableRowState';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -125,24 +126,40 @@ export function SwipeableRow({
   const gesture = dragGesture ? Gesture.Race(dragGesture, pan) : pan;
 
   const contentStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
+  const leftLaneStyle = useAnimatedStyle(() => ({
+    opacity: swipeLaneOpacity(tx.value, 'left'),
+  }));
+  const rightLaneStyle = useAnimatedStyle(() => ({
+    opacity: swipeLaneOpacity(tx.value, 'right'),
+  }));
 
   return (
     <View style={styles.wrap}>
       {swipeRight ? (
-        <View
+        <Animated.View
           pointerEvents="none"
-          style={[styles.lane, styles.laneLeft, { backgroundColor: swipeRight.color }]}
+          style={[
+            styles.lane,
+            styles.laneLeft,
+            { backgroundColor: swipeRight.color },
+            leftLaneStyle,
+          ]}
         >
           <Ionicons name={swipeRight.icon} size={22} color={swipeRight.iconColor ?? colors.bgPrimary} />
-        </View>
+        </Animated.View>
       ) : null}
       {swipeLeft ? (
-        <View
+        <Animated.View
           pointerEvents="none"
-          style={[styles.lane, styles.laneRight, { backgroundColor: swipeLeft.color }]}
+          style={[
+            styles.lane,
+            styles.laneRight,
+            { backgroundColor: swipeLeft.color },
+            rightLaneStyle,
+          ]}
         >
           <Ionicons name={swipeLeft.icon} size={22} color={swipeLeft.iconColor ?? colors.bgPrimary} />
-        </View>
+        </Animated.View>
       ) : null}
       <GestureDetector gesture={gesture}>
         <Animated.View style={contentStyle}>{children}</Animated.View>
