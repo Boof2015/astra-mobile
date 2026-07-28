@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  QUEUE_INITIAL_RENDER_AHEAD_ROWS,
+  QUEUE_INITIAL_RENDER_DISTANCE,
   QUEUE_RENDER_AHEAD_MIN_ROWS,
   QUEUE_RENDER_WINDOW_MULTIPLIER,
   QUEUE_ROW_HEIGHT,
   queuePreviewRowCount,
   queueRenderDistance,
 } from './queuePerformance.ts';
+
+test('queue opens with the former four-row render-ahead distance', () => {
+  assert.equal(QUEUE_INITIAL_RENDER_AHEAD_ROWS, 4);
+  assert.equal(QUEUE_INITIAL_RENDER_DISTANCE, QUEUE_ROW_HEIGHT * 4);
+});
 
 test('queue render-ahead covers two windows with a twelve-row minimum', () => {
   assert.equal(QUEUE_RENDER_AHEAD_MIN_ROWS, 12);

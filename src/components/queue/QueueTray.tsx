@@ -7,6 +7,7 @@ import {
   useState
 } from 'react';
 import {
+  InteractionManager,
   Pressable,
   StyleSheet,
   View,
@@ -77,6 +78,7 @@ import {
   type QueueIndexByKey,
 } from './queueActions';
 import {
+  QUEUE_INITIAL_RENDER_DISTANCE,
   QUEUE_ROW_HEIGHT,
   queuePreviewRowCount,
   queueRenderDistance,
@@ -204,9 +206,16 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   // the tray's first frame and unmounts once the real list has painted (onLoad
   // fires a frame after first layout completes, so rows are already underneath).
   const [listPainted, setListPainted] = useState(false);
-  const onListLoad = useCallback(() => setListPainted(true), []);
+  const listPaintedRef = useRef(false);
+  const onListLoad = useCallback(() => {
+    listPaintedRef.current = true;
+    setListPainted(true);
+  }, []);
+  const [renderCoverageReady, setRenderCoverageReady] = useState(embedded);
   const previewCount = queuePreviewRowCount(windowHeight);
-  const renderDistance = queueRenderDistance(windowHeight);
+  const renderDistance = renderCoverageReady
+    ? queueRenderDistance(windowHeight)
+    : QUEUE_INITIAL_RENDER_DISTANCE;
   // Bottom padding clears the gesture-nav inset so the last row is fully
   // scrollable into view at the 100% snap.
   const listContentStyle = useMemo(
@@ -244,27 +253,43 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const virtualLoadQueued = useRef(false);
   const virtualRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const virtualPageLoaderRef = useRef<(reset: boolean) => Promise<void>>(async () => {});
+  const deferredMountTask = useRef<
+    ReturnType<typeof InteractionManager.runAfterInteractions> | null
+  >(null);
+
+  const resetVirtualTracks = useCallback(() => {
+    virtualLoadGeneration.current += 1;
+    virtualLoadQueued.current = false;
+    if (virtualRetryTimer.current) {
+      clearTimeout(virtualRetryTimer.current);
+      virtualRetryTimer.current = null;
+    }
+
+    const state = getVirtualQueueState();
+    const seed = state
+      ? seedVirtualQueueTracks(
+          rollingUpcomingTracksRef.current,
+          state.activePosition,
+          state.totalCount,
+        )
+      : [];
+    const previous = virtualTracksRef.current;
+    const unchanged =
+      seed.length === previous.length &&
+      seed.every((track, index) => track === previous[index]);
+    virtualTracksRef.current = unchanged ? previous : seed;
+    if (!unchanged) setVirtualTracks(seed);
+    return state;
+  }, []);
 
   const loadVirtualPage = useCallback((reset: boolean): Promise<void> => {
     if (reset) {
-      virtualLoadGeneration.current += 1;
-      virtualLoadQueued.current = false;
-      if (virtualRetryTimer.current) {
-        clearTimeout(virtualRetryTimer.current);
-        virtualRetryTimer.current = null;
+      if (!embedded && listPaintedRef.current && deferredMountTask.current) {
+        deferredMountTask.current.cancel();
+        deferredMountTask.current = null;
+        setRenderCoverageReady(true);
       }
-
-      const state = getVirtualQueueState();
-      const seed = state
-        ? seedVirtualQueueTracks(
-            rollingUpcomingTracksRef.current,
-            state.activePosition,
-            state.totalCount,
-          )
-        : [];
-      virtualTracksRef.current = seed;
-      setVirtualTracks(seed);
-
+      const state = resetVirtualTracks();
       if (!state) return Promise.resolve();
       if (virtualLoadPromise.current) {
         virtualLoadQueued.current = true;
@@ -358,15 +383,44 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
       }
     });
     return request;
-  }, []);
+  }, [embedded, resetVirtualTracks]);
   virtualPageLoaderRef.current = loadVirtualPage;
 
   useEffect(() => {
-    void loadVirtualPage(true);
-  }, [loadVirtualPage, virtualActivePosition, virtualMode, virtualState?.sessionId]);
+    if (embedded || listPaintedRef.current) {
+      void loadVirtualPage(true);
+    } else {
+      resetVirtualTracks();
+    }
+  }, [
+    embedded,
+    loadVirtualPage,
+    resetVirtualTracks,
+    virtualActivePosition,
+    virtualMode,
+    virtualState?.sessionId,
+  ]);
+
+  useEffect(() => {
+    if (embedded || !listPainted) return;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (deferredMountTask.current !== task) return;
+      deferredMountTask.current = null;
+      setRenderCoverageReady(true);
+      void virtualPageLoaderRef.current(false);
+    });
+    deferredMountTask.current = task;
+
+    return () => {
+      task.cancel();
+      if (deferredMountTask.current === task) deferredMountTask.current = null;
+    };
+  }, [embedded, listPainted]);
 
   useEffect(() => () => {
     virtualLoadGeneration.current += 1;
+    deferredMountTask.current?.cancel();
     if (virtualRetryTimer.current) clearTimeout(virtualRetryTimer.current);
   }, []);
 
