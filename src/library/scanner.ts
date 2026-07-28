@@ -34,6 +34,7 @@ type NativeFolder = LibraryFolder & {
   track_count: number;
   scan_status?: string;
   scan_error?: string | null;
+  needs_metadata_reindex?: boolean;
 };
 
 function displayNameFromTreeUri(treeUri: string): string {

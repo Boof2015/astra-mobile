@@ -9,7 +9,9 @@ import androidx.room.RawQuery
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 data class TrackSyncRow(
   val path: String,
@@ -87,6 +89,7 @@ interface CatalogDao {
     """
       UPDATE catalog_sources
       SET active_generation_id = :generationId,
+          artist_credit_version = COALESCE(:artistCreditVersion, artist_credit_version),
           updated_at = :updatedAt
       WHERE source_key = :sourceKey
     """,
@@ -95,6 +98,7 @@ interface CatalogDao {
     sourceKey: String,
     generationId: String,
     updatedAt: Long,
+    artistCreditVersion: Int? = null,
   )
 
   @Insert(onConflict = OnConflictStrategy.ABORT)
@@ -1206,11 +1210,12 @@ interface CatalogDao {
     artistTrackIndex: List<ArtistTrackIndexEntity>,
     directories: List<DirectorySummaryEntity>,
     ftsRows: List<TrackFtsEntity>,
+    artistCreditVersion: Int? = null,
   ): Long {
     for (update in albumIdentityUpdates) {
       updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist)
     }
-    setActiveGeneration(sourceKey, generationId, now)
+    setActiveGeneration(sourceKey, generationId, now, artistCreditVersion)
     setGenerationState(generationId, "active", now, null)
     incrementRevision(now)
     val revision = getRevision()
@@ -1283,9 +1288,24 @@ interface CatalogDao {
     TrackFtsEntity::class,
   ],
   views = [ActiveTrackView::class],
-  version = 1,
+  version = 2,
   exportSchema = true,
 )
 abstract class AstraCatalogDatabase : RoomDatabase() {
   abstract fun catalogDao(): CatalogDao
+}
+
+internal val CATALOG_MIGRATION_1_2 = object : Migration(1, 2) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL("ALTER TABLE tracks ADD COLUMN artist_names_json TEXT")
+    database.execSQL("ALTER TABLE tracks ADD COLUMN album_artist_names_json TEXT")
+    database.execSQL(
+      "ALTER TABLE catalog_sources ADD COLUMN artist_credit_version INTEGER NOT NULL DEFAULT 2",
+    )
+    // Existing local generations used the singular Android metadata fields and
+    // require a complete extraction pass. Remote rows need no forced network sync.
+    database.execSQL(
+      "UPDATE catalog_sources SET artist_credit_version = 1 WHERE source_type = 'local'",
+    )
+  }
 }

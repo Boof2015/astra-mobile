@@ -24,3 +24,10 @@ test('builds separate clickable credits for collaborative track artists', () => 
     { artist: 'ValkyR', separator: null },
   ]);
 });
+
+test('structured credits preserve commas and ampersands inside one artist name', () => {
+  assert.deepEqual(buildArtistNameTokens(['Earth, Wind & Fire', 'The Emotions']), [
+    { artist: 'Earth, Wind & Fire', separator: ' & ' },
+    { artist: 'The Emotions', separator: null },
+  ]);
+});

@@ -14,7 +14,9 @@ function createTrack(
   const timestamp = nextTimestamp++;
   return {
     artist: overrides.artist,
+    artist_names: overrides.artist_names ?? null,
     album_artist: overrides.album_artist ?? null,
+    album_artist_names: overrides.album_artist_names ?? null,
     artwork_hash: overrides.artwork_hash ?? null,
     year: overrides.year ?? null,
     added_at: overrides.added_at ?? timestamp,
@@ -38,6 +40,37 @@ test('canonical artist records distinguish primary and collaborator-only artists
   assert.ok(guest);
   assert.equal(guest.track_count, 1);
   assert.equal(guest.primary_track_count, 0);
+});
+
+test('structured credits keep punctuation inside an artist name', () => {
+  const artists = buildArtistList([
+    createTrack({
+      artist: 'Earth, Wind & Fire & The Emotions',
+      artist_names: ['Earth, Wind & Fire', 'The Emotions'],
+    }),
+  ], 'astra');
+
+  assert.deepEqual(
+    artists.map((artist) => [artist.artist, artist.primary_track_count]),
+    [
+      ['Earth, Wind & Fire', 1],
+      ['The Emotions', 0],
+    ]
+  );
+  assert.ok(!artists.some((artist) => artist.artist === 'Earth'));
+  assert.ok(!artists.some((artist) => artist.artist === 'Wind'));
+});
+
+test('file-tags mode keeps a structured collaboration as one display group', () => {
+  const display = 'Earth, Wind & Fire & The Emotions';
+  const artists = buildArtistList([
+    createTrack({
+      artist: display,
+      artist_names: ['Earth, Wind & Fire', 'The Emotions'],
+    }),
+  ], 'fileTags');
+
+  assert.deepEqual(artists.map((artist) => artist.artist), [display]);
 });
 
 test('file-tags artist records count every indexed track as primary', () => {

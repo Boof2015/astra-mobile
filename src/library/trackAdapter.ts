@@ -25,8 +25,11 @@ export function dbTrackToTrack(track: DbTrack): Track {
     origin: 'library',
     title: track.title,
     artist: track.artist,
+    artistNames: track.artist_names?.length > 0 ? track.artist_names : undefined,
     album: track.album,
     albumArtist: track.album_artist ?? undefined,
+    albumArtistNames:
+      track.album_artist_names?.length > 0 ? track.album_artist_names : undefined,
     albumIdentityKey: track.album_identity_key,
     duration: track.duration,
     trackNumber: track.track_number ?? undefined,

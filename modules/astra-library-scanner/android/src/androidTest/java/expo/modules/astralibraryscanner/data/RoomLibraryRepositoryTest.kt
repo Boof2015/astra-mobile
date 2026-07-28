@@ -495,6 +495,76 @@ class RoomLibraryRepositoryTest {
     )
   }
 
+  @Test
+  fun structuredArtistCreditsPreserveNamesContainingPunctuation() = runBlocking {
+    val artistNames = listOf("Earth, Wind & Fire", "The Emotions")
+    val display = formatArtistNames(artistNames)
+    publish(
+      "credits",
+      listOf(
+        track("credits", 0, "Best of My Love").copy(
+          artist = display,
+          artistNamesJson = serializeArtistNames(artistNames),
+          artistSortKey = SortKeys.forText(display),
+        ),
+      ),
+    )
+    val dao = catalog.catalogDao()
+    val revision = dao.getRevision()
+
+    val astraArtists = dao.getAllArtistSummaries(revision, "astra")
+    assertEquals(setOf("Earth, Wind & Fire", "The Emotions"), astraArtists.map { it.artist }.toSet())
+    assertEquals(
+      1,
+      dao.countArtistTracks(revision, "astra", "earth, wind & fire", "songs"),
+    )
+    assertEquals(
+      1,
+      dao.countArtistTracks(revision, "astra", "the emotions", "appearances"),
+    )
+    assertEquals(
+      listOf(display),
+      dao.getAllArtistSummaries(revision, "fileTags").map { it.artist },
+    )
+  }
+
+  @Test
+  fun staleArtistCreditVersionAdvancesOnlyWhenGenerationPublishes() = runBlocking {
+    val dao = catalog.catalogDao()
+    dao.insertMeta(CatalogMetaEntity(collationVersion = COLLATION_VERSION, updatedAt = 0))
+    dao.putSource(
+      CatalogSourceEntity(
+        sourceKey = "local:1",
+        sourceType = "local",
+        sourceId = 1,
+        activeGenerationId = null,
+        updatedAt = 0,
+        artistCreditVersion = LEGACY_ARTIST_CREDIT_VERSION,
+      ),
+    )
+
+    dao.insertGeneration(ScanGenerationEntity("cancelled", "local:1", "staging", 1))
+    dao.deleteGenerationTracks("cancelled")
+    dao.deleteGeneration("cancelled")
+    assertEquals(LEGACY_ARTIST_CREDIT_VERSION, dao.getSource("local:1")?.artistCreditVersion)
+
+    dao.insertGeneration(ScanGenerationEntity("complete", "local:1", "staging", 2))
+    dao.publishGeneration(
+      sourceKey = "local:1",
+      generationId = "complete",
+      previousGenerationId = null,
+      now = 2,
+      albumIdentityUpdates = emptyList(),
+      albums = emptyList(),
+      artists = emptyList(),
+      artistTrackIndex = emptyList(),
+      directories = emptyList(),
+      ftsRows = emptyList(),
+      artistCreditVersion = CURRENT_ARTIST_CREDIT_VERSION,
+    )
+    assertEquals(CURRENT_ARTIST_CREDIT_VERSION, dao.getSource("local:1")?.artistCreditVersion)
+  }
+
   /** 10 tracks under each of A-Z, so every section has rows above and below it. */
   private fun seedAlphabet(): List<TrackEntity> =
     (0 until ALPHABET_SEED_SIZE).map { index ->

@@ -53,7 +53,10 @@ function persistSetting(key: string, value: string) {
   void AstraLibraryData.setSettings({ [key]: value });
 }
 
-export type FolderWithCount = LibraryFolder & { track_count: number };
+export type FolderWithCount = LibraryFolder & {
+  track_count: number;
+  needs_metadata_reindex?: boolean;
+};
 
 interface ScanProgressState {
   phase: 'idle' | 'discovering' | 'extracting' | 'analyzing';
@@ -487,7 +490,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
           await get().refresh();
           set({ initialized: true });
-          if (status.status === 'rebuilding' && !get().isScanning) {
+          const needsMetadataReindex = get().folders.some(
+            (folder) => folder.available && folder.needs_metadata_reindex === true
+          );
+          if ((status.status === 'rebuilding' || needsMetadataReindex) && !get().isScanning) {
             void get().rebuildLocalIndex();
           }
         })().catch((error) => {

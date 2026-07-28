@@ -1,8 +1,7 @@
 // Port of desktop astra/src/shared/library/albumGrouping.ts — keep semantically
-// identical so album identities match the desktop app. Mobile has no
-// artist_names/*_names_json columns; those inputs stay undefined and the module
-// falls through to the string-splitting paths, exactly like desktop does for
-// files without multi-value tags.
+// identical so album identities match the desktop app. Structured artist
+// arrays are preferred; legacy and remote rows without them fall through to
+// the same string-splitting paths desktop uses for single-value tags.
 
 // Explicit .ts extension so the module resolves under plain `node --test`
 // (Metro and tsc accept it via allowImportingTsExtensions).

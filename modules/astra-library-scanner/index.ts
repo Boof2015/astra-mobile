@@ -24,8 +24,12 @@ export interface ExtractedMetadata {
   error?: string;
   title?: string | null;
   artist?: string | null;
+  /** Ordered repeated ARTIST tag values; empty when the file has no multi-value credit. */
+  artistNames?: string[];
   album?: string | null;
   albumArtist?: string | null;
+  /** Ordered repeated ALBUMARTIST tag values; empty when not multi-valued. */
+  albumArtistNames?: string[];
   genre?: string | null;
   /** Container mime type reported by MediaMetadataRetriever. */
   mimeType?: string | null;

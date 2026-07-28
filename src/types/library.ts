@@ -9,8 +9,12 @@ export interface DbTrack {
   folder_id: number | null; // NULL for remote tracks (no SAF folder)
   title: string;
   artist: string;
+  /** Ordered repeated ARTIST tag values; empty for legacy/single-value rows. */
+  artist_names: string[];
   album: string;
   album_artist: string | null;
+  /** Ordered repeated ALBUMARTIST values; empty for legacy/single-value rows. */
+  album_artist_names: string[];
   album_identity_key: string;
   /** Settled group artist ("Various Artists" for shared-artwork compilations);
    *  written by the album-identity recompute pass, NULL until it first runs. */

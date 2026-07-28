@@ -257,6 +257,7 @@ class AstraLibraryRepository private constructor(
       .mapTo(hashSetOf()) { it.uri.toString() }
     val catalogDao = requireCatalog().catalogDao()
     return requireUser().userDao().getFolders().map { folder ->
+      val source = catalogDao.getSource(localSourceKey(folder.id))
       mapOf(
         "id" to folder.id.toDouble(),
         "tree_uri" to folder.treeUri,
@@ -267,6 +268,10 @@ class AstraLibraryRepository private constructor(
         "scan_status" to folder.lastScanStatus,
         "scan_error" to folder.lastScanError,
         "track_count" to catalogDao.countActiveTracksForFolder(folder.id).toDouble(),
+        "needs_metadata_reindex" to (
+          source != null &&
+            source.artistCreditVersion < CURRENT_ARTIST_CREDIT_VERSION
+          ),
       )
     }
   }
@@ -370,6 +375,9 @@ class AstraLibraryRepository private constructor(
       val dao = database.catalogDao()
       val sourceKey = localSourceKey(folderId)
       val previousSource = dao.getSource(sourceKey)
+      val effectiveFull = full ||
+        (previousSource != null &&
+          previousSource.artistCreditVersion < CURRENT_ARTIST_CREDIT_VERSION)
       val generationId = UUID.randomUUID().toString()
       val startedAt = System.currentTimeMillis()
 
@@ -415,7 +423,7 @@ class AstraLibraryRepository private constructor(
               async(Dispatchers.IO) {
                 throwIfScanCancelled(isCancelled)
                 val old = existingByPath[file.uri]
-                val unchanged = !full &&
+                val unchanged = !effectiveFull &&
                   old != null &&
                   old.mtime == file.lastModified &&
                   old.size == file.size
@@ -491,6 +499,7 @@ class AstraLibraryRepository private constructor(
           artistTrackIndex = readModels.artistTrackIndex,
           directories = readModels.directories,
           ftsRows = readModels.ftsRows,
+          artistCreditVersion = CURRENT_ARTIST_CREDIT_VERSION,
         )
         userDao.updateFolderScanState(folderId, System.currentTimeMillis(), "ready", null)
         scheduleSnapshot()
@@ -2502,10 +2511,27 @@ class AstraLibraryRepository private constructor(
     val extension = file.name.substringAfterLast('.', "")
     val title = clean(metadata.title)
       ?: file.name.removeSuffix(if (extension.isEmpty()) "" else ".$extension")
-    val artist = clean(metadata.artist) ?: "Unknown Artist"
+    val artistNames = normalizeArtistNames(metadata.artistNames)
+    val albumArtistNames = normalizeArtistNames(metadata.albumArtistNames)
+    val artist = if (artistNames.size > 1) {
+      formatArtistNames(artistNames)
+    } else {
+      clean(metadata.artist) ?: artistNames.firstOrNull() ?: "Unknown Artist"
+    }
     val album = clean(metadata.album) ?: "Unknown Album"
-    val albumArtist = clean(metadata.albumArtist)
-    val provisional = CatalogReadModelBuilder.provisionalIdentity(album, artist, albumArtist)
+    val albumArtist = if (albumArtistNames.size > 1) {
+      formatArtistNames(albumArtistNames)
+    } else {
+      clean(metadata.albumArtist) ?: albumArtistNames.firstOrNull()
+    }
+    val artistNamesJson = serializeArtistNames(artistNames)
+    val albumArtistNamesJson = serializeArtistNames(albumArtistNames)
+    val provisional = CatalogReadModelBuilder.provisionalIdentity(
+      album,
+      artist,
+      albumArtist,
+      artistNamesJson,
+    )
     val now = System.currentTimeMillis()
     return TrackEntity(
       generationId = generationId,
@@ -2514,8 +2540,10 @@ class AstraLibraryRepository private constructor(
       folderId = folderId,
       title = title,
       artist = artist,
+      artistNamesJson = artistNamesJson,
       album = album,
       albumArtist = albumArtist,
+      albumArtistNamesJson = albumArtistNamesJson,
       albumIdentityKey = provisional.first,
       albumDisplayArtist = provisional.second,
       duration = (metadata.durationMs ?: 0L) / 1_000.0,
@@ -2739,6 +2767,7 @@ class AstraLibraryRepository private constructor(
   private fun buildCatalogDatabase(): AstraCatalogDatabase =
     Room.databaseBuilder(applicationContext, AstraCatalogDatabase::class.java, CATALOG_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+      .addMigrations(CATALOG_MIGRATION_1_2)
       .fallbackToDestructiveMigration(true)
       .build()
 

@@ -5,12 +5,13 @@
 //              every collaborator so featured artists are browsable.
 //   'fileTags' (desktop "strict"): use the tag verbatim (album_artist || artist).
 //
-// Mobile has no parsed `artist_names_json` columns (MMR yields one artist string),
-// so desktop's parsed-array paths collapse to splitCollaborators(artist) — which is
-// the parsing heuristic. Everything here is derivable from artist + album_artist.
+// Structured artist arrays are preferred when present so punctuation inside an
+// individual name is never mistaken for a collaboration boundary. Legacy and
+// remote rows still fall back to the original display-string heuristics.
 
 // Runtime imports stay relative so this module can run under plain `node --test`.
 import { normalizeDisplay, normalizeKey, splitCollaborators } from '../shared/library/albumGrouping.ts';
+import { normalizeArtistNames } from '../shared/library/artistCredits.ts';
 import type { Artist, DbTrack } from '../types/library';
 
 // Shared with the album-identity port so artist and album grouping can never
@@ -23,9 +24,16 @@ const UNKNOWN_ARTIST = 'Unknown Artist';
 const VARIOUS_ARTISTS_KEY = 'various artists';
 
 /** Track fields the grouping logic reads (subset of DbTrack, for testability). */
-export type ArtistTrackLike = Pick<
+export interface ArtistCreditTrackLike {
+  artist: string;
+  artist_names?: readonly string[] | null;
+  album_artist: string | null;
+  album_artist_names?: readonly string[] | null;
+}
+
+export type ArtistTrackLike = ArtistCreditTrackLike & Pick<
   DbTrack,
-  'artist' | 'album_artist' | 'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
+  'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
 >;
 
 /** Like splitCollaborators but keeps "&" (e.g. "Earth, Wind & Fire" stays whole). */
@@ -54,23 +62,27 @@ function dedupeByKey(parts: string[]): string[] {
 }
 
 /** File-tags artist: album_artist if present, else the raw track artist. */
-export function resolveStrictBrowseArtist(track: Pick<DbTrack, 'artist' | 'album_artist'>): string {
+export function resolveStrictBrowseArtist(track: ArtistCreditTrackLike): string {
   const albumArtist = normalizeDisplay(track.album_artist ?? '');
   if (albumArtist) return albumArtist;
   return normalizeDisplay(track.artist) || UNKNOWN_ARTIST;
 }
 
 /** Astra-grouping primary: album_artist's first collaborator, else artist's first. */
-export function resolveCanonicalBrowseArtist(track: Pick<DbTrack, 'artist' | 'album_artist'>): string {
+export function resolveCanonicalBrowseArtist(track: ArtistCreditTrackLike): string {
   const albumArtist = normalizeDisplay(track.album_artist ?? '');
   if (albumArtist) {
+    const parsedAlbumArtists = normalizeArtistNames(track.album_artist_names);
+    if (parsedAlbumArtists.length > 0) return parsedAlbumArtists[0];
     return splitAlbumArtistCollaborators(albumArtist)[0] ?? albumArtist;
   }
+  const parsedTrackArtists = normalizeArtistNames(track.artist_names);
+  if (parsedTrackArtists.length > 0) return parsedTrackArtists[0];
   return splitCollaborators(track.artist)[0] ?? UNKNOWN_ARTIST;
 }
 
 /** Every artist a track is indexed under in astra mode: primary + all collaborators. */
-export function getCanonicalArtistIndexNames(track: Pick<DbTrack, 'artist' | 'album_artist'>): string[] {
+export function getCanonicalArtistIndexNames(track: ArtistCreditTrackLike): string[] {
   const unique = new Map<string, string>();
   const add = (name: string) => {
     const display = normalizeDisplay(name);
@@ -81,10 +93,17 @@ export function getCanonicalArtistIndexNames(track: Pick<DbTrack, 'artist' | 'al
 
   add(resolveCanonicalBrowseArtist(track));
 
-  const trackArtists = splitCollaborators(track.artist);
+  const parsedTrackArtists = normalizeArtistNames(track.artist_names);
+  const trackArtists =
+    parsedTrackArtists.length > 0 ? parsedTrackArtists : splitCollaborators(track.artist);
   for (const name of trackArtists) add(name);
   if (trackArtists.length === 0) {
-    for (const name of splitAlbumArtistCollaborators(track.album_artist ?? '')) add(name);
+    const parsedAlbumArtists = normalizeArtistNames(track.album_artist_names);
+    const albumArtists =
+      parsedAlbumArtists.length > 0
+        ? parsedAlbumArtists
+        : splitAlbumArtistCollaborators(track.album_artist ?? '');
+    for (const name of albumArtists) add(name);
   }
 
   return Array.from(unique.values());
@@ -98,18 +117,18 @@ export function getCanonicalArtistIndexNames(track: Pick<DbTrack, 'artist' | 'al
  * bucket is the only artist page that lists those tracks in that mode.
  */
 export function resolveNavigationArtist(
-  track: Pick<DbTrack, 'artist' | 'album_artist'>,
+  track: ArtistCreditTrackLike,
   mode: ArtistGroupingMode
 ): string {
   if (mode === 'fileTags') return resolveStrictBrowseArtist(track);
   const canonical = resolveCanonicalBrowseArtist(track);
   if (normalizeKey(canonical) !== VARIOUS_ARTISTS_KEY) return canonical;
-  return splitCollaborators(track.artist)[0] ?? canonical;
+  return normalizeArtistNames(track.artist_names)[0] ?? splitCollaborators(track.artist)[0] ?? canonical;
 }
 
 /** Whether a track belongs to the given artist key under the active browse mode. */
 export function trackMatchesBrowseArtist(
-  track: Pick<DbTrack, 'artist' | 'album_artist'>,
+  track: ArtistCreditTrackLike,
   targetArtistKey: string,
   mode: ArtistGroupingMode
 ): boolean {
@@ -125,7 +144,13 @@ export function trackMatchesBrowseArtist(
   const trackArtistKey = normalizeKey(track.artist);
   if (trackArtistKey && trackArtistKey === targetArtistKey) return true;
 
+  if (normalizeArtistNames(track.album_artist_names).some((n) => normalizeKey(n) === targetArtistKey)) {
+    return true;
+  }
   if (splitAlbumArtistCollaborators(track.album_artist ?? '').some((n) => normalizeKey(n) === targetArtistKey)) {
+    return true;
+  }
+  if (normalizeArtistNames(track.artist_names).some((n) => normalizeKey(n) === targetArtistKey)) {
     return true;
   }
   return splitCollaborators(track.artist).some((n) => normalizeKey(n) === targetArtistKey);

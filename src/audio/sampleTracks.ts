@@ -2,6 +2,10 @@ import type { Track as RntpTrack } from 'react-native-track-player';
 import type { Track } from '@/types/audio';
 import { streamUrlForTrack } from '@/services/remoteUrls';
 import { artworkThumbFromSource, playerBackdropArtworkSource } from '@/library/artwork';
+import {
+  parseArtistCreditTransport,
+  serializeArtistCreditTransport,
+} from './artistCreditTransport';
 
 /**
  * M0 verification tracks. Streamed from a public royalty-free source so playback
@@ -64,6 +68,10 @@ export function toRntpTrack(track: Track): RntpTrack {
     sampleRate: track.sampleRate,
     bitDepth: track.bitDepth,
     bitrate: track.bitrate,
+    astraArtistNamesJson: serializeArtistCreditTransport(track.artistNames),
+    astraAlbumArtist: track.albumArtist,
+    astraAlbumArtistNamesJson: serializeArtistCreditTransport(track.albumArtistNames),
+    astraAlbumIdentityKey: track.albumIdentityKey,
     astraPath: track.path,
     sourceType: track.sourceType,
     sourceId: track.sourceId,
@@ -81,7 +89,13 @@ export function rntpToTrack(rt: RntpTrack): Track {
     path: astraPath ?? String(rt.url),
     title: rt.title ?? 'Unknown title',
     artist: rt.artist ?? 'Unknown artist',
+    artistNames: parseArtistCreditTransport(rt.astraArtistNamesJson),
     album: rt.album ?? '',
+    albumArtist:
+      typeof rt.astraAlbumArtist === 'string' ? rt.astraAlbumArtist : undefined,
+    albumArtistNames: parseArtistCreditTransport(rt.astraAlbumArtistNamesJson),
+    albumIdentityKey:
+      typeof rt.astraAlbumIdentityKey === 'string' ? rt.astraAlbumIdentityKey : undefined,
     duration: typeof rt.duration === 'number' ? rt.duration : 0,
     artworkData:
       typeof rt.astraArtworkData === 'string'

@@ -25,6 +25,8 @@ data class CatalogSourceEntity(
   @ColumnInfo(name = "source_id") val sourceId: Long,
   @ColumnInfo(name = "active_generation_id") val activeGenerationId: String? = null,
   @ColumnInfo(name = "updated_at") val updatedAt: Long,
+  @ColumnInfo(name = "artist_credit_version", defaultValue = "2")
+  val artistCreditVersion: Int = CURRENT_ARTIST_CREDIT_VERSION,
 )
 
 @Entity(
@@ -60,8 +62,10 @@ data class TrackEntity(
   @ColumnInfo(name = "folder_id") val folderId: Long? = null,
   val title: String,
   val artist: String,
+  @ColumnInfo(name = "artist_names_json") val artistNamesJson: String? = null,
   val album: String,
   @ColumnInfo(name = "album_artist") val albumArtist: String? = null,
+  @ColumnInfo(name = "album_artist_names_json") val albumArtistNamesJson: String? = null,
   @ColumnInfo(name = "album_identity_key") val albumIdentityKey: String,
   @ColumnInfo(name = "album_display_artist") val albumDisplayArtist: String? = null,
   val duration: Double = 0.0,
@@ -123,8 +127,10 @@ data class ActiveTrackView(
   @ColumnInfo(name = "folder_id") val folderId: Long?,
   val title: String,
   val artist: String,
+  @ColumnInfo(name = "artist_names_json") val artistNamesJson: String?,
   val album: String,
   @ColumnInfo(name = "album_artist") val albumArtist: String?,
+  @ColumnInfo(name = "album_artist_names_json") val albumArtistNamesJson: String?,
   @ColumnInfo(name = "album_identity_key") val albumIdentityKey: String,
   @ColumnInfo(name = "album_display_artist") val albumDisplayArtist: String?,
   val duration: Double,

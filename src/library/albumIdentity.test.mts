@@ -16,7 +16,9 @@ function createRow(
     id: overrides.id ?? nextId++,
     album: overrides.album,
     artist: overrides.artist,
+    artist_names: overrides.artist_names ?? [],
     album_artist: overrides.album_artist ?? null,
+    album_artist_names: overrides.album_artist_names ?? [],
     artwork_hash: overrides.artwork_hash ?? null,
     source_type: overrides.source_type ?? 'local',
     artwork_source_id: overrides.artwork_source_id ?? null,
@@ -39,6 +41,17 @@ test('provisional identity uses the primary collaborator when album artist is mi
   const provisional = buildProvisionalAlbumIdentity(null, 'Jane Remover feat. Venturing', 'teen week');
   assert.equal(provisional.key, 'album:teen week::ta:jane remover');
   assert.equal(provisional.displayArtist, 'Jane Remover');
+});
+
+test('provisional identity prefers the first structured artist credit', () => {
+  const provisional = buildProvisionalAlbumIdentity(
+    null,
+    'Earth, Wind & Fire & The Emotions',
+    'duets',
+    ['Earth, Wind & Fire', 'The Emotions']
+  );
+  assert.equal(provisional.key, 'album:duets::ta:earth, wind & fire');
+  assert.equal(provisional.displayArtist, 'Earth, Wind & Fire');
 });
 
 test('recompute merges shared-cover multi-artist albums into a Various Artists group', () => {

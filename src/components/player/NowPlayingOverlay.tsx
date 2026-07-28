@@ -262,20 +262,23 @@ export function NowPlayingOverlay() {
     [libraryTracks, track]
   );
   const artistName = track
-    ? resolveNavigationArtist(
-        libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null },
+      ? resolveNavigationArtist(
+        libraryTrack ?? {
+          artist: track.artist,
+          artist_names: track.artistNames,
+          album_artist: track.albumArtist ?? null,
+          album_artist_names: track.albumArtistNames,
+        },
         artistGroupingMode
       )
     : '';
   const artistCreditTokens = useMemo(() => {
     if (!track) return [];
-    const collaborators = splitCollaborators(track.artist);
-    return buildArtistNameTokens(
-      collaborators.length > 0 ? collaborators : [track.artist]
-    ).map((token) => ({
-      ...token,
-      separator: token.separator ? ', ' : null,
-    }));
+    const collaborators =
+      track.artistNames && track.artistNames.length > 0
+        ? track.artistNames
+        : splitCollaborators(track.artist);
+    return buildArtistNameTokens(collaborators.length > 0 ? collaborators : [track.artist]);
   }, [track]);
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 

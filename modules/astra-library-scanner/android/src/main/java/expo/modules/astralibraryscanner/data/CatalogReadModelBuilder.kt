@@ -33,8 +33,10 @@ data class LocalAudioMetadata(
   val ok: Boolean,
   val title: String? = null,
   val artist: String? = null,
+  val artistNames: List<String> = emptyList(),
   val album: String? = null,
   val albumArtist: String? = null,
+  val albumArtistNames: List<String> = emptyList(),
   val genre: String? = null,
   val mimeType: String? = null,
   val durationMs: Long? = null,
@@ -128,13 +130,14 @@ object CatalogReadModelBuilder {
     album: String,
     artist: String,
     albumArtist: String?,
+    artistNamesJson: String? = null,
   ): Pair<String, String> {
     val albumKey = normalizeKey(normalizeAlbum(album))
     val explicit = normalizeDisplay(albumArtist.orEmpty())
     if (explicit.isNotEmpty()) {
       return identity(albumKey, "aa:${normalizeKey(explicit).ifEmpty { normalizeKey(UNKNOWN_ARTIST) }}") to explicit
     }
-    val primary = primaryArtist(artist)
+    val primary = primaryArtist(artist, artistNamesJson)
     return identity(albumKey, "ta:${normalizeKey(primary)}") to primary
   }
 
@@ -145,7 +148,7 @@ object CatalogReadModelBuilder {
     for (track in tracks) {
       val albumKey = normalizeKey(normalizeAlbum(track.album))
       val explicit = normalizeDisplay(track.albumArtist.orEmpty())
-      val primary = primaryArtist(track.artist)
+      val primary = primaryArtist(track.artist, track.artistNamesJson)
       val prepared = PreparedAlbumTrack(
         track = track,
         albumKey = albumKey,
@@ -408,9 +411,11 @@ object CatalogReadModelBuilder {
   private fun canonicalPrimary(track: TrackEntity): String {
     val albumArtist = normalizeDisplay(track.albumArtist.orEmpty())
     if (albumArtist.isNotEmpty()) {
+      val parsedAlbumArtists = deserializeArtistNames(track.albumArtistNamesJson)
+      if (parsedAlbumArtists.isNotEmpty()) return parsedAlbumArtists[0]
       return splitAlbumArtists(albumArtist).firstOrNull() ?: albumArtist
     }
-    return splitTrackArtists(track.artist).firstOrNull() ?: UNKNOWN_ARTIST
+    return primaryArtist(track.artist, track.artistNamesJson)
   }
 
   private fun canonicalArtistNames(track: TrackEntity): List<String> {
@@ -421,9 +426,21 @@ object CatalogReadModelBuilder {
       if (key.isNotEmpty()) result.putIfAbsent(key, display)
     }
     add(canonicalPrimary(track))
-    val trackArtists = splitTrackArtists(track.artist)
+    val parsedTrackArtists = deserializeArtistNames(track.artistNamesJson)
+    val trackArtists = if (parsedTrackArtists.isNotEmpty()) {
+      parsedTrackArtists
+    } else {
+      splitTrackArtists(track.artist)
+    }
     trackArtists.forEach(::add)
-    if (trackArtists.isEmpty()) splitAlbumArtists(track.albumArtist.orEmpty()).forEach(::add)
+    if (trackArtists.isEmpty()) {
+      val parsedAlbumArtists = deserializeArtistNames(track.albumArtistNamesJson)
+      if (parsedAlbumArtists.isNotEmpty()) {
+        parsedAlbumArtists.forEach(::add)
+      } else {
+        splitAlbumArtists(track.albumArtist.orEmpty()).forEach(::add)
+      }
+    }
     return result.values.toList()
   }
 
@@ -480,8 +497,10 @@ object CatalogReadModelBuilder {
   private fun normalizeAlbum(value: String): String =
     normalizeDisplay(value).ifEmpty { UNKNOWN_ALBUM }
 
-  private fun primaryArtist(value: String): String =
-    splitTrackArtists(value).firstOrNull() ?: UNKNOWN_ARTIST
+  private fun primaryArtist(value: String, artistNamesJson: String? = null): String =
+    deserializeArtistNames(artistNamesJson).firstOrNull()
+      ?: splitTrackArtists(value).firstOrNull()
+      ?: UNKNOWN_ARTIST
 
   private fun identity(albumKey: String, discriminator: String): String =
     "album:$albumKey::$discriminator"

@@ -39,9 +39,11 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import expo.modules.astralibraryscanner.data.AstraLibraryRepository
+import expo.modules.astralibraryscanner.data.ArtistCreditMetadataReader
 import expo.modules.astralibraryscanner.data.LocalAudioFile
 import expo.modules.astralibraryscanner.data.LocalAudioMetadata
 import expo.modules.astralibraryscanner.data.ScanCancelledException
+import expo.modules.astralibraryscanner.data.formatArtistNames
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -651,6 +653,22 @@ class AstraLibraryScannerModule : Module() {
       } catch (_: Throwable) {}
     }
 
+    val credits = ArtistCreditMetadataReader.read(context, uri, metadataTimeoutMs)
+    val artistNames = credits.artists.takeIf { it.size > 1 }.orEmpty()
+    val albumArtistNames = credits.albumArtists.takeIf { it.size > 1 }.orEmpty()
+    result["artistNames"] = artistNames
+    result["albumArtistNames"] = albumArtistNames
+    if (artistNames.isNotEmpty()) {
+      result["artist"] = formatArtistNames(artistNames)
+    } else if (result["artist"] == null && credits.artists.size == 1) {
+      result["artist"] = credits.artists[0]
+    }
+    if (albumArtistNames.isNotEmpty()) {
+      result["albumArtist"] = formatArtistNames(albumArtistNames)
+    } else if (result["albumArtist"] == null && credits.albumArtists.size == 1) {
+      result["albumArtist"] = credits.albumArtists[0]
+    }
+
     // Header-level facts MMR can't provide (channels, bit depth) or only on
     // API 31+ (sample rate). Failure here is non-fatal — keep the tag data.
     val extractor = MediaExtractor()
@@ -693,8 +711,11 @@ class AstraLibraryScannerModule : Module() {
       ok = this["ok"] as? Boolean ?: false,
       title = this["title"] as? String,
       artist = this["artist"] as? String,
+      artistNames = (this["artistNames"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
       album = this["album"] as? String,
       albumArtist = this["albumArtist"] as? String,
+      albumArtistNames =
+        (this["albumArtistNames"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
       genre = this["genre"] as? String,
       mimeType = this["mimeType"] as? String,
       durationMs = (this["durationMs"] as? Number)?.toLong(),
