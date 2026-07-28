@@ -21,7 +21,11 @@ import BottomSheet, {
   type BottomSheetHandleProps,
   useBottomSheetScrollableCreator
 } from '@gorhom/bottom-sheet';
-import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
+import {
+  FlashList,
+  type ListRenderItemInfo,
+  type ViewToken,
+} from '@shopify/flash-list';
 import {
   Gesture,
   GestureDetector,
@@ -73,11 +77,19 @@ import {
   type QueueIndexByKey,
 } from './queueActions';
 import {
-  QUEUE_RENDER_DISTANCE,
   QUEUE_ROW_HEIGHT,
   queuePreviewRowCount,
+  queueRenderDistance,
 } from './queuePerformance';
 import { QueueSheetHandle } from './QueueSheetHandle';
+import {
+  VIRTUAL_QUEUE_PAGE_SIZE,
+  isCurrentVirtualQueueRequest,
+  mergeVirtualQueueTracks,
+  nextVirtualQueuePageStart,
+  seedVirtualQueueTracks,
+  shouldPrefetchVirtualQueue,
+} from './virtualQueuePaging';
 
 const ART = 42;
 const EMPTY_KEY_SET = new Set<string>();
@@ -194,6 +206,7 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   const [listPainted, setListPainted] = useState(false);
   const onListLoad = useCallback(() => setListPainted(true), []);
   const previewCount = queuePreviewRowCount(windowHeight);
+  const renderDistance = queueRenderDistance(windowHeight);
   // Bottom padding clears the gesture-nav inset so the last row is fully
   // scrollable into view at the 100% snap.
   const listContentStyle = useMemo(
@@ -211,68 +224,175 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     () => (activeIndex >= 0 ? tracks.slice(activeIndex + 1) : tracks),
     [tracks, activeIndex]
   );
+  const rollingUpcomingTracksRef = useRef(rollingUpcomingTracks);
+  rollingUpcomingTracksRef.current = rollingUpcomingTracks;
   const virtualState = getVirtualQueueState();
   const virtualMode = virtualState !== null;
   const virtualActivePosition = virtualState?.activePosition ?? -1;
-  const [virtualTracks, setVirtualTracks] = useState<RntpTrack[]>([]);
-  const virtualTracksRef = useRef<RntpTrack[]>([]);
-  const virtualLoadGeneration = useRef(0);
-  const virtualLoading = useRef(false);
-
-  const loadVirtualPage = useCallback(async (reset: boolean) => {
-    const state = getVirtualQueueState();
-    if (!state || (!reset && virtualLoading.current)) return;
-    const generation = reset ? ++virtualLoadGeneration.current : virtualLoadGeneration.current;
-    const existing = reset ? [] : virtualTracksRef.current;
-    const lastPosition = existing.length > 0
-      ? existing[existing.length - 1].astraQueuePosition
-      : state.activePosition;
-    const start = typeof lastPosition === 'number'
-      ? lastPosition + 1
-      : state.activePosition + 1;
-    if (start >= state.totalCount) {
-      if (reset) {
-        virtualLoading.current = false;
-        virtualTracksRef.current = [];
-        setVirtualTracks([]);
-      }
-      return;
-    }
-    virtualLoading.current = true;
-    try {
-      const page = await getVirtualQueuePage(start, 100);
-      if (
-        !page ||
-        generation !== virtualLoadGeneration.current ||
-        getVirtualQueueState()?.sessionId !== state.sessionId
-      ) return;
-      const existingPositions = new Set(
-        existing.map((track) => track.astraQueuePosition).filter(
-          (position): position is number => typeof position === 'number'
+  const [virtualTracks, setVirtualTracks] = useState<RntpTrack[]>(() => (
+    virtualState
+      ? seedVirtualQueueTracks(
+          rollingUpcomingTracks,
+          virtualState.activePosition,
+          virtualState.totalCount,
         )
-      );
-      const incoming = page.items
-        .filter((item) => item.queuePosition >= start && !existingPositions.has(item.queuePosition))
-        .map((item) => item.track);
-      const next = reset ? incoming : [...existing, ...incoming];
-      // Keep no more than five tray pages in JS.
-      const bounded = next.slice(-500);
-      virtualTracksRef.current = bounded;
-      setVirtualTracks(bounded);
-    } finally {
-      if (generation === virtualLoadGeneration.current) virtualLoading.current = false;
+      : []
+  ));
+  const virtualTracksRef = useRef<RntpTrack[]>(virtualTracks);
+  const virtualLoadGeneration = useRef(0);
+  const virtualLoadPromise = useRef<Promise<void> | null>(null);
+  const virtualLoadQueued = useRef(false);
+  const virtualRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const virtualPageLoaderRef = useRef<(reset: boolean) => Promise<void>>(async () => {});
+
+  const loadVirtualPage = useCallback((reset: boolean): Promise<void> => {
+    if (reset) {
+      virtualLoadGeneration.current += 1;
+      virtualLoadQueued.current = false;
+      if (virtualRetryTimer.current) {
+        clearTimeout(virtualRetryTimer.current);
+        virtualRetryTimer.current = null;
+      }
+
+      const state = getVirtualQueueState();
+      const seed = state
+        ? seedVirtualQueueTracks(
+            rollingUpcomingTracksRef.current,
+            state.activePosition,
+            state.totalCount,
+          )
+        : [];
+      virtualTracksRef.current = seed;
+      setVirtualTracks(seed);
+
+      if (!state) return Promise.resolve();
+      if (virtualLoadPromise.current) {
+        virtualLoadQueued.current = true;
+        return virtualLoadPromise.current;
+      }
     }
+
+    if (virtualLoadPromise.current) {
+      virtualLoadQueued.current = true;
+      return virtualLoadPromise.current;
+    }
+
+    const state = getVirtualQueueState();
+    if (!state) return Promise.resolve();
+    const start = nextVirtualQueuePageStart(
+      virtualTracksRef.current,
+      state.activePosition,
+      state.totalCount,
+    );
+    if (start === null) return Promise.resolve();
+
+    const generation = virtualLoadGeneration.current;
+    const request = (async () => {
+      let page: Awaited<ReturnType<typeof getVirtualQueuePage>> = null;
+      let failed = false;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (!isCurrentVirtualQueueRequest(
+          generation,
+          virtualLoadGeneration.current,
+          state.sessionId,
+          getVirtualQueueState()?.sessionId,
+        )) return;
+        try {
+          page = await getVirtualQueuePage(start, VIRTUAL_QUEUE_PAGE_SIZE);
+          failed = false;
+          break;
+        } catch {
+          failed = true;
+          if (attempt === 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 120));
+          }
+        }
+      }
+
+      const currentState = getVirtualQueueState();
+      if (!isCurrentVirtualQueueRequest(
+        generation,
+        virtualLoadGeneration.current,
+        state.sessionId,
+        currentState?.sessionId,
+      )) return;
+      if (!currentState) return;
+
+      if (!page) {
+        if (failed && !virtualRetryTimer.current) {
+          virtualRetryTimer.current = setTimeout(() => {
+            virtualRetryTimer.current = null;
+            void virtualPageLoaderRef.current(false);
+          }, 400);
+        }
+        return;
+      }
+      if (virtualRetryTimer.current) {
+        clearTimeout(virtualRetryTimer.current);
+        virtualRetryTimer.current = null;
+      }
+
+      const incoming = page.items
+        .filter((item) => (
+          item.queuePosition >= start &&
+          item.queuePosition < currentState.totalCount
+        ))
+        .map((item) => item.track);
+      const next = mergeVirtualQueueTracks(virtualTracksRef.current, incoming);
+      if (
+        next.length === virtualTracksRef.current.length &&
+        next.every((track, index) => track === virtualTracksRef.current[index])
+      ) return;
+      virtualTracksRef.current = next;
+      setVirtualTracks(next);
+    })();
+
+    virtualLoadPromise.current = request;
+    void request.finally(() => {
+      if (virtualLoadPromise.current !== request) return;
+      virtualLoadPromise.current = null;
+      if (virtualLoadQueued.current) {
+        virtualLoadQueued.current = false;
+        void virtualPageLoaderRef.current(false);
+      }
+    });
+    return request;
   }, []);
+  virtualPageLoaderRef.current = loadVirtualPage;
 
   useEffect(() => {
-    if (!virtualMode) {
-      virtualLoadGeneration.current += 1;
-      virtualTracksRef.current = [];
-      setVirtualTracks([]);
-      return;
-    }
     void loadVirtualPage(true);
   }, [loadVirtualPage, virtualActivePosition, virtualMode, virtualState?.sessionId]);
+
+  useEffect(() => () => {
+    virtualLoadGeneration.current += 1;
+    if (virtualRetryTimer.current) clearTimeout(virtualRetryTimer.current);
+  }, []);
+
+  const onQueueViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<QueueEntry>[] }) => {
+      const state = getVirtualQueueState();
+      if (!state) return;
+      const lastVisibleIndex = viewableItems.reduce(
+        (last, token) => Math.max(last, token.index ?? -1),
+        -1,
+      );
+      const hasMore = nextVirtualQueuePageStart(
+        virtualTracksRef.current,
+        state.activePosition,
+        state.totalCount,
+      ) !== null;
+      if (shouldPrefetchVirtualQueue(
+        lastVisibleIndex,
+        virtualTracksRef.current.length,
+        hasMore,
+      )) {
+        void loadVirtualPage(false);
+      }
+    },
+    [loadVirtualPage],
+  );
 
   const upcomingTracks = virtualMode ? virtualTracks : rollingUpcomingTracks;
   const upcomingTotal = virtualState
@@ -882,12 +1002,13 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
             data={entries}
             scrollEnabled
             keyExtractor={(item) => item.key}
-            drawDistance={QUEUE_RENDER_DISTANCE}
+            drawDistance={renderDistance}
             maintainVisibleContentPosition={{ disabled: true }}
             renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
             renderItem={renderItem}
             extraData={listExtraData}
             onLoad={onListLoad}
+            onViewableItemsChanged={virtualMode ? onQueueViewableItemsChanged : undefined}
             onEndReached={virtualMode ? () => void loadVirtualPage(false) : undefined}
             onEndReachedThreshold={0.6}
             contentContainerStyle={embedded

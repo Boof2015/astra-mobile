@@ -533,7 +533,7 @@ export async function getVirtualQueuePage(
   const window = await AstraLibraryData.getPlaybackWindow<DbTrack>(
     context.sessionId,
     Math.max(0, start),
-    Math.max(1, Math.min(100, limit)),
+    Math.max(1, Math.min(250, limit)),
   );
   if (virtualContext !== context) return null;
   const boundedStart = Math.max(0, start);

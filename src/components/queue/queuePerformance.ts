@@ -1,5 +1,6 @@
 export const QUEUE_ROW_HEIGHT = 64;
-export const QUEUE_RENDER_AHEAD_ROWS = 4;
+export const QUEUE_RENDER_AHEAD_MIN_ROWS = 12;
+export const QUEUE_RENDER_WINDOW_MULTIPLIER = 2;
 
 const QUEUE_SHEET_INITIAL_FRACTION = 0.58;
 const QUEUE_PREVIEW_NON_LIST_HEIGHT = 220;
@@ -21,4 +22,12 @@ export function queuePreviewRowCount(windowHeight: number): number {
   );
 }
 
-export const QUEUE_RENDER_DISTANCE = QUEUE_ROW_HEIGHT * QUEUE_RENDER_AHEAD_ROWS;
+export function queueRenderDistance(windowHeight: number): number {
+  const safeWindowHeight = Number.isFinite(windowHeight)
+    ? Math.max(0, windowHeight)
+    : 0;
+  return Math.max(
+    QUEUE_ROW_HEIGHT * QUEUE_RENDER_AHEAD_MIN_ROWS,
+    Math.ceil(safeWindowHeight * QUEUE_RENDER_WINDOW_MULTIPLIER),
+  );
+}
