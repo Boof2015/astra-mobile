@@ -64,6 +64,22 @@ export function nextVirtualQueuePageStart(
   return start < totalCount ? start : null;
 }
 
+/**
+ * Break the empty-list mount deadlock: when the playback window has no usable
+ * upcoming rows but the virtual context still has tracks, paging cannot wait
+ * for FlashList's first paint because an empty list may never report one.
+ */
+export function isVirtualQueueWaitingForTracks(
+  visibleTrackCount: number,
+  activePosition: number,
+  totalCount: number,
+): boolean {
+  return (
+    visibleTrackCount === 0
+    && nextVirtualQueuePageStart([], activePosition, totalCount) !== null
+  );
+}
+
 export function shouldPrefetchVirtualQueue(
   lastVisibleIndex: number,
   loadedCount: number,

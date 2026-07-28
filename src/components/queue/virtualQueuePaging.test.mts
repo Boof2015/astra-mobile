@@ -4,6 +4,7 @@ import {
   VIRTUAL_QUEUE_PAGE_SIZE,
   VIRTUAL_QUEUE_PREFETCH_ROWS,
   isCurrentVirtualQueueRequest,
+  isVirtualQueueWaitingForTracks,
   mergeVirtualQueueTracks,
   nextVirtualQueuePageStart,
   seedVirtualQueueTracks,
@@ -63,6 +64,12 @@ test('stops paging at the virtual queue end', () => {
   assert.equal(nextVirtualQueuePageStart(tracks(1, 4), 0, 6), 5);
   assert.equal(nextVirtualQueuePageStart(tracks(1, 5), 0, 6), null);
   assert.equal(nextVirtualQueuePageStart([], 5, 6), null);
+});
+
+test('loads an empty virtual seed immediately when tracks remain', () => {
+  assert.equal(isVirtualQueueWaitingForTracks(0, 5, 10), true);
+  assert.equal(isVirtualQueueWaitingForTracks(1, 5, 10), false);
+  assert.equal(isVirtualQueueWaitingForTracks(0, 9, 10), false);
 });
 
 test('rejects stale generations and replaced playback sessions', () => {

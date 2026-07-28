@@ -87,6 +87,7 @@ import { QueueSheetHandle } from './QueueSheetHandle';
 import {
   VIRTUAL_QUEUE_PAGE_SIZE,
   isCurrentVirtualQueueRequest,
+  isVirtualQueueWaitingForTracks,
   mergeVirtualQueueTracks,
   nextVirtualQueuePageStart,
   seedVirtualQueueTracks,
@@ -390,7 +391,17 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
     if (embedded || listPaintedRef.current) {
       void loadVirtualPage(true);
     } else {
-      resetVirtualTracks();
+      const state = resetVirtualTracks();
+      if (
+        state
+        && isVirtualQueueWaitingForTracks(
+          virtualTracksRef.current.length,
+          state.activePosition,
+          state.totalCount,
+        )
+      ) {
+        void loadVirtualPage(false);
+      }
     }
   }, [
     embedded,
@@ -912,7 +923,14 @@ export const QueueTray = memo(function QueueTray({ onClose, embedded = false }: 
   );
 
   const queueReady = hasSnapshot;
-  const isLoadingQueue = !queueReady;
+  const isLoadingQueue = !queueReady || (
+    virtualState !== null
+    && isVirtualQueueWaitingForTracks(
+      entries.length,
+      virtualState.activePosition,
+      virtualState.totalCount,
+    )
+  );
 
   const listExtraData = useMemo(
     () => ({ editMode, selectedKeys: visibleSelectedKeys, queueReady }),
