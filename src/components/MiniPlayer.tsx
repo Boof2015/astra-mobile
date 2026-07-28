@@ -31,6 +31,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
+import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import { useScopeActive } from '@/scope/scopeStore';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
@@ -236,6 +237,12 @@ export function MiniPlayer() {
   const dispatchPendingSwipe = useCallback((id: number) => {
     const pending = pendingSwipeRef.current;
     if (!pending || pending.id !== id) return;
+    if (pending.target === 'desktop') {
+      markNowPlayingTrackTransitionDirection(
+        pending.direction,
+        pending.target,
+      );
+    }
     const command = pending.target === 'desktop'
       ? sendDesktopControl(pending.direction === 'next' ? 'next' : 'previous')
       : pending.direction === 'next'
@@ -435,6 +442,7 @@ export function MiniPlayer() {
   };
   const onSkipNext = () => {
     if (isDesktop) {
+      markNowPlayingTrackTransitionDirection('next', 'desktop');
       void sendDesktopControl('next');
       return;
     }

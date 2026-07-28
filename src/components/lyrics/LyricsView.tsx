@@ -6,13 +6,17 @@
 // art view; swipe-down still closes the player.
 
 import { Image } from 'expo-image';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { MarqueeText } from '@/components/MarqueeText';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SeekBar } from '@/components/SeekBar';
 import { TactilePressable } from '@/components/player/TactilePressable';
+import {
+  getNowPlayingTrackTransitionKey,
+  NowPlayingTrackFadeThrough,
+} from '@/components/player/nowPlayingTrackTransition';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -62,6 +66,7 @@ export function LyricsView({
   const duration = usePlayerStore((s) => s.duration);
   const result = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
   const sourceLabel = result?.status === 'hit' ? getLyricsPayloadSourceLabel(result.lyrics) : null;
+  const transitionTrackKey = getNowPlayingTrackTransitionKey('phone', track.path);
 
   return (
     <View style={styles.root}>
@@ -70,39 +75,52 @@ export function LyricsView({
           <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
         </Pressable>
 
-        <View style={styles.thumb}>
-          {track.artworkData ? (
-            <Image source={{ uri: track.artworkData }} style={styles.thumbImage} contentFit="cover" />
-          ) : (
-            <AstraLogo size={18} />
-          )}
-        </View>
+        <View style={styles.stripTrackFrame}>
+          <NowPlayingTrackFadeThrough
+            transitionKey={transitionTrackKey}
+            style={StyleSheet.absoluteFill}
+            contentStyle={styles.stripTrack}
+          >
+            <View style={styles.thumb}>
+              {track.artworkData ? (
+                <Image source={{ uri: track.artworkData }} style={styles.thumbImage} contentFit="cover" />
+              ) : (
+                <AstraLogo size={18} />
+              )}
+            </View>
 
-        <View style={styles.stripText}>
-          <MarqueeText variant="label" style={styles.stripTitle}>
-            {track.title}
-          </MarqueeText>
-          <View style={styles.stripSubRow}>
-            <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
-              {track.artist}
-            </Text>
-            {sourceLabel ? (
-              <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
-                {sourceLabel}
-              </Text>
-            ) : null}
-          </View>
+            <View style={styles.stripText}>
+              <MarqueeText variant="label" style={styles.stripTitle}>
+                {track.title}
+              </MarqueeText>
+              <View style={styles.stripSubRow}>
+                <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
+                  {track.artist}
+                </Text>
+                {sourceLabel ? (
+                  <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
+                    {sourceLabel}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </NowPlayingTrackFadeThrough>
         </View>
-
       </View>
 
-      <LyricsBand
-        track={track}
-        currentTime={currentTime}
-        duration={duration}
-        isPlaying={isPlaying && active}
-        onSeek={onSeek}
-      />
+      <NowPlayingTrackFadeThrough
+        transitionKey={transitionTrackKey}
+        style={styles.lyricsFrame}
+        contentStyle={StyleSheet.absoluteFill}
+      >
+        <LyricsBand
+          track={track}
+          currentTime={currentTime}
+          duration={duration}
+          isPlaying={isPlaying && active}
+          onSeek={onSeek}
+        />
+      </NowPlayingTrackFadeThrough>
 
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
@@ -167,6 +185,21 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stripTrackFrame: {
+    flex: 1,
+    height: 40,
+    position: 'relative',
+  },
+  stripTrack: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   thumb: {
     width: 40,
     height: 40,
@@ -183,6 +216,11 @@ const useStyles = createThemedStyles((colors) => ({
   stripText: {
     flex: 1,
     minWidth: 0,
+  },
+  lyricsFrame: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
   },
   stripTitle: {
     color: colors.textPrimary,

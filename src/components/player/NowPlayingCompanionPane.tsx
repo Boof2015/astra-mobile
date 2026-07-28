@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { LyricsBand } from '@/components/lyrics/LyricsBand';
 import { QueueTray } from '@/components/queue/QueueTray';
@@ -6,6 +6,10 @@ import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { seekTo } from '@/audio/playbackController';
 import { spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
+import {
+  getNowPlayingTrackTransitionKey,
+  NowPlayingTrackFadeThrough,
+} from './nowPlayingTrackTransition';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { NowPlayingCompanion } from './nowPlayingPreferences';
@@ -38,6 +42,10 @@ export function NowPlayingCompanionPane({
   const isPlaying = usePlayerStore(
     (s) => active && !desktopTarget && s.playbackState === 'playing'
   );
+  const transitionTrackKey = getNowPlayingTrackTransitionKey(
+    'phone',
+    track?.path ?? null
+  );
 
   const selectCompanion = (next: string) => {
     const value: NowPlayingCompanion = next === 'lyrics' ? 'lyrics' : 'queue';
@@ -62,13 +70,19 @@ export function NowPlayingCompanionPane({
             {companion === 'queue' ? (
               <QueueTray embedded onClose={noop} />
             ) : track ? (
-              <LyricsBand
-                track={track}
-                currentTime={currentTime}
-                duration={duration}
-                isPlaying={isPlaying}
-                onSeek={(seconds) => void seekTo(seconds)}
-              />
+              <NowPlayingTrackFadeThrough
+                transitionKey={transitionTrackKey}
+                style={styles.lyricsFrame}
+                contentStyle={StyleSheet.absoluteFill}
+              >
+                <LyricsBand
+                  track={track}
+                  currentTime={currentTime}
+                  duration={duration}
+                  isPlaying={isPlaying}
+                  onSeek={(seconds) => void seekTo(seconds)}
+                />
+              </NowPlayingTrackFadeThrough>
             ) : null}
           </View>
         </>
@@ -93,5 +107,10 @@ const useStyles = createThemedStyles((colors) => ({
   content: {
     flex: 1,
     minHeight: 0,
+  },
+  lyricsFrame: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
   },
 }));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { Keyframe, ReduceMotion } from 'react-native-reanimated';
+import { Text } from '@/components/Text';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
@@ -38,7 +39,7 @@ interface CachedLyricPeekProps {
 }
 
 /**
- * One-line synced lyric display. Online lookup opt-in uses the shared lyrics
+ * Two-line synced lyric display. Online lookup opt-in uses the shared lyrics
  * resolver; otherwise the passive preview remains a cache-only SQLite read.
  */
 export function CachedLyricPeek({
@@ -117,16 +118,21 @@ export function CachedLyricPeek({
         accessibilityLabel={text ? `Open lyrics: ${text}` : undefined}
       >
         {text && lineKey ? (
-          <Animated.Text
+          <Animated.View
             key={lineKey}
             entering={ENTERING}
             exiting={EXITING}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={styles.line}
+            pointerEvents="none"
+            style={styles.lineFrame}
           >
-            {text}
-          </Animated.Text>
+            <Text
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              style={styles.line}
+            >
+              {text}
+            </Text>
+          </Animated.View>
         ) : null}
       </TactilePressable>
     </View>
@@ -135,19 +141,26 @@ export function CachedLyricPeek({
 
 const useStyles = createThemedStyles((colors) => ({
   wrap: {
-    height: 28,
-    marginBottom: spacing.sm,
+    // 48px fits two 22px lines plus breathing room. Pulling 12px from the
+    // existing media gap keeps the external footprint at its old 36px, so the
+    // metadata and every control below stay on the same anchors.
+    height: 48,
+    marginTop: -spacing.md,
     overflow: 'hidden',
   },
   pressable: {
     flex: 1,
-    justifyContent: 'center',
     overflow: 'hidden',
   },
-  line: {
+  lineFrame: {
     position: 'absolute',
+    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
+    justifyContent: 'center',
+  },
+  line: {
     color: colors.textSecondary,
     fontFamily: fonts.sans.medium,
     fontSize: 16,

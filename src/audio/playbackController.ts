@@ -8,6 +8,7 @@ import type { DbTrack } from '@/types/library';
 import { usePlayerStore, type RepeatMode as RepeatModeStr } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
+import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import type {
   PlaybackSessionSnapshotV1,
   ResolvedPlaybackSession,
@@ -805,6 +806,7 @@ export async function togglePlay(): Promise<void> {
 }
 
 export async function skipToNext(): Promise<void> {
+  markNowPlayingTrackTransitionDirection('next', 'phone');
   await ensurePlayerReady();
   const [nativeQueue, nativeIndex] = await Promise.all([
     TrackPlayer.getQueue(),
@@ -848,6 +850,7 @@ export async function skipToPrevious(): Promise<void> {
     return;
   }
 
+  markNowPlayingTrackTransitionDirection('previous', 'phone');
   const [nativeQueue, nativeIndex] = await Promise.all([
     TrackPlayer.getQueue(),
     TrackPlayer.getActiveTrackIndex(),

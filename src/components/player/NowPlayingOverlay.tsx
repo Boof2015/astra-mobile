@@ -16,7 +16,6 @@ import Animated, {
   cancelAnimation,
   runOnJS,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withDelay,
   withSequence,
@@ -42,6 +41,10 @@ import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
+import {
+  getNowPlayingTrackTransitionKey,
+  NowPlayingTrackFadeThrough,
+} from '@/components/player/nowPlayingTrackTransition';
 import {
   resolveNowPlayingPanRelease,
   resolveNowPlayingDismissSpring,
@@ -92,6 +95,7 @@ import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
@@ -143,7 +147,6 @@ export function NowPlayingOverlay() {
   const returnToTabs = useReturnToTabs();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const reduceMotion = useReducedMotion();
   const phase = usePlayerUiStore((s) => s.phase);
   const openRequest = usePlayerUiStore((s) => s.openRequest);
   const exitAnimated = usePlayerUiStore((s) => s.exitAnimated);
@@ -219,7 +222,10 @@ export function NowPlayingOverlay() {
     !foreground
   );
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
-  const transitionTrackKey = isDesktopTarget ? activeTrack?.id ?? '' : track?.id ?? '';
+  const transitionTrackKey = getNowPlayingTrackTransitionKey(
+    activePresentation.target,
+    activePresentation.trackKey
+  );
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
   // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
@@ -304,7 +310,6 @@ export function NowPlayingOverlay() {
   const screenHeight = useSharedValue(windowHeight);
   const companionTouchStartX = useSharedValue(companionStartX);
   const menuProgress = useSharedValue(0);
-  const trackProgress = useSharedValue(1);
   // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
   // rack = art face crossfading to the instrument rack. The presence gates keep
   // both faces for the 220 ms transition, then release the invisible surface.
@@ -485,12 +490,6 @@ export function NowPlayingOverlay() {
   useEffect(() => {
     companionTouchStartX.value = companionStartX;
   }, [companionStartX, companionTouchStartX]);
-
-  useEffect(() => {
-    if (!transitionTrackKey) return;
-    trackProgress.value = 0;
-    trackProgress.value = withTiming(1, { ...motion.snap, duration: 200 });
-  }, [trackProgress, transitionTrackKey]);
 
   useEffect(() => {
     stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
@@ -770,16 +769,6 @@ export function NowPlayingOverlay() {
     transform: [{ translateY: MENU_ENTER_OFFSET_Y * (1 - menuProgress.value) }],
   }));
 
-  const artworkTransitionStyle = useAnimatedStyle(() => ({
-    opacity: 0.75 + trackProgress.value * 0.25,
-    transform: [{ scale: 0.985 + trackProgress.value * 0.015 }],
-  }));
-
-  const metadataTransitionStyle = useAnimatedStyle(() => ({
-    opacity: trackProgress.value,
-    transform: [{ translateY: 4 * (1 - trackProgress.value) }],
-  }));
-
   // Rail choreography (standard presentation only): the art box is laid out at
   // its scope-off size and driven to the scope-on size/position by
   // stageProgress, so the ∿ toggle animates as one move instead of snapping
@@ -795,13 +784,10 @@ export function NowPlayingOverlay() {
     ? layout.artSizeScopeOn / 2 - layout.mediaStackHeight / 2
     : 0;
   const artStageTransitionStyle = useAnimatedStyle(() => ({
-    opacity: 0.75 + trackProgress.value * 0.25,
     transform: [
       { translateY: stageProgress.value * railArtShift },
       {
-        scale:
-          (0.985 + trackProgress.value * 0.015) *
-          (1 + stageProgress.value * (railArtScale - 1)),
+        scale: 1 + stageProgress.value * (railArtScale - 1),
       },
     ],
   }));
@@ -921,27 +907,27 @@ export function NowPlayingOverlay() {
                           },
                     ]}
                   >
-                    <Animated.View
+                    <NowPlayingTrackFadeThrough
+                      transitionKey={transitionTrackKey}
                       style={[
                         styles.artCard,
-                        artworkTransitionStyle,
                         {
                           width: layout.artSize,
                           height: layout.artSize,
                         },
                       ]}
+                      contentStyle={styles.trackVisualLayer}
                     >
                       {activePresentation.artworkUri ? (
                         <Image
                           source={{ uri: activePresentation.artworkUri }}
                           style={styles.artImage}
                           contentFit="cover"
-                          transition={reduceMotion ? null : 200}
                         />
                       ) : (
                         <AstraLogo size={Math.round(layout.artSize * 0.4)} />
                       )}
-                    </Animated.View>
+                    </NowPlayingTrackFadeThrough>
                   </View>
 
                   <View
@@ -953,11 +939,12 @@ export function NowPlayingOverlay() {
                   ]}
                 >
                     <View style={styles.primaryControls}>
-                    <Animated.View
-                      style={[
+                    <NowPlayingTrackFadeThrough
+                      transitionKey={transitionTrackKey}
+                      style={styles.trackInfoFrame}
+                      contentStyle={[
                         styles.trackInfo,
                         { marginBottom: layout.trackInfoGap },
-                        metadataTransitionStyle,
                       ]}
                     >
                       <View style={styles.trackTextStack}>
@@ -1000,7 +987,7 @@ export function NowPlayingOverlay() {
                           }
                         />
                       </TactilePressable>
-                    </Animated.View>
+                    </NowPlayingTrackFadeThrough>
 
                     <SeekBar
                       currentTime={activePresentation.currentTime}
@@ -1035,7 +1022,10 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                       <TactilePressable
-                        onPress={() => void sendDesktopControl('previous')}
+                        onPress={() => {
+                          markNowPlayingTrackTransitionDirection('previous', 'desktop');
+                          void sendDesktopControl('previous');
+                        }}
                         haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
@@ -1062,7 +1052,10 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                       <TactilePressable
-                        onPress={() => void sendDesktopControl('next')}
+                        onPress={() => {
+                          markNowPlayingTrackTransitionDirection('next', 'desktop');
+                          void sendDesktopControl('next');
+                        }}
                         haptic="action"
                         hitSlop={12}
                         style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
@@ -1227,18 +1220,23 @@ export function NowPlayingOverlay() {
                       ]}
                     >
                       {renderArtworkFace ? (
-                        track.artworkData ? (
-                          <Image
-                            source={{ uri: track.artworkData }}
-                            style={styles.artImage}
-                            contentFit="cover"
-                            cachePolicy="disk"
-                            allowDownscaling
-                            transition={reduceMotion ? null : 200}
-                          />
-                        ) : (
-                          <AstraLogo size={Math.round(artBoxSize * 0.4)} />
-                        )
+                        <NowPlayingTrackFadeThrough
+                          transitionKey={transitionTrackKey}
+                          style={StyleSheet.absoluteFill}
+                          contentStyle={styles.trackVisualLayer}
+                        >
+                          {track.artworkData ? (
+                            <Image
+                              source={{ uri: track.artworkData }}
+                              style={styles.artImage}
+                              contentFit="cover"
+                              cachePolicy="disk"
+                              allowDownscaling
+                            />
+                          ) : (
+                            <AstraLogo size={Math.round(artBoxSize * 0.4)} />
+                          )}
+                        </NowPlayingTrackFadeThrough>
                       ) : null}
                     </Animated.View>
                     {!railStyle && renderScopeSurfaces && (
@@ -1249,6 +1247,7 @@ export function NowPlayingOverlay() {
                         <ScopeRack
                           size={artBoxSize}
                           stripWidth={layout.scopeWidth}
+                          transitionKey={transitionTrackKey}
                           artworkUri={backdropArtworkUri}
                           spectrumSmoothing={NOW_PLAYING_SPECTRUM_SMOOTHING}
                           paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
@@ -1323,11 +1322,12 @@ export function NowPlayingOverlay() {
                         onOpenLyrics={showLyrics}
                       />
                     ) : null}
-                    <Animated.View
-                      style={[
+                    <NowPlayingTrackFadeThrough
+                      transitionKey={transitionTrackKey}
+                      style={styles.trackInfoFrame}
+                      contentStyle={[
                         styles.trackInfo,
                         { marginBottom: layout.trackInfoGap },
-                        metadataTransitionStyle,
                       ]}
                     >
                       <View style={styles.trackTextStack}>
@@ -1390,7 +1390,7 @@ export function NowPlayingOverlay() {
                           }
                         />
                       </TactilePressable>
-                    </Animated.View>
+                    </NowPlayingTrackFadeThrough>
 
                     <WaveformSeekBar
                       active={surfacesLive}
@@ -1923,6 +1923,18 @@ const useStyles = createThemedStyles((colors) => ({
   artImage: {
     width: '100%',
     height: '100%',
+  },
+  trackVisualLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackInfoFrame: {
+    alignSelf: 'stretch',
   },
   trackInfo: {
     alignSelf: 'stretch',
