@@ -32,6 +32,7 @@ import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { identityMatchesPinnedConnection } from '@/services/desktopSyncPolicy';
 import { ensureDesktopRemoteCredentialsFresh } from '@/services/desktopRemoteSession';
+import { desktopRemoteControlSequence } from '@/services/desktopRemoteTransport';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import type {
   DesktopRemoteConnection,
@@ -732,16 +733,22 @@ export const useDesktopRemoteStore = create<DesktopRemoteStore>((set, get) => {
     },
 
     sendControl: async (command, time) => {
-      const { connection, token } = get();
+      const { connection, token, snapshot } = get();
       if (!connection || !token) return;
       try {
-        await sendDesktopRemoteControl(
-          connection.baseUrl,
-          token,
-          connection.certificateFingerprint,
+        const commands = desktopRemoteControlSequence(
           command,
-          time
+          snapshot?.playbackState,
         );
+        for (const nextCommand of commands) {
+          await sendDesktopRemoteControl(
+            connection.baseUrl,
+            token,
+            connection.certificateFingerprint,
+            nextCommand,
+            nextCommand === command ? time : undefined,
+          );
+        }
         set({ errorMessage: '' });
         if (command === 'seek' && typeof time === 'number') {
           set((state) => state.snapshot

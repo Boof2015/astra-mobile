@@ -28,7 +28,10 @@ import {
   prepareAudioProcessingForPlayback,
   primePreparedTrackForPlayback,
 } from './audioProcessingStartup';
-import { shouldRestartOnPrevious } from './playbackNavigation';
+import {
+  shouldRestartOnPrevious,
+  shouldResumeAfterExplicitNext,
+} from './playbackNavigation';
 import {
   cancelManualRecentPlayTransition,
   markManualRecentPlayTransition,
@@ -815,15 +818,19 @@ export async function togglePlay(): Promise<void> {
 export async function skipToNext(): Promise<void> {
   markNowPlayingTrackTransitionDirection('next', 'phone');
   await ensurePlayerReady();
-  const [nativeQueue, nativeIndex] = await Promise.all([
+  const [nativeQueue, nativeIndex, nativePlaybackState] = await Promise.all([
     TrackPlayer.getQueue(),
     TrackPlayer.getActiveTrackIndex(),
+    TrackPlayer.getPlaybackState(),
   ]);
+  const playbackStateAtIntent = mapRntpState(nativePlaybackState.state);
+  const resumeAfterSkip = shouldResumeAfterExplicitNext(playbackStateAtIntent);
+  const playbackTarget = dspTargetFromTrack(
+    nativeIndex == null ? undefined : nativeQueue[nativeIndex + 1],
+    'none',
+  );
   await prepareAudioProcessingForPlayback(
-    dspTargetFromTrack(
-      nativeIndex == null ? undefined : nativeQueue[nativeIndex + 1],
-      'none',
-    ),
+    playbackTarget,
     'skip-next',
   );
   const { tracks, activeIndex } = useQueueStore.getState();
@@ -831,7 +838,10 @@ export async function skipToNext(): Promise<void> {
   const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   if (nextIndex >= 0 && nextIndex < tracks.length) {
     useQueueStore.getState().setActiveIndex(nextIndex);
-    setOptimisticTrack(tracks[nextIndex], usePlayerStore.getState().playbackState);
+    setOptimisticTrack(
+      tracks[nextIndex],
+      resumeAfterSkip ? 'loading' : playbackStateAtIntent,
+    );
   }
   const manualTransition = markManualRecentPlayTransition(manualTransitionFromPath);
   let nativeTransitionSucceeded = false;
@@ -839,10 +849,15 @@ export async function skipToNext(): Promise<void> {
     await TrackPlayer.skipToNext();
     nativeTransitionSucceeded = true;
     await refreshActiveIndexFromNative();
+    if (resumeAfterSkip) {
+      await primePreparedTrackForPlayback(playbackTarget, 'skip-next-resume');
+      await TrackPlayer.play();
+      usePlayerStore.getState().setPlaybackState('playing');
+    }
   } catch {
     if (!nativeTransitionSucceeded) cancelManualRecentPlayTransition(manualTransition);
     await reconcilePlayerFromNative();
-    // no next track — ignore
+    // No next track or resume failed — keep the reconciled native state.
   }
 }
 
