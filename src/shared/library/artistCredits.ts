@@ -1,5 +1,6 @@
-// Port of desktop astra/src/shared/library/artistCredits.ts — keep semantically
-// identical so the album-grouping algorithm stays in sync across apps.
+// Shared credit normalization. Structured arrays retain exact artist
+// boundaries; display punctuation must come from the tags or use neutral
+// comma separators rather than inventing collaboration punctuation.
 
 export interface ArtistNameToken {
   artist: string;
@@ -44,22 +45,46 @@ export function deserializeArtistNames(value: unknown): string[] {
 }
 
 export function formatArtistNames(names: readonly unknown[] | null | undefined): string {
-  const normalized = normalizeArtistNames(names);
-  if (normalized.length === 0) return '';
-  if (normalized.length === 1) return normalized[0];
-  if (normalized.length === 2) return `${normalized[0]} & ${normalized[1]}`;
-  return `${normalized.slice(0, -1).join(', ')} & ${normalized[normalized.length - 1]}`;
+  return normalizeArtistNames(names).join(', ');
 }
 
 export function buildArtistNameTokens(names: readonly unknown[] | null | undefined): ArtistNameToken[] {
   const normalized = normalizeArtistNames(names);
-  return normalized.map((artist, index) => {
-    let separator: string | null = null;
-    if (index < normalized.length - 2) {
-      separator = ', ';
-    } else if (index === normalized.length - 2) {
-      separator = ' & ';
+  return normalized.map((artist, index) => ({
+    artist,
+    separator: index < normalized.length - 1 ? ', ' : null,
+  }));
+}
+
+const LITERAL_SEPARATOR_PATTERN = /([,;])/;
+
+/**
+ * Build clickable fallback credits from a legacy display string while keeping
+ * its literal punctuation. Ampersands are intentionally not split: without
+ * structured metadata, they may be part of an artist's actual name or tag.
+ */
+export function parseArtistMetadata(artistText: string): ArtistNameToken[] {
+  const normalized = normalizeArtistName(artistText);
+  if (!normalized) return [];
+
+  const tokens: ArtistNameToken[] = [];
+  let pendingSeparator: ',' | ';' | null = null;
+
+  for (const part of normalized.split(LITERAL_SEPARATOR_PATTERN)) {
+    if (part === ',' || part === ';') {
+      pendingSeparator = part;
+      continue;
     }
-    return { artist, separator };
-  });
+
+    const artist = normalizeArtistName(part);
+    if (!artist) continue;
+
+    if (pendingSeparator && tokens.length > 0) {
+      tokens[tokens.length - 1].separator = `${pendingSeparator} `;
+    }
+    tokens.push({ artist, separator: null });
+    pendingSeparator = null;
+  }
+
+  return tokens.length > 0 ? tokens : [{ artist: normalized, separator: null }];
 }

@@ -10,8 +10,12 @@ import com.google.android.exoplayer2.metadata.id3.TextInformationFrame
 import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 
-internal const val CURRENT_ARTIST_CREDIT_VERSION = 2
 internal const val LEGACY_ARTIST_CREDIT_VERSION = 1
+internal const val INITIAL_MULTI_ARTIST_CREDIT_VERSION = 2
+// Version 3 removes synthesized ampersands from stored display strings.
+// Keeping this independent of the Room schema version lets existing local
+// version-2 catalogs use the normal stale-source full-reindex path.
+internal const val CURRENT_ARTIST_CREDIT_VERSION = 3
 
 internal data class ArtistCreditNames(
   val artists: List<String> = emptyList(),
@@ -33,13 +37,7 @@ internal fun normalizeArtistNames(values: Iterable<String?>): List<String> {
 }
 
 internal fun formatArtistNames(values: Iterable<String?>): String {
-  val names = normalizeArtistNames(values)
-  return when (names.size) {
-    0 -> ""
-    1 -> names[0]
-    2 -> "${names[0]} & ${names[1]}"
-    else -> "${names.dropLast(1).joinToString(", ")} & ${names.last()}"
-  }
+  return normalizeArtistNames(values).joinToString(", ")
 }
 
 internal fun serializeArtistNames(values: Iterable<String?>): String? {

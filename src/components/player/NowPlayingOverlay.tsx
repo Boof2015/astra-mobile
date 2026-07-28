@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
@@ -42,8 +43,10 @@ import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanion
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
 import {
+  resolveNowPlayingPanRelease,
   resolveNowPlayingDismissSpring,
   shouldEnableNowPlayingPan,
+  shouldStartNowPlayingPan,
 } from '@/components/player/nowPlayingDismiss';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
 import {
@@ -73,8 +76,11 @@ import {
   NOW_PLAYING_WIDE_PANE_GAP,
 } from '@/components/player/nowPlayingLayout';
 import { useReturnToTabs } from '@/navigation/returnToTabs';
-import { resolveNavigationArtist, splitCollaborators } from '@/library/artistGrouping';
-import { buildArtistNameTokens } from '@/shared/library/artistCredits';
+import { resolveNavigationArtist } from '@/library/artistGrouping';
+import {
+  buildArtistNameTokens,
+  parseArtistMetadata,
+} from '@/shared/library/artistCredits';
 import {
   artworkThumbFromSource,
   playerBackdropArtworkSource,
@@ -107,9 +113,6 @@ import {
 } from '@/playback/playbackTargetPresentation';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 
-const DISMISS_DISTANCE = 140;
-const DISMISS_VELOCITY = 1000;
-
 const HEADER_HEIGHT = NOW_PLAYING_HEADER_HEIGHT;
 const CONTENT_TOP_PADDING = NOW_PLAYING_CONTENT_TOP_PADDING;
 const CONTENT_BOTTOM_PADDING = NOW_PLAYING_CONTENT_BOTTOM_PADDING;
@@ -123,6 +126,7 @@ const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
 const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
+const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -151,8 +155,6 @@ export function NowPlayingOverlay() {
   const surfacesLive = playerOpen && foreground;
   const [queueOpen, setQueueOpen] = useState(false);
   const [lyricsBodySwitching, setLyricsBodySwitching] = useState(false);
-  // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
-  const closeQueue = useCallback(() => setQueueOpen(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
@@ -256,6 +258,13 @@ export function NowPlayingOverlay() {
     insets.right +
     contentPadding +
     Math.max(0, (effectiveWidth - contentPadding * 2 - shellWidth) / 2);
+  const shellLeft =
+    insets.left +
+    contentPadding +
+    Math.max(0, (effectiveWidth - contentPadding * 2 - shellWidth) / 2);
+  const companionStartX = tabletCompanionLayout
+    ? shellLeft + shellWidth - tabletCompanionLayout.companionWidth
+    : Number.POSITIVE_INFINITY;
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
   const libraryTrack = useMemo(
     () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
@@ -274,13 +283,40 @@ export function NowPlayingOverlay() {
     : '';
   const artistCreditTokens = useMemo(() => {
     if (!track) return [];
-    const collaborators =
-      track.artistNames && track.artistNames.length > 0
-        ? track.artistNames
-        : splitCollaborators(track.artist);
-    return buildArtistNameTokens(collaborators.length > 0 ? collaborators : [track.artist]);
+    if (track.artistNames && track.artistNames.length > 0) {
+      return buildArtistNameTokens(track.artistNames);
+    }
+    return parseArtistMetadata(track.artist);
   }, [track]);
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
+
+  // The overlay stays mounted; open/close is this one shared value sliding the
+  // sheet on the UI thread. The gesture itself is memoized below, so changing
+  // child/body state updates these gates rather than replacing the recognizer.
+  const translateY = useSharedValue(windowHeight);
+  const panEnabled = useSharedValue(
+    shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching)
+  );
+  const panDismissRequested = useSharedValue(false);
+  const panExitPending = useSharedValue(false);
+  const panReleaseVelocity = useSharedValue(0);
+  const panReleaseRemainingDistance = useSharedValue(windowHeight);
+  const screenHeight = useSharedValue(windowHeight);
+  const companionTouchStartX = useSharedValue(companionStartX);
+  const menuProgress = useSharedValue(0);
+  const trackProgress = useSharedValue(1);
+  // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
+  // rack = art face crossfading to the instrument rack. The presence gates keep
+  // both faces for the 220 ms transition, then release the invisible surface.
+  const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
+
+  const suspendPanForChildTransition = () => {
+    panEnabled.value = false;
+    panDismissRequested.value = false;
+    panExitPending.value = false;
+    cancelAnimation(translateY);
+    translateY.value = 0;
+  };
 
   useEffect(() => {
     if (!hasTabletCompanion || isDesktopTarget) return;
@@ -309,6 +345,7 @@ export function NowPlayingOverlay() {
       }
       return;
     }
+    suspendPanForChildTransition();
     setQueueOpen(true);
   };
 
@@ -406,16 +443,6 @@ export function NowPlayingOverlay() {
     });
   }
 
-  // The overlay stays mounted; open/close is this one shared value sliding the
-  // sheet on the UI thread. Starts off-screen so a pre-warmed mount never flashes.
-  const translateY = useSharedValue(windowHeight);
-  const menuProgress = useSharedValue(0);
-  const trackProgress = useSharedValue(1);
-  // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
-  // rack = art face crossfading to the instrument rack. The presence gates keep
-  // both faces for the 220 ms transition, then release the invisible surface.
-  const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
-
   /**
    * Swapping the phone player body unmounts every normal control underneath the
    * parent pan detector. Suspend that pan for the commit frame and synchronously
@@ -424,8 +451,7 @@ export function NowPlayingOverlay() {
    */
   const setPhoneLyricsVisible = (visible: boolean) => {
     if (!playerOpen) return;
-    cancelAnimation(translateY);
-    translateY.value = 0;
+    suspendPanForChildTransition();
     setLyricsBodySwitching(true);
     void setLyricsVisible(visible);
   };
@@ -443,6 +469,22 @@ export function NowPlayingOverlay() {
     const frame = requestAnimationFrame(() => setLyricsBodySwitching(false));
     return () => cancelAnimationFrame(frame);
   }, [lyricsBodySwitching, lyricsMode]);
+
+  useEffect(() => {
+    panEnabled.value = shouldEnableNowPlayingPan(
+      playerOpen,
+      queueOpen,
+      lyricsBodySwitching
+    );
+  }, [lyricsBodySwitching, panEnabled, playerOpen, queueOpen]);
+
+  useEffect(() => {
+    screenHeight.value = windowHeight;
+  }, [screenHeight, windowHeight]);
+
+  useEffect(() => {
+    companionTouchStartX.value = companionStartX;
+  }, [companionStartX, companionTouchStartX]);
 
   useEffect(() => {
     if (!transitionTrackKey) return;
@@ -508,49 +550,6 @@ export function NowPlayingOverlay() {
     );
   };
 
-  const pan = Gesture.Pan()
-    // A child sheet owns vertical gestures while it is visible. Replacing this
-    // gesture during the queue-button touch used to cancel a partially active
-    // pan and leave translateY off-screen while phase still said "open".
-    .enabled(shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching))
-    .activeOffsetY(14) // engage only on a downward drag
-    .failOffsetY(-14)
-    .failOffsetX([-24, 24]) // let the horizontal seek drag through
-    .onUpdate((e) => {
-      translateY.value = e.translationY > 0 ? e.translationY : 0;
-    })
-    .onEnd((e) => {
-      if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
-        const releaseSpring = resolveNowPlayingDismissSpring(
-          e.velocityY,
-          windowHeight - translateY.value
-        );
-        // Same commit-first contract as dismissSheet, with the release spring's
-        // velocity-matched shaping preserved.
-        runOnJS(beginDismiss)();
-        translateY.value = withSpring(
-          windowHeight,
-          {
-            damping: releaseSpring.damping,
-            stiffness: releaseSpring.stiffness,
-            velocity: releaseSpring.velocity,
-            overshootClamping: true,
-            energyThreshold: 1e-4,
-          },
-          (finished) => {
-            if (finished) runOnJS(commitClosed)();
-          }
-        );
-      } else {
-        translateY.value = withTiming(0, motion.snap);
-      }
-    })
-    .onFinalize((_event, success) => {
-      // RNGH does not call onEnd for a cancelled gesture. Never leave the
-      // overlay at its last partial translation in that path.
-      if (!success) translateY.value = withTiming(0, motion.snap);
-    });
-
   // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
   // a player that already believes it is open still re-runs the slide-in — that
   // is the recovery path for a sheet stranded off-screen by an interrupted
@@ -566,14 +565,46 @@ export function NowPlayingOverlay() {
       // The gesture and button paths own the exit animation, including its
       // velocity-matched spring shaping. Only animate here when `closing`
       // arrived from a direct closePlayer() with no animation attached.
-      if (!exitAnimated) {
+      if (exitAnimated && panExitPending.value) {
+        const releaseSpring = resolveNowPlayingDismissSpring(
+          panReleaseVelocity.value,
+          panReleaseRemainingDistance.value
+        );
+        panExitPending.value = false;
+        cancelAnimation(translateY);
+        translateY.value = withSpring(
+          screenHeight.value,
+          {
+            damping: releaseSpring.damping,
+            stiffness: releaseSpring.stiffness,
+            velocity: releaseSpring.velocity,
+            overshootClamping: true,
+            energyThreshold: 1e-4,
+          },
+          (finished) => {
+            if (finished) runOnJS(commitClosed)();
+          }
+        );
+      } else if (!exitAnimated) {
         translateY.value = withTiming(windowHeight, { duration: 200 });
       }
       return;
     }
     translateY.value = withTiming(0, { duration: 240 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
-  }, [phase, openRequest, exitAnimated, queueOpen, lyricsMode, translateY]);
+  }, [
+    phase,
+    openRequest,
+    exitAnimated,
+    queueOpen,
+    lyricsMode,
+    commitClosed,
+    panExitPending,
+    panReleaseRemainingDistance,
+    panReleaseVelocity,
+    screenHeight,
+    translateY,
+  ]);
 
   // `closing` → `closed`, and `opening` → `open`. Both are timers rather than
   // animation callbacks, so a cancelled animation can never strand the phase.
@@ -599,6 +630,92 @@ export function NowPlayingOverlay() {
     return undefined;
   }, [phase, openRequest]);
 
+  const pan = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetY(14) // engage only on a downward drag
+      .failOffsetY(-14)
+      .failOffsetX([-24, 24]) // let the horizontal seek drag through
+      .onTouchesDown((event, stateManager) => {
+        const touchX = event.allTouches[0]?.absoluteX ?? Number.NaN;
+        if (
+          !shouldStartNowPlayingPan(
+            panEnabled.value,
+            touchX,
+            companionTouchStartX.value
+          )
+        ) {
+          stateManager.fail();
+        }
+      })
+      .onTouchesMove((_event, stateManager) => {
+        if (!panEnabled.value) stateManager.fail();
+      })
+      .onStart(() => {
+        panDismissRequested.value = false;
+        panExitPending.value = false;
+        cancelAnimation(translateY);
+      })
+      .onUpdate((event) => {
+        if (!panEnabled.value) {
+          translateY.value = 0;
+          return;
+        }
+        translateY.value = event.translationY > 0 ? event.translationY : 0;
+      })
+      .onEnd((event, success) => {
+        const release = resolveNowPlayingPanRelease(
+          event.translationY,
+          event.velocityY,
+          success && panEnabled.value
+        );
+        if (release === 'dismiss') {
+          panDismissRequested.value = true;
+          panExitPending.value = true;
+          panReleaseVelocity.value = event.velocityY;
+          panReleaseRemainingDistance.value =
+            screenHeight.value - translateY.value;
+          // If the RN handoff is ever dropped, restore the partial drag instead
+          // of leaving an open player stranded. The phase effect cancels this
+          // delayed animation only after Zustand has entered `closing`.
+          translateY.value = withDelay(
+            PAN_DISMISS_HANDOFF_BACKSTOP_MS,
+            withTiming(0, motion.snap)
+          );
+          runOnJS(beginDismiss)();
+          return;
+        }
+        panDismissRequested.value = false;
+        panExitPending.value = false;
+        translateY.value = withTiming(0, motion.snap);
+      })
+      .onFinalize(() => {
+        // Successful dismissals retain the short handoff backstop above. Every
+        // other terminal path, including cancellation, re-anchors immediately.
+        if (!panDismissRequested.value) {
+          translateY.value = withTiming(0, motion.snap);
+        }
+      }),
+    [
+      beginDismiss,
+      companionTouchStartX,
+      panDismissRequested,
+      panEnabled,
+      panExitPending,
+      panReleaseRemainingDistance,
+      panReleaseVelocity,
+      screenHeight,
+      translateY,
+    ]
+  );
+
+  // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
+  const closeQueue = useCallback(() => {
+    suspendPanForChildTransition();
+    setQueueOpen(false);
+    // Shared values and the state setter remain stable for this overlay mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
   // — e.g. the library-detail back interceptor underneath.
@@ -622,7 +739,7 @@ export function NowPlayingOverlay() {
         return true;
       }
       if (queueOpen) {
-        setQueueOpen(false);
+        closeQueue();
         return true;
       }
       dismissSheet();
@@ -637,6 +754,7 @@ export function NowPlayingOverlay() {
     sleepTimerOpen,
     playlistActionTrack,
     queueOpen,
+    closeQueue,
     windowHeight,
   ]);
 

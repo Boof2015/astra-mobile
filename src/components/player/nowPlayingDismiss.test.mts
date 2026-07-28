@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  resolveNowPlayingPanRelease,
   resolveNowPlayingDismissSpring,
   shouldEnableNowPlayingPan,
+  shouldStartNowPlayingPan,
 } from './nowPlayingDismiss.ts';
 
 test('player pan yields to child sheets and body replacements', () => {
@@ -11,6 +13,30 @@ test('player pan yields to child sheets and body replacements', () => {
   assert.equal(shouldEnableNowPlayingPan(true, true, false), false);
   assert.equal(shouldEnableNowPlayingPan(true, false, true), false);
   assert.equal(shouldEnableNowPlayingPan(false, false, false), false);
+});
+
+test('player pan starts outside child-owned companion scrolling', () => {
+  assert.equal(
+    shouldStartNowPlayingPan(true, 900, Number.POSITIVE_INFINITY),
+    true,
+    'phones have no companion boundary'
+  );
+  assert.equal(shouldStartNowPlayingPan(true, 719, 720), true);
+  assert.equal(shouldStartNowPlayingPan(true, 720, 720), false);
+  assert.equal(shouldStartNowPlayingPan(true, 900, 720), false);
+  assert.equal(shouldStartNowPlayingPan(false, 100, 720), false);
+});
+
+test('only a successfully ended threshold release dismisses the player', () => {
+  assert.equal(resolveNowPlayingPanRelease(141, 0, true), 'dismiss');
+  assert.equal(resolveNowPlayingPanRelease(0, 1001, true), 'dismiss');
+  assert.equal(resolveNowPlayingPanRelease(140, 1000, true), 'restore');
+  assert.equal(resolveNowPlayingPanRelease(-200, -2000, true), 'restore');
+  assert.equal(resolveNowPlayingPanRelease(500, 5000, false), 'restore');
+  assert.equal(
+    resolveNowPlayingPanRelease(Number.POSITIVE_INFINITY, Number.NaN, true),
+    'restore'
+  );
 });
 
 test('preserves ordinary downward release velocity and spring', () => {

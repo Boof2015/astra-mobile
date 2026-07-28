@@ -44,7 +44,7 @@ class CatalogMigrationTest {
     ).use { cursor ->
       assertTrue(cursor.moveToFirst())
       assertEquals("jellyfin:2", cursor.getString(0))
-      assertEquals(CURRENT_ARTIST_CREDIT_VERSION, cursor.getInt(1))
+      assertEquals(INITIAL_MULTI_ARTIST_CREDIT_VERSION, cursor.getInt(1))
       assertTrue(cursor.moveToNext())
       assertEquals("local:1", cursor.getString(0))
       assertEquals(LEGACY_ARTIST_CREDIT_VERSION, cursor.getInt(1))

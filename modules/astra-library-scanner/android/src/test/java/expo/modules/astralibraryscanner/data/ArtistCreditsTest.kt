@@ -16,8 +16,9 @@ class ArtistCreditsTest {
 
     assertEquals(listOf("Earth, Wind & Fire", "The Emotions"), credits.artists)
     assertEquals(listOf("Curator One", "Curator Two"), credits.albumArtists)
-    assertEquals("Earth, Wind & Fire & The Emotions", formatArtistNames(credits.artists))
-    assertEquals("Curator One & Curator Two", formatArtistNames(credits.albumArtists))
+    assertEquals("Earth, Wind & Fire, The Emotions", formatArtistNames(credits.artists))
+    assertEquals("Curator One, Curator Two", formatArtistNames(credits.albumArtists))
+    assertEquals("1, 2, 3", formatArtistNames(listOf("1", "2", "3")))
   }
 
   @Test
