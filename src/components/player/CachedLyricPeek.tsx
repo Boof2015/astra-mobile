@@ -10,6 +10,7 @@ import {
 } from '@/lyrics/presentation';
 import { fonts, spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { LyricsLookupResult } from '@/lyrics/types';
@@ -37,8 +38,8 @@ interface CachedLyricPeekProps {
 }
 
 /**
- * One-line synced lyric display. It consumes an existing in-memory result or a
- * cache-only SQLite read; it never initiates media scanning or provider work.
+ * One-line synced lyric display. Online lookup opt-in uses the shared lyrics
+ * resolver; otherwise the passive preview remains a cache-only SQLite read.
  */
 export function CachedLyricPeek({
   track,
@@ -48,6 +49,9 @@ export function CachedLyricPeek({
 }: CachedLyricPeekProps) {
   const styles = useStyles();
   const memoryResult = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
+  const loadForTrack = useLyricsStore((s) => s.loadForTrack);
+  const onlineLookupEnabled = useLyricsSettingsStore((s) => s.onlineLookupEnabled);
+  const lyricsSettingsLoaded = useLyricsSettingsStore((s) => s.loaded);
   const [cached, setCached] = useState<{
     path: string;
     result: LyricsLookupResult | null;
@@ -61,6 +65,12 @@ export function CachedLyricPeek({
 
   useEffect(() => {
     if (!active || memoryResult) return;
+
+    if (lyricsSettingsLoaded && onlineLookupEnabled) {
+      void loadForTrack(track);
+      return;
+    }
+
     let cancelled = false;
     void peekCachedLyricsForTrack(track)
       .then((result) => {
@@ -72,7 +82,14 @@ export function CachedLyricPeek({
     return () => {
       cancelled = true;
     };
-  }, [active, memoryResult, track]);
+  }, [
+    active,
+    loadForTrack,
+    lyricsSettingsLoaded,
+    memoryResult,
+    onlineLookupEnabled,
+    track,
+  ]);
 
   const storedResult = cached?.path === track.path ? cached.result : null;
   const result = memoryResult?.status === 'hit' ? memoryResult : storedResult;
