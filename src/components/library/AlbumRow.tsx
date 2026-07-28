@@ -15,7 +15,7 @@ import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
-/** Compact album list row (search results) — the grid uses AlbumGridItem. */
+/** Compact album list row for library browsing and search results. */
 export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();
@@ -29,6 +29,8 @@ export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void
             source={{ uri: artUri }}
             style={styles.artImage}
             contentFit="cover"
+            recyclingKey={album.identity_key}
+            transition={null}
           />
         ) : (
           <Ionicons name="disc-outline" size={20} color={colors.textTertiary} />

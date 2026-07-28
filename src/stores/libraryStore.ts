@@ -20,6 +20,11 @@ import { endScanService, reportScanProgress } from '@/library/scanService';
 import { ALBUM_SORT_LABELS, type AlbumSort } from '@/lib/albumSort';
 import { ARTIST_SORT_LABELS, type ArtistSort } from '@/lib/artistSort';
 import { TRACK_SORT_LABELS, type TrackSort } from '@/lib/trackSort';
+import {
+  DEFAULT_LIBRARY_LAYOUT,
+  parseLibraryLayout,
+  type LibraryLayout,
+} from '@/library/libraryLayout';
 import { useSettingsStore } from './settingsStore';
 
 type ViewMode = 'tracks' | 'albums' | 'artists' | 'playlists' | 'folders';
@@ -28,6 +33,8 @@ const VIEW_MODE_KEY = 'library_view_mode';
 const TRACK_SORT_KEY = 'library_track_sort';
 const ALBUM_SORT_KEY = 'library_album_sort';
 const ARTIST_SORT_KEY = 'library_artist_sort';
+const ALBUM_LAYOUT_KEY = 'library_album_layout';
+const ARTIST_LAYOUT_KEY = 'library_artist_layout';
 const INCLUDE_COLLAB_ARTISTS_KEY = 'library_include_collab_artists';
 const PAGE_SIZE = 200;
 
@@ -83,6 +90,8 @@ interface LibraryStore {
   trackSort: TrackSort;
   albumSort: AlbumSort;
   artistSort: ArtistSort;
+  albumLayout: LibraryLayout;
+  artistLayout: LibraryLayout;
   includeCollabArtists: boolean;
   isScanning: boolean;
   isCancelling: boolean;
@@ -120,6 +129,8 @@ interface LibraryStore {
   setTrackSort: (sort: TrackSort) => void;
   setAlbumSort: (sort: AlbumSort) => void;
   setArtistSort: (sort: ArtistSort) => void;
+  setAlbumLayout: (layout: LibraryLayout) => void;
+  setArtistLayout: (layout: LibraryLayout) => void;
   setIncludeCollabArtists: (include: boolean) => void;
   addFolder: () => Promise<void>;
   removeFolder: (folderId: number) => Promise<void>;
@@ -407,6 +418,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     trackSort: 'title',
     albumSort: 'name',
     artistSort: 'name',
+    albumLayout: DEFAULT_LIBRARY_LAYOUT,
+    artistLayout: DEFAULT_LIBRARY_LAYOUT,
     includeCollabArtists: false,
     isScanning: false,
     isCancelling: false,
@@ -441,6 +454,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
             TRACK_SORT_KEY,
             ALBUM_SORT_KEY,
             ARTIST_SORT_KEY,
+            ALBUM_LAYOUT_KEY,
+            ARTIST_LAYOUT_KEY,
             INCLUDE_COLLAB_ARTISTS_KEY,
           ]);
           const viewMode = parseViewMode(values[VIEW_MODE_KEY] ?? null);
@@ -452,6 +467,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
             ...(trackSort ? { trackSort } : {}),
             ...(albumSort ? { albumSort } : {}),
             ...(artistSort ? { artistSort } : {}),
+            albumLayout: parseLibraryLayout(values[ALBUM_LAYOUT_KEY] ?? null),
+            artistLayout: parseLibraryLayout(values[ARTIST_LAYOUT_KEY] ?? null),
             includeCollabArtists: values[INCLUDE_COLLAB_ARTISTS_KEY] === 'true',
           });
 
@@ -951,6 +968,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       persistSetting(ARTIST_SORT_KEY, artistSort);
       void resetArtists();
       void resetSectionAnchors();
+    },
+
+    setAlbumLayout: (albumLayout) => {
+      if (get().albumLayout === albumLayout) return;
+      set({ albumLayout, jumpAnchorIndex: 0 });
+      persistSetting(ALBUM_LAYOUT_KEY, albumLayout);
+    },
+
+    setArtistLayout: (artistLayout) => {
+      if (get().artistLayout === artistLayout) return;
+      set({ artistLayout, jumpAnchorIndex: 0 });
+      persistSetting(ARTIST_LAYOUT_KEY, artistLayout);
     },
 
     setIncludeCollabArtists: (includeCollabArtists) => {

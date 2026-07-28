@@ -15,7 +15,7 @@ import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { artworkUri } from '@/library/artwork';
 import type { Artist } from '@/types/library';
 
-/** 2-column grid cell: square art (2x2 album mosaic when available) + counts, matching the album grid. */
+/** Resizable grid cell: square art (2x2 album mosaic when available) + counts. */
 export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();

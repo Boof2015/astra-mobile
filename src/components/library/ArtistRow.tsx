@@ -19,6 +19,8 @@ export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => 
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
+  const albums = `${artist.album_count} ${artist.album_count === 1 ? 'album' : 'albums'}`;
+  const tracks = `${artist.track_count} ${artist.track_count === 1 ? 'track' : 'tracks'}`;
   return (
     <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
@@ -27,6 +29,8 @@ export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => 
             source={{ uri: artworkUri(artist.artwork_hash) }}
             style={styles.artImage}
             contentFit="cover"
+            recyclingKey={artist.artist}
+            transition={null}
           />
         ) : (
           <Ionicons name="person" size={20} color={colors.textTertiary} />
@@ -36,8 +40,8 @@ export function ArtistRow({ artist, onPress }: { artist: Artist; onPress: () => 
         <Text variant="body" numberOfLines={1}>
           {artist.artist}
         </Text>
-        <Text variant="label">
-          {artist.track_count} {artist.track_count === 1 ? 'track' : 'tracks'}
+        <Text variant="label" numberOfLines={1}>
+          {albums} · {tracks}
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

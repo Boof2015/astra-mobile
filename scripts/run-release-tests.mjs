@@ -20,6 +20,7 @@ const TEST_SCRIPTS = [
   'test:now-playing-layout',
   'test:memory-lifecycle',
   'test:ui-navigation',
+  'test:library-layout',
   'test:haptics',
   'test:home-greeting',
   'test:session',

@@ -20,6 +20,8 @@ import { Text } from '@/components/Text';
 import { ViewModeSwitcher } from '@/components/library/ViewModeSwitcher';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
 import { ArtistGridItem } from '@/components/library/ArtistGridItem';
+import { AlbumRow } from '@/components/library/AlbumRow';
+import { ArtistRow } from '@/components/library/ArtistRow';
 import { TrackRow } from '@/components/library/TrackRow';
 import { FoldersView } from '@/components/library/FoldersView';
 import { PlaylistsView } from '@/components/library/PlaylistsView';
@@ -64,6 +66,12 @@ import {
   ARTIST_SORT_LABELS,
   type ArtistSort
 } from '@/lib/artistSort';
+import {
+  LIBRARY_LAYOUT_OPTIONS,
+  libraryLayoutColumns,
+  libraryLayoutLabel,
+  type LibraryLayout,
+} from '@/library/libraryLayout';
 import type {
   DbTrack
 } from '@/types/library';
@@ -95,6 +103,10 @@ export default function LibraryScreen() {
   const setAlbumSort = useLibraryStore((s) => s.setAlbumSort);
   const artistSort = useLibraryStore((s) => s.artistSort);
   const setArtistSort = useLibraryStore((s) => s.setArtistSort);
+  const albumLayout = useLibraryStore((s) => s.albumLayout);
+  const setAlbumLayout = useLibraryStore((s) => s.setAlbumLayout);
+  const artistLayout = useLibraryStore((s) => s.artistLayout);
+  const setArtistLayout = useLibraryStore((s) => s.setArtistLayout);
   const loadNextTracks = useLibraryStore((s) => s.loadNextTracks);
   const loadNextAlbums = useLibraryStore((s) => s.loadNextAlbums);
   const loadNextArtists = useLibraryStore((s) => s.loadNextArtists);
@@ -117,6 +129,7 @@ export default function LibraryScreen() {
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
@@ -290,6 +303,20 @@ export default function LibraryScreen() {
             selected: option === artistSort,
             onSelect: () => setArtistSort(option),
           }));
+  const activeLayout =
+    viewMode === 'albums'
+      ? albumLayout
+      : viewMode === 'artists'
+        ? artistLayout
+        : null;
+  const activeLayoutLabel = activeLayout ? libraryLayoutLabel(activeLayout) : null;
+  const layoutSheetLabel = viewMode === 'albums' ? 'ALBUM LAYOUT' : 'ARTIST LAYOUT';
+
+  const setActiveLayout = (layout: LibraryLayout) => {
+    scrollTop.setScrollAtTop(true);
+    if (viewMode === 'albums') setAlbumLayout(layout);
+    if (viewMode === 'artists') setArtistLayout(layout);
+  };
 
   return (
     <Screen>
@@ -319,6 +346,7 @@ export default function LibraryScreen() {
                 value={viewMode}
                 onChange={(mode) => {
                   if (selectMode) exitSelection();
+                  setLayoutSheetOpen(false);
                   scrollTop.setScrollAtTop(true);
                   setViewMode(mode);
                 }}
@@ -343,23 +371,41 @@ export default function LibraryScreen() {
                 </Pressable>
               </View>
             ) : sortable ? (
-              <Pressable android_ripple={ripple.bounded}
-                style={styles.sortTrigger}
-                onPress={() => setSortSheetOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel={`Sort by ${sortLabel}`}
-              >
-                <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
-                <Text variant="label">{sortLabel}</Text>
-              </Pressable>
+              <View style={styles.controlsRow}>
+                <Pressable android_ripple={ripple.bounded}
+                  style={styles.sortTrigger}
+                  onPress={() => setSortSheetOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${sortLabel}`}
+                >
+                  <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
+                  <Text variant="label">{sortLabel}</Text>
+                </Pressable>
+                {activeLayout && activeLayoutLabel ? (
+                  <Pressable
+                    android_ripple={ripple.bounded}
+                    style={styles.layoutTrigger}
+                    hitSlop={8}
+                    onPress={() => setLayoutSheetOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Change ${viewMode} layout. Current layout: ${activeLayoutLabel}`}
+                  >
+                    <Ionicons
+                      name={activeLayout === 'list' ? 'list-outline' : 'grid-outline'}
+                      size={18}
+                      color={colors.textSecondary}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
             ) : null}
 
             <View style={styles.listArea}>
               {viewMode === 'albums' ? (
                 <FlashList
-                  key={`albums-${albumSort}-${sectionJumpRevision}`}
+                  key={`albums-${albumSort}-${albumLayout}-${sectionJumpRevision}`}
                   data={sortedAlbums}
-                  numColumns={3}
+                  numColumns={libraryLayoutColumns(albumLayout)}
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
@@ -373,8 +419,8 @@ export default function LibraryScreen() {
                   onStartReachedThreshold={START_REACHED_THRESHOLD}
                   ListFooterComponent={albumNextCursor ? listFooter : null}
                   renderItem={({ item }) => (
-                    <View style={styles.gridCell}>
-                      <AlbumGridItem
+                    albumLayout === 'list' ? (
+                      <AlbumRow
                         album={item}
                         onPress={() =>
                           router.push({
@@ -383,16 +429,28 @@ export default function LibraryScreen() {
                           })
                         }
                       />
-                    </View>
+                    ) : (
+                      <View style={styles.gridCell}>
+                        <AlbumGridItem
+                          album={item}
+                          onPress={() =>
+                            router.push({
+                              pathname: '/library/album/[key]',
+                              params: { key: item.identity_key },
+                            })
+                          }
+                        />
+                      </View>
+                    )
                   )}
                 />
               ) : null}
 
               {viewMode === 'artists' ? (
                 <FlashList
-                  key={`artists-${artistSort}-${sectionJumpRevision}`}
+                  key={`artists-${artistSort}-${artistLayout}-${sectionJumpRevision}`}
                   data={sortedArtists}
-                  numColumns={3}
+                  numColumns={libraryLayoutColumns(artistLayout)}
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
@@ -406,8 +464,8 @@ export default function LibraryScreen() {
                   onStartReachedThreshold={START_REACHED_THRESHOLD}
                   ListFooterComponent={artistNextCursor ? listFooter : null}
                   renderItem={({ item }) => (
-                    <View style={styles.gridCell}>
-                      <ArtistGridItem
+                    artistLayout === 'list' ? (
+                      <ArtistRow
                         artist={item}
                         onPress={() =>
                           router.push({
@@ -416,7 +474,19 @@ export default function LibraryScreen() {
                           })
                         }
                       />
-                    </View>
+                    ) : (
+                      <View style={styles.gridCell}>
+                        <ArtistGridItem
+                          artist={item}
+                          onPress={() =>
+                            router.push({
+                              pathname: '/library/artist/[name]',
+                              params: { name: item.artist },
+                            })
+                          }
+                        />
+                      </View>
+                    )
                   )}
                 />
               ) : null}
@@ -516,6 +586,24 @@ export default function LibraryScreen() {
           ))}
         </AppSheet>
       ) : null}
+      {layoutSheetOpen && activeLayout ? (
+        <AppSheet onClose={() => setLayoutSheetOpen(false)}>
+          <AppSheetSection label={layoutSheetLabel} />
+          {LIBRARY_LAYOUT_OPTIONS.map((option) => (
+            <AppSheetItem
+              key={option.value}
+              label={option.label}
+              subtitle={option.subtitle}
+              icon={option.icon}
+              selected={option.value === activeLayout}
+              onPress={() => {
+                setActiveLayout(option.value);
+                setLayoutSheetOpen(false);
+              }}
+            />
+          ))}
+        </AppSheet>
+      ) : null}
     </Screen>
   );
 }
@@ -537,13 +625,21 @@ const styles = StyleSheet.create({
   error: {
     marginBottom: spacing.md,
   },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.md,
+    marginBottom: spacing.xs,
+  },
   sortTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    alignSelf: 'flex-end',
     paddingVertical: spacing.xs,
-    marginBottom: spacing.xs,
+  },
+  layoutTrigger: {
+    padding: spacing.xs,
   },
   // Same vertical rhythm as sortTrigger so entering selection doesn't shift the list.
   selectionHeader: {
