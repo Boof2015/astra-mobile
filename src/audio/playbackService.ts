@@ -12,6 +12,13 @@ import {
 import { nativeIndexToAbsolute } from './queueLoader';
 import { useQueueStore } from '@/stores/queueStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import {
+  handleListeningPlaybackState,
+  handleListeningProgress,
+  handleListeningQueueEnded,
+  handleListeningTrackChanged,
+  initializeListeningHistoryTracking,
+} from './listeningHistoryTracker';
 
 /**
  * RNTP playback service — registered in `index.js`. Runs in a headless context
@@ -19,6 +26,7 @@ import { useSleepTimerStore } from '@/stores/sleepTimerStore';
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
+  initializeListeningHistoryTracking();
   void useSleepTimerStore.getState().hydrate().catch(() => {});
   // Begin the small fail-closed warm-up before a car/Bluetooth play command can
   // arrive. Full-queue registration and analysis start only after it is safe.
@@ -55,6 +63,7 @@ export async function PlaybackService(): Promise<void> {
   // zero; this only late-corrects unanalyzed tracks. Rapid skips coalesce.
   let normalizeTimer: ReturnType<typeof setTimeout> | null = null;
   TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
+    handleListeningTrackChanged(event);
     // Keep the queue mirror's active index fresh while the tray is unmounted.
     // Natural track advances otherwise leave it stale, and the tray's
     // synchronous first paint would show the old head for a frame before its
@@ -80,11 +89,13 @@ export async function PlaybackService(): Promise<void> {
       void applyNormalizationForActiveTrack();
     }, 300);
   });
-  TrackPlayer.addEventListener(Event.PlaybackState, () => {
+  TrackPlayer.addEventListener(Event.PlaybackState, ({ state }) => {
+    handleListeningPlaybackState(state);
     scheduleSync();
     void useSleepTimerStore.getState().reconcile();
   });
   TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, ({ position, duration }) => {
+    handleListeningProgress(position, duration);
     const timer = useSleepTimerStore.getState();
     void timer.reconcile();
     if (timer.timer?.mode === 'end-of-track') {
@@ -99,7 +110,8 @@ export async function PlaybackService(): Promise<void> {
       .then(({ position, duration }) => useSleepTimerStore.getState().reconcileEndOfTrack(position, duration, playWhenReady))
       .catch(() => {});
   });
-  TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+  TrackPlayer.addEventListener(Event.PlaybackQueueEnded, ({ position }) => {
+    handleListeningQueueEnded(position);
     if (useSleepTimerStore.getState().timer?.mode !== 'end-of-track') return;
     void TrackPlayer.getProgress()
       .then(({ position, duration }) => useSleepTimerStore.getState().reconcileEndOfTrack(position, duration, false))

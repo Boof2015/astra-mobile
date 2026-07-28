@@ -123,6 +123,7 @@ interface LibraryStore {
   loadPreviousArtists: () => Promise<void>;
   jumpToSection: (cursor: string) => Promise<boolean>;
   recordTrackPlayed: (path: string) => Promise<void>;
+  refreshRecentlyPlayed: () => Promise<void>;
   recomputeArtists: () => void;
   recomputeAlbums: () => void;
   setViewMode: (mode: ViewMode) => void;
@@ -904,6 +905,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     recordTrackPlayed: async (path) => {
       await AstraLibraryData.recordTrackPlayed(path);
+      set({ recentlyPlayedTracks: await AstraLibraryData.getRecentlyPlayed<DbTrack>(20) });
+    },
+
+    refreshRecentlyPlayed: async () => {
       set({ recentlyPlayedTracks: await AstraLibraryData.getRecentlyPlayed<DbTrack>(20) });
     },
 

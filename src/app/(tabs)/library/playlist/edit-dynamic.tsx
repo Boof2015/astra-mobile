@@ -537,7 +537,7 @@ function ConditionEditorSheet({
   const error = validateCondition(draft);
 
   return (
-    <AppSheet onClose={onCancel}>
+    <AppSheet onClose={onCancel} scrollable>
       <AppSheetTitle title={target.mode === 'new' ? 'Add filter' : 'Edit filter'} />
       <Pressable android_ripple={ripple.bounded} style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
         <View style={styles.sheetSelectText}>
@@ -610,7 +610,7 @@ function SortLimitSheet({
   const applyDisabled = !limitValid;
 
   return (
-    <AppSheet onClose={onCancel}>
+    <AppSheet onClose={onCancel} scrollable>
       <AppSheetTitle title="Result order" />
       <AppSheetSection label="SORT BY" />
       {SORT_FIELD_OPTIONS.map(([field, label]) => (
@@ -983,7 +983,7 @@ export default function DynamicPlaylistEditorScreen() {
 
     if (sheet.kind === 'field-picker') {
       return (
-        <AppSheet onClose={() => setSheet(null)}>
+        <AppSheet onClose={() => setSheet(null)} scrollable>
           <AppSheetTitle title="Choose filter" />
           {(['text', 'activity', 'library', 'audio'] as FieldGroup[]).map((group) => (
             <View key={group}>

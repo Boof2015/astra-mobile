@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import {
-  Event,
   State,
   useActiveTrack,
   usePlaybackState,
   useProgress,
-  useTrackPlayerEvents,
 } from 'react-native-track-player';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -13,16 +11,7 @@ import { useQueueStore } from '@/stores/queueStore';
 import type { PlaybackState, Track } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
-import {
-  advanceRecentPlayCandidate,
-  consumeManualRecentPlayTransition,
-  createRecentPlayCandidate,
-  emptyRecentPlayCandidate,
-  evaluateRecentPlayCandidate,
-  finalizeRecentPlayCandidate,
-  type RecentPlayCandidate,
-  withRecentPlayDuration,
-} from './recentPlayTracking';
+import { subscribeToListeningHistory } from '@/listeningStats/events';
 
 const SEEK_ACK_EPS = 0.75;
 const SEEK_ACK_TIMEOUT_MS = 3000;
@@ -98,7 +87,6 @@ export function usePlaybackSync(): void {
   const activeTrack = useActiveTrack();
   const progress = useProgress(500);
   const playbackState = usePlaybackState();
-  const recentPlayCandidate = useRef<RecentPlayCandidate>(emptyRecentPlayCandidate());
   const stablePlayback = useRef<{ path: string | null; state: PlaybackState }>({
     path: null,
     state: 'stopped',
@@ -111,50 +99,15 @@ export function usePlaybackSync(): void {
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
-  const recordTrackPlayed = useLibraryStore((s) => s.recordTrackPlayed);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
 
-  const recordRecentPlay = useCallback((path: string | null) => {
-    if (!path) return;
-    void recordTrackPlayed(path).catch((err) => {
-      console.warn('[library] playback history update failed', err);
-    });
-  }, [recordTrackPlayed]);
-
-  useTrackPlayerEvents(
-    [Event.PlaybackActiveTrackChanged, Event.PlaybackQueueEnded, Event.PlaybackState],
-    (event) => {
-      if (restoredSessionPending) return;
-      const now = Date.now();
-
-      if (event.type === Event.PlaybackActiveTrackChanged) {
-        const lastTrack = event.lastTrack ? rntpToTrack(event.lastTrack) : null;
-        const wasManual = consumeManualRecentPlayTransition(lastTrack?.path, now);
-        const candidate = recentPlayCandidate.current;
-        if (!lastTrack || candidate.path !== lastTrack.path) {
-          recentPlayCandidate.current = emptyRecentPlayCandidate();
-          return;
-        }
-        const finalized = finalizeRecentPlayCandidate(
-          candidate,
-          !wasManual,
-          now,
-          lastTrack.duration,
-        );
-        recentPlayCandidate.current = finalized.candidate;
-        recordRecentPlay(finalized.recordPath);
-        return;
+  useEffect(
+    () => subscribeToListeningHistory((change) => {
+      if (change.qualifiedNow) {
+        void useLibraryStore.getState().refreshRecentlyPlayed().catch(() => {});
       }
-
-      if (event.type === Event.PlaybackState && event.state !== State.Ended) return;
-      const finalized = finalizeRecentPlayCandidate(
-        recentPlayCandidate.current,
-        true,
-        now,
-      );
-      recentPlayCandidate.current = finalized.candidate;
-      recordRecentPlay(finalized.recordPath);
-    },
+    }),
+    [],
   );
 
   useEffect(() => {
@@ -257,56 +210,4 @@ export function usePlaybackSync(): void {
     );
   }, [activeTrack, rawPlaybackState, recentlyPlayedTracks, restoredSessionPending, restoredTrack]);
 
-  useEffect(() => {
-    if (restoredSessionPending) return;
-    // Use the identity path (subsonic://|jellyfin:// for remote; the file URI for
-    // local) so history matches `tracks.path` — activeTrack.url is the stream URL.
-    const track = activeTrack ? rntpToTrack(activeTrack) : null;
-    const path = track?.path ?? null;
-    const duration = Number.isFinite(progress.duration) && progress.duration > 0
-      ? progress.duration
-      : track?.duration;
-    const mappedPlaybackState = resolveTransientLoading(
-      rawPlaybackState,
-      path,
-      stablePlayback.current
-    );
-    const now = Date.now();
-
-    if (!path) {
-      recentPlayCandidate.current = emptyRecentPlayCandidate();
-      return;
-    }
-
-    let candidate = recentPlayCandidate.current;
-    candidate = candidate.path === path
-      ? withRecentPlayDuration(candidate, duration)
-      : createRecentPlayCandidate(
-          path,
-          duration,
-          mappedPlaybackState === 'playing',
-          now,
-        );
-
-    if (mappedPlaybackState === 'stopped') {
-      recentPlayCandidate.current = emptyRecentPlayCandidate();
-      return;
-    }
-
-    candidate = advanceRecentPlayCandidate(
-      candidate,
-      mappedPlaybackState === 'playing',
-      now,
-    );
-    const evaluated = evaluateRecentPlayCandidate(candidate, false);
-    recentPlayCandidate.current = evaluated.candidate;
-    recordRecentPlay(evaluated.recordPath);
-  }, [
-    activeTrack,
-    rawPlaybackState,
-    progress.duration,
-    progress.position,
-    recordRecentPlay,
-    restoredSessionPending,
-  ]);
 }

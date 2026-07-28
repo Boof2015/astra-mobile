@@ -57,6 +57,7 @@ const STATIC_STABLE_PATHS = new Set([
   '/eq',
   '/settings',
   '/recently-played',
+  '/stats',
   '/settings/appearance',
   '/settings/library',
   '/settings/audio',

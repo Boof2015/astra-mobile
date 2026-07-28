@@ -26,6 +26,7 @@ test('normalizes stable routes and rejects transient or unsafe routes', () => {
   assert.equal(normalizeStableHref('/library/artist/Artist?credit=1&ignored=yes'), '/library/artist/Artist?credit=1');
   assert.equal(normalizeStableHref('/settings/audio?ignored=yes'), '/settings/audio');
   assert.equal(normalizeStableHref('/settings/playback'), '/settings/playback');
+  assert.equal(normalizeStableHref('/stats'), '/stats');
   assert.equal(normalizeStableHref('/settings/lyrics'), '/settings/lyrics');
   assert.equal(normalizeStableHref('/settings/troubleshooting'), '/settings/troubleshooting');
   assert.equal(normalizeStableHref('/library/playlist/edit-dynamic?id=4'), null);

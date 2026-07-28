@@ -51,6 +51,7 @@ export type PlaybackSourceKind =
   | 'search'
   | 'signal'
   | 'android-auto'
+  | 'listening-stats'
   | 'sample';
 
 /** The collection or surface that created the current playback queue. */

@@ -29,6 +29,7 @@ import { createBuildInfo } from '@/release/buildInfo';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 function formatEnabled(value: boolean): string {
   return value ? 'On' : 'Off';
@@ -53,6 +54,7 @@ export default function SettingsScreen() {
   const desktopSyncConflictCount = useDesktopSyncStore((s) => s.conflicts.length);
   const sleepTimer = useSleepTimerStore((s) => s.timer);
   const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
+  const listeningHistoryEnabled = useSettingsStore((s) => s.listeningHistoryEnabled);
   void sleepRemainingMs;
 
   useEffect(() => {
@@ -112,7 +114,11 @@ export default function SettingsScreen() {
         <SettingsNavRow
           icon="play-circle-outline"
           title="Playback"
-          subtitle={sleepTimer ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}.` : 'Sleep timer and playback behavior.'}
+          subtitle={
+            sleepTimer
+              ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}. Listening history ${formatEnabled(listeningHistoryEnabled)}.`
+              : `Listening history ${formatEnabled(listeningHistoryEnabled)}. Sleep timer and playback behavior.`
+          }
           onPress={() => router.push('/settings/playback' as never)}
         />
         <SettingsNavRow

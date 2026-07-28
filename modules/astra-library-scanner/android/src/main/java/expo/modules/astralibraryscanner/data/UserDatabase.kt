@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 data class RemotePlaylistSyncPlan(
   val playlist: PlaylistEntity,
@@ -176,6 +178,93 @@ interface UserDao {
 
   @Upsert
   suspend fun putPlaybackHistories(history: List<PlaybackHistoryEntity>)
+
+  @Query("SELECT * FROM listening_history_meta WHERE id = 1")
+  suspend fun getListeningHistoryMeta(): ListeningHistoryMetaEntity?
+
+  @Upsert
+  suspend fun putListeningHistoryMeta(meta: ListeningHistoryMetaEntity)
+
+  @Query("SELECT * FROM listening_sessions WHERE session_key = :sessionKey")
+  suspend fun getListeningSession(sessionKey: String): ListeningSessionEntity?
+
+  @Upsert
+  suspend fun putListeningSession(session: ListeningSessionEntity)
+
+  @Query(
+    """
+      SELECT * FROM listening_sessions
+      WHERE generation = :generation
+        AND (
+          session_key IN (
+            SELECT session_key FROM listening_segments
+            WHERE generation = :generation
+              AND last_observed_at >= :startAt
+              AND started_at <= :endAt
+          )
+          OR (qualified_at >= :startAt AND qualified_at <= :endAt)
+        )
+      ORDER BY started_at
+    """,
+  )
+  suspend fun getListeningSessionsInRange(
+    generation: String,
+    startAt: Long,
+    endAt: Long,
+  ): List<ListeningSessionEntity>
+
+  @Query(
+    """
+      UPDATE listening_sessions
+      SET qualified_at = :qualifiedAt
+      WHERE session_key = :sessionKey
+        AND generation = :generation
+        AND qualified_at IS NULL
+    """,
+  )
+  suspend fun qualifyListeningSession(
+    sessionKey: String,
+    generation: String,
+    qualifiedAt: Long,
+  ): Int
+
+  @Query(
+    """
+      SELECT * FROM listening_segments
+      WHERE generation = :generation
+        AND last_observed_at >= :startAt
+        AND started_at <= :endAt
+      ORDER BY started_at
+    """,
+  )
+  suspend fun getListeningSegmentsInRange(
+    generation: String,
+    startAt: Long,
+    endAt: Long,
+  ): List<ListeningSegmentEntity>
+
+  @Query(
+    """
+      SELECT * FROM listening_segments
+      WHERE session_key = :sessionKey AND segment_key = :segmentKey
+    """,
+  )
+  suspend fun getListeningSegment(
+    sessionKey: String,
+    segmentKey: String,
+  ): ListeningSegmentEntity?
+
+  @Upsert
+  suspend fun putListeningSegment(segment: ListeningSegmentEntity)
+
+  @Query("DELETE FROM listening_segments")
+  suspend fun clearListeningSegments()
+
+  @Query("DELETE FROM listening_sessions")
+  suspend fun clearListeningSessions()
+
+  @Query("DELETE FROM listening_history_meta")
+  suspend fun clearListeningHistoryMeta()
 
   @Query("SELECT * FROM remote_sources ORDER BY created_at, id")
   suspend fun getRemoteSources(): List<RemoteSourceEntity>
@@ -423,6 +512,9 @@ interface UserDao {
     PlaylistTrackEntity::class,
     FavoriteEntity::class,
     PlaybackHistoryEntity::class,
+    ListeningHistoryMetaEntity::class,
+    ListeningSessionEntity::class,
+    ListeningSegmentEntity::class,
     RemoteSourceEntity::class,
     FavoriteTombstoneEntity::class,
     PendingFavoriteEntity::class,
@@ -433,9 +525,86 @@ interface UserDao {
     PlaybackOriginalQueueEntryEntity::class,
     SnapshotMetadataEntity::class,
   ],
-  version = 1,
+  version = 2,
   exportSchema = true,
 )
 abstract class AstraUserDatabase : RoomDatabase() {
   abstract fun userDao(): UserDao
+}
+
+internal val USER_MIGRATION_1_2 = object : Migration(1, 2) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `listening_history_meta` (
+          `id` INTEGER NOT NULL,
+          `generation` TEXT NOT NULL,
+          `started_at` INTEGER,
+          PRIMARY KEY(`id`)
+        )
+      """.trimIndent(),
+    )
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `listening_sessions` (
+          `session_key` TEXT NOT NULL,
+          `generation` TEXT NOT NULL,
+          `track_path` TEXT NOT NULL,
+          `title` TEXT NOT NULL,
+          `artist` TEXT NOT NULL,
+          `artist_names_json` TEXT,
+          `album` TEXT NOT NULL,
+          `album_artist` TEXT,
+          `album_artist_names_json` TEXT,
+          `album_identity_key` TEXT NOT NULL,
+          `artwork_hash` TEXT,
+          `source_type` TEXT NOT NULL,
+          `source_id` INTEGER,
+          `artwork_source_id` TEXT,
+          `duration_seconds` REAL NOT NULL,
+          `started_at` INTEGER NOT NULL,
+          `ended_at` INTEGER,
+          `listened_seconds` REAL NOT NULL,
+          `qualified_at` INTEGER,
+          PRIMARY KEY(`session_key`)
+        )
+      """.trimIndent(),
+    )
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `listening_segments` (
+          `session_key` TEXT NOT NULL,
+          `segment_key` TEXT NOT NULL,
+          `generation` TEXT NOT NULL,
+          `started_at` INTEGER NOT NULL,
+          `last_observed_at` INTEGER NOT NULL,
+          `ended_at` INTEGER,
+          `listened_seconds` REAL NOT NULL,
+          PRIMARY KEY(`session_key`, `segment_key`),
+          FOREIGN KEY(`session_key`) REFERENCES `listening_sessions`(`session_key`)
+            ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+      """.trimIndent(),
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_listening_sessions_generation_started_at` " +
+        "ON `listening_sessions` (`generation`, `started_at`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_listening_sessions_generation_qualified_at` " +
+        "ON `listening_sessions` (`generation`, `qualified_at`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_listening_sessions_track_path` " +
+        "ON `listening_sessions` (`track_path`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_listening_segments_generation_started_at_last_observed_at` " +
+        "ON `listening_segments` (`generation`, `started_at`, `last_observed_at`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_listening_segments_session_key` " +
+        "ON `listening_segments` (`session_key`)",
+    )
+  }
 }

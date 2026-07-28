@@ -9,6 +9,11 @@ import {
   parseHomeGreetingTextMode,
   type HomeGreetingTextMode,
 } from '@/home/homeGreeting';
+import {
+  pauseListeningHistoryTracking,
+  resumeListeningHistoryTracking,
+} from '@/audio/listeningHistoryTracker';
+import { notifyListeningHistoryChanged } from '@/listeningStats/events';
 
 /**
  * Persisted app preferences. SQLite (settings table) is the source of truth — this
@@ -23,6 +28,7 @@ const SCOPE_STYLE_KEY = 'now_playing_scope_style';
 const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
 const HOME_GREETING_TEXT_MODE_KEY = 'home_greeting_text_mode';
+const LISTENING_HISTORY_ENABLED_KEY = 'listening_history_enabled';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -61,6 +67,7 @@ interface SettingsStore {
   lyricsVisible: boolean;
   nowPlayingCompanion: NowPlayingCompanion;
   homeGreetingTextMode: HomeGreetingTextMode;
+  listeningHistoryEnabled: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
@@ -71,6 +78,7 @@ interface SettingsStore {
   setLyricsVisible: (visible: boolean) => Promise<void>;
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
   setHomeGreetingTextMode: (mode: HomeGreetingTextMode) => Promise<void>;
+  setListeningHistoryEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -82,6 +90,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   lyricsVisible: false,
   nowPlayingCompanion: 'queue',
   homeGreetingTextMode: 'messages',
+  listeningHistoryEnabled: true,
   loaded: false,
 
   load: async () => {
@@ -96,6 +105,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       LYRICS_VISIBLE_KEY,
       NOW_PLAYING_COMPANION_KEY,
       HOME_GREETING_TEXT_MODE_KEY,
+      LISTENING_HISTORY_ENABLED_KEY,
     ]);
     const grouping = values[ARTIST_GROUPING_KEY] ?? null;
     const includeSingles = values[INCLUDE_SINGLES_KEY] ?? null;
@@ -105,6 +115,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const lyricsVisible = values[LYRICS_VISIBLE_KEY] ?? null;
     const nowPlayingCompanion = values[NOW_PLAYING_COMPANION_KEY] ?? null;
     const homeGreetingTextMode = values[HOME_GREETING_TEXT_MODE_KEY] ?? null;
+    const listeningHistoryEnabled = values[LISTENING_HISTORY_ENABLED_KEY] !== '0';
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
@@ -114,6 +125,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lyricsVisible: parseBoolean(lyricsVisible),
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
       homeGreetingTextMode: parseHomeGreetingTextMode(homeGreetingTextMode),
+      listeningHistoryEnabled,
       loaded: true,
     });
   },
@@ -165,5 +177,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (get().homeGreetingTextMode === nextMode) return;
     set({ homeGreetingTextMode: nextMode });
     await AstraLibraryData.setSettings({ [HOME_GREETING_TEXT_MODE_KEY]: nextMode });
+  },
+
+  setListeningHistoryEnabled: async (enabled) => {
+    if (get().listeningHistoryEnabled === enabled) return;
+    if (!enabled) await pauseListeningHistoryTracking();
+    try {
+      await AstraLibraryData.setSettings({
+        [LISTENING_HISTORY_ENABLED_KEY]: enabled ? '1' : '0',
+      });
+      set({ listeningHistoryEnabled: enabled });
+      notifyListeningHistoryChanged();
+      if (enabled) resumeListeningHistoryTracking();
+    } catch (error) {
+      if (!enabled) resumeListeningHistoryTracking();
+      throw error;
+    }
   },
 }));

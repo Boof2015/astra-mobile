@@ -8,6 +8,7 @@ import {
 } from '@/navigation/tabTransition';
 import { popToTop } from '@/navigation/stackActions';
 import { useColors } from '@/theme/themed';
+import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 
 export default function TabsLayout() {
   const colors = useColors();
@@ -31,10 +32,16 @@ export default function TabsLayout() {
       detachInactiveScreens={false}
       screenOptions={screenOptions}
       tabBar={({ state, navigation }) => {
+        const activeRouteName = state.routes[state.index]?.name;
         const items: TabItem[] = state.routes.map((route, index) => ({
           key: route.key,
           name: route.name,
-          focused: state.index === index,
+          focused: isDisplayedTabFocused(
+            route.name,
+            index,
+            state.index,
+            activeRouteName,
+          ),
         }));
 
         const handlePress = (item: TabItem) => {
@@ -50,7 +57,8 @@ export default function TabsLayout() {
           });
           if (event.defaultPrevented) return;
 
-          if (item.focused) {
+          const actuallyFocused = state.routes[state.index]?.key === item.key;
+          if (actuallyFocused) {
             // Re-tapping the active tab resets its nested stack. This is the
             // one-tap escape from a deep library chain (artist → album →
             // another artist), which is why back itself only pops one level.
@@ -72,6 +80,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="library" />
       <Tabs.Screen name="eq" />
       <Tabs.Screen name="settings" />
+      <Tabs.Screen name="stats" options={{ href: null }} />
     </Tabs>
   );
 }

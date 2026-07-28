@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppState,
   Pressable,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -44,6 +44,9 @@ import {
 } from '@/home/homeGreeting';
 import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import type { Album, Artist, DbTrack } from '@/types/library';
+import { ListeningPreviewCard } from '@/components/listening/ListeningPreviewCard';
+import { useListeningStatsStore } from '@/stores/listeningStatsStore';
+import { subscribeToListeningHistory } from '@/listeningStats/events';
 
 const RECENT_ALBUM_LIMIT = 8;
 const RECENT_TRACK_LIMIT = 3;
@@ -529,6 +532,8 @@ export default function HomeScreen() {
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
+  const listeningPreview = useListeningStatsStore((s) => s.homePreview);
+  const loadListeningPreview = useListeningStatsStore((s) => s.loadHomePreview);
 
   const [spotlightOverride, setSpotlightOverride] = useState<RandomSpotlight | null>(null);
   const [randomSeeds] = useState(() => [Math.random(), Math.random()] as const);
@@ -629,6 +634,20 @@ export default function HomeScreen() {
   const openSearch = () => openQuickSearch();
   const openSignalScanner = () => router.push('/signal/scan' as never);
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadListeningPreview();
+      const unsubscribe = subscribeToListeningHistory(() => void loadListeningPreview());
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void loadListeningPreview();
+      });
+      return () => {
+        unsubscribe();
+        subscription.remove();
+      };
+    }, [loadListeningPreview]),
+  );
+
   return (
     <Screen>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
@@ -648,13 +667,19 @@ export default function HomeScreen() {
           <ScanProgress />
 
           {!hasLibrary ? (
-            <EmptyHomeCard
-              scanError={scanError}
-              status={libraryStatus}
-              onManageFolders={() => router.push(
-                libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
-              )}
-            />
+            <>
+              <EmptyHomeCard
+                scanError={scanError}
+                status={libraryStatus}
+                onManageFolders={() => router.push(
+                  libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
+                )}
+              />
+              <ListeningPreviewCard
+                dashboard={listeningPreview}
+                onPress={() => router.push('/stats' as never)}
+              />
+            </>
           ) : (
             <>
             {spotlightContent ? (
@@ -675,6 +700,11 @@ export default function HomeScreen() {
                 />
               </View>
             ) : null}
+
+            <ListeningPreviewCard
+              dashboard={listeningPreview}
+              onPress={() => router.push('/stats' as never)}
+            />
 
             {recentTracks.length > 0 ? (
               <View style={styles.section}>

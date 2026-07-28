@@ -93,6 +93,71 @@ data class PlaybackHistoryEntity(
   @ColumnInfo(name = "play_count") val playCount: Long = 1,
 )
 
+@Entity(tableName = "listening_history_meta")
+data class ListeningHistoryMetaEntity(
+  @PrimaryKey val id: Int = 1,
+  val generation: String,
+  @ColumnInfo(name = "started_at") val startedAt: Long? = null,
+)
+
+@Entity(
+  tableName = "listening_sessions",
+  indices = [
+    Index(value = ["generation", "started_at"]),
+    Index(value = ["generation", "qualified_at"]),
+    Index(value = ["track_path"]),
+  ],
+)
+data class ListeningSessionEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "session_key")
+  val sessionKey: String,
+  val generation: String,
+  @ColumnInfo(name = "track_path") val trackPath: String,
+  val title: String,
+  val artist: String,
+  @ColumnInfo(name = "artist_names_json") val artistNamesJson: String? = null,
+  val album: String,
+  @ColumnInfo(name = "album_artist") val albumArtist: String? = null,
+  @ColumnInfo(name = "album_artist_names_json") val albumArtistNamesJson: String? = null,
+  @ColumnInfo(name = "album_identity_key") val albumIdentityKey: String,
+  @ColumnInfo(name = "artwork_hash") val artworkHash: String? = null,
+  @ColumnInfo(name = "source_type") val sourceType: String,
+  @ColumnInfo(name = "source_id") val sourceId: Long? = null,
+  @ColumnInfo(name = "artwork_source_id") val artworkSourceId: String? = null,
+  @ColumnInfo(name = "duration_seconds") val durationSeconds: Double,
+  @ColumnInfo(name = "started_at") val startedAt: Long,
+  @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
+  @ColumnInfo(name = "listened_seconds") val listenedSeconds: Double = 0.0,
+  @ColumnInfo(name = "qualified_at") val qualifiedAt: Long? = null,
+)
+
+@Entity(
+  tableName = "listening_segments",
+  primaryKeys = ["session_key", "segment_key"],
+  foreignKeys = [
+    ForeignKey(
+      entity = ListeningSessionEntity::class,
+      parentColumns = ["session_key"],
+      childColumns = ["session_key"],
+      onDelete = ForeignKey.CASCADE,
+    ),
+  ],
+  indices = [
+    Index(value = ["generation", "started_at", "last_observed_at"]),
+    Index(value = ["session_key"]),
+  ],
+)
+data class ListeningSegmentEntity(
+  @ColumnInfo(name = "session_key") val sessionKey: String,
+  @ColumnInfo(name = "segment_key") val segmentKey: String,
+  val generation: String,
+  @ColumnInfo(name = "started_at") val startedAt: Long,
+  @ColumnInfo(name = "last_observed_at") val lastObservedAt: Long,
+  @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
+  @ColumnInfo(name = "listened_seconds") val listenedSeconds: Double = 0.0,
+)
+
 @Entity(
   tableName = "remote_sources",
   indices = [Index(value = ["type", "name"])],

@@ -204,6 +204,22 @@ class AstraLibraryDataModule : Module() {
       repositoryCall { recordTrackPlayed(path) }
     }
 
+    AsyncFunction("getListeningHistoryStatus").Coroutine<Map<String, Any?>> {
+      repositoryCall { getListeningHistoryStatus() }
+    }
+
+    AsyncFunction("checkpointListeningSession") Coroutine { payload: Map<String, Any?> ->
+      repositoryCall { checkpointListeningSession(payload) }
+    }
+
+    AsyncFunction("getListeningStatsDashboard") Coroutine { query: Map<String, Any?> ->
+      repositoryCall { getListeningStatsDashboard(query) }
+    }
+
+    AsyncFunction("clearDetailedListeningHistory").Coroutine<Map<String, Any?>> {
+      repositoryCall { clearDetailedListeningHistory() }
+    }
+
     AsyncFunction("getRecentlyPlayed") Coroutine { limit: Int ->
       repositoryCall { getRecentlyPlayed(limit) }
     }

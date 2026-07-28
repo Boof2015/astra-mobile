@@ -1194,6 +1194,36 @@ class AstraLibraryRepository private constructor(
     return true
   }
 
+  suspend fun getListeningHistoryStatus(): Map<String, Any?> {
+    initialize()
+    return ListeningStatsEngine.status(requireUser())
+  }
+
+  suspend fun checkpointListeningSession(payload: Map<String, Any?>): Map<String, Any?> {
+    initialize()
+    val result = ListeningStatsEngine.checkpoint(
+      requireUser(),
+      requireCatalog().catalogDao(),
+      payload,
+    )
+    if (result["qualifiedNow"] == true) scheduleSnapshot()
+    return result
+  }
+
+  suspend fun getListeningStatsDashboard(query: Map<String, Any?>): Map<String, Any?> {
+    initialize()
+    return ListeningStatsEngine.dashboard(
+      requireUser(),
+      requireCatalog().catalogDao(),
+      query,
+    )
+  }
+
+  suspend fun clearDetailedListeningHistory(): Map<String, Any?> {
+    initialize()
+    return ListeningStatsEngine.clear(requireUser())
+  }
+
   suspend fun listRemoteSources(): List<Map<String, Any?>> {
     initialize()
     return requireUser().userDao().getRemoteSources().map(RemoteSourceEntity::toBridgeMap)
@@ -2762,6 +2792,7 @@ class AstraLibraryRepository private constructor(
   private fun buildUserDatabase(): AstraUserDatabase =
     Room.databaseBuilder(applicationContext, AstraUserDatabase::class.java, USER_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+      .addMigrations(USER_MIGRATION_1_2)
       .build()
 
   private fun buildCatalogDatabase(): AstraCatalogDatabase =

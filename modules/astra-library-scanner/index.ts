@@ -389,6 +389,10 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     values: Record<string, unknown>
   ): Promise<NativePlaybackWindow<T> | null>;
   recordTrackPlayed(path: string): Promise<boolean>;
+  getListeningHistoryStatus<T>(): Promise<T>;
+  checkpointListeningSession<T>(payload: Record<string, unknown>): Promise<T>;
+  getListeningStatsDashboard<T>(query: Record<string, unknown>): Promise<T>;
+  clearDetailedListeningHistory<T>(): Promise<T>;
   getRecentlyPlayed<T>(limit: number): Promise<T[]>;
   listRemoteSources<T>(): Promise<T[]>;
   getRemoteSource<T>(sourceId: number): Promise<T | null>;

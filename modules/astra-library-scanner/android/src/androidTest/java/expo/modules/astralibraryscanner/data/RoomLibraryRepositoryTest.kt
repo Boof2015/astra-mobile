@@ -565,6 +565,182 @@ class RoomLibraryRepositoryTest {
     assertEquals(CURRENT_ARTIST_CREDIT_VERSION, dao.getSource("local:1")?.artistCreditVersion)
   }
 
+  @Test
+  fun listeningStatsCheckpointIsIdempotentAndClearPreservesProtectedHistory() = runBlocking {
+    val path = "content://track/listening.flac"
+    publish("listening", listOf(track("listening", 1, "Headphones On", path)))
+    val status = ListeningStatsEngine.status(user)
+    val generation = status.getValue("generation") as String
+    val startedAt = System.currentTimeMillis() - 20_000
+    val common = mapOf<String, Any?>(
+      "generation" to generation,
+      "sessionKey" to "session-1",
+      "segmentKey" to "segment-1",
+      "trackPath" to path,
+      "sessionStartedAt" to startedAt,
+      "segmentStartedAt" to startedAt,
+      "trackDurationSeconds" to 181.0,
+      "qualificationEligible" to true,
+      "completedNaturally" to false,
+      "finalizeSegment" to false,
+      "finalizeSession" to false,
+    )
+
+    ListeningStatsEngine.checkpoint(
+      user,
+      catalog.catalogDao(),
+      common + mapOf(
+        "observedAt" to startedAt + 10_000,
+        "sessionListenedSeconds" to 10.0,
+        "segmentListenedSeconds" to 10.0,
+      ),
+    )
+    val qualified = ListeningStatsEngine.checkpoint(
+      user,
+      catalog.catalogDao(),
+      common + mapOf(
+        "observedAt" to startedAt + 15_000,
+        "sessionListenedSeconds" to 15.0,
+        "segmentListenedSeconds" to 15.0,
+      ),
+    )
+    val duplicate = ListeningStatsEngine.checkpoint(
+      user,
+      catalog.catalogDao(),
+      common + mapOf(
+        "observedAt" to startedAt + 15_000,
+        "sessionListenedSeconds" to 15.0,
+        "segmentListenedSeconds" to 15.0,
+      ),
+    )
+
+    assertEquals(true, qualified["qualifiedNow"])
+    assertEquals(false, duplicate["qualifiedNow"])
+    assertEquals(1L, user.userDao().getPlaybackHistory(path)?.playCount)
+
+    val dashboard = ListeningStatsEngine.dashboard(
+      user,
+      catalog.catalogDao(),
+      mapOf(
+        "range" to "all",
+        "rankingMetric" to "plays",
+        "artistGroupingMode" to "astra",
+        "now" to startedAt + 20_000,
+      ),
+    )
+    val summary = dashboard.getValue("summary") as Map<*, *>
+    assertEquals(15.0, (summary["listenedSeconds"] as Number).toDouble(), 0.001)
+    assertEquals(1.0, (summary["qualifiedPlays"] as Number).toDouble(), 0.001)
+    assertEquals(1.0, (summary["tracksPlayed"] as Number).toDouble(), 0.001)
+
+    val cleared = ListeningStatsEngine.clear(user)
+    assertNull(cleared["startedAt"])
+    assertEquals(1L, user.userDao().getPlaybackHistory(path)?.playCount)
+    assertEquals(0, user.userDao().getListeningSessionsInRange(generation, 0, Long.MAX_VALUE).size)
+  }
+
+  @Test
+  fun listeningStatsExcludePausedGapAndRetainRemovedTrackMetadata() = runBlocking {
+    val path = "content://track/removed.flac"
+    publish("stats-old", listOf(track("stats-old", 2, "Song That Left", path)))
+    val generation = ListeningStatsEngine.status(user).getValue("generation") as String
+    val startedAt = System.currentTimeMillis() - 60_000
+    val base = mapOf<String, Any?>(
+      "generation" to generation,
+      "sessionKey" to "session-split",
+      "trackPath" to path,
+      "sessionStartedAt" to startedAt,
+      "trackDurationSeconds" to 182.0,
+      "qualificationEligible" to true,
+      "completedNaturally" to false,
+    )
+    ListeningStatsEngine.checkpoint(
+      user,
+      catalog.catalogDao(),
+      base + mapOf(
+        "segmentKey" to "segment-a",
+        "segmentStartedAt" to startedAt,
+        "observedAt" to startedAt + 5_000,
+        "sessionListenedSeconds" to 5.0,
+        "segmentListenedSeconds" to 5.0,
+        "finalizeSegment" to true,
+        "finalizeSession" to false,
+      ),
+    )
+    ListeningStatsEngine.checkpoint(
+      user,
+      catalog.catalogDao(),
+      base + mapOf(
+        "segmentKey" to "segment-b",
+        "segmentStartedAt" to startedAt + 35_000,
+        "observedAt" to startedAt + 45_000,
+        "sessionListenedSeconds" to 15.0,
+        "segmentListenedSeconds" to 10.0,
+        "finalizeSegment" to true,
+        "finalizeSession" to true,
+      ),
+    )
+
+    publish(
+      "stats-new",
+      listOf(track("stats-new", 3, "A Different Song")),
+      previous = "stats-old",
+    )
+    val dashboard = ListeningStatsEngine.dashboard(
+      user,
+      catalog.catalogDao(),
+      mapOf(
+        "range" to "all",
+        "rankingMetric" to "time",
+        "artistGroupingMode" to "fileTags",
+        "now" to startedAt + 55_000,
+      ),
+    )
+    val summary = dashboard.getValue("summary") as Map<*, *>
+    assertEquals(15.0, (summary["listenedSeconds"] as Number).toDouble(), 0.001)
+    val topTrack = (dashboard.getValue("topTracks") as List<*>).single() as Map<*, *>
+    assertEquals("Song That Left", topTrack["title"])
+    assertEquals(false, topTrack["available"])
+    assertNull(topTrack["trackPath"])
+  }
+
+  @Test
+  fun listeningStatsShortTracksQualifyOnlyOnNaturalCompletion() = runBlocking {
+    val path = "content://track/short.flac"
+    publish(
+      "stats-short",
+      listOf(track("stats-short", 4, "Short Song", path).copy(duration = 5.0)),
+    )
+    val generation = ListeningStatsEngine.status(user).getValue("generation") as String
+    val startedAt = System.currentTimeMillis() - 10_000
+    suspend fun checkpoint(sessionKey: String, completedNaturally: Boolean): Map<String, Any?> =
+      ListeningStatsEngine.checkpoint(
+        user,
+        catalog.catalogDao(),
+        mapOf(
+          "generation" to generation,
+          "sessionKey" to sessionKey,
+          "segmentKey" to "segment-$sessionKey",
+          "trackPath" to path,
+          "sessionStartedAt" to startedAt,
+          "segmentStartedAt" to startedAt,
+          "observedAt" to startedAt + 4_500,
+          "sessionListenedSeconds" to 4.5,
+          "segmentListenedSeconds" to 4.5,
+          "trackDurationSeconds" to 5.0,
+          "qualificationEligible" to true,
+          "completedNaturally" to completedNaturally,
+          "finalizeSegment" to true,
+          "finalizeSession" to true,
+        ),
+      )
+
+    assertEquals(false, checkpoint("manual", false)["qualifiedNow"])
+    assertNull(user.userDao().getPlaybackHistory(path))
+    assertEquals(true, checkpoint("natural", true)["qualifiedNow"])
+    assertEquals(1L, user.userDao().getPlaybackHistory(path)?.playCount)
+  }
+
   /** 10 tracks under each of A-Z, so every section has rows above and below it. */
   private fun seedAlphabet(): List<TrackEntity> =
     (0 until ALPHABET_SEED_SIZE).map { index ->
