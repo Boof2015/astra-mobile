@@ -15,6 +15,8 @@ interface SpectrumCurveProps {
   source?: 'pre' | 'post';
   /** Number of log-frequency render points. */
   pointCount?: number;
+  /** Optional frequencies pinned to evenly spaced horizontal centers. */
+  frequencyAnchors?: number[];
   /** Active render cadence. 0 means display-sync; 32 keeps the mini-player battery-friendly. */
   frameMs?: number;
   /** Native analysis cadence. Defaults to frameMs. */
@@ -52,6 +54,7 @@ export function SpectrumCurve({
   active = false,
   source = 'pre',
   pointCount,
+  frequencyAnchors,
   frameMs = MINI_FRAME_MS,
   analysisFrameMs,
   smoothing = DEFAULT_SMOOTHING,
@@ -89,6 +92,7 @@ export function SpectrumCurve({
       analysisFrameMs={analysisFrameMs ?? frameMs}
       smoothing={smoothing}
       pointCount={resolvedPointCount}
+      frequencyAnchors={frequencyAnchors}
       dbMin={dbMin}
       dbMax={dbMax}
       tiltDbPerOctave={tiltDbPerOctave}

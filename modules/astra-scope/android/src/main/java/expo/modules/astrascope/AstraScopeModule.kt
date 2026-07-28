@@ -100,6 +100,11 @@ class AstraScopeModule : Module() {
       Prop("analysisFrameMs") { view, value: Double -> view.analysisFrameMs = value }
       Prop("smoothing") { view, value: Double -> view.smoothing = value.toFloat() }
       Prop("pointCount") { view, value: Int -> view.pointCount = value }
+      Prop("frequencyAnchors") { view, value: List<Double>? ->
+        view.frequencyAnchors = value?.let { frequencies ->
+          FloatArray(frequencies.size) { index -> frequencies[index].toFloat() }
+        }
+      }
       Prop("dbMin") { view, value: Double -> view.dbMin = value.toFloat() }
       Prop("dbMax") { view, value: Double -> view.dbMax = value.toFloat() }
       Prop("tiltDbPerOctave") { view, value: Double -> view.tiltDbPerOctave = value.toFloat() }

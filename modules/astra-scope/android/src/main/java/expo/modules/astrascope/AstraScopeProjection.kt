@@ -1,5 +1,6 @@
 package expo.modules.astrascope
 
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
@@ -83,6 +84,7 @@ internal object AstraScopeProjection {
     dbMin: Float,
     dbMax: Float,
     tiltDbPerOctave: Float,
+    frequencyAnchors: FloatArray? = null,
     sampleRate: Float = 48_000f
   ) {
     val bins = min(rawCount, raw.capacity())
@@ -97,12 +99,13 @@ internal object AstraScopeProjection {
     val maxFrequency = max(minFrequency + 1.0, min(MAX_FREQUENCY, nyquist))
     val binWidth = nyquist / bins.toDouble()
     val range = max(1f, dbMax - dbMin)
+    val anchors = validFrequencyAnchors(frequencyAnchors, minFrequency, maxFrequency)
 
     for (point in 0 until points) {
       val t0 = point.toDouble() / (points - 1).toDouble()
       val t1 = min(1.0, (point + 1).toDouble() / (points - 1).toDouble())
-      val frequency0 = frequencyAt(t0, minFrequency, maxFrequency)
-      val frequency1 = frequencyAt(t1, minFrequency, maxFrequency)
+      val frequency0 = frequencyAt(t0, minFrequency, maxFrequency, anchors)
+      val frequency1 = frequencyAt(t1, minFrequency, maxFrequency, anchors)
       val centerFrequency = (frequency0 + frequency1) * 0.5
       val bin0 = frequency0 / binWidth
       val bin1 = frequency1 / binWidth
@@ -119,6 +122,20 @@ internal object AstraScopeProjection {
     }
   }
 
+  /**
+   * Maps normalized x to frequency. With anchors, each frequency is pinned to
+   * the center of an equal-width column and the intervals remain logarithmic.
+   */
+  internal fun spectrumFrequencyAt(
+    t: Double,
+    minFrequency: Double = MIN_FREQUENCY,
+    maxFrequency: Double = MAX_FREQUENCY,
+    frequencyAnchors: FloatArray? = null
+  ): Double {
+    val anchors = validFrequencyAnchors(frequencyAnchors, minFrequency, maxFrequency)
+    return frequencyAt(t, minFrequency, maxFrequency, anchors)
+  }
+
   /** Returns the largest absolute value left after one decay step. */
   fun decay(values: FloatArray, count: Int, factor: Float = DECAY_PER_FRAME): Float {
     var peak = 0f
@@ -131,8 +148,57 @@ internal object AstraScopeProjection {
     return peak
   }
 
-  private fun frequencyAt(t: Double, minFrequency: Double, maxFrequency: Double): Double =
-    minFrequency * (maxFrequency / minFrequency).pow(t)
+  private fun frequencyAt(
+    t: Double,
+    minFrequency: Double,
+    maxFrequency: Double,
+    anchors: FloatArray?
+  ): Double {
+    val position = t.coerceIn(0.0, 1.0)
+    if (anchors == null) return logLerp(minFrequency, maxFrequency, position)
+
+    val count = anchors.size
+    val firstCenter = 0.5 / count
+    val lastCenter = (count - 0.5) / count
+    if (position <= firstCenter) {
+      return logLerp(minFrequency, anchors.first().toDouble(), position / firstCenter)
+    }
+    if (position >= lastCenter) {
+      return logLerp(
+        anchors.last().toDouble(),
+        maxFrequency,
+        (position - lastCenter) / (1.0 - lastCenter)
+      )
+    }
+
+    val lower = floor(position * count - 0.5).toInt().coerceIn(0, count - 2)
+    val lowerCenter = (lower + 0.5) / count
+    val upperCenter = (lower + 1.5) / count
+    return logLerp(
+      anchors[lower].toDouble(),
+      anchors[lower + 1].toDouble(),
+      (position - lowerCenter) / (upperCenter - lowerCenter)
+    )
+  }
+
+  private fun validFrequencyAnchors(
+    anchors: FloatArray?,
+    minFrequency: Double,
+    maxFrequency: Double
+  ): FloatArray? {
+    val frequencies = anchors ?: return null
+    if (frequencies.isEmpty()) return null
+    var previous = minFrequency
+    for (anchor in frequencies) {
+      val frequency = anchor.toDouble()
+      if (!frequency.isFinite() || frequency <= previous || frequency >= maxFrequency) return null
+      previous = frequency
+    }
+    return frequencies
+  }
+
+  private fun logLerp(start: Double, end: Double, t: Double): Double =
+    start * (end / start).pow(t.coerceIn(0.0, 1.0))
 
   private fun safeRefreshRate(refreshRate: Float): Float =
     if (refreshRate.isFinite() && refreshRate >= 30f) refreshRate else 60f

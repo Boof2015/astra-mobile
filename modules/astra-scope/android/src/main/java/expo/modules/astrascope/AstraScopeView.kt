@@ -64,6 +64,7 @@ internal class AstraScopeView(
   var analysisFrameMs = 32.0
   var smoothing = 0.92f
   var pointCount = 120
+  var frequencyAnchors: FloatArray? = null
   var dbMin = -90f
   var dbMax = -10f
   var tiltDbPerOctave = 3.5f
@@ -332,7 +333,8 @@ internal class AstraScopeView(
             renderedPointCount,
             dbMin,
             dbMax,
-            tiltDbPerOctave
+            tiltDbPerOctave,
+            frequencyAnchors
           )
           true
         }

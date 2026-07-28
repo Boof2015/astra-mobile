@@ -87,6 +87,8 @@ export interface AstraScopeViewProps extends ViewProps {
   analysisFrameMs?: number;
   smoothing?: number;
   pointCount?: number;
+  /** Optional frequencies pinned to evenly spaced horizontal centers. */
+  frequencyAnchors?: number[];
   dbMin?: number;
   dbMax?: number;
   tiltDbPerOctave?: number;

@@ -23,6 +23,45 @@ class AstraScopeProjectionTest {
   }
 
   @Test
+  fun graphicEqFrequenciesAlignToEvenColumnCenters() {
+    val anchors = floatArrayOf(60f, 250f, 1_000f, 4_000f, 12_000f)
+
+    assertEquals(20.0, AstraScopeProjection.spectrumFrequencyAt(0.0, frequencyAnchors = anchors), 0.001)
+    anchors.forEachIndexed { index, frequency ->
+      val center = (index + 0.5) / anchors.size
+      assertEquals(
+        frequency.toDouble(),
+        AstraScopeProjection.spectrumFrequencyAt(center, frequencyAnchors = anchors),
+        0.001
+      )
+    }
+    assertEquals(
+      20_000.0,
+      AstraScopeProjection.spectrumFrequencyAt(1.0, frequencyAnchors = anchors),
+      0.001
+    )
+  }
+
+  @Test
+  fun missingOrInvalidFrequencyAnchorsFallBackToLogProjection() {
+    val expectedMidpoint = kotlin.math.sqrt(20.0 * 20_000.0)
+    val nonIncreasing = floatArrayOf(60f, 1_000f, 250f)
+    val outOfRange = floatArrayOf(60f, 25_000f)
+
+    assertEquals(expectedMidpoint, AstraScopeProjection.spectrumFrequencyAt(0.5), 0.001)
+    assertEquals(
+      expectedMidpoint,
+      AstraScopeProjection.spectrumFrequencyAt(0.5, frequencyAnchors = nonIncreasing),
+      0.001
+    )
+    assertEquals(
+      expectedMidpoint,
+      AstraScopeProjection.spectrumFrequencyAt(0.5, frequencyAnchors = outOfRange),
+      0.001
+    )
+  }
+
+  @Test
   fun clampRejectsInvalidAndOutOfRangeValues() {
     assertEquals(0f, AstraScopeProjection.clamp01(Float.NaN), 0f)
     assertEquals(0f, AstraScopeProjection.clamp01(-2f), 0f)

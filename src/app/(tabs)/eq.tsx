@@ -329,7 +329,12 @@ export default function EQScreen() {
   // in the tracks' own coordinate space, so it stays glued to the thumbs.
   const graphicEditorEl = renderEqGraphics ? (
     <View style={styles.graphicEditor}>
-      <GraphicEQPanel gains={eq.graphicGains} enabled={eq.enabled} onChangeGain={eq.setGraphicGain} />
+      <GraphicEQPanel
+        gains={eq.graphicGains}
+        enabled={eq.enabled}
+        spectrumActive={scopeActive && focused}
+        onChangeGain={eq.setGraphicGain}
+      />
     </View>
   ) : null;
 
