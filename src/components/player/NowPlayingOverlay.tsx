@@ -47,7 +47,6 @@ import {
 } from '@/components/player/nowPlayingTrackTransition';
 import {
   resolveNowPlayingPanRelease,
-  resolveNowPlayingDismissSpring,
   shouldEnableNowPlayingPan,
   shouldStartNowPlayingPan,
 } from '@/components/player/nowPlayingDismiss';
@@ -131,6 +130,8 @@ const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
 const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
 const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
+const PAN_TOUCH_END_BACKSTOP_MS = 80;
+const PAN_GESTURE_RECOVERY_MS = 1200;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -304,9 +305,7 @@ export function NowPlayingOverlay() {
     shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching)
   );
   const panDismissRequested = useSharedValue(false);
-  const panExitPending = useSharedValue(false);
-  const panReleaseVelocity = useSharedValue(0);
-  const panReleaseRemainingDistance = useSharedValue(windowHeight);
+  const panRecoveryLease = useSharedValue(0);
   const screenHeight = useSharedValue(windowHeight);
   const companionTouchStartX = useSharedValue(companionStartX);
   const menuProgress = useSharedValue(0);
@@ -318,7 +317,7 @@ export function NowPlayingOverlay() {
   const suspendPanForChildTransition = () => {
     panEnabled.value = false;
     panDismissRequested.value = false;
-    panExitPending.value = false;
+    cancelAnimation(panRecoveryLease);
     cancelAnimation(translateY);
     translateY.value = 0;
   };
@@ -561,30 +560,9 @@ export function NowPlayingOverlay() {
   // after an effect that depends on the value.
   useEffect(() => {
     if (phase === 'closing') {
-      // The gesture and button paths own the exit animation, including its
-      // velocity-matched spring shaping. Only animate here when `closing`
-      // arrived from a direct closePlayer() with no animation attached.
-      if (exitAnimated && panExitPending.value) {
-        const releaseSpring = resolveNowPlayingDismissSpring(
-          panReleaseVelocity.value,
-          panReleaseRemainingDistance.value
-        );
-        panExitPending.value = false;
-        cancelAnimation(translateY);
-        translateY.value = withSpring(
-          screenHeight.value,
-          {
-            damping: releaseSpring.damping,
-            stiffness: releaseSpring.stiffness,
-            velocity: releaseSpring.velocity,
-            overshootClamping: true,
-            energyThreshold: 1e-4,
-          },
-          (finished) => {
-            if (finished) runOnJS(commitClosed)();
-          }
-        );
-      } else if (!exitAnimated) {
+      // Gesture/button paths attach their own exit animation. Only animate here
+      // when `closing` arrived from a direct closePlayer() call.
+      if (!exitAnimated) {
         translateY.value = withTiming(windowHeight, { duration: 200 });
       }
       return;
@@ -597,11 +575,6 @@ export function NowPlayingOverlay() {
     exitAnimated,
     queueOpen,
     lyricsMode,
-    commitClosed,
-    panExitPending,
-    panReleaseRemainingDistance,
-    panReleaseVelocity,
-    screenHeight,
     translateY,
   ]);
 
@@ -629,6 +602,22 @@ export function NowPlayingOverlay() {
     return undefined;
   }, [phase, openRequest]);
 
+  const dismissFromPan = useCallback(() => {
+    // One JS transaction: the store enters `closing` before the deterministic
+    // slide is scheduled. Its 220 ms duration always beats the 450 ms fallback
+    // unmount, so a normal release cannot visibly despawn.
+    beginDismiss();
+    cancelAnimation(panRecoveryLease);
+    cancelAnimation(translateY);
+    translateY.value = withTiming(
+      screenHeight.value,
+      motion.snap,
+      (finished) => {
+        if (finished) runOnJS(commitClosed)();
+      }
+    );
+  }, [beginDismiss, commitClosed, panRecoveryLease, screenHeight, translateY]);
+
   const pan = useMemo(
     () => Gesture.Pan()
       .activeOffsetY(14) // engage only on a downward drag
@@ -649,10 +638,31 @@ export function NowPlayingOverlay() {
       .onTouchesMove((_event, stateManager) => {
         if (!panEnabled.value) stateManager.fail();
       })
+      .onTouchesUp(() => {
+        if (panDismissRequested.value) return;
+        translateY.value = withDelay(
+          PAN_TOUCH_END_BACKSTOP_MS,
+          withTiming(0, motion.snap)
+        );
+      })
+      .onTouchesCancelled(() => {
+        if (panDismissRequested.value) return;
+        translateY.value = withTiming(0, motion.snap);
+      })
       .onStart(() => {
         panDismissRequested.value = false;
-        panExitPending.value = false;
         cancelAnimation(translateY);
+        cancelAnimation(panRecoveryLease);
+        panRecoveryLease.value = withDelay(
+          PAN_GESTURE_RECOVERY_MS,
+          withTiming(panRecoveryLease.value + 1, { duration: 0 }, (finished) => {
+            if (!finished || panDismissRequested.value) return;
+            // This lease is independent of RNGH's terminal callbacks. If a
+            // nested native gesture drops the handler, the partial drag still
+            // repairs itself on the UI thread.
+            translateY.value = withTiming(0, motion.snap);
+          })
+        );
       })
       .onUpdate((event) => {
         if (!panEnabled.value) {
@@ -669,40 +679,35 @@ export function NowPlayingOverlay() {
         );
         if (release === 'dismiss') {
           panDismissRequested.value = true;
-          panExitPending.value = true;
-          panReleaseVelocity.value = event.velocityY;
-          panReleaseRemainingDistance.value =
-            screenHeight.value - translateY.value;
+          cancelAnimation(panRecoveryLease);
           // If the RN handoff is ever dropped, restore the partial drag instead
-          // of leaving an open player stranded. The phase effect cancels this
-          // delayed animation only after Zustand has entered `closing`.
+          // of leaving an open player stranded. dismissFromPan cancels this
+          // delayed animation after synchronously entering `closing`.
           translateY.value = withDelay(
             PAN_DISMISS_HANDOFF_BACKSTOP_MS,
             withTiming(0, motion.snap)
           );
-          runOnJS(beginDismiss)();
+          runOnJS(dismissFromPan)();
           return;
         }
         panDismissRequested.value = false;
-        panExitPending.value = false;
+        cancelAnimation(panRecoveryLease);
         translateY.value = withTiming(0, motion.snap);
       })
       .onFinalize(() => {
         // Successful dismissals retain the short handoff backstop above. Every
         // other terminal path, including cancellation, re-anchors immediately.
         if (!panDismissRequested.value) {
+          cancelAnimation(panRecoveryLease);
           translateY.value = withTiming(0, motion.snap);
         }
       }),
     [
-      beginDismiss,
       companionTouchStartX,
+      dismissFromPan,
       panDismissRequested,
       panEnabled,
-      panExitPending,
-      panReleaseRemainingDistance,
-      panReleaseVelocity,
-      screenHeight,
+      panRecoveryLease,
       translateY,
     ]
   );
