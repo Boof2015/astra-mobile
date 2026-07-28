@@ -1,4 +1,8 @@
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
+import {
+  cancelManualRecentPlayTransition,
+  markManualRecentPlayTransition,
+} from './recentPlayTracking';
 
 /**
  * Chunked feeder for RNTP's native queue. Loading a long context in one
@@ -30,6 +34,10 @@ interface QueueLoad {
   /** Resolves once the fill loop has stopped issuing native calls. */
   loopDone: Promise<void>;
   resolveLoopDone: () => void;
+}
+
+interface QueueLoadOptions {
+  manualTransitionFromPath?: string | null;
 }
 
 let generation = 0;
@@ -107,16 +115,24 @@ function finishLoad(current: QueueLoad, failed: boolean): void {
  * `startIndex`. Resolves once the first chunk (containing `startIndex`) is
  * set — the caller can `play()` immediately; the rest fills in the background.
  */
-export async function loadQueueChunked(tracks: RntpTrack[], startIndex: number): Promise<void> {
+export async function loadQueueChunked(
+  tracks: RntpTrack[],
+  startIndex: number,
+  options: QueueLoadOptions = {},
+): Promise<void> {
   const gen = await supersedePreviousLoad();
   if (gen !== generation) return;
 
   const current = beginLoad(gen, startIndex, 0);
+  const manualTransition = markManualRecentPlayTransition(
+    options.manualTransitionFromPath,
+  );
   try {
     const first = tracks.slice(startIndex, startIndex + FIRST_CHUNK);
     await TrackPlayer.setQueue(first);
     current.loadedCount = first.length;
   } catch (err) {
+    cancelManualRecentPlayTransition(manualTransition);
     finishLoad(current, false);
     throw err;
   }

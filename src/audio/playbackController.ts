@@ -30,6 +30,10 @@ import {
 } from './audioProcessingStartup';
 import { shouldRestartOnPrevious } from './playbackNavigation';
 import {
+  cancelManualRecentPlayTransition,
+  markManualRecentPlayTransition,
+} from './recentPlayTracking';
+import {
   AstraLibraryData,
   type LibraryQuery,
   type NativePlaybackWindow,
@@ -452,11 +456,12 @@ async function startVirtualWindow(
   originalOrder = shuffle ? null : tracks.map((track) => track.id);
   usePlayerStore.getState().setShuffle(shuffle);
   const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setSnapshot(queueTracks, startIndex, { source });
   setOptimisticTrack(queueTracks[startIndex], 'loading');
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'virtual-queue-play');
-    await loadQueueChunked(queueTracks, startIndex);
+    await loadQueueChunked(queueTracks, startIndex, { manualTransitionFromPath });
     await primePreparedTrackForPlayback(playbackTarget, 'virtual-queue-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
@@ -673,13 +678,14 @@ async function playTracksInternal(
   }
   const queueTracks = ordered.map(toRntpTrack);
   const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setSnapshot(queueTracks, startIndex, {
     source: startOptions.source,
   });
   setOptimisticTrack(queueTracks[startIndex], 'loading');
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'queue-play');
-    await loadQueueChunked(queueTracks, startIndex);
+    await loadQueueChunked(queueTracks, startIndex, { manualTransitionFromPath });
     await primePreparedTrackForPlayback(playbackTarget, 'queue-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
@@ -703,11 +709,12 @@ export async function shuffleTracks(
   usePlayerStore.getState().setShuffle(true);
   const queueTracks = shuffleArray(tracks).map(toRntpTrack);
   const playbackTarget = dspTargetFromTrack(queueTracks[0], 'none');
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setSnapshot(queueTracks, 0, { source });
   setOptimisticTrack(queueTracks[0], 'loading');
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'shuffle-play');
-    await loadQueueChunked(queueTracks, 0);
+    await loadQueueChunked(queueTracks, 0, { manualTransitionFromPath });
     await primePreparedTrackForPlayback(playbackTarget, 'shuffle-play');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
@@ -821,14 +828,19 @@ export async function skipToNext(): Promise<void> {
   );
   const { tracks, activeIndex } = useQueueStore.getState();
   const nextIndex = activeIndex >= 0 ? activeIndex + 1 : -1;
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   if (nextIndex >= 0 && nextIndex < tracks.length) {
     useQueueStore.getState().setActiveIndex(nextIndex);
     setOptimisticTrack(tracks[nextIndex], usePlayerStore.getState().playbackState);
   }
+  const manualTransition = markManualRecentPlayTransition(manualTransitionFromPath);
+  let nativeTransitionSucceeded = false;
   try {
     await TrackPlayer.skipToNext();
+    nativeTransitionSucceeded = true;
     await refreshActiveIndexFromNative();
   } catch {
+    if (!nativeTransitionSucceeded) cancelManualRecentPlayTransition(manualTransition);
     await reconcilePlayerFromNative();
     // no next track — ignore
   }
@@ -864,14 +876,19 @@ export async function skipToPrevious(): Promise<void> {
   );
   const { tracks, activeIndex } = useQueueStore.getState();
   const previousIndex = activeIndex > 0 ? activeIndex - 1 : -1;
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   if (previousIndex >= 0 && previousIndex < tracks.length) {
     useQueueStore.getState().setActiveIndex(previousIndex);
     setOptimisticTrack(tracks[previousIndex], usePlayerStore.getState().playbackState);
   }
+  const manualTransition = markManualRecentPlayTransition(manualTransitionFromPath);
+  let nativeTransitionSucceeded = false;
   try {
     await TrackPlayer.skipToPrevious();
+    nativeTransitionSucceeded = true;
     await refreshActiveIndexFromNative();
   } catch {
+    if (!nativeTransitionSucceeded) cancelManualRecentPlayTransition(manualTransition);
     await reconcilePlayerFromNative();
     // no previous track — ignore
   }
@@ -1110,6 +1127,7 @@ export async function jumpToQueueIndex(
   // waiting out the fill only when the target isn't loaded.
   const queuedTrack = useQueueStore.getState().tracks[index];
   const playbackTarget = dspTargetFromTrack(queuedTrack, 'none');
+  const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setActiveIndex(index);
   setOptimisticTrack(queuedTrack, 'playing');
   let nativeIndex = absoluteIndexToNative(index);
@@ -1117,14 +1135,19 @@ export async function jumpToQueueIndex(
     await queueLoadSettled();
     nativeIndex = absoluteIndexToNative(index);
   }
+  let manualTransition: ReturnType<typeof markManualRecentPlayTransition> = null;
+  let nativeTransitionSucceeded = false;
   try {
     await prepareAudioProcessingForPlayback(playbackTarget, 'queue-jump');
+    manualTransition = markManualRecentPlayTransition(manualTransitionFromPath);
     await TrackPlayer.skip(nativeIndex);
+    nativeTransitionSucceeded = true;
     useQueueStore.getState().setActiveIndex(index);
     await primePreparedTrackForPlayback(playbackTarget, 'queue-jump');
     await TrackPlayer.play();
     usePlayerStore.getState().setPlaybackState('playing');
   } catch (err) {
+    if (!nativeTransitionSucceeded) cancelManualRecentPlayTransition(manualTransition);
     await reconcilePlayerFromNative();
     throw err;
   }
@@ -1193,7 +1216,16 @@ export async function removeFromQueue(
     await mutateVirtualQueue('remove', { positions: [position] });
     return;
   }
-  await TrackPlayer.remove(absoluteIndex);
+  const activeIndex = useQueueStore.getState().activeIndex;
+  const manualTransition = absoluteIndex === activeIndex
+    ? markManualRecentPlayTransition(usePlayerStore.getState().currentTrack?.path)
+    : null;
+  try {
+    await TrackPlayer.remove(absoluteIndex);
+  } catch (error) {
+    cancelManualRecentPlayTransition(manualTransition);
+    throw error;
+  }
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices([absoluteIndex]);
   }
@@ -1216,7 +1248,16 @@ export async function removeManyFromQueue(
     });
     return;
   }
-  await TrackPlayer.remove(absoluteIndices);
+  const activeIndex = useQueueStore.getState().activeIndex;
+  const manualTransition = absoluteIndices.includes(activeIndex)
+    ? markManualRecentPlayTransition(usePlayerStore.getState().currentTrack?.path)
+    : null;
+  try {
+    await TrackPlayer.remove(absoluteIndices);
+  } catch (error) {
+    cancelManualRecentPlayTransition(manualTransition);
+    throw error;
+  }
   if (options.updateMirror !== false) {
     useQueueStore.getState().removeIndices(absoluteIndices);
   }
