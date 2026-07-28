@@ -1,7 +1,20 @@
+import { createContext, createElement, useContext, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import type { Palette } from './palettes';
 import type { AppTheme } from './resolve';
+
+const ScopedPaletteContext = createContext<Palette | null>(null);
+
+export function ScopedPaletteProvider({
+  colors,
+  children,
+}: {
+  colors: Palette;
+  children: ReactNode;
+}) {
+  return createElement(ScopedPaletteContext.Provider, { value: colors }, children);
+}
 
 /** The resolved theme (id, isDark, statusBarStyle, colors). */
 export function useTheme(): AppTheme {
@@ -10,7 +23,9 @@ export function useTheme(): AppTheme {
 
 /** Just the palette — the common case for inline `colors.x` props. */
 export function useColors(): Palette {
-  return useThemeStore((s) => s.theme.colors);
+  const scoped = useContext(ScopedPaletteContext);
+  const global = useThemeStore((s) => s.theme.colors);
+  return scoped ?? global;
 }
 
 /**
@@ -28,10 +43,11 @@ export function useColors(): Palette {
  */
 export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   factory: (colors: Palette) => T,
-): () => T {
+): (override?: Palette) => T {
   const cache = new WeakMap<Palette, T>();
-  return function useThemedStyles(): T {
-    const colors = useThemeStore((s) => s.theme.colors);
+  return function useThemedStyles(override?: Palette): T {
+    const inherited = useColors();
+    const colors = override ?? inherited;
     let styles = cache.get(colors);
     if (styles === undefined) {
       styles = StyleSheet.create(factory(colors));

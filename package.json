@@ -88,6 +88,7 @@
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
     "test:app-dialog": "node --experimental-strip-types --test src/components/dialogs/dialogQueue.test.mts",
     "test:home-greeting": "node --experimental-strip-types --test src/home/homeGreeting.test.mts",
+    "test:theme": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/theme/accentColors.test.mts src/theme/artworkAccentMath.test.mts",
     "test:session": "node --experimental-strip-types --test src/session/sessionState.test.mts src/session/playbackMaterialization.test.mts",
     "test:library-scan": "node --experimental-strip-types --test src/library/scanCancellation.test.mts",
     "test:release-config": "node --experimental-strip-types --test plugins/withAstraAndroidRelease.test.mjs scripts/release/android-release.test.mjs src/release/buildInfo.test.mts",

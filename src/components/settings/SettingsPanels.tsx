@@ -24,6 +24,10 @@ import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useLibraryStore, type FolderWithCount } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
+import type {
+  CoverArtAccentMethod,
+  NowPlayingAccentSource,
+} from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
@@ -66,6 +70,17 @@ const HOME_GREETING_SEGMENTS = [
   { key: 'off', label: 'Off' },
 ];
 
+const NOW_PLAYING_ACCENT_SEGMENTS = [
+  { key: 'app', label: 'App' },
+  { key: 'cover-art', label: 'Cover Art' },
+];
+
+const COVER_ART_METHOD_SEGMENTS = [
+  { key: 'dominant', label: 'Dominant' },
+  { key: 'vibrant', label: 'Vibrant' },
+  { key: 'average', label: 'Average' },
+];
+
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
   {
     mode: 'astra',
@@ -95,12 +110,14 @@ export function AppearanceSettingsPanel() {
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const preferredDark = useThemeStore((s) => s.preferredDark);
-  const accentId = useThemeStore((s) => s.accentId);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
   const resolvedId = useThemeStore((s) => s.theme.id);
+  const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
+  const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const setBaseTheme = useThemeStore((s) => s.setBaseTheme);
   const setPreferredDark = useThemeStore((s) => s.setPreferredDark);
-  const setAccent = useThemeStore((s) => s.setAccent);
+  const setNowPlayingAccentSource = useThemeStore((s) => s.setNowPlayingAccentSource);
+  const setCoverArtAccentMethod = useThemeStore((s) => s.setCoverArtAccentMethod);
 
   const options = THEME_OPTIONS.filter(
     (option) => option.id !== 'materialYou' || materialYouAvailable
@@ -161,9 +178,40 @@ export function AppearanceSettingsPanel() {
 
       {accentApplies ? (
         <View style={styles.appearanceBlock}>
-          <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
+          <AccentSwatchRow />
         </View>
       ) : null}
+
+      <SettingsSectionLabel spaced>NOW PLAYING ACCENT</SettingsSectionLabel>
+      <SettingsCard>
+        <Text variant="body" style={styles.settingTitle}>
+          Accent source
+        </Text>
+        <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+          Cover Art colors only the open player. The app accent is used when artwork is unavailable.
+        </Text>
+        <SegmentedControl
+          segments={NOW_PLAYING_ACCENT_SEGMENTS}
+          value={nowPlayingAccentSource}
+          onChange={(key) =>
+            void setNowPlayingAccentSource(key as NowPlayingAccentSource)
+          }
+        />
+        {nowPlayingAccentSource === 'cover-art' ? (
+          <View style={styles.coverArtMethod}>
+            <Text variant="caption" color={colors.textSecondary}>
+              Cover art method
+            </Text>
+            <SegmentedControl
+              segments={COVER_ART_METHOD_SEGMENTS}
+              value={coverArtAccentMethod}
+              onChange={(key) =>
+                void setCoverArtAccentMethod(key as CoverArtAccentMethod)
+              }
+            />
+          </View>
+        ) : null}
+      </SettingsCard>
 
       <SettingsSectionLabel spaced>HOME</SettingsSectionLabel>
       <SettingsCard>
@@ -495,6 +543,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   settingNote: {
     marginBottom: spacing.md,
+  },
+  coverArtMethod: {
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
   options: {
     gap: spacing.sm,

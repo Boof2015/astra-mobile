@@ -245,9 +245,7 @@ function ThemeStep() {
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
   const resolvedId = useThemeStore((s) => s.theme.id);
-  const accentId = useThemeStore((s) => s.accentId);
   const setBaseTheme = useThemeStore((s) => s.setBaseTheme);
-  const setAccent = useThemeStore((s) => s.setAccent);
 
   const options = WIZARD_THEME_OPTIONS.filter(
     (option) => option.id !== 'materialYou' || materialYouAvailable
@@ -288,7 +286,7 @@ function ThemeStep() {
       </View>
       {accentApplies ? (
         <View style={styles.accentBlock}>
-          <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
+          <AccentSwatchRow />
         </View>
       ) : null}
     </View>

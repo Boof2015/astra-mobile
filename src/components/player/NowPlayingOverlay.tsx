@@ -62,9 +62,15 @@ import {
   radius,
   spacing,
 } from '@/theme';
-import { createThemedStyles, useColors } from '@/theme/themed';
+import {
+  createThemedStyles,
+  ScopedPaletteProvider,
+  useColors,
+} from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
+import { paletteWithAccent } from '@/theme/scopedAccent';
+import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
 import {
   getNowPlayingLayout,
   getTabletCompanionLayout,
@@ -98,6 +104,7 @@ import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrack
 import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import { useThemeStore } from '@/stores/themeStore';
 import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
@@ -141,8 +148,7 @@ interface NowPlayingMenuItem {
 }
 
 export function NowPlayingOverlay() {
-  const styles = useStyles();
-  const colors = useColors();
+  const appColors = useColors();
   const ripple = useRipple();
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
@@ -164,6 +170,9 @@ export function NowPlayingOverlay() {
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
+  const themeIsDark = useThemeStore((s) => s.theme.isDark);
+  const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
+  const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
@@ -207,6 +216,24 @@ export function NowPlayingOverlay() {
     desktop: desktopPresentation,
   });
   const isDesktopTarget = activePresentation.target === 'desktop';
+  const artworkIdentity = activePresentation.trackKey
+    ? `${activePresentation.target}:${
+        isDesktopTarget
+          ? activePresentation.trackKey
+          : track?.artworkHash ?? activePresentation.trackKey
+      }`
+    : null;
+  const coverArtAccent = useNowPlayingArtworkAccent({
+    enabled: playerOpen && nowPlayingAccentSource === 'cover-art',
+    artworkUri: activePresentation.artworkUri,
+    artworkIdentity,
+    method: coverArtAccentMethod,
+  });
+  const colors = useMemo(
+    () => paletteWithAccent(appColors, coverArtAccent, themeIsDark),
+    [appColors, coverArtAccent, themeIsDark],
+  );
+  const styles = useStyles(colors);
   const effectiveScopeStageVisible = !isDesktopTarget && scopeStageVisible;
   // Backgrounding drops these two subtrees, which is what actually releases the
   // scope TextureViews and the decoded artwork. The overlay shell around them
@@ -817,6 +844,7 @@ export function NowPlayingOverlay() {
   );
 
   return (
+    <ScopedPaletteProvider colors={colors}>
     <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'box-none' : 'none'}>
       <GestureDetector gesture={pan}>
         <Animated.View
@@ -1673,6 +1701,7 @@ export function NowPlayingOverlay() {
         onClose={() => setTargetPickerOpen(false)}
       />
     </View>
+    </ScopedPaletteProvider>
   );
 }
 

@@ -1,6 +1,6 @@
-import type { SystemPalette } from '../../modules/astra-system-colors';
-import { deriveAccent, type AccentId } from './accents';
-import { mixHex, rgbaFromHex } from './colorUtils';
+import type { SystemPalette } from '../../modules/astra-system-colors/index.ts';
+import { deriveAccentPreference, type AccentPreference } from './accents.ts';
+import { mixHex, rgbaFromHex } from './colorUtils.ts';
 import {
   amoledBase,
   darkBase,
@@ -8,7 +8,7 @@ import {
   midnightBase,
   type BasePalette,
   type Palette,
-} from './palettes';
+} from './palettes.ts';
 
 /** What the user picks in settings. */
 export type BaseThemeId = 'system' | 'midnight' | 'dark' | 'amoled' | 'light' | 'materialYou';
@@ -129,7 +129,7 @@ export function buildMaterialYouPalette(ramps: SystemPalette, isDark: boolean): 
 export interface ResolveThemeInput {
   baseTheme: BaseThemeId;
   preferredDark: PreferredDark;
-  accentId: AccentId;
+  accentPreference: AccentPreference;
   systemScheme: 'light' | 'dark';
   /** null → Material You unavailable (iOS, <API 31, module absent). */
   materialYouRamps: SystemPalette | null;
@@ -137,7 +137,7 @@ export interface ResolveThemeInput {
 
 /** Pure resolution: settings + system inputs → one immutable AppTheme. */
 export function resolveTheme(input: ResolveThemeInput): AppTheme {
-  const { baseTheme, preferredDark, accentId, systemScheme, materialYouRamps } = input;
+  const { baseTheme, preferredDark, accentPreference, systemScheme, materialYouRamps } = input;
 
   if (baseTheme === 'materialYou' && materialYouRamps !== null) {
     const isDark = systemScheme === 'dark';
@@ -162,6 +162,6 @@ export function resolveTheme(input: ResolveThemeInput): AppTheme {
     id: staticId,
     isDark,
     statusBarStyle: isDark ? 'light' : 'dark',
-    colors: { ...base, ...deriveAccent(accentId, isDark) },
+    colors: { ...base, ...deriveAccentPreference(accentPreference, isDark) },
   };
 }
