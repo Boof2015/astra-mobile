@@ -226,11 +226,15 @@ data class PlaybackSessionEntity(
   @ColumnInfo(name = "active_position") val activePosition: Long,
   @ColumnInfo(name = "created_at") val createdAt: Long,
   @ColumnInfo(name = "updated_at") val updatedAt: Long,
+  @ColumnInfo(name = "queue_revision") val queueRevision: Long = 0,
+  @ColumnInfo(name = "catalog_revision") val catalogRevision: Long? = null,
+  @ColumnInfo(name = "is_dirty") val isDirty: Boolean = false,
+  @ColumnInfo(name = "next_entry_id") val nextEntryId: Long = 0,
 )
 
 @Entity(
   tableName = "playback_queue_entries",
-  primaryKeys = ["session_id", "position"],
+  primaryKeys = ["session_id", "entry_id"],
   foreignKeys = [
     ForeignKey(
       entity = PlaybackSessionEntity::class,
@@ -240,6 +244,7 @@ data class PlaybackSessionEntity(
     ),
   ],
   indices = [
+    Index(value = ["session_id", "position"], unique = true),
     Index(value = ["session_id", "track_path"]),
   ],
 )
@@ -247,11 +252,12 @@ data class PlaybackQueueEntryEntity(
   @ColumnInfo(name = "session_id") val sessionId: String,
   val position: Long,
   @ColumnInfo(name = "track_path") val trackPath: String,
+  @ColumnInfo(name = "entry_id") val entryId: Long = position,
 )
 
 @Entity(
   tableName = "playback_original_queue_entries",
-  primaryKeys = ["session_id", "position"],
+  primaryKeys = ["session_id", "entry_id"],
   foreignKeys = [
     ForeignKey(
       entity = PlaybackSessionEntity::class,
@@ -260,12 +266,16 @@ data class PlaybackQueueEntryEntity(
       onDelete = ForeignKey.CASCADE,
     ),
   ],
-  indices = [Index(value = ["session_id", "track_path"])],
+  indices = [
+    Index(value = ["session_id", "position"], unique = true),
+    Index(value = ["session_id", "track_path"]),
+  ],
 )
 data class PlaybackOriginalQueueEntryEntity(
   @ColumnInfo(name = "session_id") val sessionId: String,
   val position: Long,
   @ColumnInfo(name = "track_path") val trackPath: String,
+  @ColumnInfo(name = "entry_id") val entryId: Long = position,
 )
 
 @Entity(tableName = "snapshot_metadata")

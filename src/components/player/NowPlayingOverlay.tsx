@@ -108,12 +108,18 @@ import { useThemeStore } from '@/stores/themeStore';
 import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
+  jumpToQueueIndex,
   seekTo,
   skipToNext,
   skipToPrevious,
+  synchronizeVirtualQueueRevision,
   togglePlay,
   toggleShuffle
 } from '@/audio/playbackController';
+import {
+  AstraQueue,
+  toNativeQueuePalette,
+} from '../../../modules/astra-library-scanner';
 import {
   desktopConnectionLabel,
   getDesktopPlaybackPresentation,
@@ -174,6 +180,7 @@ export function NowPlayingOverlay() {
   const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
   const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
+  const nativeQueueEnabled = useSettingsStore((s) => s.nativeQueueEnabled);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
   const scopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
@@ -378,6 +385,12 @@ export function NowPlayingOverlay() {
     }
     suspendPanForChildTransition();
     setQueueOpen(true);
+    if (nativeQueueEnabled && !isDesktopTarget) {
+      void AstraQueue.present({ palette: toNativeQueuePalette(colors) }).catch((error) => {
+        console.warn('[queue] native presentation failed', error);
+        setQueueOpen(false);
+      });
+    }
   };
 
   const swapScopeMode = () =>
@@ -742,10 +755,49 @@ export function NowPlayingOverlay() {
   // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
   const closeQueue = useCallback(() => {
     suspendPanForChildTransition();
+    if (nativeQueueEnabled && !isDesktopTarget) AstraQueue.dismiss();
     setQueueOpen(false);
     // Shared values and the state setter remain stable for this overlay mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDesktopTarget, nativeQueueEnabled]);
+
+  useEffect(() => {
+    if (!nativeQueueEnabled) return undefined;
+    const dismissed = AstraQueue.addListener('onDismissed', () => {
+      setQueueOpen(false);
+    });
+    const playbackRequest = AstraQueue.addListener('onPlaybackRequest', (request) => {
+      void (async () => {
+        try {
+          const position = await AstraQueue.resolveEntryPosition(
+            request.entryId,
+            request.queueRevision,
+          );
+          if (position == null) {
+            throw new Error('The queue changed. Try that song again.');
+          }
+          await jumpToQueueIndex(position, { virtualPosition: true });
+          AstraQueue.resolvePlaybackRequest(request.requestId, true);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not play that song';
+          AstraQueue.resolvePlaybackRequest(request.requestId, false, message);
+        }
+      })();
+    });
+    const revision = AstraQueue.addListener('onQueueRevision', (event) => {
+      void synchronizeVirtualQueueRevision(
+        event.queueRevision,
+        event.activePosition,
+      ).catch((error) => {
+        console.warn('[queue] transport revision sync failed', error);
+      });
+    });
+    return () => {
+      dismissed.remove();
+      playbackRequest.remove();
+      revision.remove();
+    };
+  }, [nativeQueueEnabled]);
 
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
@@ -1692,9 +1744,9 @@ export function NowPlayingOverlay() {
       {queueOpen && !hasTabletCompanion && (
         isDesktopTarget ? (
           <RemoteQueueSheet onClose={closeQueue} />
-        ) : (
+        ) : !nativeQueueEnabled ? (
           <QueueTray onClose={closeQueue} />
-        )
+        ) : null
       )}
       <PlaybackTargetPicker
         visible={targetPickerOpen}

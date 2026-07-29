@@ -5,7 +5,7 @@ import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { seekTo } from '@/audio/playbackController';
 import { spacing } from '@/theme';
-import { createThemedStyles } from '@/theme/themed';
+import { createThemedStyles, useColors } from '@/theme/themed';
 import {
   getNowPlayingTrackTransitionKey,
   NowPlayingTrackFadeThrough,
@@ -14,6 +14,10 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { NowPlayingCompanion } from './nowPlayingPreferences';
 import type { Track } from '@/types/audio';
+import {
+  AstraQueueView,
+  toNativeQueuePalette,
+} from '../../../modules/astra-library-scanner';
 
 const COMPANION_SEGMENTS = [
   { key: 'queue', label: 'Queue' },
@@ -35,7 +39,9 @@ export function NowPlayingCompanionPane({
   track,
 }: NowPlayingCompanionPaneProps) {
   const styles = useStyles();
+  const colors = useColors();
   const companion = useSettingsStore((s) => s.nowPlayingCompanion);
+  const nativeQueueEnabled = useSettingsStore((s) => s.nativeQueueEnabled);
   const setCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
   const currentTime = usePlayerStore((s) => (active && !desktopTarget ? s.currentTime : 0));
   const duration = usePlayerStore((s) => (desktopTarget ? 0 : s.duration));
@@ -68,7 +74,15 @@ export function NowPlayingCompanionPane({
           </View>
           <View style={styles.content}>
             {companion === 'queue' ? (
-              <QueueTray embedded onClose={noop} />
+              nativeQueueEnabled ? (
+                <AstraQueueView
+                  active={active}
+                  palette={toNativeQueuePalette(colors)}
+                  style={styles.nativeQueue}
+                />
+              ) : (
+                <QueueTray embedded onClose={noop} />
+              )
             ) : track ? (
               <NowPlayingTrackFadeThrough
                 transitionKey={transitionTrackKey}
@@ -112,5 +126,9 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     minHeight: 0,
     position: 'relative',
+  },
+  nativeQueue: {
+    flex: 1,
+    minHeight: 0,
   },
 }));

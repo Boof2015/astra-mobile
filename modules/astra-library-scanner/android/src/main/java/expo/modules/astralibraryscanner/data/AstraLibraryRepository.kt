@@ -3,6 +3,8 @@ package expo.modules.astralibraryscanner.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
+import android.os.Build
+import android.os.Trace
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import java.io.File
@@ -12,6 +14,7 @@ import java.text.Normalizer
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -33,7 +36,26 @@ private const val CUTOVER_PREFS = "astra-room-cutover"
 private const val CUTOVER_COMPLETE = "room-cutover-v1-complete"
 private const val SNAPSHOT_DEBOUNCE_MS = 2_000L
 private const val MOBILE_SESSION_ID = "mobile"
-private const val ACTIVE_PLAYBACK_CONTEXT_ID = "active-context"
+internal const val ACTIVE_PLAYBACK_CONTEXT_ID = "active-context"
+internal const val PLAYBACK_HISTORY_WINDOW = 8
+internal const val PLAYBACK_UPCOMING_WINDOW = 32
+internal const val PLAYBACK_WINDOW_SIZE =
+  PLAYBACK_HISTORY_WINDOW + 1 + PLAYBACK_UPCOMING_WINDOW
+private val traceCookie = AtomicInteger()
+
+private suspend fun <T> traceAsyncSection(
+  name: String,
+  block: suspend () -> T,
+): T {
+  if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return block()
+  val cookie = traceCookie.incrementAndGet()
+  Trace.beginAsyncSection(name, cookie)
+  return try {
+    block()
+  } finally {
+    Trace.endAsyncSection(name, cookie)
+  }
+}
 
 class StaleRevisionException : IllegalStateException("STALE_REVISION")
 internal class ScanCancelledException : IllegalStateException("SCAN_CANCELLED")
@@ -57,6 +79,11 @@ private data class RemoteSyncHandle(
   val startedAt: Long,
   val existingByPath: Map<String, TrackEntity>,
   val seenPaths: MutableSet<String> = ConcurrentHashMap.newKeySet(),
+)
+
+private data class OrderedQueueItem(
+  val entryId: Long,
+  val trackPath: String,
 )
 
 /**
@@ -915,11 +942,25 @@ class AstraLibraryRepository private constructor(
     initialize()
     val catalogDao = requireCatalog().catalogDao()
     val userDao = requireUser().userDao()
-    val paths = resolvePlaybackPaths(context, catalogDao, userDao)
-    val availablePaths = filterAvailablePaths(paths, catalogDao)
+    val contextKind = context["kind"] as? String ?: "library"
+    val catalogRevision = catalogDao.getRevision()
+    val persistedContextJson = org.json.JSONObject(context).toString()
+    val paths = traceAsyncSection("AstraQueue.contextCreate") {
+      resolvePlaybackPaths(context, catalogDao, userDao)
+    }
+    val availablePaths = when (contextKind) {
+      "library", "album", "artist", "folder", "search", "dynamicPlaylist" -> paths
+      else -> filterAvailablePaths(paths, catalogDao)
+    }
     val seed = requestedSeed ?: System.currentTimeMillis()
-    val ordered = availablePaths.toMutableList()
-    var activePosition = anchorPath?.let(ordered::indexOf)?.takeIf { it >= 0 } ?: 0
+    val original = availablePaths.mapIndexed { index, path ->
+      OrderedQueueItem(index.toLong(), path)
+    }
+    val ordered = original.toMutableList()
+    var activePosition = anchorPath
+      ?.let { anchor -> ordered.indexOfFirst { it.trackPath == anchor } }
+      ?.takeIf { it >= 0 }
+      ?: 0
     if (shuffle && ordered.size > 1) {
       val anchor = ordered.getOrNull(activePosition)
       if (anchor != null) ordered.removeAt(activePosition)
@@ -928,36 +969,80 @@ class AstraLibraryRepository private constructor(
       activePosition = 0
     }
     val now = System.currentTimeMillis()
-    userDao.replacePlaybackQueue(
+    val reusableCatalogContext = contextKind in setOf(
+      "library",
+      "album",
+      "artist",
+      "folder",
+      "search",
+      "dynamicPlaylist",
+    )
+    val previous = if (!shuffle && reusableCatalogContext) {
+      userDao.getPlaybackSession(ACTIVE_PLAYBACK_CONTEXT_ID)
+    } else {
+      null
+    }
+    if (
+      previous?.contextJson == persistedContextJson &&
+      previous.catalogRevision == catalogRevision &&
+      !previous.isDirty &&
+      previous.shuffleSeed == null &&
+      userDao.countQueueEntries(ACTIVE_PLAYBACK_CONTEXT_ID) == ordered.size.toLong()
+    ) {
+      userDao.updatePlaybackPosition(
+        ACTIVE_PLAYBACK_CONTEXT_ID,
+        activePosition.toLong(),
+        ordered.getOrNull(activePosition)?.trackPath,
+        now,
+      )
+      return playbackWindow(
+        ACTIVE_PLAYBACK_CONTEXT_ID,
+        (activePosition - PLAYBACK_HISTORY_WINDOW).coerceAtLeast(0).toLong(),
+        PLAYBACK_WINDOW_SIZE,
+      )
+    }
+    traceAsyncSection("AstraQueue.roomCommit") {
+      userDao.replacePlaybackQueue(
       PlaybackSessionEntity(
         id = ACTIVE_PLAYBACK_CONTEXT_ID,
-        contextJson = org.json.JSONObject(context).toString(),
-        anchorPath = ordered.getOrNull(activePosition),
+        contextJson = persistedContextJson,
+        anchorPath = ordered.getOrNull(activePosition)?.trackPath,
         shuffleSeed = if (shuffle) seed else null,
         activePosition = activePosition.toLong(),
         createdAt = now,
         updatedAt = now,
+        queueRevision = (previous?.queueRevision ?: 0) + 1,
+        catalogRevision = catalogRevision,
+        isDirty = false,
+        nextEntryId = original.size.toLong(),
       ),
-      ordered.mapIndexed { index, path ->
+      ordered.mapIndexed { index, item ->
         PlaybackQueueEntryEntity(
           sessionId = ACTIVE_PLAYBACK_CONTEXT_ID,
           position = index.toLong(),
-          trackPath = path,
+          trackPath = item.trackPath,
+          entryId = item.entryId,
         )
       },
-      availablePaths.mapIndexed { index, path ->
-        PlaybackOriginalQueueEntryEntity(
-          sessionId = ACTIVE_PLAYBACK_CONTEXT_ID,
-          position = index.toLong(),
-          trackPath = path,
-        )
+      if (shuffle) {
+        original.mapIndexed { index, item ->
+          PlaybackOriginalQueueEntryEntity(
+            sessionId = ACTIVE_PLAYBACK_CONTEXT_ID,
+            position = index.toLong(),
+            trackPath = item.trackPath,
+            entryId = item.entryId,
+          )
+        }
+      } else {
+        emptyList()
       },
-    )
+      )
+    }
     scheduleSnapshot()
     return playbackWindow(
       ACTIVE_PLAYBACK_CONTEXT_ID,
-      (activePosition - 25).coerceAtLeast(0).toLong(),
-      226,
+      (activePosition - PLAYBACK_HISTORY_WINDOW).coerceAtLeast(0).toLong(),
+      PLAYBACK_WINDOW_SIZE,
     )
   }
 
@@ -978,7 +1063,6 @@ class AstraLibraryRepository private constructor(
     val bounded = activePosition.coerceIn(0, total - 1)
     val anchor = dao.getQueueWindow(sessionId, bounded, 1).firstOrNull()?.trackPath
     dao.updatePlaybackPosition(sessionId, bounded, anchor, System.currentTimeMillis())
-    scheduleSnapshot()
   }
 
   suspend fun restorePlaybackContext(): Map<String, Any?>? {
@@ -1006,20 +1090,23 @@ class AstraLibraryRepository private constructor(
     val normalized = retained.mapIndexed { index, row ->
       row.copy(position = index.toLong())
     }
+    val retainedIds = normalized.mapTo(hashSetOf(), PlaybackQueueEntryEntity::entryId)
     val original = dao.getOriginalQueueEntries(session.id)
-      .filter { it.trackPath in available }
+      .filter { it.entryId in retainedIds && it.trackPath in available }
       .mapIndexed { index, row -> row.copy(position = index.toLong()) }
     database.userDao().replacePlaybackQueue(
       session.copy(
         anchorPath = normalized[activeIndex].trackPath,
         activePosition = activeIndex.toLong(),
         updatedAt = System.currentTimeMillis(),
+        queueRevision = session.queueRevision + 1,
+        isDirty = true,
       ),
       normalized,
       original,
     )
-    val start = (activeIndex - 25).coerceAtLeast(0).toLong()
-    return playbackWindow(session.id, start, 226)
+    val start = (activeIndex - PLAYBACK_HISTORY_WINDOW).coerceAtLeast(0).toLong()
+    return playbackWindow(session.id, start, PLAYBACK_WINDOW_SIZE)
   }
 
   suspend fun mutatePlaybackContext(
@@ -1030,18 +1117,27 @@ class AstraLibraryRepository private constructor(
     val database = requireUser()
     val dao = database.userDao()
     val session = dao.getPlaybackSession(ACTIVE_PLAYBACK_CONTEXT_ID) ?: return null
-    val current = dao.getAllQueueEntries(session.id).map(PlaybackQueueEntryEntity::trackPath).toMutableList()
+    val current = dao.getAllQueueEntries(session.id)
+      .map { OrderedQueueItem(it.entryId, it.trackPath) }
+      .toMutableList()
     if (current.isEmpty()) return null
     val originalRows = dao.getOriginalQueueEntries(session.id)
-    val original = (if (originalRows.isEmpty()) current else originalRows.map(PlaybackOriginalQueueEntryEntity::trackPath))
+    val original = (
+      if (originalRows.isEmpty()) {
+        current
+      } else {
+        originalRows.map { OrderedQueueItem(it.entryId, it.trackPath) }
+      }
+    )
       .toMutableList()
     var active = session.activePosition.toInt().coerceIn(current.indices)
-    val activePath = current[active]
+    val activeEntryId = current[active].entryId
+    var nextEntryId = session.nextEntryId
 
-    fun move(paths: MutableList<String>, from: Int, to: Int) {
-      if (from !in paths.indices || to !in paths.indices || from == to) return
-      val item = paths.removeAt(from)
-      paths.add(to.coerceIn(0, paths.size), item)
+    fun move(items: MutableList<OrderedQueueItem>, from: Int, to: Int) {
+      if (from !in items.indices || to !in items.indices || from == to) return
+      val item = items.removeAt(from)
+      items.add(to.coerceIn(0, items.size), item)
     }
 
     when (operation) {
@@ -1055,16 +1151,19 @@ class AstraLibraryRepository private constructor(
         }
         val paths = filterAvailablePaths(requested, requireCatalog().catalogDao())
         if (paths.isNotEmpty()) {
+          val additions = paths.map { path ->
+            OrderedQueueItem(nextEntryId++, path)
+          }
           val append = operation == "append" || operation == "appendQuery"
           val insertAt = if (append) current.size else active + 1
-          current.addAll(insertAt, paths)
-          val originalAnchor = original.indexOf(activePath)
+          current.addAll(insertAt, additions)
+          val originalAnchor = original.indexOfFirst { it.entryId == activeEntryId }
           val originalInsert = if (append || originalAnchor < 0) {
             original.size
           } else {
             originalAnchor + 1
           }
-          original.addAll(originalInsert, paths)
+          original.addAll(originalInsert, additions)
         }
       }
       "remove" -> {
@@ -1077,7 +1176,9 @@ class AstraLibraryRepository private constructor(
         for (position in positions) {
           if (position !in current.indices || position == active) continue
           val removed = current.removeAt(position)
-          original.indexOf(removed).takeIf { it >= 0 }?.let(original::removeAt)
+          original.indexOfFirst { it.entryId == removed.entryId }
+            .takeIf { it >= 0 }
+            ?.let(original::removeAt)
           if (position < active) active -= 1
         }
       }
@@ -1085,13 +1186,13 @@ class AstraLibraryRepository private constructor(
         val from = (values["from"] as? Number)?.toInt() ?: -1
         val to = (values["to"] as? Number)?.toInt() ?: -1
         if (from in current.indices && to in current.indices && from != active && to != active) {
-          val movedPath = current[from]
-          val targetPath = current[to]
+          val movedEntryId = current[from].entryId
+          val targetEntryId = current[to].entryId
           move(current, from, to)
-          val originalFrom = original.indexOf(movedPath)
-          val originalTo = original.indexOf(targetPath)
+          val originalFrom = original.indexOfFirst { it.entryId == movedEntryId }
+          val originalTo = original.indexOfFirst { it.entryId == targetEntryId }
           if (originalFrom >= 0 && originalTo >= 0) move(original, originalFrom, originalTo)
-          active = current.indexOf(activePath).coerceAtLeast(0)
+          active = current.indexOfFirst { it.entryId == activeEntryId }.coerceAtLeast(0)
         }
       }
       "moveManyAfterActive" -> {
@@ -1105,18 +1206,14 @@ class AstraLibraryRepository private constructor(
         if (positions.isNotEmpty()) {
           val selected = positions.map(current::get)
           positions.asReversed().forEach { current.removeAt(it) }
-          active = current.indexOf(activePath).coerceAtLeast(0)
+          active = current.indexOfFirst { it.entryId == activeEntryId }.coerceAtLeast(0)
           current.addAll(active + 1, selected)
 
-          val selectedCounts = selected.groupingBy { it }.eachCount().toMutableMap()
-          val remainingOriginal = original.filter { path ->
-            val count = selectedCounts[path] ?: 0
-            if (count <= 0) true else {
-              if (count == 1) selectedCounts.remove(path) else selectedCounts[path] = count - 1
-              false
-            }
-          }.toMutableList()
-          val originalActive = remainingOriginal.indexOf(activePath)
+          val selectedIds = selected.mapTo(hashSetOf(), OrderedQueueItem::entryId)
+          val remainingOriginal = original
+            .filterNot { it.entryId in selectedIds }
+            .toMutableList()
+          val originalActive = remainingOriginal.indexOfFirst { it.entryId == activeEntryId }
           remainingOriginal.addAll(
             if (originalActive >= 0) originalActive + 1 else 0,
             selected,
@@ -1137,7 +1234,7 @@ class AstraLibraryRepository private constructor(
         } else {
           current.clear()
           current.addAll(original)
-          active = current.indexOf(activePath).coerceAtLeast(0)
+          active = current.indexOfFirst { it.entryId == activeEntryId }.coerceAtLeast(0)
         }
       }
       else -> error("Unknown playback context mutation.")
@@ -1150,22 +1247,45 @@ class AstraLibraryRepository private constructor(
       shuffleEnabled -> (values["seed"] as? Number)?.toLong() ?: now
       else -> null
     }
-    dao.replacePlaybackQueue(
+    traceAsyncSection("AstraQueue.roomMutation") {
+      dao.applyPlaybackQueueMutation(
       session.copy(
-        anchorPath = current.getOrNull(active),
+        anchorPath = current.getOrNull(active)?.trackPath,
         activePosition = active.toLong(),
         shuffleSeed = nextSeed,
         updatedAt = now,
+        queueRevision = session.queueRevision + 1,
+        isDirty = true,
+        nextEntryId = nextEntryId,
       ),
-      current.mapIndexed { index, path ->
-        PlaybackQueueEntryEntity(session.id, index.toLong(), path)
+      current.mapIndexed { index, item ->
+        PlaybackQueueEntryEntity(
+          sessionId = session.id,
+          position = index.toLong(),
+          trackPath = item.trackPath,
+          entryId = item.entryId,
+        )
       },
-      original.mapIndexed { index, path ->
-        PlaybackOriginalQueueEntryEntity(session.id, index.toLong(), path)
+      if (nextSeed != null) {
+        original.mapIndexed { index, item ->
+          PlaybackOriginalQueueEntryEntity(
+            sessionId = session.id,
+            position = index.toLong(),
+            trackPath = item.trackPath,
+            entryId = item.entryId,
+          )
+        }
+      } else {
+        emptyList()
       },
-    )
+      )
+    }
     scheduleSnapshot()
-    return playbackWindow(session.id, (active - 25).coerceAtLeast(0).toLong(), 226)
+    return playbackWindow(
+      session.id,
+      (active - PLAYBACK_HISTORY_WINDOW).coerceAtLeast(0).toLong(),
+      PLAYBACK_WINDOW_SIZE,
+    )
   }
 
   suspend fun recordTrackPlayed(path: String): Boolean {
@@ -2450,6 +2570,7 @@ class AstraLibraryRepository private constructor(
     val items = entries.mapNotNull { entry ->
       tracks[entry.trackPath]?.toBridgeMap()?.toMutableMap()?.apply {
         this["queuePosition"] = entry.position.toDouble()
+        this["queueEntryId"] = entry.entryId.toDouble()
       }
     }
     return mapOf(
@@ -2460,6 +2581,7 @@ class AstraLibraryRepository private constructor(
       "totalCount" to total.toDouble(),
       "contextJson" to session.contextJson,
       "shuffleSeed" to session.shuffleSeed?.toDouble(),
+      "queueRevision" to session.queueRevision.toDouble(),
       "catalogRevision" to requireCatalog().catalogDao().getRevision().toString(),
     )
   }
@@ -2480,6 +2602,12 @@ class AstraLibraryRepository private constructor(
   suspend fun userDb(): AstraUserDatabase {
     initialize()
     return requireUser()
+  }
+
+  internal suspend fun nativeQueueTracks(paths: List<String>): List<ActiveTrackView> {
+    initialize()
+    if (paths.isEmpty()) return emptyList()
+    return requireCatalog().catalogDao().getActiveTracks(paths.distinct())
   }
 
   suspend fun catalogDb(): AstraCatalogDatabase {
@@ -2792,7 +2920,7 @@ class AstraLibraryRepository private constructor(
   private fun buildUserDatabase(): AstraUserDatabase =
     Room.databaseBuilder(applicationContext, AstraUserDatabase::class.java, USER_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-      .addMigrations(USER_MIGRATION_1_2)
+      .addMigrations(USER_MIGRATION_1_2, USER_MIGRATION_2_3)
       .build()
 
   private fun buildCatalogDatabase(): AstraCatalogDatabase =

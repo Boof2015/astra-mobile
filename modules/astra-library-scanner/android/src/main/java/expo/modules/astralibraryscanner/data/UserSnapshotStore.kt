@@ -336,6 +336,10 @@ private fun PlaybackSessionEntity.toJson() = JSONObject()
   .put("activePosition", activePosition)
   .put("createdAt", createdAt)
   .put("updatedAt", updatedAt)
+  .put("queueRevision", queueRevision)
+  .putNullable("catalogRevision", catalogRevision)
+  .put("isDirty", isDirty)
+  .put("nextEntryId", nextEntryId)
 
 private fun playbackSessionFromJson(json: JSONObject) = PlaybackSessionEntity(
   id = json.getString("id"),
@@ -345,26 +349,34 @@ private fun playbackSessionFromJson(json: JSONObject) = PlaybackSessionEntity(
   activePosition = json.getLong("activePosition"),
   createdAt = json.getLong("createdAt"),
   updatedAt = json.getLong("updatedAt"),
+  queueRevision = json.optLong("queueRevision", 0),
+  catalogRevision = json.nullableLong("catalogRevision"),
+  isDirty = json.optBoolean("isDirty", false),
+  nextEntryId = json.optLong("nextEntryId", 0),
 )
 
 private fun PlaybackQueueEntryEntity.toJson() = JSONObject()
   .put("sessionId", sessionId)
+  .put("entryId", entryId)
   .put("position", position)
   .put("trackPath", trackPath)
 
 private fun playbackQueueFromJson(json: JSONObject) = PlaybackQueueEntryEntity(
   sessionId = json.getString("sessionId"),
+  entryId = json.optLong("entryId", json.getLong("position")),
   position = json.getLong("position"),
   trackPath = json.getString("trackPath"),
 )
 
 private fun PlaybackOriginalQueueEntryEntity.toJson() = JSONObject()
   .put("sessionId", sessionId)
+  .put("entryId", entryId)
   .put("position", position)
   .put("trackPath", trackPath)
 
 private fun playbackOriginalQueueFromJson(json: JSONObject) = PlaybackOriginalQueueEntryEntity(
   sessionId = json.getString("sessionId"),
+  entryId = json.optLong("entryId", json.getLong("position")),
   position = json.getLong("position"),
   trackPath = json.getString("trackPath"),
 )

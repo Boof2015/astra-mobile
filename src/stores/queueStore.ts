@@ -6,6 +6,20 @@ import type { PlaybackSource } from '@/types/audio';
 interface QueueSnapshotOptions {
   /** Omit to retain the current queue source; pass null when clearing playback. */
   source?: PlaybackSource | null;
+  /** Omit to retain transport metadata; pass null for an ordinary RNTP queue. */
+  transport?: {
+    sessionId: string;
+    queueRevision: number;
+    windowStart: number;
+  } | null;
+}
+
+export interface QueueTransportState {
+  sessionId: string;
+  queueRevision: number;
+  windowStart: number;
+  activeLocalIndex: number;
+  tracks: RntpTrack[];
 }
 
 /**
@@ -18,6 +32,7 @@ interface QueueStore {
   activeIndex: number;
   hasSnapshot: boolean;
   source: PlaybackSource | null;
+  transport: QueueTransportState | null;
   refreshFromNative: () => Promise<void>;
   refreshActiveIndex: () => Promise<void>;
   setSnapshot: (
@@ -47,53 +62,100 @@ export const useQueueStore = create<QueueStore>((set) => ({
   activeIndex: -1,
   hasSnapshot: false,
   source: null,
+  transport: null,
   refreshFromNative: async () => {
-    // Mid chunked-load the native queue is partial and index-shifted — wait it out.
+    // Mid chunked-load the native queue is partial — wait until all appends land.
     await queueLoadSettled();
     const [tracks, activeIndex] = await Promise.all([
       TrackPlayer.getQueue(),
       TrackPlayer.getActiveTrackIndex(),
     ]);
-    set({
-      tracks,
-      activeIndex: normalizeActiveIndex(activeIndex, tracks.length),
-      hasSnapshot: true,
+    set((state) => {
+      const normalized = normalizeActiveIndex(activeIndex, tracks.length);
+      return {
+        tracks,
+        activeIndex: normalized,
+        hasSnapshot: true,
+        transport: state.transport
+          ? { ...state.transport, activeLocalIndex: normalized, tracks }
+          : null,
+      };
     });
   },
   refreshActiveIndex: async () => {
     const activeIndex = await TrackPlayer.getActiveTrackIndex();
-    set((s) => ({
-      activeIndex: normalizeActiveIndex(
+    set((s) => {
+      const normalized = normalizeActiveIndex(
         activeIndex == null ? activeIndex : nativeIndexToAbsolute(activeIndex),
         s.tracks.length,
-      ),
-    }));
+      );
+      return {
+        activeIndex: normalized,
+        transport: s.transport
+          ? { ...s.transport, activeLocalIndex: normalized, tracks: s.tracks }
+          : null,
+      };
+    });
   },
   setSnapshot: (tracks, activeIndex = 0, options) =>
-    set((state) => ({
-      tracks,
-      activeIndex: normalizeActiveIndex(activeIndex, tracks.length),
-      hasSnapshot: true,
-      source: options && Object.hasOwn(options, 'source')
-        ? options.source ?? null
-        : state.source,
-    })),
+    set((state) => {
+      const normalized = normalizeActiveIndex(activeIndex, tracks.length);
+      const transport = options && Object.hasOwn(options, 'transport')
+        ? options.transport
+          ? {
+              ...options.transport,
+              activeLocalIndex: normalized,
+              tracks,
+            }
+          : null
+        : state.transport
+          ? { ...state.transport, activeLocalIndex: normalized, tracks }
+          : null;
+      return {
+        tracks,
+        activeIndex: normalized,
+        hasSnapshot: true,
+        source: options && Object.hasOwn(options, 'source')
+          ? options.source ?? null
+          : state.source,
+        transport,
+      };
+    }),
   setActiveIndex: (activeIndex) =>
-    set((s) => ({ activeIndex: normalizeActiveIndex(activeIndex, s.tracks.length) })),
+    set((s) => {
+      const normalized = normalizeActiveIndex(activeIndex, s.tracks.length);
+      return {
+        activeIndex: normalized,
+        transport: s.transport
+          ? { ...s.transport, activeLocalIndex: normalized, tracks: s.tracks }
+          : null,
+      };
+    }),
   insertTrack: (track, index) =>
     set((s) => {
       const insertAt = boundedInsertIndex(index, s.tracks.length);
       const tracks = [...s.tracks];
       tracks.splice(insertAt, 0, track);
       const activeIndex = s.activeIndex >= insertAt ? s.activeIndex + 1 : s.activeIndex;
-      return { tracks, activeIndex, hasSnapshot: true };
+      return {
+        tracks,
+        activeIndex,
+        hasSnapshot: true,
+        transport: s.transport
+          ? { ...s.transport, activeLocalIndex: activeIndex, tracks }
+          : null,
+      };
     }),
   replaceUpcoming: (upcoming) =>
     set((s) => {
       const prefixEnd = s.activeIndex >= 0 ? s.activeIndex + 1 : 0;
+      const tracks = [...s.tracks.slice(0, prefixEnd), ...upcoming];
       return {
-        tracks: [...s.tracks.slice(0, prefixEnd), ...upcoming],
+        tracks,
         hasSnapshot: true,
+        transport: s.transport
+          ? { ...s.transport, tracks }
+          : null,
       };
     }),
   moveItem: (fromIndex, toIndex) =>
@@ -114,7 +176,14 @@ export const useQueueStore = create<QueueStore>((set) => ({
         activeIndex += 1;
       }
 
-      return { tracks, activeIndex, hasSnapshot: true };
+      return {
+        tracks,
+        activeIndex,
+        hasSnapshot: true,
+        transport: s.transport
+          ? { ...s.transport, activeLocalIndex: activeIndex, tracks }
+          : null,
+      };
     }),
   removeIndices: (indices) =>
     set((s) => {
@@ -143,6 +212,13 @@ export const useQueueStore = create<QueueStore>((set) => ({
         tracks,
         activeIndex: normalizeActiveIndex(activeIndex, tracks.length),
         hasSnapshot: true,
+        transport: s.transport
+          ? {
+              ...s.transport,
+              activeLocalIndex: normalizeActiveIndex(activeIndex, tracks.length),
+              tracks,
+            }
+          : null,
       };
     }),
 }));

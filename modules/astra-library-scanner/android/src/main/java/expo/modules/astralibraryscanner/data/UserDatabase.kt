@@ -11,6 +11,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.flow.Flow
 
 data class RemotePlaylistSyncPlan(
   val playlist: PlaylistEntity,
@@ -326,6 +327,9 @@ interface UserDao {
   @Query("SELECT * FROM playback_sessions WHERE id = :id")
   suspend fun getPlaybackSession(id: String): PlaybackSessionEntity?
 
+  @Query("SELECT * FROM playback_sessions WHERE id = :id")
+  fun observePlaybackSession(id: String): Flow<PlaybackSessionEntity?>
+
   @Query("SELECT * FROM playback_sessions ORDER BY updated_at DESC LIMIT 1")
   suspend fun getLatestPlaybackSession(): PlaybackSessionEntity?
 
@@ -372,11 +376,35 @@ interface UserDao {
   @Query("SELECT * FROM playback_queue_entries WHERE session_id = :sessionId ORDER BY position")
   suspend fun getAllQueueEntries(sessionId: String): List<PlaybackQueueEntryEntity>
 
+  @Query("SELECT * FROM playback_queue_entries WHERE session_id = :sessionId ORDER BY position")
+  fun observeQueueEntries(sessionId: String): Flow<List<PlaybackQueueEntryEntity>>
+
   @Upsert
   suspend fun putQueueEntries(entries: List<PlaybackQueueEntryEntity>)
 
   @Query("DELETE FROM playback_queue_entries WHERE session_id = :sessionId")
   suspend fun clearQueueEntries(sessionId: String)
+
+  @Query(
+    """
+      UPDATE playback_queue_entries
+      SET position = position + :offset
+      WHERE session_id = :sessionId AND position >= :start
+    """,
+  )
+  suspend fun parkQueuePositions(
+    sessionId: String,
+    start: Long,
+    offset: Long,
+  )
+
+  @Query(
+    """
+      DELETE FROM playback_queue_entries
+      WHERE session_id = :sessionId AND entry_id IN (:entryIds)
+    """,
+  )
+  suspend fun deleteQueueEntriesById(sessionId: String, entryIds: List<Long>)
 
   @Query("SELECT COUNT(*) FROM playback_queue_entries WHERE session_id = :sessionId")
   suspend fun countQueueEntries(sessionId: String): Long
@@ -389,6 +417,27 @@ interface UserDao {
 
   @Query("DELETE FROM playback_original_queue_entries WHERE session_id = :sessionId")
   suspend fun clearOriginalQueueEntries(sessionId: String)
+
+  @Query(
+    """
+      UPDATE playback_original_queue_entries
+      SET position = position + :offset
+      WHERE session_id = :sessionId AND position >= :start
+    """,
+  )
+  suspend fun parkOriginalQueuePositions(
+    sessionId: String,
+    start: Long,
+    offset: Long,
+  )
+
+  @Query(
+    """
+      DELETE FROM playback_original_queue_entries
+      WHERE session_id = :sessionId AND entry_id IN (:entryIds)
+    """,
+  )
+  suspend fun deleteOriginalQueueEntriesById(sessionId: String, entryIds: List<Long>)
 
   @Query("SELECT * FROM snapshot_metadata WHERE id = 1")
   suspend fun getSnapshotMetadata(): SnapshotMetadataEntity?
@@ -407,6 +456,88 @@ interface UserDao {
     if (entries.isNotEmpty()) putQueueEntries(entries)
     clearOriginalQueueEntries(session.id)
     if (originalEntries.isNotEmpty()) putOriginalQueueEntries(originalEntries)
+  }
+
+  /**
+   * Rewrites only the position range changed by an edit. Rows are parked in a
+   * disjoint position space first so the unique (session, position) index never
+   * observes a transient collision during moves.
+   */
+  @Transaction
+  suspend fun applyPlaybackQueueMutation(
+    session: PlaybackSessionEntity,
+    entries: List<PlaybackQueueEntryEntity>,
+    originalEntries: List<PlaybackOriginalQueueEntryEntity>,
+  ) {
+    val oldEntries = getAllQueueEntries(session.id)
+    putPlaybackSession(session)
+    val changedAt = firstChangedQueuePosition(oldEntries, entries)
+    if (changedAt != null) {
+      parkQueuePositions(session.id, changedAt.toLong(), 1_000_000_000_000L)
+      val retainedIds = entries.mapTo(hashSetOf(), PlaybackQueueEntryEntity::entryId)
+      val removedIds = oldEntries
+        .asSequence()
+        .map(PlaybackQueueEntryEntity::entryId)
+        .filterNot(retainedIds::contains)
+        .toList()
+      if (removedIds.isNotEmpty()) deleteQueueEntriesById(session.id, removedIds)
+      val changedRows = entries.drop(changedAt)
+      if (changedRows.isNotEmpty()) putQueueEntries(changedRows)
+    }
+
+    val oldOriginal = getOriginalQueueEntries(session.id)
+    if (originalEntries.isEmpty()) {
+      if (oldOriginal.isNotEmpty()) clearOriginalQueueEntries(session.id)
+      return
+    }
+    val originalChangedAt = firstChangedOriginalPosition(oldOriginal, originalEntries)
+    if (originalChangedAt != null) {
+      parkOriginalQueuePositions(
+        session.id,
+        originalChangedAt.toLong(),
+        1_000_000_000_000L,
+      )
+      val retainedIds = originalEntries
+        .mapTo(hashSetOf(), PlaybackOriginalQueueEntryEntity::entryId)
+      val removedIds = oldOriginal
+        .asSequence()
+        .map(PlaybackOriginalQueueEntryEntity::entryId)
+        .filterNot(retainedIds::contains)
+        .toList()
+      if (removedIds.isNotEmpty()) {
+        deleteOriginalQueueEntriesById(session.id, removedIds)
+      }
+      val changedRows = originalEntries.drop(originalChangedAt)
+      if (changedRows.isNotEmpty()) putOriginalQueueEntries(changedRows)
+    }
+  }
+
+  private fun firstChangedQueuePosition(
+    before: List<PlaybackQueueEntryEntity>,
+    after: List<PlaybackQueueEntryEntity>,
+  ): Int? {
+    val shared = minOf(before.size, after.size)
+    for (index in 0 until shared) {
+      if (
+        before[index].entryId != after[index].entryId ||
+        before[index].trackPath != after[index].trackPath
+      ) return index
+    }
+    return shared.takeIf { before.size != after.size }
+  }
+
+  private fun firstChangedOriginalPosition(
+    before: List<PlaybackOriginalQueueEntryEntity>,
+    after: List<PlaybackOriginalQueueEntryEntity>,
+  ): Int? {
+    val shared = minOf(before.size, after.size)
+    for (index in 0 until shared) {
+      if (
+        before[index].entryId != after[index].entryId ||
+        before[index].trackPath != after[index].trackPath
+      ) return index
+    }
+    return shared.takeIf { before.size != after.size }
   }
 
   @Transaction
@@ -525,7 +656,7 @@ interface UserDao {
     PlaybackOriginalQueueEntryEntity::class,
     SnapshotMetadataEntity::class,
   ],
-  version = 2,
+  version = 3,
   exportSchema = true,
 )
 abstract class AstraUserDatabase : RoomDatabase() {
@@ -605,6 +736,154 @@ internal val USER_MIGRATION_1_2 = object : Migration(1, 2) {
     database.execSQL(
       "CREATE INDEX IF NOT EXISTS `index_listening_segments_session_key` " +
         "ON `listening_segments` (`session_key`)",
+    )
+  }
+}
+
+internal val USER_MIGRATION_2_3 = object : Migration(2, 3) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL(
+      "ALTER TABLE `playback_sessions` ADD COLUMN `queue_revision` INTEGER NOT NULL DEFAULT 0",
+    )
+    database.execSQL(
+      "ALTER TABLE `playback_sessions` ADD COLUMN `catalog_revision` INTEGER",
+    )
+    database.execSQL(
+      "ALTER TABLE `playback_sessions` ADD COLUMN `is_dirty` INTEGER NOT NULL DEFAULT 0",
+    )
+    database.execSQL(
+      "ALTER TABLE `playback_sessions` ADD COLUMN `next_entry_id` INTEGER NOT NULL DEFAULT 0",
+    )
+
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `playback_queue_entries_new` (
+          `session_id` TEXT NOT NULL,
+          `entry_id` INTEGER NOT NULL,
+          `position` INTEGER NOT NULL,
+          `track_path` TEXT NOT NULL,
+          PRIMARY KEY(`session_id`, `entry_id`),
+          FOREIGN KEY(`session_id`) REFERENCES `playback_sessions`(`id`)
+            ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+      """.trimIndent(),
+    )
+    database.execSQL(
+      """
+        INSERT INTO `playback_queue_entries_new` (`session_id`, `entry_id`, `position`, `track_path`)
+        SELECT `session_id`, `position`, `position`, `track_path`
+        FROM `playback_queue_entries`
+      """.trimIndent(),
+    )
+
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `playback_original_queue_entries_new` (
+          `session_id` TEXT NOT NULL,
+          `entry_id` INTEGER NOT NULL,
+          `position` INTEGER NOT NULL,
+          `track_path` TEXT NOT NULL,
+          PRIMARY KEY(`session_id`, `entry_id`),
+          FOREIGN KEY(`session_id`) REFERENCES `playback_sessions`(`id`)
+            ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+      """.trimIndent(),
+    )
+
+    val idsBySessionAndPath = mutableMapOf<Pair<String, String>, java.util.ArrayDeque<Long>>()
+    var nextSyntheticId = 0L
+    database.query(
+      """
+        SELECT `session_id`, `entry_id`, `track_path`
+        FROM `playback_queue_entries_new`
+        ORDER BY `session_id`, `position`
+      """.trimIndent(),
+    ).use { cursor ->
+      while (cursor.moveToNext()) {
+        val sessionId = cursor.getString(0)
+        val entryId = cursor.getLong(1)
+        val path = cursor.getString(2)
+        idsBySessionAndPath
+          .getOrPut(sessionId to path) { java.util.ArrayDeque() }
+          .addLast(entryId)
+        nextSyntheticId = maxOf(nextSyntheticId, entryId + 1)
+      }
+    }
+    database.compileStatement(
+      """
+        INSERT INTO `playback_original_queue_entries_new`
+          (`session_id`, `entry_id`, `position`, `track_path`)
+        VALUES (?, ?, ?, ?)
+      """.trimIndent(),
+    ).use { insert ->
+      database.query(
+        """
+          SELECT `session_id`, `position`, `track_path`
+          FROM `playback_original_queue_entries`
+          ORDER BY `session_id`, `position`
+        """.trimIndent(),
+      ).use { cursor ->
+        while (cursor.moveToNext()) {
+          val sessionId = cursor.getString(0)
+          val position = cursor.getLong(1)
+          val path = cursor.getString(2)
+          val matchingIds = idsBySessionAndPath[sessionId to path]
+          val entryId = if (matchingIds != null && matchingIds.isNotEmpty()) {
+            matchingIds.removeFirst()
+          } else {
+            nextSyntheticId++
+          }
+          insert.clearBindings()
+          insert.bindString(1, sessionId)
+          insert.bindLong(2, entryId)
+          insert.bindLong(3, position)
+          insert.bindString(4, path)
+          insert.executeInsert()
+        }
+      }
+    }
+
+    database.execSQL("DROP TABLE `playback_queue_entries`")
+    database.execSQL("ALTER TABLE `playback_queue_entries_new` RENAME TO `playback_queue_entries`")
+    database.execSQL("DROP TABLE `playback_original_queue_entries`")
+    database.execSQL(
+      "ALTER TABLE `playback_original_queue_entries_new` RENAME TO `playback_original_queue_entries`",
+    )
+    database.execSQL(
+      "CREATE UNIQUE INDEX IF NOT EXISTS `index_playback_queue_entries_session_id_position` " +
+        "ON `playback_queue_entries` (`session_id`, `position`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_playback_queue_entries_session_id_track_path` " +
+        "ON `playback_queue_entries` (`session_id`, `track_path`)",
+    )
+    database.execSQL(
+      "CREATE UNIQUE INDEX IF NOT EXISTS `index_playback_original_queue_entries_session_id_position` " +
+        "ON `playback_original_queue_entries` (`session_id`, `position`)",
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_playback_original_queue_entries_session_id_track_path` " +
+        "ON `playback_original_queue_entries` (`session_id`, `track_path`)",
+    )
+    database.execSQL(
+      """
+        UPDATE `playback_sessions`
+        SET `queue_revision` = CASE
+              WHEN EXISTS (
+                SELECT 1 FROM `playback_queue_entries`
+                WHERE `session_id` = `playback_sessions`.`id`
+              ) THEN 1
+              ELSE 0
+            END,
+            `next_entry_id` = COALESCE(
+              (
+                SELECT MAX(`entry_id`) + 1
+                FROM `playback_queue_entries`
+                WHERE `session_id` = `playback_sessions`.`id`
+              ),
+              0
+            )
+      """.trimIndent(),
     )
   }
 }

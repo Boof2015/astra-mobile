@@ -7,26 +7,17 @@ import {
 /**
  * Chunked feeder for RNTP's native queue. Loading a long context in one
  * setQueue/add stalls the Android main thread for seconds (per-track Bundle →
- * Track → MediaSource construction), so playback starts from a small first
- * chunk and the rest streams in behind it: the upcoming tail first (it plays
- * next), then the head prepended in reverse chunk order. The JS queue mirror
- * holds the full context from the start; while the head is still missing,
- * native indices trail absolute (mirror) indices by `headRemaining`.
+ * Track → MediaSource construction), so playback starts from history + current
+ * + eight upcoming rows and the rest streams in behind it. We never prepend:
+ * native indices stay stable for the lifetime of a transport window.
  */
 
-// The first chunk's setQueue lands on the Android main thread at the exact
-// moment of the play tap, so it stays tiny. Each background add() also occupies
-// the main thread (= the UI thread) for time proportional to its size, so the
-// chunks stay small with generous yields — a longer total fill is invisible,
-// per-chunk frame drops are not.
-const FIRST_CHUNK = 12;
-const CHUNK = 50;
-const YIELD_MS = 64;
+const INITIAL_UPCOMING = 8;
+const CHUNK = 8;
+const YIELD_MS = 16;
 
 interface QueueLoad {
   generation: number;
-  /** Head tracks not yet prepended: absolute = native + headRemaining. */
-  headRemaining: number;
   /** Tracks currently in the native queue (per this loader's bookkeeping). */
   loadedCount: number;
   settled: Promise<void>;
@@ -54,19 +45,15 @@ export function queueLoadSettled(): Promise<void> {
   return load ? load.settled : Promise.resolve();
 }
 
-/** Map a native RNTP queue index to an absolute (full-queue mirror) index. */
+/** RNTP and the JS transport mirror share one stable local index space. */
 export function nativeIndexToAbsolute(nativeIndex: number): number {
-  return load ? nativeIndex + load.headRemaining : nativeIndex;
+  return nativeIndex;
 }
 
-/**
- * Map an absolute index to its native index, or null while that part of the
- * queue has not been loaded yet.
- */
+/** Map a local mirror index to RNTP, or null until its append has landed. */
 export function absoluteIndexToNative(absoluteIndex: number): number | null {
   if (!load) return absoluteIndex;
-  const nativeIndex = absoluteIndex - load.headRemaining;
-  return nativeIndex >= 0 && nativeIndex < load.loadedCount ? nativeIndex : null;
+  return absoluteIndex >= 0 && absoluteIndex < load.loadedCount ? absoluteIndex : null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -81,7 +68,7 @@ async function supersedePreviousLoad(): Promise<number> {
   return gen;
 }
 
-function beginLoad(gen: number, headRemaining: number, loadedCount: number): QueueLoad {
+function beginLoad(gen: number, loadedCount: number): QueueLoad {
   let resolveSettled!: () => void;
   let resolveLoopDone!: () => void;
   const settled = new Promise<void>((resolve) => {
@@ -92,7 +79,6 @@ function beginLoad(gen: number, headRemaining: number, loadedCount: number): Que
   });
   const next: QueueLoad = {
     generation: gen,
-    headRemaining,
     loadedCount,
     settled,
     resolveSettled,
@@ -123,21 +109,26 @@ export async function loadQueueChunked(
   const gen = await supersedePreviousLoad();
   if (gen !== generation) return;
 
-  const current = beginLoad(gen, startIndex, 0);
+  const current = beginLoad(gen, 0);
   const manualTransition = markManualRecentPlayTransition(
     options.manualTransitionFromPath,
   );
   try {
-    const first = tracks.slice(startIndex, startIndex + FIRST_CHUNK);
+    const firstEnd = Math.min(
+      tracks.length,
+      Math.max(startIndex + 1, startIndex + 1 + INITIAL_UPCOMING),
+    );
+    const first = tracks.slice(0, firstEnd);
     await TrackPlayer.setQueue(first);
     current.loadedCount = first.length;
+    if (startIndex > 0) await TrackPlayer.skip(startIndex);
   } catch (err) {
     cancelManualRecentPlayTransition(manualTransition);
     finishLoad(current, false);
     throw err;
   }
 
-  void fillRemainder(current, tracks, startIndex);
+  void fillRemainder(current, tracks);
 }
 
 /**
@@ -150,7 +141,7 @@ export async function appendUpcomingChunked(tracks: RntpTrack[], baseCount: numb
   const gen = await supersedePreviousLoad();
   if (gen !== generation || tracks.length === 0) return;
 
-  const current = beginLoad(gen, 0, baseCount);
+  const current = beginLoad(gen, baseCount);
   try {
     const first = tracks.slice(0, CHUNK);
     await TrackPlayer.add(first);
@@ -180,24 +171,10 @@ async function fillTail(current: QueueLoad, tracks: RntpTrack[], fromIndex: numb
 async function fillRemainder(
   current: QueueLoad,
   tracks: RntpTrack[],
-  startIndex: number,
 ): Promise<void> {
   let failed = false;
   try {
-    // Tail first — it's what plays next.
-    await fillTail(current, tracks, startIndex + current.loadedCount);
-
-    // Head second, prepended in reverse chunk order so [0..startIndex) ends up
-    // in original order and `absolute = native + headRemaining` holds throughout.
-    for (let end = startIndex; end > 0; end -= CHUNK) {
-      await sleep(YIELD_MS);
-      if (current.generation !== generation) return;
-      const begin = Math.max(0, end - CHUNK);
-      const chunk = tracks.slice(begin, end);
-      await TrackPlayer.add(chunk, 0);
-      current.headRemaining = begin;
-      current.loadedCount += chunk.length;
-    }
+    await fillTail(current, tracks, current.loadedCount);
   } catch {
     failed = true;
   } finally {

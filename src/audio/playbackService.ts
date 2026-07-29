@@ -4,6 +4,7 @@ import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
 import { startAudioProcessingWarmup } from './audioProcessingStartup';
 import {
+  handleVirtualQueueEnded,
   handleVirtualPlaybackAdvance,
   playForCar,
   skipToNext,
@@ -112,6 +113,9 @@ export async function PlaybackService(): Promise<void> {
   });
   TrackPlayer.addEventListener(Event.PlaybackQueueEnded, ({ position }) => {
     handleListeningQueueEnded(position);
+    void handleVirtualQueueEnded().catch((error) => {
+      console.warn('[playback] virtual queue end recovery failed', error);
+    });
     if (useSleepTimerStore.getState().timer?.mode !== 'end-of-track') return;
     void TrackPlayer.getProgress()
       .then(({ position, duration }) => useSleepTimerStore.getState().reconcileEndOfTrack(position, duration, false))

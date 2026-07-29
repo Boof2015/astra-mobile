@@ -29,6 +29,7 @@ const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
 const HOME_GREETING_TEXT_MODE_KEY = 'home_greeting_text_mode';
 const LISTENING_HISTORY_ENABLED_KEY = 'listening_history_enabled';
+const NATIVE_QUEUE_ENABLED_KEY = 'native_queue_enabled';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -68,6 +69,7 @@ interface SettingsStore {
   nowPlayingCompanion: NowPlayingCompanion;
   homeGreetingTextMode: HomeGreetingTextMode;
   listeningHistoryEnabled: boolean;
+  nativeQueueEnabled: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
@@ -79,6 +81,7 @@ interface SettingsStore {
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
   setHomeGreetingTextMode: (mode: HomeGreetingTextMode) => Promise<void>;
   setListeningHistoryEnabled: (enabled: boolean) => Promise<void>;
+  setNativeQueueEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -91,6 +94,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   nowPlayingCompanion: 'queue',
   homeGreetingTextMode: 'messages',
   listeningHistoryEnabled: true,
+  nativeQueueEnabled: false,
   loaded: false,
 
   load: async () => {
@@ -106,6 +110,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       NOW_PLAYING_COMPANION_KEY,
       HOME_GREETING_TEXT_MODE_KEY,
       LISTENING_HISTORY_ENABLED_KEY,
+      NATIVE_QUEUE_ENABLED_KEY,
     ]);
     const grouping = values[ARTIST_GROUPING_KEY] ?? null;
     const includeSingles = values[INCLUDE_SINGLES_KEY] ?? null;
@@ -116,6 +121,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const nowPlayingCompanion = values[NOW_PLAYING_COMPANION_KEY] ?? null;
     const homeGreetingTextMode = values[HOME_GREETING_TEXT_MODE_KEY] ?? null;
     const listeningHistoryEnabled = values[LISTENING_HISTORY_ENABLED_KEY] !== '0';
+    const nativeQueueEnabled = parseBoolean(values[NATIVE_QUEUE_ENABLED_KEY] ?? null);
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
@@ -126,6 +132,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
       homeGreetingTextMode: parseHomeGreetingTextMode(homeGreetingTextMode),
       listeningHistoryEnabled,
+      nativeQueueEnabled,
       loaded: true,
     });
   },
@@ -193,5 +200,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (!enabled) resumeListeningHistoryTracking();
       throw error;
     }
+  },
+
+  setNativeQueueEnabled: async (enabled) => {
+    if (get().nativeQueueEnabled === enabled) return;
+    set({ nativeQueueEnabled: enabled });
+    await AstraLibraryData.setSettings({
+      [NATIVE_QUEUE_ENABLED_KEY]: enabled ? 'true' : 'false',
+    });
   },
 }));

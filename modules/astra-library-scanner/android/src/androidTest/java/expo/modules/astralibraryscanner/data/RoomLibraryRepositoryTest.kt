@@ -209,6 +209,69 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun stableQueueMutationPreservesIdsAcrossMoveRemoveInsertAndDuplicates() = runBlocking {
+    val dao = user.userDao()
+    val session = PlaybackSessionEntity(
+      id = "active-context",
+      contextJson = """{"kind":"manual"}""",
+      anchorPath = "/a.flac",
+      shuffleSeed = 42,
+      activePosition = 0,
+      createdAt = 1,
+      updatedAt = 1,
+      queueRevision = 1,
+      nextEntryId = 14,
+    )
+    dao.replacePlaybackQueue(
+      session,
+      listOf(
+        PlaybackQueueEntryEntity(session.id, 0, "/a.flac", 10),
+        PlaybackQueueEntryEntity(session.id, 1, "/b.flac", 11),
+        PlaybackQueueEntryEntity(session.id, 2, "/a.flac", 12),
+        PlaybackQueueEntryEntity(session.id, 3, "/c.flac", 13),
+      ),
+      listOf(
+        PlaybackOriginalQueueEntryEntity(session.id, 0, "/a.flac", 10),
+        PlaybackOriginalQueueEntryEntity(session.id, 1, "/b.flac", 11),
+        PlaybackOriginalQueueEntryEntity(session.id, 2, "/a.flac", 12),
+        PlaybackOriginalQueueEntryEntity(session.id, 3, "/c.flac", 13),
+      ),
+    )
+
+    dao.applyPlaybackQueueMutation(
+      session.copy(queueRevision = 2, nextEntryId = 15),
+      listOf(
+        PlaybackQueueEntryEntity(session.id, 0, "/a.flac", 10),
+        PlaybackQueueEntryEntity(session.id, 1, "/c.flac", 13),
+        PlaybackQueueEntryEntity(session.id, 2, "/a.flac", 12),
+        PlaybackQueueEntryEntity(session.id, 3, "/d.flac", 14),
+      ),
+      listOf(
+        PlaybackOriginalQueueEntryEntity(session.id, 0, "/a.flac", 10),
+        PlaybackOriginalQueueEntryEntity(session.id, 1, "/a.flac", 12),
+        PlaybackOriginalQueueEntryEntity(session.id, 2, "/c.flac", 13),
+        PlaybackOriginalQueueEntryEntity(session.id, 3, "/d.flac", 14),
+      ),
+    )
+
+    assertEquals(
+      listOf(10L, 13L, 12L, 14L),
+      dao.getAllQueueEntries(session.id).map(PlaybackQueueEntryEntity::entryId),
+    )
+    assertEquals(
+      listOf("/a.flac", "/c.flac", "/a.flac", "/d.flac"),
+      dao.getAllQueueEntries(session.id).map(PlaybackQueueEntryEntity::trackPath),
+    )
+    assertEquals(
+      listOf(10L, 12L, 13L, 14L),
+      dao.getOriginalQueueEntries(session.id)
+        .map(PlaybackOriginalQueueEntryEntity::entryId),
+    )
+    assertEquals(2L, dao.getPlaybackSession(session.id)?.queueRevision)
+    assertEquals(15L, dao.getPlaybackSession(session.id)?.nextEntryId)
+  }
+
+  @Test
   fun playbackWindowNeverClampsPastTheEndBackToTheLastTrack() {
     assertEquals(0L, boundedPlaybackWindowStart(-10, 3))
     assertEquals(2L, boundedPlaybackWindowStart(2, 3))

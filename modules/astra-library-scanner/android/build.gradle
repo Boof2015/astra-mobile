@@ -14,6 +14,16 @@ apply plugin: 'com.google.devtools.ksp'
 group = 'expo.modules.astralibraryscanner'
 version = '0.1.0'
 
+def queueFontAssetsDir = layout.buildDirectory.dir("generated/astraQueueFonts")
+def prepareQueueFontAssets = tasks.register("prepareQueueFontAssets", Copy) {
+  from(
+    "$rootDir/../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf",
+    "$rootDir/../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf",
+    "$rootDir/../node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf",
+  )
+  into(queueFontAssetsDir)
+}
+
 android {
   namespace "expo.modules.astralibraryscanner"
   defaultConfig {
@@ -23,10 +33,15 @@ android {
   }
   sourceSets {
     androidTest.assets.srcDirs += files("$projectDir/schemas")
+    main.assets.srcDir(queueFontAssetsDir)
   }
   lintOptions {
     abortOnError false
   }
+}
+
+tasks.named("preBuild").configure {
+  dependsOn(prepareQueueFontAssets)
 }
 
 dependencies {
@@ -36,6 +51,10 @@ dependencies {
   implementation 'com.google.android.exoplayer:exoplayer-core:2.19.0'
   implementation 'androidx.room:room-runtime:2.8.4'
   implementation 'androidx.room:room-ktx:2.8.4'
+  implementation 'androidx.recyclerview:recyclerview:1.4.0'
+  implementation 'androidx.metrics:metrics-performance:1.0.0'
+  implementation 'com.google.android.material:material:1.13.0'
+  implementation 'com.github.bumptech.glide:glide:5.0.5'
   ksp 'androidx.room:room-compiler:2.8.4'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 

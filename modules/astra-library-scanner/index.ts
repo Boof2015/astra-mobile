@@ -251,12 +251,13 @@ export type LibraryQuery =
 
 export interface NativePlaybackWindow<T> {
   sessionId: string;
-  items: (T & { queuePosition: number })[];
+  items: (T & { queuePosition: number; queueEntryId: number })[];
   windowStart: number;
   activePosition: number;
   totalCount: number;
   contextJson: string;
   shuffleSeed: number | null;
+  queueRevision: number;
   catalogRevision: string;
 }
 
@@ -532,3 +533,16 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
 
 export const AstraLibraryData =
   requireNativeModule<AstraLibraryDataModuleType>('AstraLibraryData');
+
+export {
+  AstraQueue,
+  AstraQueueView,
+  toNativeQueuePalette,
+} from './queue';
+export type {
+  AstraQueueViewProps,
+  NativeQueuePlaybackRequest,
+  NativeQueuePalette,
+  NativeQueuePresentationOptions,
+  NativeQueueRevisionEvent,
+} from './queue';
