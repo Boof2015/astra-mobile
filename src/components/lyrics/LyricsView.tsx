@@ -161,7 +161,7 @@ export function LyricsView({
             accessibilityLabel="Hide lyrics"
             accessibilityState={{ selected: true }}
           >
-            <MaterialCommunityIcons name="script-text-outline" size={22} color={colors.accent} />
+            <MaterialCommunityIcons name="comment-quote-outline" size={22} color={colors.accent} />
           </TactilePressable>
         </View>
       </View>

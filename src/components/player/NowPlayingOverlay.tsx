@@ -1661,14 +1661,14 @@ export function NowPlayingOverlay() {
                           size={SUB_ICON_SIZE + 2}
                           inactive={
                             <MaterialCommunityIcons
-                              name="script-text-outline"
+                              name="comment-quote-outline"
                               size={SUB_ICON_SIZE + 2}
                               color={colors.textTertiary}
                             />
                           }
                           active={
                             <MaterialCommunityIcons
-                              name="script-text-outline"
+                              name="comment-quote-outline"
                               size={SUB_ICON_SIZE + 2}
                               color={colors.accent}
                             />
