@@ -50,6 +50,12 @@ type AstraQueueEvents = {
 declare class AstraQueueModuleType extends NativeModule<AstraQueueEvents> {
   present(options: NativeQueuePresentationOptions): Promise<void>;
   dismiss(): void;
+  /**
+   * Re-theme an already-presented sheet. The palette given to `present` is only
+   * correct until the next track change, because the accent is derived from
+   * cover art.
+   */
+  updatePalette(palette: NativeQueuePalette): void;
   resolvePlaybackRequest(
     requestId: string,
     success: boolean,

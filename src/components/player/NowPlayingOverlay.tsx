@@ -799,6 +799,14 @@ export function NowPlayingOverlay() {
     };
   }, [nativeQueueEnabled]);
 
+  // `colors` is accent-scoped to the cover art, so it changes on every track
+  // change. present() captured the palette once, which left an open sheet
+  // wearing the previous track's accent.
+  useEffect(() => {
+    if (!nativeQueueEnabled || isDesktopTarget || !queueOpen) return;
+    AstraQueue.updatePalette(toNativeQueuePalette(colors));
+  }, [colors, isDesktopTarget, nativeQueueEnabled, queueOpen]);
+
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
   // — e.g. the library-detail back interceptor underneath.

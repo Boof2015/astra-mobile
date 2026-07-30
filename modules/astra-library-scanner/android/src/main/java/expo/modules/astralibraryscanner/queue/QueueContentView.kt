@@ -40,6 +40,9 @@ import kotlinx.coroutines.launch
 private val NON_INTER_CHARACTER =
   Regex("[^\\u0000-\\u024F\\u0370-\\u03FF\\u0400-\\u04FF\\u2000-\\u206F\\u20A0-\\u20CF\\u2100-\\u214F]")
 private const val MAX_ANIMATED_REORDER_ROWS = 48
+/** Per-frame drag auto-scroll speed, in dp, from a nudge past the edge to a committed hold. */
+private const val DRAG_SCROLL_MIN_DP = 2f
+private const val DRAG_SCROLL_MAX_DP = 12f
 
 class QueueContentView(
   context: Context,
@@ -85,9 +88,14 @@ class QueueContentView(
   private var coordinatorAttached = false
   private var editMode = false
   private var dragFromId: Long? = null
-  private var dragTargetId: Long? = null
   private var swipeEntryId: Long? = null
   private var swipeArmed = false
+  /**
+   * Revision at the moment of a drag drop. The render that commits *that* drag
+   * must not re-anchor, but an unrelated render arriving in the meantime still
+   * should — so this is keyed to the revision rather than being a bare flag.
+   */
+  private var dragCommitBaseRevision: Long? = null
 
   var playbackRequestListener: PlaybackRequestListener? = null
 
@@ -140,13 +148,32 @@ class QueueContentView(
           recycler.itemAnimator = createDragItemAnimator()
           adapter.rowAt(viewHolder.bindingAdapterPosition)?.let { row ->
             dragFromId = row.entryId
-            dragTargetId = row.entryId
           }
           haptics.lift(viewHolder.itemView)
           viewHolder.itemView.alpha = 0.96f
           viewHolder.itemView.scaleX = 1.02f
           viewHolder.itemView.scaleY = 1.02f
         }
+      }
+
+      override fun interpolateOutOfBoundsScroll(
+        recyclerView: RecyclerView,
+        viewSize: Int,
+        viewSizeOutOfBounds: Int,
+        totalSize: Int,
+        msSinceStartScroll: Long,
+      ): Int {
+        // The framework default ramps over several seconds keyed off
+        // msSinceStartScroll, which makes a deliberate hold at the edge feel
+        // stuck and then suddenly fast. Drive it off overshoot distance only:
+        // a nudge past the edge creeps, a committed hold moves quickly, and the
+        // speed is the same every time you do it.
+        if (viewSize <= 0) return 0
+        val overshoot = (abs(viewSizeOutOfBounds).toFloat() / viewSize).coerceIn(0f, 1f)
+        val eased = overshoot * overshoot
+        val speed = DRAG_SCROLL_MIN_DP + (DRAG_SCROLL_MAX_DP - DRAG_SCROLL_MIN_DP) * eased
+        val pixels = dp(speed.toInt()).coerceAtLeast(1)
+        return if (viewSizeOutOfBounds > 0) pixels else -pixels
       }
 
       override fun onMove(
@@ -156,9 +183,10 @@ class QueueContentView(
       ): Boolean {
         val from = viewHolder.bindingAdapterPosition
         val to = target.bindingAdapterPosition
-        val targetId = adapter.rowAt(to)?.entryId ?: return false
+        // The destination is read off the adapter at drop, so this only has to
+        // keep the visual reorder honest.
+        if (adapter.rowAt(to) == null) return false
         if (!adapter.move(from, to)) return false
-        dragTargetId = targetId
         haptics.step(target.itemView)
         return true
       }
@@ -174,19 +202,34 @@ class QueueContentView(
         swipeEntryId = null
         swipeArmed = false
         val from = dragFromId
-        val to = dragTargetId
         dragFromId = null
-        dragTargetId = null
         if (from != null) {
           // Animation is useful while neighboring rows make room for the
           // dragged holder. End it at drop so later Room reconciliation and
           // swipe recovery stay visually exact.
           recycler.itemAnimator = null
         }
-        if (from == null || to == null || from == to) return
+        if (from == null) return
+        // Read the destination off the adapter's final state rather than the
+        // last onMove target: a fast auto-scroll drag skips callbacks, so the
+        // accumulated target can be hundreds of rows short of where the row
+        // actually came to rest.
+        val landedAt = adapter.positionOf(from)
+        if (landedAt < 0) return
+        val targetPosition = QueueReorder.queuePosition(
+          latestSnapshot.activePosition,
+          landedAt,
+        )
         haptics.drop(viewHolder.itemView)
-        launchMutation("Could not reorder the queue") {
-          coordinator.move(from, to)
+        // The user scrolled the viewport here themselves during the drag, so
+        // the render that commits this move must not re-anchor and yank the
+        // list back to where the drag started.
+        dragCommitBaseRevision = latestSnapshot.revision
+        launchMutation(
+          "Could not reorder the queue",
+          onFailure = { dragCommitBaseRevision = null },
+        ) {
+          coordinator.moveToPosition(from, targetPosition)
         }
       }
 
@@ -439,14 +482,21 @@ class QueueContentView(
     nowArtist.text = current?.artist.orEmpty()
     loadArtwork(nowArtwork, current?.artworkThumbPath)
 
-    val firstVisible = layoutManager.findFirstVisibleItemPosition()
+    val dragBase = dragCommitBaseRevision
+    val committingDrag = dragBase != null && snapshot.revision > dragBase
+    if (committingDrag) dragCommitBaseRevision = null
+    val firstVisible = if (committingDrag) -1 else layoutManager.findFirstVisibleItemPosition()
     val anchorId = adapter.rowAt(firstVisible)?.entryId
     val anchorOffset = if (firstVisible >= 0) {
       layoutManager.findViewByPosition(firstVisible)?.top ?: 0
     } else {
       0
     }
-    selectedIds.retainAll(upcoming.mapTo(hashSetOf(), QueueRowModel::entryId))
+    // Pruning only matters while something is selected, and building the id set
+    // to prune against is a full pass over the queue.
+    if (selectedIds.isNotEmpty()) {
+      selectedIds.retainAll(upcoming.mapTo(hashSetOf(), QueueRowModel::entryId))
+    }
     adapter.submit(upcoming, selectedIds, editMode) {
       val anchorPosition = anchorId?.let { id ->
         upcoming.indexOfFirst { it.entryId == id }.takeIf { it >= 0 }
@@ -490,12 +540,18 @@ class QueueContentView(
     removeButton.text = "Remove ($count)"
   }
 
-  private fun launchMutation(errorMessage: String, block: suspend () -> Boolean): Job =
+  private fun launchMutation(
+    errorMessage: String,
+    onFailure: () -> Unit = {},
+    block: suspend () -> Boolean,
+  ): Job =
     scope.launch {
       val success = runCatching {
         kotlinx.coroutines.withContext(Dispatchers.IO) { block() }
       }.getOrDefault(false)
       if (!success) {
+        // Back on the main dispatcher here, so view state is safe to touch.
+        onFailure()
         haptics.reject(this@QueueContentView)
         Snackbar.make(this@QueueContentView, errorMessage, Snackbar.LENGTH_SHORT).show()
         coordinator.refresh()

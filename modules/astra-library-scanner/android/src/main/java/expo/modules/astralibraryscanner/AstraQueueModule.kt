@@ -30,6 +30,7 @@ class AstraQueueModule : Module() {
   private var lastRevision = Long.MIN_VALUE
   private var coordinator: QueueCoordinator? = null
   private var jankStats: JankStats? = null
+  private var pendingPlaybackRequestId: String? = null
 
   private val coordinatorListener: (NativeQueueSnapshot) -> Unit = { snapshot ->
     if (snapshot.revision != lastRevision) {
@@ -88,13 +89,25 @@ class AstraQueueModule : Module() {
       }
     }
 
+    // The sheet's accent is derived from cover art, so it changes on every
+    // track change. The palette passed to present() is only correct until then.
+    Function("updatePalette") { values: Map<String, Any?>? ->
+      val palette = QueuePalette.from(values)
+      appContext.mainQueue.launch {
+        dialogContent?.palette = palette
+      }
+    }
+
     Function("resolvePlaybackRequest") {
         requestId: String,
         success: Boolean,
         message: String?,
       ->
-      requestId.length
       appContext.mainQueue.launch {
+        // Drop resolutions for a request that has already been superseded,
+        // otherwise an older failure can surface over a newer request.
+        if (requestId != pendingPlaybackRequestId) return@launch
+        pendingPlaybackRequestId = null
         dialogContent?.showPlaybackResult(success, message)
       }
     }
@@ -205,10 +218,12 @@ class AstraQueueModule : Module() {
   }
 
   private fun emitPlaybackRequest(entryId: Long, revision: Long) {
+    val requestId = UUID.randomUUID().toString()
+    pendingPlaybackRequestId = requestId
     sendEvent(
       "onPlaybackRequest",
       mapOf(
-        "requestId" to UUID.randomUUID().toString(),
+        "requestId" to requestId,
         "kind" to "playEntry",
         "entryId" to entryId.toDouble(),
         "queueRevision" to revision.toDouble(),

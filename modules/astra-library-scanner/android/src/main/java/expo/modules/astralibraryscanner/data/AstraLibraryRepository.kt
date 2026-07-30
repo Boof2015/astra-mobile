@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Trace
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import expo.modules.astralibraryscanner.queue.QueueReorder
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -1135,9 +1136,7 @@ class AstraLibraryRepository private constructor(
     var nextEntryId = session.nextEntryId
 
     fun move(items: MutableList<OrderedQueueItem>, from: Int, to: Int) {
-      if (from !in items.indices || to !in items.indices || from == to) return
-      val item = items.removeAt(from)
-      items.add(to.coerceIn(0, items.size), item)
+      QueueReorder.applyMove(items, from, to)
     }
 
     when (operation) {
