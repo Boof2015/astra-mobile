@@ -11,6 +11,10 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import expo.modules.astralibraryscanner.queue.QUEUE_PARK_OFFSET
+import expo.modules.astralibraryscanner.queue.QueueReorder
+import expo.modules.astralibraryscanner.queue.QueueRowKey
+import expo.modules.astralibraryscanner.queue.QueueWritePlan
 import kotlinx.coroutines.flow.Flow
 
 data class RemotePlaylistSyncPlan(
@@ -406,6 +410,31 @@ interface UserDao {
   )
   suspend fun deleteQueueEntriesById(sessionId: String, entryIds: List<Long>)
 
+  @Query(
+    """
+      UPDATE playback_queue_entries
+      SET position = position + :delta
+      WHERE session_id = :sessionId
+        AND position >= :fromPosition
+        AND position <= :toPosition
+    """,
+  )
+  suspend fun shiftQueueRange(
+    sessionId: String,
+    fromPosition: Long,
+    toPosition: Long,
+    delta: Long,
+  )
+
+  @Query(
+    """
+      UPDATE playback_queue_entries
+      SET position = :position
+      WHERE session_id = :sessionId AND entry_id = :entryId
+    """,
+  )
+  suspend fun setQueueEntryPosition(sessionId: String, entryId: Long, position: Long)
+
   @Query("SELECT COUNT(*) FROM playback_queue_entries WHERE session_id = :sessionId")
   suspend fun countQueueEntries(sessionId: String): Long
 
@@ -439,6 +468,31 @@ interface UserDao {
   )
   suspend fun deleteOriginalQueueEntriesById(sessionId: String, entryIds: List<Long>)
 
+  @Query(
+    """
+      UPDATE playback_original_queue_entries
+      SET position = position + :delta
+      WHERE session_id = :sessionId
+        AND position >= :fromPosition
+        AND position <= :toPosition
+    """,
+  )
+  suspend fun shiftOriginalQueueRange(
+    sessionId: String,
+    fromPosition: Long,
+    toPosition: Long,
+    delta: Long,
+  )
+
+  @Query(
+    """
+      UPDATE playback_original_queue_entries
+      SET position = :position
+      WHERE session_id = :sessionId AND entry_id = :entryId
+    """,
+  )
+  suspend fun setOriginalQueueEntryPosition(sessionId: String, entryId: Long, position: Long)
+
   @Query("SELECT * FROM snapshot_metadata WHERE id = 1")
   suspend fun getSnapshotMetadata(): SnapshotMetadataEntity?
 
@@ -471,18 +525,34 @@ interface UserDao {
   ) {
     val oldEntries = getAllQueueEntries(session.id)
     putPlaybackSession(session)
-    val changedAt = firstChangedQueuePosition(oldEntries, entries)
-    if (changedAt != null) {
-      parkQueuePositions(session.id, changedAt.toLong(), 1_000_000_000_000L)
-      val retainedIds = entries.mapTo(hashSetOf(), PlaybackQueueEntryEntity::entryId)
-      val removedIds = oldEntries
-        .asSequence()
-        .map(PlaybackQueueEntryEntity::entryId)
-        .filterNot(retainedIds::contains)
-        .toList()
-      if (removedIds.isNotEmpty()) deleteQueueEntriesById(session.id, removedIds)
-      val changedRows = entries.drop(changedAt)
-      if (changedRows.isNotEmpty()) putQueueEntries(changedRows)
+    // Removals and single moves — the edits a user performs on an open queue —
+    // become a handful of range UPDATEs. The fallback below rewrites every row
+    // from the change point, which for an edit near the active track means
+    // marshalling almost the whole queue through Room on every tap.
+    when (val plan = QueueReorder.planWrite(oldEntries.asRowKeys(), entries.asRowKeys())) {
+      QueueWritePlan.NoChange -> Unit
+
+      is QueueWritePlan.Removal -> {
+        deleteQueueEntriesById(session.id, plan.removedIds)
+        parkQueuePositions(session.id, plan.removedPositions.min(), QUEUE_PARK_OFFSET)
+        QueueReorder.compactionShifts(plan.removedPositions).forEach { shift ->
+          shiftQueueRange(session.id, shift.fromPosition, shift.toPosition, shift.delta)
+        }
+      }
+
+      is QueueWritePlan.Move -> {
+        val move = QueueReorder.movePlan(plan.from, plan.to)
+        if (move == null) {
+          rebuildQueueTail(session.id, oldEntries, entries)
+        } else {
+          setQueueEntryPosition(session.id, plan.entryId, move.parkedMovedPosition)
+          move.spanOut?.let { shiftQueueRange(session.id, it.fromPosition, it.toPosition, it.delta) }
+          move.spanBack?.let { shiftQueueRange(session.id, it.fromPosition, it.toPosition, it.delta) }
+          setQueueEntryPosition(session.id, plan.entryId, move.finalPosition)
+        }
+      }
+
+      QueueWritePlan.Rebuild -> rebuildQueueTail(session.id, oldEntries, entries)
     }
 
     val oldOriginal = getOriginalQueueEntries(session.id)
@@ -490,27 +560,81 @@ interface UserDao {
       if (oldOriginal.isNotEmpty()) clearOriginalQueueEntries(session.id)
       return
     }
-    val originalChangedAt = firstChangedOriginalPosition(oldOriginal, originalEntries)
-    if (originalChangedAt != null) {
-      parkOriginalQueuePositions(
-        session.id,
-        originalChangedAt.toLong(),
-        1_000_000_000_000L,
-      )
-      val retainedIds = originalEntries
-        .mapTo(hashSetOf(), PlaybackOriginalQueueEntryEntity::entryId)
-      val removedIds = oldOriginal
-        .asSequence()
-        .map(PlaybackOriginalQueueEntryEntity::entryId)
-        .filterNot(retainedIds::contains)
-        .toList()
-      if (removedIds.isNotEmpty()) {
-        deleteOriginalQueueEntriesById(session.id, removedIds)
+    when (
+      val plan = QueueReorder.planWrite(oldOriginal.asOriginalRowKeys(), originalEntries.asOriginalRowKeys())
+    ) {
+      QueueWritePlan.NoChange -> Unit
+
+      is QueueWritePlan.Removal -> {
+        deleteOriginalQueueEntriesById(session.id, plan.removedIds)
+        parkOriginalQueuePositions(session.id, plan.removedPositions.min(), QUEUE_PARK_OFFSET)
+        QueueReorder.compactionShifts(plan.removedPositions).forEach { shift ->
+          shiftOriginalQueueRange(session.id, shift.fromPosition, shift.toPosition, shift.delta)
+        }
       }
-      val changedRows = originalEntries.drop(originalChangedAt)
-      if (changedRows.isNotEmpty()) putOriginalQueueEntries(changedRows)
+
+      is QueueWritePlan.Move -> {
+        val move = QueueReorder.movePlan(plan.from, plan.to)
+        if (move == null) {
+          rebuildOriginalQueueTail(session.id, oldOriginal, originalEntries)
+        } else {
+          setOriginalQueueEntryPosition(session.id, plan.entryId, move.parkedMovedPosition)
+          move.spanOut?.let {
+            shiftOriginalQueueRange(session.id, it.fromPosition, it.toPosition, it.delta)
+          }
+          move.spanBack?.let {
+            shiftOriginalQueueRange(session.id, it.fromPosition, it.toPosition, it.delta)
+          }
+          setOriginalQueueEntryPosition(session.id, plan.entryId, move.finalPosition)
+        }
+      }
+
+      QueueWritePlan.Rebuild -> rebuildOriginalQueueTail(session.id, oldOriginal, originalEntries)
     }
   }
+
+  /** The pre-existing write path: park the tail, drop removals, upsert from the change point. */
+  private suspend fun rebuildQueueTail(
+    sessionId: String,
+    before: List<PlaybackQueueEntryEntity>,
+    after: List<PlaybackQueueEntryEntity>,
+  ) {
+    val changedAt = firstChangedQueuePosition(before, after) ?: return
+    parkQueuePositions(sessionId, changedAt.toLong(), QUEUE_PARK_OFFSET)
+    val retainedIds = after.mapTo(hashSetOf(), PlaybackQueueEntryEntity::entryId)
+    val removedIds = before
+      .asSequence()
+      .map(PlaybackQueueEntryEntity::entryId)
+      .filterNot(retainedIds::contains)
+      .toList()
+    if (removedIds.isNotEmpty()) deleteQueueEntriesById(sessionId, removedIds)
+    val changedRows = after.drop(changedAt)
+    if (changedRows.isNotEmpty()) putQueueEntries(changedRows)
+  }
+
+  private suspend fun rebuildOriginalQueueTail(
+    sessionId: String,
+    before: List<PlaybackOriginalQueueEntryEntity>,
+    after: List<PlaybackOriginalQueueEntryEntity>,
+  ) {
+    val changedAt = firstChangedOriginalPosition(before, after) ?: return
+    parkOriginalQueuePositions(sessionId, changedAt.toLong(), QUEUE_PARK_OFFSET)
+    val retainedIds = after.mapTo(hashSetOf(), PlaybackOriginalQueueEntryEntity::entryId)
+    val removedIds = before
+      .asSequence()
+      .map(PlaybackOriginalQueueEntryEntity::entryId)
+      .filterNot(retainedIds::contains)
+      .toList()
+    if (removedIds.isNotEmpty()) deleteOriginalQueueEntriesById(sessionId, removedIds)
+    val changedRows = after.drop(changedAt)
+    if (changedRows.isNotEmpty()) putOriginalQueueEntries(changedRows)
+  }
+
+  private fun List<PlaybackQueueEntryEntity>.asRowKeys(): List<QueueRowKey> =
+    map { QueueRowKey(it.entryId, it.trackPath, it.position) }
+
+  private fun List<PlaybackOriginalQueueEntryEntity>.asOriginalRowKeys(): List<QueueRowKey> =
+    map { QueueRowKey(it.entryId, it.trackPath, it.position) }
 
   private fun firstChangedQueuePosition(
     before: List<PlaybackQueueEntryEntity>,
