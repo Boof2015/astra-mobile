@@ -60,15 +60,21 @@ index e8e4c03..0ce542c 100644
      jclass surfaceClass = env->FindClass("android/view/Surface");
      jmethodID surfaceConstructor = env->GetMethodID(
          surfaceClass, "<init>", "(Landroid/graphics/SurfaceTexture;)V");
-@@ -95,15 +84,10 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+@@ -95,15 +84,15 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
          env->NewObject(surfaceClass, surfaceConstructor, jSurfaceTexture);
++    jmethodID surfaceRelease =
++        env->GetMethodID(surfaceClass, "release", "()V");
      window = ANativeWindow_fromSurface(env, jSurface);
  
 -    jclass surfaceTextureClass = env->GetObjectClass(_jSurfaceTexture);
 -    _updateTexImageMethod =
 -        env->GetMethodID(surfaceTextureClass, "updateTexImage", "()V");
 -
-     // Acquire the native window from the Surface
+-    // Acquire the native window from the Surface
++    // ANativeWindow_fromSurface() acquired an independent native reference, so
++    // close the temporary Java wrapper before dropping its local reference.
++    env->CallVoidMethod(jSurface, surfaceRelease);
++
      // Clean up local references
      env->DeleteLocalRef(jSurface);
      env->DeleteLocalRef(surfaceClass);
@@ -76,7 +82,7 @@ index e8e4c03..0ce542c 100644
    } else {
      window = ANativeWindow_fromSurface(env, jSurfaceTexture);
    }
-@@ -112,6 +96,12 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+@@ -112,6 +101,12 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
  #else
    _surfaceHolder = OpenGLContext::getInstance().MakeWindow(window);
  #endif
@@ -89,7 +95,7 @@ index e8e4c03..0ce542c 100644
  
    // Post redraw request to ensure we paint in the next draw cycle.
    _requestRedraw();
-@@ -120,11 +110,15 @@ void RNSkOpenGLCanvasProvider::surfaceDestroyed() {
+@@ -120,11 +115,15 @@ void RNSkOpenGLCanvasProvider::surfaceDestroyed() {
    // destroy the renderer (a unique pointer so the dtor will be called
    // immediately.)
    _surfaceHolder = nullptr;

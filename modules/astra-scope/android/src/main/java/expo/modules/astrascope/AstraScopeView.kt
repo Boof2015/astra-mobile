@@ -101,14 +101,13 @@ internal class AstraScopeView(
   private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val textureView = TextureView(context)
   private val renderGate = ScopeRenderGate()
+  private val surfaceSession =
+    ScopeSurfaceSession<SurfaceTexture, Surface> { surface -> surface.release() }
   private val powerManager =
     context.getSystemService(Context.POWER_SERVICE) as PowerManager
   private var attached = false
   private var windowVisible = false
   @Volatile
-  private var surfaceAvailable = false
-  @Volatile
-  private var renderSurface: Surface? = null
   private var scheduledToken = 0
   private var lastAnalysisAt = 0L
   private var lastDrawAt = 0L
@@ -153,7 +152,7 @@ internal class AstraScopeView(
         if (!renderGate.isCurrent(token)) return
         preparePaths()
         hasNewFrame = false
-        publishFrame()
+        publishFrame(token)
       }
 
       if (renderGate.isCurrent(token)) {
@@ -185,7 +184,7 @@ internal class AstraScopeView(
         preparePaths()
         hasNewFrame = false
         lastDrawAt = now
-        publishFrame()
+        publishFrame(token)
       }
 
       val loopCadence = min(analysisCadence, drawCadence)
@@ -201,10 +200,9 @@ internal class AstraScopeView(
     textureView.isOpaque = false
     textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
       override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-        renderSurface?.release()
-        renderSurface = Surface(surface)
+        cancelRendering()
+        surfaceSession.replace(surface, Surface(surface))
         appliedFrameRate = Float.NaN
-        surfaceAvailable = true
         restartRendering()
       }
 
@@ -214,10 +212,11 @@ internal class AstraScopeView(
       }
 
       override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-        surfaceAvailable = false
+        // Invalidate queued/running work before waiting for any publication
+        // already holding the session. close() then releases only this exact
+        // SurfaceTexture's wrapper, after the in-flight canvas has been posted.
         cancelRendering()
-        renderSurface?.release()
-        renderSurface = null
+        surfaceSession.close(surface)
         return true
       }
 
@@ -250,6 +249,7 @@ internal class AstraScopeView(
   override fun onDetachedFromWindow() {
     attached = false
     cancelRendering()
+    surfaceSession.closeCurrent()
     super.onDetachedFromWindow()
   }
 
@@ -274,7 +274,8 @@ internal class AstraScopeView(
     adaptiveFrameDeadline.reset()
     hasNewFrame = false
 
-    val eligible = attached && windowVisible && surfaceAvailable && width > 0 && height > 0
+    val eligible =
+      attached && windowVisible && surfaceSession.available && width > 0 && height > 0
     refreshAdaptivePolicy(SystemClock.uptimeMillis(), force = true)
     scheduledToken = renderGate.update(eligible)
     applyFrameRateVote(
@@ -364,7 +365,7 @@ internal class AstraScopeView(
     if (staticSnapshot != null && mode == ScopeMode.SPECTRUM) {
       readScopeFrame()
       preparePaths()
-      publishFrame()
+      publishFrame(token)
       return
     }
 
@@ -379,7 +380,7 @@ internal class AstraScopeView(
       renderedValues.fill(0f, 0, count)
     }
     preparePaths()
-    publishFrame()
+    publishFrame(token)
 
     if (peak >= AstraScopeProjection.REST_EPSILON && renderGate.isCurrent(token)) {
       val decayFrameMs = if (frameMs > 0.0) frameMs else FALLBACK_FRAME_MS
@@ -437,21 +438,22 @@ internal class AstraScopeView(
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      val surface = renderSurface ?: return
-      if (!surface.isValid) return
-      try {
-        if (requestedRate > 0f) {
-          surface.setFrameRate(
-            requestedRate,
-            Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
-          )
-        } else {
-          surface.clearFrameRate()
+      surfaceSession.withCurrent { surface ->
+        if (!surface.isValid) return@withCurrent
+        try {
+          if (requestedRate > 0f) {
+            surface.setFrameRate(
+              requestedRate,
+              Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
+            )
+          } else {
+            surface.clearFrameRate()
+          }
+        } catch (_: IllegalArgumentException) {
+          // The TextureView may detach while a frame-rate vote is being updated.
+        } catch (_: IllegalStateException) {
+          // The TextureView may detach while a frame-rate vote is being updated.
         }
-      } catch (_: IllegalArgumentException) {
-        // The TextureView may detach while a frame-rate vote is being updated.
-      } catch (_: IllegalStateException) {
-        // The TextureView may detach while a frame-rate vote is being updated.
       }
     }
   }
@@ -524,33 +526,38 @@ internal class AstraScopeView(
    * transparent layer. TextureView publication may schedule a platform frame,
    * but it never schedules React work or rebuilds the surrounding scene.
    */
-  private fun publishFrame() {
-    if (!surfaceAvailable) return
-    val surface = renderSurface ?: return
-    if (!surface.isValid) return
-    val canvas = try {
-      surface.lockHardwareCanvas()
-    } catch (_: IllegalArgumentException) {
-      return
-    } catch (_: IllegalStateException) {
-      return
-    }
-    try {
-      canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-      synchronized(pathLock) {
-        if (mode == ScopeMode.SPECTRUM && fillOpacity > 0f) {
-          canvas.drawPath(fillPaths[frontPath], fillPaint)
-        }
-        if (glow) canvas.drawPath(linePaths[frontPath], glowPaint)
-        canvas.drawPath(linePaths[frontPath], strokePaint)
-      }
-    } finally {
-      try {
-        surface.unlockCanvasAndPost(canvas)
+  private fun publishFrame(token: Int) {
+    if (!renderGate.isCurrent(token)) return
+    surfaceSession.withCurrentIf(
+      eligible = { renderGate.isCurrent(token) }
+    ) { surface ->
+      if (!surface.isValid) return@withCurrentIf
+      val canvas = try {
+        surface.lockHardwareCanvas()
+      } catch (_: Surface.OutOfResourcesException) {
+        return@withCurrentIf
       } catch (_: IllegalArgumentException) {
-        // The TextureView may detach between lock and post.
+        return@withCurrentIf
       } catch (_: IllegalStateException) {
-        // The TextureView may detach between lock and post.
+        return@withCurrentIf
+      }
+      try {
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        synchronized(pathLock) {
+          if (mode == ScopeMode.SPECTRUM && fillOpacity > 0f) {
+            canvas.drawPath(fillPaths[frontPath], fillPaint)
+          }
+          if (glow) canvas.drawPath(linePaths[frontPath], glowPaint)
+          canvas.drawPath(linePaths[frontPath], strokePaint)
+        }
+      } finally {
+        try {
+          surface.unlockCanvasAndPost(canvas)
+        } catch (_: IllegalArgumentException) {
+          // The surface became invalid while the frame was being posted.
+        } catch (_: IllegalStateException) {
+          // The surface became invalid while the frame was being posted.
+        }
       }
     }
   }

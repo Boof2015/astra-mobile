@@ -7,10 +7,48 @@
 
 #include <jni.h>
 
+#include <algorithm>
+#include <cstdint>
+
 #include "scope_ring.h"
 
 namespace {
 astra::ScopeDriver& driver() { return astra::ScopeDriver::instance(); }
+
+bool hasCompleteInterleavedFrames(
+    JNIEnv* env, jfloatArray frames, jint frameCount, jint channelCount) {
+  if (frames == nullptr || frameCount <= 0 || channelCount <= 0) {
+    return false;
+  }
+
+  // Widen before multiplying so hostile or corrupted JNI arguments cannot
+  // overflow and turn an undersized Java array into an out-of-bounds native read.
+  const int64_t required =
+      static_cast<int64_t>(frameCount) * static_cast<int64_t>(channelCount);
+  return required <= static_cast<int64_t>(env->GetArrayLength(frames));
+}
+
+size_t directFloatCapacity(
+    JNIEnv* env, jobject buffer, jint requestedFloats, float** address) {
+  *address = nullptr;
+  if (buffer == nullptr || requestedFloats <= 0) {
+    return 0;
+  }
+
+  void* raw = env->GetDirectBufferAddress(buffer);
+  const jlong capacityBytes = env->GetDirectBufferCapacity(buffer);
+  if (raw == nullptr || capacityBytes < static_cast<jlong>(sizeof(float))) {
+    return 0;
+  }
+  if (reinterpret_cast<uintptr_t>(raw) % alignof(float) != 0) {
+    return 0;
+  }
+
+  *address = static_cast<float*>(raw);
+  const size_t actualFloats =
+      static_cast<size_t>(capacityBytes / static_cast<jlong>(sizeof(float)));
+  return std::min(static_cast<size_t>(requestedFloats), actualFloats);
+}
 }  // namespace
 
 extern "C" {
@@ -26,7 +64,7 @@ JNIEXPORT void JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativePushFrames(
     JNIEnv* env, jobject /*thiz*/, jfloatArray frames, jint frameCount,
     jint channelCount) {
-  if (frames == nullptr || frameCount <= 0 || channelCount <= 0) {
+  if (!hasCompleteInterleavedFrames(env, frames, frameCount, channelCount)) {
     return;
   }
   auto* data = static_cast<float*>(
@@ -47,15 +85,13 @@ JNIEXPORT jint JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrum(
     JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats,
     jfloat smoothing) {
-  if (buffer == nullptr || capacityFloats <= 0) {
-    return 0;
-  }
-  auto* dst = static_cast<float*>(env->GetDirectBufferAddress(buffer));
-  if (dst == nullptr) {
+  float* dst = nullptr;
+  const size_t capacity = directFloatCapacity(env, buffer, capacityFloats, &dst);
+  if (capacity == 0) {
     return 0;
   }
   const size_t n = driver().fillSpectrum(
-      dst, static_cast<size_t>(capacityFloats), static_cast<float>(smoothing));
+      dst, capacity, static_cast<float>(smoothing));
   return static_cast<jint>(n);
 }
 
@@ -64,14 +100,12 @@ Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrum(
 JNIEXPORT jint JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativeFillOscilloscope(
     JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats) {
-  if (buffer == nullptr || capacityFloats <= 0) {
+  float* dst = nullptr;
+  const size_t capacity = directFloatCapacity(env, buffer, capacityFloats, &dst);
+  if (capacity == 0) {
     return 0;
   }
-  auto* dst = static_cast<float*>(env->GetDirectBufferAddress(buffer));
-  if (dst == nullptr) {
-    return 0;
-  }
-  const size_t n = driver().fillOscilloscope(dst, static_cast<size_t>(capacityFloats));
+  const size_t n = driver().fillOscilloscope(dst, capacity);
   return static_cast<jint>(n);
 }
 
@@ -82,7 +116,7 @@ JNIEXPORT void JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativePushFramesPostEq(
     JNIEnv* env, jobject /*thiz*/, jfloatArray frames, jint frameCount,
     jint channelCount) {
-  if (frames == nullptr || frameCount <= 0 || channelCount <= 0) {
+  if (!hasCompleteInterleavedFrames(env, frames, frameCount, channelCount)) {
     return;
   }
   auto* data = static_cast<float*>(
@@ -99,15 +133,13 @@ JNIEXPORT jint JNICALL
 Java_expo_modules_astrascope_ScopeBridge_nativeFillSpectrumPostEq(
     JNIEnv* env, jobject /*thiz*/, jobject buffer, jint capacityFloats,
     jfloat smoothing) {
-  if (buffer == nullptr || capacityFloats <= 0) {
-    return 0;
-  }
-  auto* dst = static_cast<float*>(env->GetDirectBufferAddress(buffer));
-  if (dst == nullptr) {
+  float* dst = nullptr;
+  const size_t capacity = directFloatCapacity(env, buffer, capacityFloats, &dst);
+  if (capacity == 0) {
     return 0;
   }
   const size_t n = driver().fillSpectrumPostEq(
-      dst, static_cast<size_t>(capacityFloats), static_cast<float>(smoothing));
+      dst, capacity, static_cast<float>(smoothing));
   return static_cast<jint>(n);
 }
 
