@@ -1598,46 +1598,6 @@ export function NowPlayingOverlay() {
                       <TactilePressable
                         hitSlop={10}
                         style={styles.subBtn} android_ripple={ripple.icon(20)}
-                        haptic="selection"
-                        onPress={showLyrics}
-                        accessibilityLabel={
-                          hasTabletCompanion
-                            ? 'Show lyrics in companion'
-                            : lyricsVisible
-                              ? 'Hide lyrics'
-                              : 'Show lyrics'
-                        }
-                        accessibilityState={{
-                          selected: hasTabletCompanion
-                            ? nowPlayingCompanion === 'lyrics'
-                            : lyricsVisible,
-                        }}
-                      >
-                        <PlayerStateIcon
-                          selected={
-                            (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
-                            (!hasTabletCompanion && lyricsVisible)
-                          }
-                          size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <MaterialCommunityIcons
-                              name="script-text-outline"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.textTertiary}
-                            />
-                          }
-                          active={
-                            <MaterialCommunityIcons
-                              name="script-text-outline"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.accent}
-                            />
-                          }
-                        />
-                      </TactilePressable>
-                      <TactilePressable
-                        hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
                         haptic={scopeStageVisible ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
@@ -1673,6 +1633,46 @@ export function NowPlayingOverlay() {
                           name="list-outline"
                           size={SUB_ICON_SIZE + 2}
                           color={colors.textTertiary}
+                        />
+                      </TactilePressable>
+                      <TactilePressable
+                        hitSlop={10}
+                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        haptic="selection"
+                        onPress={showLyrics}
+                        accessibilityLabel={
+                          hasTabletCompanion
+                            ? 'Show lyrics in companion'
+                            : lyricsVisible
+                              ? 'Hide lyrics'
+                              : 'Show lyrics'
+                        }
+                        accessibilityState={{
+                          selected: hasTabletCompanion
+                            ? nowPlayingCompanion === 'lyrics'
+                            : lyricsVisible,
+                        }}
+                      >
+                        <PlayerStateIcon
+                          selected={
+                            (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
+                            (!hasTabletCompanion && lyricsVisible)
+                          }
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <MaterialCommunityIcons
+                              name="script-text-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <MaterialCommunityIcons
+                              name="script-text-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          }
                         />
                       </TactilePressable>
                     </View>
