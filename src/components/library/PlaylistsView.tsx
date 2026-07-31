@@ -20,7 +20,6 @@ import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
-  layout,
   radius,
   spacing,
 } from '@/theme';
@@ -28,6 +27,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -48,6 +48,7 @@ export function PlaylistsView({
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
 }) {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
@@ -185,7 +186,7 @@ export function PlaylistsView({
         renderScrollComponent={PullSearchScrollView}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
         ListHeaderComponent={
           <PlaylistRow
             name="Favorites"
@@ -292,9 +293,6 @@ export function PlaylistsView({
 const useStyles = createThemedStyles((colors) => ({
   container: {
     flex: 1,
-  },
-  listContent: {
-    paddingBottom: layout.miniPlayerFloat,
   },
   empty: {
     alignItems: 'center',

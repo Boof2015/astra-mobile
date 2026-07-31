@@ -1,21 +1,28 @@
+import { layout as layoutTokens } from '../theme/spacing.ts';
 import { MAX_FONT_SCALE, variantLineHeight } from '../theme/typography.ts';
 
 /**
- * App shell navigation geometry.
+ * App shell navigation geometry. Three shapes, picked by what the window can
+ * actually seat:
  *
- * Portrait keeps the bottom tab bar with the mini-player pill above it. A
- * landscape window is only ~411dp tall, and that chrome costs it 152dp — so
- * landscape moves navigation to a vertical rail down the leading edge with the
- * mini player docked at its foot, handing the whole height back to the scene.
+ * - **tabs** — a phone. Bottom tab bar with the mini-player pill floating above
+ *   it. The pill is out of the bar's layout flow, so the scene has to reserve
+ *   `sceneBottomInset` for it.
+ * - **rail** — a landscape window, only ~411dp tall, where that chrome costs
+ *   152dp. Navigation moves to a vertical rail down the leading edge with the
+ *   mini player docked at its foot, handing the height back to the scene.
+ * - **split** — a window wide enough to seat the nav items and the mini player
+ *   *beside* each other in one bottom row. Costs one bar instead of a bar plus
+ *   a pill, and gives the mini player room to be legible rather than cramped.
  *
- * The rail is narrow, so the binding constraint is its own *height*: four nav
- * items plus a mini player have to fit between the safe areas. This module owns
- * that arithmetic with declared sizes rather than estimates, the same way
- * `components/player/nowPlayingLayout.ts` does, and the mini-player block gives
- * ground before anything is allowed to overflow.
+ * Each shape's binding constraint is different — the rail's is its own height,
+ * the split bar's is its width — so each gets its own fitting function with
+ * declared sizes rather than estimates, the same way
+ * `components/player/nowPlayingLayout.ts` does. In both cases the nav items
+ * concede padding before the mini player concedes content.
  */
 
-export type ShellNavigationMode = 'tabs' | 'rail';
+export type ShellNavigationMode = 'tabs' | 'rail' | 'split';
 
 /** Rail content width, before the leading safe-area inset is added on. */
 const RAIL_CONTENT_WIDTH = 104;
@@ -41,6 +48,21 @@ const NAV_ITEM_COUNT = 4;
  */
 const RAIL_MIN_WINDOW_WIDTH = 480;
 
+/**
+ * Tallest window still better off with a rail than with a bottom bar.
+ *
+ * The rail answers scarce *height*, not landscape — a tablet in landscape is
+ * short relative to its width but still ~800dp tall, and wearing a phone's
+ * solution there costs it width for no reason.
+ *
+ * The number moved when the split bar arrived. Bottom chrome used to mean a
+ * 56dp bar *plus* a 76dp floating pill stacked above it; the split bar seats
+ * both in one ~64dp row. A window with this much height spends well under a
+ * tenth of it on that and keeps its full width, which is the better trade. A
+ * shorter one does not, and pays 104dp of width instead.
+ */
+const RAIL_MAX_WINDOW_HEIGHT = 600;
+
 const RAIL_MINI_ART_MAX = 72;
 const RAIL_MINI_ART_MIN = 40;
 const RAIL_MINI_CONTROL_SIZE = 36;
@@ -50,11 +72,77 @@ const RAIL_MINI_GAP = 6;
  * the renderer subtracts exactly what `blockHeight` reserved. */
 export const RAIL_MINI_TOP_MARGIN = 16;
 
+/* ── split bar ──────────────────────────────────────────────────────────── */
+
+/**
+ * The split shape is **two peer cards floating over the scene**, not a chrome
+ * slab with a player dropped onto it. Both carry the same surface as the phone's
+ * mini-player pill, so nav and playback read as siblings rather than as one
+ * thing stuck to another — which is the whole difference between deliberate and
+ * slapped on.
+ *
+ * Because they float, the scene has to reserve `sceneBottomInset` for them, the
+ * same contract the pill has.
+ */
+
+/**
+ * Seats a 44dp artwork square, and an icon-over-label nav item *plus* the
+ * selection indicator above it — the card clips to its own rounded edge, so the
+ * indicator has to live inside the card's padding rather than flush to its top.
+ */
+const SPLIT_BAR_HEIGHT = 72;
+const SPLIT_NAV_ITEM_IDEAL_WIDTH = 88;
+/** Floor before a nav item's label starts truncating. */
+const SPLIT_NAV_ITEM_MIN_WIDTH = 64;
+/** Below this the mini player can't hold artwork, two text lines and two controls. */
+const SPLIT_MINI_MIN_WIDTH = 280;
+/** A player card, not a smear. Past this the pair centres instead of stretching. */
+const SPLIT_MINI_MAX_WIDTH = 560;
+/** The "split" itself: the visible gap between the two cards. */
+export const SPLIT_GAP = 12;
+/** Breathing room between the cards and the window edges. */
+export const SPLIT_BAR_MARGIN = 12;
+/** Inset inside the nav card, so its items aren't flush to its own corners. */
+export const SPLIT_CARD_PADDING = 8;
+/** The selection indicator bar plus a little air under it. */
+const SPLIT_INDICATOR_CLEARANCE = 8;
+const SPLIT_MINI_ART = 44;
+const SPLIT_MINI_CONTROL = 40;
+
+/**
+ * Narrowest window that can seat both cards at their floors. Derived rather
+ * than declared so it can't drift from the parts it's the sum of — a phone
+ * (412dp) stays on tabs, a tablet in either orientation and an unfolded
+ * foldable clear it.
+ */
+const SPLIT_MIN_CONTENT_WIDTH =
+  SPLIT_NAV_ITEM_MIN_WIDTH * NAV_ITEM_COUNT +
+  SPLIT_CARD_PADDING * 2 +
+  SPLIT_GAP +
+  SPLIT_MINI_MIN_WIDTH;
+
 export interface ShellInsets {
   top: number;
   bottom: number;
   left: number;
   right: number;
+}
+
+export interface SplitBarLayout {
+  /** Height of both cards. They are peers, so they match. */
+  height: number;
+  navItemWidth: number;
+  /** Nav card width: its items plus its own padding. */
+  navWidth: number;
+  /** Player card width. */
+  miniWidth: number;
+  artSize: number;
+  controlSize: number;
+  /**
+   * Vertical space the floating pair covers, margins included — what a scene
+   * has to reserve so its last row isn't hidden behind them.
+   */
+  blockHeight: number;
 }
 
 export interface RailMiniPlayerLayout {
@@ -81,6 +169,18 @@ export interface ShellLayout {
   navIconSize: number;
   navLabelGap: number;
   miniPlayer: RailMiniPlayerLayout;
+  splitBar: SplitBarLayout;
+  /**
+   * What a scrollable surface must reserve at its bottom so its last row isn't
+   * hidden by chrome that sits *outside* the layout flow.
+   *
+   * Only `tabs` floats anything over the scene: `rail` docks the mini player in
+   * the rail and `split` seats it in the bar, and both of those are in flow and
+   * reserve their own space. Surfaces read this rather than
+   * `layout.miniPlayerFloat` directly, or landscape pays for a pill that isn't
+   * there.
+   */
+  sceneBottomInset: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -142,15 +242,31 @@ export function getShellLayout(
   );
   const navBlock = navItemHeight * NAV_ITEM_COUNT;
 
-  // Landscape, wide enough for a rail plus a real content column, and tall
-  // enough to host the rail's own items at a pressable size. A window that
-  // fails the last test is worse off with a rail than without one.
+  const splitContentWidth = Math.max(
+    0,
+    width - insets.left - insets.right - SPLIT_BAR_MARGIN * 2
+  );
+  const splitBar = fitSplitBar(splitContentWidth, scale);
+
+  // A rail is for a window that is landscape, short enough to actually need the
+  // height back, wide enough to afford 104dp of it, and tall enough to host the
+  // rail's own items at a pressable size. A window failing any of those is
+  // worse off with a rail than without one.
+  //
+  // Split is the fallback rather than tabs whenever the width allows it: it
+  // costs one bar instead of a bar plus a floating pill, so it is never the
+  // worse choice for a window that can seat it. That catches both a tablet —
+  // in either orientation — and a window too short for a rail but wide enough
+  // to share a row.
   const mode: ShellNavigationMode =
     width > height &&
     width >= RAIL_MIN_WINDOW_WIDTH &&
+    height < RAIL_MAX_WINDOW_HEIGHT &&
     navItemHeight >= NAV_ITEM_MIN_HEIGHT
       ? 'rail'
-      : 'tabs';
+      : splitContentWidth >= SPLIT_MIN_CONTENT_WIDTH
+        ? 'split'
+        : 'tabs';
 
   // Whatever the nav items don't need is the mini player's, and it shrinks to
   // fit rather than pushing anything out of the rail.
@@ -169,6 +285,71 @@ export function getShellLayout(
     navIconSize: NAV_ICON_SIZE,
     navLabelGap: NAV_LABEL_GAP,
     miniPlayer,
+    splitBar,
+    // Both shapes that float chrome over the scene owe it the space back. The
+    // rail is the only one that doesn't, because it sits beside the scene
+    // rather than on top of it.
+    sceneBottomInset:
+      mode === 'tabs'
+        ? layoutTokens.miniPlayerFloat
+        : mode === 'split'
+          ? splitBar.blockHeight + insets.bottom
+          : 0,
+  };
+}
+
+/**
+ * Seat the two cards in one row of `availableWidth`.
+ *
+ * Same concession order as the rail: nav items give up width down to their own
+ * floor before the player card is allowed to drop below a legible size.
+ *
+ * The two cards **divide the row** — the player takes whatever the nav card
+ * doesn't, up to its cap. Only once *both* are capped is there slack, and the
+ * renderer centres the pair rather than pushing them to opposite edges. A
+ * tablet's bottom chrome should look composed, not like two things that drifted
+ * apart.
+ */
+function fitSplitBar(availableWidth: number, scale: number): SplitBarLayout {
+  // The card's own padding is part of the height, not on top of it: the nav
+  // items live in the padded box so the selection indicator clears the clipped
+  // rounded edge. A larger font setting grows the box rather than the overhang.
+  const height = Math.max(
+    SPLIT_BAR_HEIGHT,
+    NAV_ICON_SIZE +
+      NAV_LABEL_GAP +
+      Math.ceil(variantLineHeight.caption * scale) +
+      SPLIT_CARD_PADDING * 2 +
+      SPLIT_INDICATOR_CLEARANCE
+  );
+  const cardChrome = SPLIT_CARD_PADDING * 2;
+  const navAtIdeal = SPLIT_NAV_ITEM_IDEAL_WIDTH * NAV_ITEM_COUNT + cardChrome;
+  const navItemWidth =
+    availableWidth - navAtIdeal - SPLIT_GAP >= SPLIT_MINI_MIN_WIDTH
+      ? SPLIT_NAV_ITEM_IDEAL_WIDTH
+      : clamp(
+          Math.floor(
+            (availableWidth - SPLIT_GAP - SPLIT_MINI_MIN_WIDTH - cardChrome) /
+              NAV_ITEM_COUNT
+          ),
+          SPLIT_NAV_ITEM_MIN_WIDTH,
+          SPLIT_NAV_ITEM_IDEAL_WIDTH
+        );
+  const navWidth = navItemWidth * NAV_ITEM_COUNT + cardChrome;
+  const miniWidth = clamp(
+    availableWidth - navWidth - SPLIT_GAP,
+    0,
+    SPLIT_MINI_MAX_WIDTH
+  );
+  return {
+    height,
+    navItemWidth,
+    navWidth,
+    miniWidth,
+    // Artwork is square, so the card's height caps it as well as the token does.
+    artSize: Math.min(SPLIT_MINI_ART, height - 12),
+    controlSize: SPLIT_MINI_CONTROL,
+    blockHeight: height + SPLIT_BAR_MARGIN * 2,
   };
 }
 
@@ -237,6 +418,19 @@ export function railContentsFit(layout: ShellLayout): boolean {
     layout.navItemHeight * NAV_ITEM_COUNT + layout.miniPlayer.blockHeight <=
     layout.railHeight
   );
+}
+
+/**
+ * Both cards fit their row, given the window they were measured for. The
+ * renderer centres the pair, which is only safe while this holds.
+ */
+export function splitBarContentsFit(
+  layout: ShellLayout,
+  width: number,
+  insets: ShellInsets
+): boolean {
+  const available = width - insets.left - insets.right - SPLIT_BAR_MARGIN * 2;
+  return layout.splitBar.navWidth + SPLIT_GAP + layout.splitBar.miniWidth <= available;
 }
 
 export { NAV_ITEM_COUNT as SHELL_NAV_ITEM_COUNT };

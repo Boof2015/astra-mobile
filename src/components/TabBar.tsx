@@ -16,13 +16,20 @@ import { MiniPlayer } from './MiniPlayer';
 import {
   fonts,
   layout,
+  radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
-import { RAIL_SIDE_PADDING, type ShellLayout } from '@/navigation/shellLayout';
+import {
+  RAIL_SIDE_PADDING,
+  SPLIT_BAR_MARGIN,
+  SPLIT_CARD_PADDING,
+  SPLIT_GAP,
+  type ShellLayout,
+} from '@/navigation/shellLayout';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -62,6 +69,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
   const rail = shell.mode === 'rail';
+  const split = shell.mode === 'split';
 
   const buttons = tabs.map((item) => {
     const meta = TAB_META[item.name];
@@ -73,6 +81,10 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
         focused={item.focused}
         rail={rail}
         height={rail ? shell.navItemHeight : undefined}
+        // Split items are sized by the shell rather than sharing the row
+        // equally: the mini player takes the rest, and the leftover becomes the
+        // gap between the two groups.
+        width={split ? shell.splitBar.navItemWidth : undefined}
         onPress={() => onPress(item)}
       />
     );
@@ -104,13 +116,46 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
     );
   }
 
+  if (split) {
+    // Two peer cards floating over the scene, centred as a pair. Deliberately
+    // NOT a chrome slab with a player sitting on it — nav and playback carry
+    // the same surface here, which is what makes them read as one composed
+    // control rather than two unrelated things sharing an edge.
+    return (
+      <View style={styles.wrap}>
+        <View
+          style={[
+            styles.splitFloat,
+            {
+              paddingLeft: insets.left + SPLIT_BAR_MARGIN,
+              paddingRight: insets.right + SPLIT_BAR_MARGIN,
+              paddingBottom: insets.bottom + SPLIT_BAR_MARGIN,
+              height: shell.splitBar.blockHeight + insets.bottom,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          <View
+            style={[
+              styles.splitCard,
+              { width: shell.splitBar.navWidth, height: shell.splitBar.height },
+            ]}
+          >
+            {buttons}
+          </View>
+          <MiniPlayer variant="bar" barLayout={shell.splitBar} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
       {/* Out of the layout flow, sitting on top of the scene rather than
           beside it. In flow, this element's height was subtracted from the
           scene, so content stopped in a band above the pill and it read as a
           slab of chrome no matter what colour it was painted. Scrollable
-          content reserves `layout.miniPlayerFloat` at its bottom to clear it. */}
+          content reserves `shell.sceneBottomInset` at its bottom to clear it. */}
       <View style={styles.floatingPlayer} pointerEvents="box-none">
         <MiniPlayer />
       </View>
@@ -133,6 +178,8 @@ interface TabButtonProps {
   /** Rail items are fixed-height and mark selection on their leading edge. */
   rail?: boolean;
   height?: number;
+  /** Split-bar items are shell-sized rather than sharing the row equally. */
+  width?: number;
 }
 
 /**
@@ -143,7 +190,7 @@ interface TabButtonProps {
  * between a grey base icon and an accent one stacked on top. Spring-free per
  * theme/motion.
  */
-function TabButton({ meta, focused, onPress, rail = false, height }: TabButtonProps) {
+function TabButton({ meta, focused, onPress, rail = false, height, width }: TabButtonProps) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -176,7 +223,13 @@ function TabButton({ meta, focused, onPress, rail = false, height }: TabButtonPr
   return (
     <Pressable
       android_ripple={ripple.icon(26)}
-      style={[styles.tab, rail && styles.railTab, height ? { height } : null]}
+      style={[
+        styles.tab,
+        rail && styles.railTab,
+        width ? styles.splitTab : null,
+        height ? { height } : null,
+        width ? { width } : null,
+      ]}
       onPress={handlePress}
       onPressIn={() => {
         press.value = withTiming(1, motion.quick);
@@ -222,6 +275,35 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.bgSecondary,
     borderTopColor: colors.glassBorder,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  // Out of the layout flow like the pill, anchored to the bottom of the scene.
+  // Centred rather than `space-between`: the shell already divided the row, so
+  // any slack means both cards are at their caps, and a centred pair looks
+  // composed where opposite edges look like two things that drifted apart.
+  splitFloat: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: SPLIT_GAP,
+  },
+  // Same surface as the mini-player card it sits beside. That equivalence is
+  // the point — see the split branch above.
+  splitCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // Vertical padding as well as horizontal: the card clips to its rounded
+    // edge, so the selection indicator has to sit inside this inset rather than
+    // flush to the card's top, where it was being shaved off.
+    padding: SPLIT_CARD_PADDING,
+    borderRadius: radius.lg,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorderStrong,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   // Landscape rail: destinations at the top, mini player pushed to the foot by
   // `railFoot`'s auto margin. `getShellLayout` guarantees both fit.
@@ -271,6 +353,14 @@ const useStyles = createThemedStyles((colors) => ({
     paddingTop: spacing.sm,
   },
   railTab: {
+    flex: 0,
+    alignSelf: 'stretch',
+    paddingTop: 0,
+  },
+  // Sized by the shell, so it must not also try to share the row.
+  // Fills the card's padded box, so the indicator anchors to a known edge that
+  // is `SPLIT_CARD_PADDING` inside the card rather than on its clipped border.
+  splitTab: {
     flex: 0,
     alignSelf: 'stretch',
     paddingTop: 0,

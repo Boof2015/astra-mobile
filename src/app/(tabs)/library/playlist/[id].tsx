@@ -25,7 +25,7 @@ import {
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -37,6 +37,7 @@ import { playHaptic } from '@/lib/haptics';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -84,6 +85,7 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
 type Prompt = { kind: 'rename'; playlist: Playlist } | null;
 
 export default function PlaylistScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
@@ -292,7 +294,7 @@ export default function PlaylistScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: layout.miniPlayerFloat,
+          paddingBottom: sceneBottomInset,
         }}
         renderItem={({ item }) =>
           item.track ? (

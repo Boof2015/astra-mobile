@@ -11,7 +11,7 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -19,8 +19,10 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
 import { useNativeArtistDetail } from '@/library/nativePages';
 import type { DbTrack } from '@/types/library';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export default function ArtistAppearancesScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
   const ripple = useRipple();
   const router = useRouter();
@@ -85,7 +87,7 @@ export default function ArtistAppearancesScreen() {
           />
         )}
         ListEmptyComponent={<EmptyList label="No appearances found for this artist." />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
       />
 
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
@@ -122,9 +124,6 @@ const styles = StyleSheet.create({
   heading: {
     gap: spacing.xs,
     marginBottom: spacing.lg,
-  },
-  listContent: {
-    paddingBottom: layout.miniPlayerFloat,
   },
   emptyState: {
     alignItems: 'center',

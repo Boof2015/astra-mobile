@@ -23,7 +23,6 @@ import {
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
 import {
-  layout,
   fonts,
   radius,
   spacing,
@@ -48,6 +47,7 @@ import type { Album, Artist, DbTrack } from '@/types/library';
 import { ListeningPreviewCard } from '@/components/listening/ListeningPreviewCard';
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { subscribeToListeningHistory } from '@/listeningStats/events';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 const RECENT_ALBUM_LIMIT = 8;
 const RECENT_TRACK_LIMIT = 3;
@@ -517,6 +517,7 @@ function EmptyHomeCard({
 }
 
 export default function HomeScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const router = useRouter();
   const openLibrary = useHomeLibraryNavigation();
@@ -655,7 +656,7 @@ export default function HomeScreen() {
         <PullSearchScrollView
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
-          contentContainerStyle={styles.content}
+          contentContainerStyle={{ paddingBottom: sceneBottomInset }}
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
         >
@@ -788,9 +789,6 @@ export default function HomeScreen() {
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  content: {
-    paddingBottom: layout.miniPlayerFloat,
-  },
   masthead: {
     minHeight: 72,
     flexDirection: 'row',

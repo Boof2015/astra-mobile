@@ -41,10 +41,10 @@ import {
   PullSearchScrollView,
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
-import { useShellShowsScreenTitle } from '@/navigation/useShellLayout';
+import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -128,6 +128,7 @@ export default function LibraryScreen() {
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const showScreenTitle = useShellShowsScreenTitle();
+  const sceneBottomInset = useSceneBottomInset();
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -446,7 +447,7 @@ export default function LibraryScreen() {
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={styles.listContent}
+                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -492,7 +493,7 @@ export default function LibraryScreen() {
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={styles.listContent}
+                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -537,7 +538,7 @@ export default function LibraryScreen() {
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={styles.listContent}
+                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -710,10 +711,6 @@ const styles = StyleSheet.create({
   },
   listArea: {
     flex: 1,
-  },
-  // Clears the floating mini player so the last row is readable.
-  listContent: {
-    paddingBottom: layout.miniPlayerFloat,
   },
   listFooter: {
     paddingVertical: spacing.lg,

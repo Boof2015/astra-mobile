@@ -25,7 +25,6 @@ import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionShe
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
-  layout,
   fontSize,
   radius,
   spacing,
@@ -55,6 +54,7 @@ import {
   selectDeezerArtistImage,
   selectLocalArtistImage,
 } from '@/library/artistImageLookup';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type ArtistSectionTarget = 'songs' | 'albums' | 'appearances';
@@ -76,6 +76,7 @@ type ArtistPageItem =
   | { key: 'empty'; type: 'empty' };
 
 export default function ArtistScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -321,7 +322,7 @@ export default function ArtistScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: layout.miniPlayerFloat,
+          paddingBottom: sceneBottomInset,
         }}
       />
       <CollapsingHeader

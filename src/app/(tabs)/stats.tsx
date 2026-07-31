@@ -20,7 +20,7 @@ import { formatListeningTime, formatRecordedSince } from '@/listeningStats/forma
 import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
-import { layout, fonts, radius, spacing } from '@/theme';
+import { fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type {
@@ -32,6 +32,7 @@ import type {
   RankedListeningTrack,
 } from '@/types/listeningStats';
 import { subscribeToListeningHistory } from '@/listeningStats/events';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 const RANGE_SEGMENTS = [
   { key: '7d', label: '7D' },
@@ -221,6 +222,7 @@ function EmptyState({
 }
 
 export default function ListeningStatsScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -322,7 +324,7 @@ export default function ListeningStatsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: sceneBottomInset }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -477,7 +479,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingTop: spacing.md,
-    paddingBottom: layout.miniPlayerFloat,
     gap: spacing.lg,
   },
   pausedBanner: {

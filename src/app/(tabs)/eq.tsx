@@ -37,11 +37,9 @@ import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
 import { EQPresetQrSheet } from '@/components/eq/EQPresetQrSheet';
 import { PresetDeviceAssignmentSheet } from '@/components/eq/PresetDeviceAssignmentSheet';
 import {
-  layout,
   radius,
   spacing,
 } from '@/theme';
-import { useShellRailPresent } from '@/navigation/shellRailContext';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { hapticForToggle } from '@/lib/hapticCatalog';
@@ -75,6 +73,7 @@ import {
 } from '@/audio/eqShare';
 import { BAND_TYPE_LABEL, formatGain } from '@/components/eq/format';
 import type { EQBand, EQBandType, EQPreset } from '@/types/audio';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type SheetKind =
   | 'none'
@@ -115,7 +114,7 @@ export default function EQScreen() {
   const closeSheet = useCallback(() => setSheet('none'), []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const railPresent = useShellRailPresent();
+  const sceneBottomInset = useSceneBottomInset();
   const availableWidth = windowWidth - insets.left - insets.right;
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const isWide = isWideWindow(availableWidth, availableHeight);
@@ -375,10 +374,10 @@ export default function EQScreen() {
         !isWide && styles.bottomBarNarrow,
         isWide && styles.bottomBarWide,
         // This screen doesn't scroll — the preamp row is pinned to the bottom of
-        // the scene, so it can't reserve the pill's space in a content inset the
-        // way every list does. Only the tab-bar shape floats a pill; in rail
-        // mode the mini player is docked in the rail and nothing overlaps here.
-        railPresent ? null : { paddingBottom: spacing.sm + layout.miniPlayerFloat },
+        // the scene, so it can't reserve the floating pill's space in a content
+        // inset the way every list does. `sceneBottomInset` is 0 in the shapes
+        // that seat the mini player in their own chrome.
+        sceneBottomInset > 0 ? { paddingBottom: spacing.sm + sceneBottomInset } : null,
       ]}
     >
       <View style={styles.preamp}>

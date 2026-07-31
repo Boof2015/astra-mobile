@@ -24,3 +24,17 @@ export function useShellLayout(): ShellLayout {
 export function useShellShowsScreenTitle(): boolean {
   return useShellLayout().mode !== 'rail';
 }
+
+/**
+ * What a scrollable surface must reserve at its bottom to clear chrome that
+ * sits outside the layout flow.
+ *
+ * Only the phone shape floats a mini-player pill over the scene; the rail docks
+ * it and the split bar seats it, and both reserve their own height. Reserving
+ * the pill's footprint in those modes is dead space at the end of every list —
+ * which is what happened in landscape before this existed. Always use this
+ * rather than `layout.miniPlayerFloat` directly.
+ */
+export function useSceneBottomInset(): number {
+  return useShellLayout().sceneBottomInset;
+}

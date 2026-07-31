@@ -39,6 +39,7 @@ import { useScopeActive } from '@/scope/scopeStore';
 import {
   RAIL_MINI_TOP_MARGIN,
   type RailMiniPlayerLayout,
+  type SplitBarLayout,
 } from '@/navigation/shellLayout';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
@@ -70,11 +71,18 @@ const SWIPE_RESPONSE_TIMEOUT_MS = 1500;
 const COMMITTED_MEDIA_OPACITY = 0.18;
 
 interface MiniPlayerProps {
-  /** 'pill' floats above the bottom tabs; 'rail' docks at the foot of the
-   * landscape navigation rail, where there is ~88dp of width to work with. */
-  variant?: 'pill' | 'rail';
+  /**
+   * - `pill` floats above the bottom tabs.
+   * - `rail` docks at the foot of the landscape navigation rail, where there is
+   *   ~88dp of width to work with.
+   * - `bar` sits *beside* the nav items in the split bottom bar on a wide
+   *   window, in a segment the shell has already sized.
+   */
+  variant?: 'pill' | 'rail' | 'bar';
   /** Required for the rail variant; sizes come from `getShellLayout`. */
   railLayout?: RailMiniPlayerLayout;
+  /** Required for the bar variant; sizes come from `getShellLayout`. */
+  barLayout?: SplitBarLayout;
 }
 
 interface MiniPlayerMediaPresentation {
@@ -167,7 +175,7 @@ function PhoneMiniProgress({
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
  * opens the full now-playing screen.
  */
-export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {}) {
+export function MiniPlayer({ variant = 'pill', railLayout, barLayout }: MiniPlayerProps = {}) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -482,6 +490,117 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
   const onMediaLayout = (e: LayoutChangeEvent) => {
     setMediaWidth(e.nativeEvent.layout.width);
   };
+
+  if (variant === 'bar' && barLayout) {
+    const { artSize, controlSize, miniWidth, height } = barLayout;
+    return (
+      <>
+        {/* Height matches the nav card beside it: they are peers, and a
+            mismatched pair is the difference between composed and slapped on. */}
+        <View style={[styles.barBlock, { width: miniWidth, height }]}>
+          <Pressable
+            android_ripple={ripple.bounded}
+            style={styles.barTap}
+            onPress={() => usePlayerUiStore.getState().openPlayer()}
+            onLayout={onLayout}
+            accessibilityRole="button"
+            accessibilityLabel={
+              presentation.hasTrack
+                ? `Now playing: ${displayedMedia.title}. Open player`
+                : 'Open player'
+            }
+          >
+            {/* The bar is wide enough for the scope to read, and it's the thing
+                that makes this a music player's bar rather than a nav bar with a
+                track glued to it. */}
+            {liveScopeActive && pillWidth > 0 && (
+              <View pointerEvents="none" style={styles.spectrum}>
+                <SpectrumCurve
+                  active={liveScopeActive}
+                  pointCount={CURVE_POINTS}
+                  dbMin={-84}
+                  dbMax={-20}
+                  width={pillWidth}
+                  height={artSize + spacing.sm * 2}
+                  lineWidth={1.25}
+                  lineOpacity={0.38}
+                  fillOpacity={0.3}
+                  glow
+                  glowOpacity={0.06}
+                />
+              </View>
+            )}
+            {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
+
+            <View style={[styles.art, { width: artSize, height: artSize }]}>
+              {displayedMedia.artworkUri ? (
+                <Image
+                  source={{
+                    uri:
+                      artworkThumbFromSource(displayedMedia.artworkUri) ??
+                      displayedMedia.artworkUri,
+                  }}
+                  style={styles.artImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <AstraLogo size={Math.round(artSize * 0.55)} />
+              )}
+            </View>
+
+            <View style={styles.meta}>
+              <Text variant="body" numberOfLines={1} style={styles.title}>
+                {displayedMedia.title}
+              </Text>
+              <Text variant="label" numberOfLines={1}>
+                {displayedMedia.subtitle}
+              </Text>
+            </View>
+
+            <Pressable
+              hitSlop={8}
+              android_ripple={ripple.icon(22)}
+              onPress={onTogglePlay}
+              style={[styles.control, { width: controlSize, height: controlSize }]}
+              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            >
+              <Ionicons
+                name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+                size={24}
+                color={colors.accent}
+              />
+            </Pressable>
+            <Pressable
+              hitSlop={8}
+              android_ripple={ripple.icon(22)}
+              onPress={onSkipNext}
+              style={[styles.control, { width: controlSize, height: controlSize }]}
+              accessibilityLabel="Next"
+            >
+              <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </Pressable>
+          {presentation.hasTrack ? (
+            isDesktop ? (
+              <MiniProgress
+                currentTime={presentation.currentTime}
+                duration={presentation.duration}
+                isPlaying={isPlaying}
+                active={!playerOpen}
+                trackKey={presentation.trackKey}
+              />
+            ) : (
+              <PhoneMiniProgress isPlaying={isPlaying} active={!playerOpen} />
+            )
+          ) : null}
+        </View>
+        <PlaybackTargetPicker
+          visible={targetPickerOpen}
+          onClose={() => setTargetPickerOpen(false)}
+        />
+      </>
+    );
+  }
 
   if (variant === 'rail' && railLayout) {
     const { artSize, titleLineHeight, controlSize, gap, blockHeight } = railLayout;
@@ -802,6 +921,24 @@ const useStyles = createThemedStyles((colors) => ({
     height: CONTROL,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Bar variant: the pill's surface, seated in the split bottom bar beside the
+  // nav items rather than floating above them. Same card language as the pill so
+  // the two shapes read as one component in different rooms — but no margins or
+  // shadow, because here it sits *on* chrome instead of over content.
+  barBlock: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.bgTertiary,
+    borderColor: colors.glassBorderStrong,
+    borderWidth: 1,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  barTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
   },
   // Rail variant: a compact stack docked at the foot of the landscape rail.
   railBlock: {

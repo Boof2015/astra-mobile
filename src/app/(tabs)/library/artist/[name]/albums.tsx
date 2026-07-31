@@ -9,13 +9,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useNativeArtistAlbums } from '@/library/nativePages';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export default function ArtistAlbumsScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
   const ripple = useRipple();
   const router = useRouter();
@@ -66,7 +68,7 @@ export default function ArtistAlbumsScreen() {
           </View>
         )}
         ListEmptyComponent={<EmptyList label="No albums found for this artist." />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
       />
     </Screen>
   );
@@ -101,9 +103,6 @@ const styles = StyleSheet.create({
   heading: {
     gap: spacing.xs,
     marginBottom: spacing.lg,
-  },
-  listContent: {
-    paddingBottom: layout.miniPlayerFloat,
   },
   gridCell: {
     flex: 1,

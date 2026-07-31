@@ -11,7 +11,7 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -20,6 +20,7 @@ import { albumArtworkSource, artworkThumbUri, artworkUri } from '@/library/artwo
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type AlbumRow =
   | { kind: 'track'; track: DbTrack; index: number }
@@ -36,6 +37,7 @@ function DiscHeader({ disc }: { disc: number }) {
 }
 
 export default function AlbumScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
   const { key } = useLocalSearchParams<{ key: string }>();
   const { items: tracks, summary: album, totalCount, loadMore } = useNativeAlbumDetail(key);
@@ -116,7 +118,7 @@ export default function AlbumScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: layout.miniPlayerFloat,
+          paddingBottom: sceneBottomInset,
         }}
         renderItem={({ item }) =>
           item.kind === 'disc' ? (

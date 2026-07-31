@@ -27,11 +27,12 @@ import {
 } from '@/audio/playbackController';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 const PAGE_SIZE = 100;
 
@@ -204,6 +205,7 @@ function FolderTrackRow({
 }
 
 export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps) {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
   const currentPath = usePlayerStore((state) => state.currentTrack?.path);
@@ -334,7 +336,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
         renderScrollComponent={PullSearchScrollView}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
         renderItem={({ item }) => {
           if (item.type === 'folder') {
             return (
@@ -420,9 +422,6 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  listContent: {
-    paddingBottom: layout.miniPlayerFloat,
-  },
   indent: {
     flexShrink: 0,
   },

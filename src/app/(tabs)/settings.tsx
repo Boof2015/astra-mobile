@@ -16,7 +16,7 @@ import {
   SettingsNavRow,
   SettingsSectionLabel,
 } from '@/components/settings/SettingsSectionScaffold';
-import { layout, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatRelativeTime } from '@/lib/format';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
@@ -30,7 +30,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useShellShowsScreenTitle } from '@/navigation/useShellLayout';
+import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 
 function formatEnabled(value: boolean): string {
   return value ? 'On' : 'Off';
@@ -38,6 +38,7 @@ function formatEnabled(value: boolean): string {
 
 export default function SettingsScreen() {
   const showScreenTitle = useShellShowsScreenTitle();
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -89,7 +90,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: sceneBottomInset }]}>
         {/* The rail names this destination itself; repeating it would just
             spend a landscape window's scarce height on the same word. */}
         {showScreenTitle ? (
@@ -161,7 +162,6 @@ export default function SettingsScreen() {
 
 const useStyles = createThemedStyles(() => ({
   content: {
-    paddingBottom: layout.miniPlayerFloat,
     gap: spacing.sm,
   },
   heading: {
