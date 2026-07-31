@@ -34,7 +34,6 @@ import { Visualizer } from '@/components/Visualizer';
 import { LyricsView } from '@/components/lyrics/LyricsView';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
-import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import { ScopeRack } from '@/components/player/ScopeRack';
@@ -180,7 +179,6 @@ export function NowPlayingOverlay() {
   const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
   const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
-  const nativeQueueEnabled = useSettingsStore((s) => s.nativeQueueEnabled);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
   const scopeStyle = useSettingsStore((s) => s.nowPlayingScopeStyle);
@@ -385,7 +383,7 @@ export function NowPlayingOverlay() {
     }
     suspendPanForChildTransition();
     setQueueOpen(true);
-    if (nativeQueueEnabled && !isDesktopTarget) {
+    if (!isDesktopTarget) {
       void AstraQueue.present({ palette: toNativeQueuePalette(colors) }).catch((error) => {
         console.warn('[queue] native presentation failed', error);
         setQueueOpen(false);
@@ -752,17 +750,16 @@ export function NowPlayingOverlay() {
     ]
   );
 
-  // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
+  // Stable identity: RemoteQueueSheet is memo'd, so a fresh arrow would defeat it.
   const closeQueue = useCallback(() => {
     suspendPanForChildTransition();
-    if (nativeQueueEnabled && !isDesktopTarget) AstraQueue.dismiss();
+    if (!isDesktopTarget) AstraQueue.dismiss();
     setQueueOpen(false);
     // Shared values and the state setter remain stable for this overlay mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesktopTarget, nativeQueueEnabled]);
+  }, [isDesktopTarget]);
 
   useEffect(() => {
-    if (!nativeQueueEnabled) return undefined;
     const dismissed = AstraQueue.addListener('onDismissed', () => {
       setQueueOpen(false);
     });
@@ -797,15 +794,15 @@ export function NowPlayingOverlay() {
       playbackRequest.remove();
       revision.remove();
     };
-  }, [nativeQueueEnabled]);
+  }, []);
 
   // `colors` is accent-scoped to the cover art, so it changes on every track
   // change. present() captured the palette once, which left an open sheet
   // wearing the previous track's accent.
   useEffect(() => {
-    if (!nativeQueueEnabled || isDesktopTarget || !queueOpen) return;
+    if (isDesktopTarget || !queueOpen) return;
     AstraQueue.updatePalette(toNativeQueuePalette(colors));
-  }, [colors, isDesktopTarget, nativeQueueEnabled, queueOpen]);
+  }, [colors, isDesktopTarget, queueOpen]);
 
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
@@ -1749,13 +1746,10 @@ export function NowPlayingOverlay() {
           <SleepTimerControls />
         </AppSheet>
       ) : null}
-      {queueOpen && !hasTabletCompanion && (
-        isDesktopTarget ? (
-          <RemoteQueueSheet onClose={closeQueue} />
-        ) : !nativeQueueEnabled ? (
-          <QueueTray onClose={closeQueue} />
-        ) : null
-      )}
+      {/* The native queue presents its own dialog from AstraQueue.present(). */}
+      {queueOpen && !hasTabletCompanion && isDesktopTarget ? (
+        <RemoteQueueSheet onClose={closeQueue} />
+      ) : null}
       <PlaybackTargetPicker
         visible={targetPickerOpen}
         onClose={() => setTargetPickerOpen(false)}

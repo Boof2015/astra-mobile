@@ -16,7 +16,7 @@ interface SelectionActionBarProps {
   onAddToPlaylist: () => void;
 }
 
-/** Bottom batch-action bar for library multi-select (QueueTray action-bar language). */
+/** Bottom batch-action bar for library multi-select (native queue action-bar language). */
 export function SelectionActionBar({
   count,
   onPlayNext,

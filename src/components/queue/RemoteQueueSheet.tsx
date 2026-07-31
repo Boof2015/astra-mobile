@@ -1,9 +1,10 @@
 // Read-only queue sheet for the Desktop Remote: the desktop's current +
-// upcoming tracks, tap-to-play. Deliberately NOT QueueTray — that component is
-// welded to the local RNTP queue store (drag-reorder, swipe-remove,
-// multi-select), none of which applies to a remote snapshot. Uses an INLINE
-// BottomSheet like QueueTray does — BottomSheetModal's portal does not work in
-// this app's screen setups (see queue-tray-sheet gotcha).
+// upcoming tracks, tap-to-play. Deliberately NOT the native queue — that reads
+// the local playback session straight out of Room (drag-reorder, swipe-remove,
+// multi-select), none of which applies to a remote snapshot. This is the only
+// remaining React Native queue surface. It uses an INLINE BottomSheet because
+// BottomSheetModal's portal does not work in this app's screen setups (see
+// queue-tray-sheet gotcha).
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';

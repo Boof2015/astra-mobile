@@ -2,17 +2,14 @@ import { useEffect } from 'react';
 import { InteractionManager } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  SettingsCard,
   SettingsNavRow,
   SettingsSectionLabel,
   SettingsSectionScreen,
-  SettingsToggleRow,
 } from '@/components/settings/SettingsSectionScaffold';
 import { formatRelativeTime } from '@/lib/format';
 import { useColors } from '@/theme/themed';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 
 export default function ExperimentalSettingsScreen() {
   const colors = useColors();
@@ -23,8 +20,6 @@ export default function ExperimentalSettingsScreen() {
   const desktopSyncStatus = useDesktopSyncStore((s) => s.status);
   const desktopLastSyncAt = useDesktopSyncStore((s) => s.lastSyncAt);
   const desktopSyncConflictCount = useDesktopSyncStore((s) => s.conflicts.length);
-  const nativeQueueEnabled = useSettingsStore((s) => s.nativeQueueEnabled);
-  const setNativeQueueEnabled = useSettingsStore((s) => s.setNativeQueueEnabled);
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -49,17 +44,7 @@ export default function ExperimentalSettingsScreen() {
 
   return (
     <SettingsSectionScreen title="Experimental">
-      <SettingsSectionLabel>PLAYBACK</SettingsSectionLabel>
-      <SettingsCard>
-        <SettingsToggleRow
-          title="Native queue"
-          description="Use the Kotlin queue sheet and RecyclerView. Disable to compare with the legacy React Native queue."
-          value={nativeQueueEnabled}
-          onValueChange={(enabled) => void setNativeQueueEnabled(enabled)}
-        />
-      </SettingsCard>
-
-      <SettingsSectionLabel spaced>DESKTOP</SettingsSectionLabel>
+      <SettingsSectionLabel>DESKTOP</SettingsSectionLabel>
       <SettingsNavRow
         icon="phone-portrait-outline"
         title="Desktop Remote"

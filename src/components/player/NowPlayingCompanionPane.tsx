@@ -1,7 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { LyricsBand } from '@/components/lyrics/LyricsBand';
-import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { seekTo } from '@/audio/playbackController';
 import { spacing } from '@/theme';
@@ -41,7 +40,6 @@ export function NowPlayingCompanionPane({
   const styles = useStyles();
   const colors = useColors();
   const companion = useSettingsStore((s) => s.nowPlayingCompanion);
-  const nativeQueueEnabled = useSettingsStore((s) => s.nativeQueueEnabled);
   const setCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
   const currentTime = usePlayerStore((s) => (active && !desktopTarget ? s.currentTime : 0));
   const duration = usePlayerStore((s) => (desktopTarget ? 0 : s.duration));
@@ -74,15 +72,11 @@ export function NowPlayingCompanionPane({
           </View>
           <View style={styles.content}>
             {companion === 'queue' ? (
-              nativeQueueEnabled ? (
-                <AstraQueueView
-                  active={active}
-                  palette={toNativeQueuePalette(colors)}
-                  style={styles.nativeQueue}
-                />
-              ) : (
-                <QueueTray embedded onClose={noop} />
-              )
+              <AstraQueueView
+                active={active}
+                palette={toNativeQueuePalette(colors)}
+                style={styles.nativeQueue}
+              />
             ) : track ? (
               <NowPlayingTrackFadeThrough
                 transitionKey={transitionTrackKey}
