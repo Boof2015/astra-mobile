@@ -25,10 +25,24 @@ const TABLET_ART_SIZE_MAX = 440;
 const WIDE_MAX_CONTENT_WIDTH = 960;
 export const NOW_PLAYING_WIDE_PANE_GAP = spacing.xxl;
 const WIDE_RIGHT_PANE_MIN = 300;
-const WIDE_RIGHT_PANE_MAX = MAX_CONTENT_WIDTH;
+/**
+ * Landscape deck pane cap. Height is the scarce resource in landscape and the
+ * artwork is square, so it can never spend the surplus width — the deck is the
+ * only pane that can, and a longer seek bar is the point. Was aliased to the
+ * portrait column width (408), which left 100-150dp of a phone's landscape row
+ * simply unused.
+ */
+const WIDE_RIGHT_PANE_MAX = 560;
 const WIDE_ART_SIZE_MAX = 400;
 const WIDE_ART_SIZE_MIN = 160;
-const WIDE_COMPACT_HEIGHT = 480;
+/**
+ * How much wider than the artwork the scope strip runs. Mirrors the portrait
+ * proportion (~1.5x), where the strip reads as a rail under the art rather than
+ * a box beside it.
+ */
+const WIDE_SCOPE_WIDTH_RATIO = 1.5;
+/** Below this the landscape artwork is too small to give the strip its share. */
+const WIDE_SCOPE_RAIL_MIN_ART = 120;
 const VISUALIZER_WIDTH_MAX = 448;
 const VISUALIZER_SIDE_PADDING = spacing.md;
 const VISUALIZER_TOP_GAP = spacing.lg;
@@ -318,38 +332,104 @@ export function getNowPlayingLayout(
 ): NowPlayingLayout {
   const isWide = forceWide || isWideWindow(availableWidth, availableHeight);
 
+  const columnHeight =
+    availableHeight -
+    NOW_PLAYING_CONTENT_TOP_PADDING -
+    NOW_PLAYING_CONTENT_BOTTOM_PADDING -
+    NOW_PLAYING_HEADER_HEIGHT;
+
   if (isWide) {
     const contentPadding = CONTENT_SIDE_PADDING;
-    const contentWidth = Math.max(
+    const rowSpace = Math.max(
       0,
       Math.min(availableWidth - contentPadding * 2, WIDE_MAX_CONTENT_WIDTH)
     );
+
+    /**
+     * Solve one tier's landscape geometry.
+     *
+     * Panes sit side by side, so unlike portrait the deck costs the artwork no
+     * height — the constraint is that the deck fits the column at all. The
+     * artwork is height-bound in almost every landscape window, which is why
+     * the panes are sized from their *contents* here and the pair is centred:
+     * a proportional split gave a 160dp artwork a 432dp pane to rattle around
+     * in, with a scope strip nearly three times its width beneath it.
+     */
+    const solve = (tier: DensityTier) => {
+      const deck = getDeckHeight(tier, fontScale);
+      // Budget against the *narrowest* the deck may be, so the artwork gets
+      // first call on the row's width; the deck reclaims whatever is left over
+      // once the stage has been sized (a longer waveform is worth having in
+      // landscape, and it is the only thing here that can use loose width).
+      const stageSpace = Math.max(
+        0,
+        rowSpace - NOW_PLAYING_WIDE_PANE_GAP - WIDE_RIGHT_PANE_MIN
+      );
+      const inner = Math.max(0, columnHeight - tier.stageInset * 2);
+      const fitArt = (space: number) =>
+        Math.round(Math.max(0, Math.min(space, stageSpace, WIDE_ART_SIZE_MAX)));
+
+      // The strip's height follows its width, which follows the artwork, which
+      // depends on the strip's height. Seed with the tallest strip it could be
+      // and refine once — `getScopeHeight` is clamped to a 12dp band, so a
+      // second pass is enough to land on a stable answer.
+      let scopeHeight = VISUALIZER_HEIGHT_MAX;
+      let scopeWidth = 0;
+      let artScopeOn = 0;
+      for (let pass = 0; pass < 2; pass += 1) {
+        artScopeOn = fitArt(
+          inner - (tier.scopeTopGap + scopeHeight + tier.scopeBottomGap)
+        );
+        scopeWidth = Math.round(
+          clamp(
+            artScopeOn * WIDE_SCOPE_WIDTH_RATIO,
+            artScopeOn,
+            Math.min(stageSpace, VISUALIZER_WIDTH_MAX)
+          )
+        );
+        scopeHeight = getScopeHeight(scopeWidth);
+      }
+      const artScopeOff = fitArt(inner);
+      const naturalScopeBlock = tier.scopeTopGap + scopeHeight + tier.scopeBottomGap;
+      const scopeRailFits = artScopeOn >= WIDE_SCOPE_RAIL_MIN_ART;
+      return {
+        tier,
+        deck,
+        scopeWidth,
+        scopeHeight,
+        artScopeOn: scopeRailFits ? artScopeOn : artScopeOff,
+        artScopeOff,
+        scopeBlockHeight: scopeRailFits ? naturalScopeBlock : 0,
+        scopeRailFits,
+        fits: deck.height <= columnHeight && artScopeOff >= WIDE_ART_SIZE_MIN,
+      };
+    };
+
+    // Richest tier whose deck fits the column outright. In landscape the deck
+    // is the thing that runs out of room first, so this replaces the old raw
+    // `availableHeight < 480` threshold with the same ladder portrait uses.
+    let solved = solve(TIERS[TIERS.length - 1]);
+    for (const candidate of TIERS) {
+      const attempt = solve(candidate);
+      if (attempt.fits) {
+        solved = attempt;
+        break;
+      }
+    }
+
+    const { tier, deck } = solved;
+    const artSize = showVisualizer ? solved.artScopeOn : solved.artScopeOff;
+    // Panes are content-sized and the row is centred by the shell being exactly
+    // this wide. The deck takes the width the stage didn't need.
+    const leftPaneWidth = Math.max(solved.artScopeOff, solved.scopeWidth);
     const rightPaneWidth = Math.round(
-      clamp(contentWidth * 0.46, WIDE_RIGHT_PANE_MIN, WIDE_RIGHT_PANE_MAX)
+      clamp(
+        rowSpace - NOW_PLAYING_WIDE_PANE_GAP - leftPaneWidth,
+        WIDE_RIGHT_PANE_MIN,
+        WIDE_RIGHT_PANE_MAX
+      )
     );
-    const leftPaneWidth = Math.max(
-      0,
-      contentWidth - NOW_PLAYING_WIDE_PANE_GAP - rightPaneWidth
-    );
-    const scopeWidth = Math.min(leftPaneWidth, VISUALIZER_WIDTH_MAX);
-    const scopeHeight = getScopeHeight(scopeWidth);
-    const visualizerTopGap = showVisualizer ? VISUALIZER_TOP_GAP : 0;
-    const verticalBudget =
-      availableHeight -
-      NOW_PLAYING_CONTENT_TOP_PADDING -
-      NOW_PLAYING_CONTENT_BOTTOM_PADDING -
-      NOW_PLAYING_HEADER_HEIGHT -
-      spacing.md;
-    const wideArt = (budget: number) =>
-      Math.round(clamp(Math.min(leftPaneWidth, budget), WIDE_ART_SIZE_MIN, WIDE_ART_SIZE_MAX));
-    const artSizeScopeOn = wideArt(verticalBudget - (scopeHeight + VISUALIZER_TOP_GAP));
-    const artSizeScopeOff = wideArt(verticalBudget);
-    const artSize = showVisualizer ? artSizeScopeOn : artSizeScopeOff;
-    // Short landscape windows get the leaner deck tokens.
-    const deck = getDeckHeight(
-      availableHeight < WIDE_COMPACT_HEIGHT ? TIERS[2] : TIERS[1],
-      fontScale
-    );
+    const contentWidth = leftPaneWidth + NOW_PLAYING_WIDE_PANE_GAP + rightPaneWidth;
     return {
       presentation: 'wide',
       isWide: true,
@@ -359,18 +439,18 @@ export function getNowPlayingLayout(
       leftPaneWidth,
       rightPaneWidth,
       deck,
-      stageHeight: showVisualizer ? artSize + visualizerTopGap + scopeHeight : artSize,
-      stageInset: 0,
-      scopeBlockHeight: showVisualizer ? visualizerTopGap + scopeHeight : 0,
+      stageHeight: columnHeight,
+      stageInset: tier.stageInset,
+      scopeBlockHeight: solved.scopeBlockHeight,
       railBottomOffset: 0,
-      scopeRailFits: true,
+      scopeRailFits: solved.scopeRailFits,
       artSize,
-      artSizeScopeOn,
-      artSizeScopeOff,
-      scopeWidth,
-      scopeHeight,
-      visualizerTopGap,
-      visualizerBottomGap: 0,
+      artSizeScopeOn: solved.artScopeOn,
+      artSizeScopeOff: solved.artScopeOff,
+      scopeWidth: solved.scopeWidth,
+      scopeHeight: solved.scopeHeight,
+      visualizerTopGap: tier.scopeTopGap,
+      visualizerBottomGap: tier.scopeBottomGap,
     };
   }
 
@@ -386,11 +466,6 @@ export function getNowPlayingLayout(
     Math.min(availableWidth - VISUALIZER_SIDE_PADDING * 2, VISUALIZER_WIDTH_MAX)
   );
   const scopeHeight = getScopeHeight(scopeWidth);
-  const columnHeight =
-    availableHeight -
-    NOW_PLAYING_CONTENT_TOP_PADDING -
-    NOW_PLAYING_CONTENT_BOTTOM_PADDING -
-    NOW_PLAYING_HEADER_HEIGHT;
 
   const artWidthCap = (tier: DensityTier) =>
     Math.min(contentWidth, isTabletColumn ? TABLET_ART_SIZE_MAX : tier.artMax);

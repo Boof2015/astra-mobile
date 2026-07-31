@@ -135,6 +135,8 @@ const SKIP_ICON_SIZE = 32;
 const PLAY_ICON_SIZE = 34;
 const SUB_BUTTON_SIZE = NOW_PLAYING_SUB_BUTTON_SIZE;
 const SUB_ICON_SIZE = 20;
+/** Comfortable thumb span for the transport row; see styles.transport. */
+const TRANSPORT_MAX_WIDTH = 400;
 const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
@@ -1013,7 +1015,11 @@ export function NowPlayingOverlay() {
                     style={[
                       styles.stage,
                       layout.isWide
-                        ? { width: layout.leftPaneWidth }
+                        ? {
+                            width: layout.leftPaneWidth,
+                            height: layout.stageHeight,
+                            paddingVertical: layout.stageInset,
+                          }
                         : styles.stageFill,
                     ]}
                   >
@@ -1046,7 +1052,7 @@ export function NowPlayingOverlay() {
                       styles.deckSpread,
                       { rowGap: deck.rowGap },
                       layout.isWide
-                        ? { width: layout.rightPaneWidth }
+                        ? { width: layout.rightPaneWidth, height: deck.height }
                         : { height: deck.height },
                   ]}
                 >
@@ -1291,7 +1297,11 @@ export function NowPlayingOverlay() {
                   style={[
                     styles.stage,
                     layout.isWide
-                      ? { width: layout.leftPaneWidth }
+                      ? {
+                          width: layout.leftPaneWidth,
+                          height: layout.stageHeight,
+                          paddingVertical: layout.stageInset,
+                        }
                       : styles.stageFill,
                   ]}
                 >
@@ -1375,7 +1385,7 @@ export function NowPlayingOverlay() {
                       />
                     </Animated.View>
                   )}
-                  {railStyle && layout.isWide && renderScopeSurfaces && (
+                  {railStyle && layout.isWide && layout.scopeRailFits && renderScopeSurfaces && (
                     <View
                       style={[
                         styles.scopeRail,
@@ -1404,7 +1414,7 @@ export function NowPlayingOverlay() {
                     styles.deck,
                     { rowGap: deck.rowGap },
                     layout.isWide
-                      ? { width: layout.rightPaneWidth }
+                      ? { width: layout.rightPaneWidth, height: deck.height }
                       : { height: deck.height },
                   ]}
                 >
@@ -2175,6 +2185,12 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // The seek bar above wants every pixel of a wide landscape deck; the
+    // transport does not — past this the buttons just drift to the far corners.
+    // Centred under a full-width bar, which is how wide players lay this out.
+    width: '100%',
+    maxWidth: TRANSPORT_MAX_WIDTH,
+    alignSelf: 'center',
   },
   transportMainBtn: {
     width: 48,

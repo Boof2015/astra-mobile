@@ -319,6 +319,122 @@ test('caps reserved line boxes so a huge font setting cannot run away', () => {
   assert.ok(capped.deck.height > layoutFor(device, 1, true).deck.height);
 });
 
+const LANDSCAPE = [
+  { name: 'Pixel 7 Pro landscape', width: 891, height: 339 },
+  { name: 'S22 landscape', width: 780, height: 312 },
+  { name: 'Poco M5 landscape', width: 873, height: 345 },
+  { name: 'S25 Ultra landscape', width: 918, height: 363 },
+  { name: 'Tablet 12" landscape', width: 1366, height: 1000 },
+  { name: 'Foldable open landscape', width: 800, height: 650 },
+  { name: 'very short landscape', width: 800, height: 300 },
+] as const;
+
+test('landscape sizes its panes from their contents, not a fixed split', () => {
+  for (const fontScale of FONT_SCALES) {
+    for (const window of LANDSCAPE) {
+      const layout = getNowPlayingLayout(
+        window.width,
+        window.height,
+        true,
+        false,
+        fontScale
+      );
+      assert.equal(layout.presentation, 'wide', `${window.name} should be wide`);
+      assert.equal(
+        layout.leftPaneWidth + 32 + layout.rightPaneWidth,
+        layout.contentWidth,
+        `${window.name}: panes + gap must equal the row width`
+      );
+      assert.ok(
+        layout.contentWidth <= window.width - layout.contentPadding * 2,
+        `${window.name}: row ${layout.contentWidth} overflows the window`
+      );
+      // The stage pane exists to hold the artwork and its strip; a proportional
+      // split used to hand a 160dp artwork a 432dp pane.
+      assert.equal(
+        layout.leftPaneWidth,
+        Math.max(layout.artSizeScopeOff, layout.scopeWidth),
+        `${window.name}: stage pane should hug its widest content`
+      );
+    }
+  }
+});
+
+test('landscape actually uses the width it is given', () => {
+  // The deck cap was aliased to the portrait column width, leaving 100-150dp of
+  // a phone's landscape row unused. Height is scarce in landscape and the
+  // artwork is square, so the deck is the only pane that can spend the surplus.
+  for (const window of LANDSCAPE) {
+    if (window.width > 1000) continue; // tablets are capped by design, for now
+    const layout = getNowPlayingLayout(window.width, window.height, true, false, 1);
+    const rowSpace = Math.min(window.width - layout.contentPadding * 2, 960);
+    const unused = rowSpace - layout.contentWidth;
+    assert.ok(
+      unused <= 40,
+      `${window.name}: ${unused}dp of the row goes unused (row ${layout.contentWidth} of ${rowSpace})`
+    );
+  }
+});
+
+test('landscape keeps the scope strip in proportion to the artwork', () => {
+  for (const window of LANDSCAPE) {
+    const layout = getNowPlayingLayout(window.width, window.height, true, false, 1);
+    if (!layout.scopeRailFits) continue;
+    assert.ok(
+      layout.scopeWidth >= layout.artSizeScopeOn,
+      `${window.name}: strip ${layout.scopeWidth} narrower than artwork ${layout.artSizeScopeOn}`
+    );
+    // Was 2.7x on a Pixel in landscape, which read as a box beside the art.
+    assert.ok(
+      layout.scopeWidth <= layout.artSizeScopeOn * 1.6 + 1,
+      `${window.name}: strip ${layout.scopeWidth} is out of proportion to artwork ${layout.artSizeScopeOn}`
+    );
+    assert.equal(layout.scopeHeight, getScopeHeight(layout.scopeWidth));
+  }
+});
+
+test('landscape picks the richest deck the column can hold', () => {
+  const rank = { compact: 0, regular: 1, spacious: 2 } as const;
+  for (const fontScale of FONT_SCALES) {
+    for (const window of LANDSCAPE) {
+      const layout = getNowPlayingLayout(
+        window.width,
+        window.height,
+        true,
+        false,
+        fontScale
+      );
+      const column =
+        window.height -
+        NOW_PLAYING_CONTENT_TOP_PADDING -
+        NOW_PLAYING_CONTENT_BOTTOM_PADDING -
+        NOW_PLAYING_HEADER_HEIGHT;
+      // Either the deck fits, or it is the leanest tier and the window is the
+      // one at fault.
+      assert.ok(
+        layout.deck.height <= column || layout.density === 'compact',
+        `${window.name} @${fontScale}: '${layout.density}' deck ${layout.deck.height} exceeds column ${column}`
+      );
+      assert.equal(layout.stageHeight, column);
+      assert.ok(rank[layout.density] >= 0);
+    }
+  }
+});
+
+test('landscape never grows the artwork when the scope comes on', () => {
+  for (const fontScale of FONT_SCALES) {
+    for (const window of LANDSCAPE) {
+      const hidden = getNowPlayingLayout(window.width, window.height, false, false, fontScale);
+      const visible = getNowPlayingLayout(window.width, window.height, true, false, fontScale);
+      assert.equal(hidden.deck.height, visible.deck.height);
+      assert.equal(hidden.leftPaneWidth, visible.leftPaneWidth);
+      assert.equal(hidden.rightPaneWidth, visible.rightPaneWidth);
+      assert.equal(hidden.contentWidth, visible.contentWidth);
+      assert.ok(visible.artSizeScopeOn <= visible.artSizeScopeOff);
+    }
+  }
+});
+
 test('adds the companion only to roomy tablet canvases', () => {
   for (const device of DEVICES) {
     assert.equal(getTabletCompanionLayout(device.width, device.height, true), null);
