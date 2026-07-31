@@ -1,4 +1,4 @@
-import { fonts, fontSize, lineHeight } from './typography';
+import { fonts, fontSize, lineHeight, variantLineHeight, MAX_FONT_SCALE } from './typography';
 import { spacing, radius, layout, durations } from './spacing';
 
 // Colors are theme-resolved at runtime now — consume them via
@@ -8,6 +8,7 @@ export const theme = {
   fonts,
   fontSize,
   lineHeight,
+  variantLineHeight,
   spacing,
   radius,
   layout,
@@ -16,4 +17,14 @@ export const theme = {
 
 export type Theme = typeof theme;
 
-export { fonts, fontSize, lineHeight, spacing, radius, layout, durations };
+export {
+  fonts,
+  fontSize,
+  lineHeight,
+  variantLineHeight,
+  MAX_FONT_SCALE,
+  spacing,
+  radius,
+  layout,
+  durations,
+};

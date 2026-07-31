@@ -9,7 +9,8 @@ import {
   getActiveSyncedLyricsLine,
   LYRICS_DISPLAY_LEAD_MS,
 } from '@/lyrics/presentation';
-import { fonts, spacing } from '@/theme';
+import { fonts } from '@/theme';
+import { NOW_PLAYING_LYRIC_LINE_HEIGHT } from '@/components/player/nowPlayingLayout';
 import { createThemedStyles } from '@/theme/themed';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
@@ -31,10 +32,15 @@ const EXITING = new Keyframe({
   .duration(160)
   .reduceMotion(ReduceMotion.System);
 
+/** Matches what the deck reserves when a caller doesn't pass a height. */
+const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT * 2;
+
 interface CachedLyricPeekProps {
   track: Track;
   active: boolean;
   hidden?: boolean;
+  /** Row height the caller reserved for this slot. */
+  height?: number;
   onOpenLyrics: () => void;
 }
 
@@ -46,6 +52,7 @@ export function CachedLyricPeek({
   track,
   active,
   hidden = false,
+  height = DEFAULT_ROW_HEIGHT,
   onOpenLyrics,
 }: CachedLyricPeekProps) {
   const styles = useStyles();
@@ -108,7 +115,7 @@ export function CachedLyricPeek({
     : null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { height }]}>
       <TactilePressable
         style={styles.pressable}
         disabled={!text}
@@ -126,7 +133,7 @@ export function CachedLyricPeek({
             style={styles.lineFrame}
           >
             <Text
-              numberOfLines={2}
+              numberOfLines={1}
               ellipsizeMode="tail"
               style={styles.line}
             >
@@ -141,11 +148,10 @@ export function CachedLyricPeek({
 
 const useStyles = createThemedStyles((colors) => ({
   wrap: {
-    // 48px fits two 22px lines plus breathing room. Pulling 12px from the
-    // existing media gap keeps the external footprint at its old 36px, so the
-    // metadata and every control below stay on the same anchors.
-    height: 48,
-    marginTop: -spacing.md,
+    // Height comes from the caller: the now-playing deck reserves this row so
+    // its own total stays exact. This used to be 48px with a -12px top margin
+    // to hide its footprint from the surrounding flow — the deck accounts for
+    // the row properly now, so the row occupies the space it actually takes.
     overflow: 'hidden',
   },
   pressable: {
@@ -164,6 +170,7 @@ const useStyles = createThemedStyles((colors) => ({
     color: colors.textSecondary,
     fontFamily: fonts.sans.medium,
     fontSize: 16,
-    lineHeight: 22,
+    // Must stay in step with the deck's reservation for this row.
+    lineHeight: NOW_PLAYING_LYRIC_LINE_HEIGHT,
   },
 }));

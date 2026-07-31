@@ -49,6 +49,14 @@ interface WaveformSeekBarProps {
   onSeek: (seconds: number) => void;
   height?: number;
   touchPadding?: number;
+  /** Gap between the canvas and the elapsed/remaining row. */
+  timesGap?: number;
+  /**
+   * Line box reserved for the elapsed/remaining row. Declared by the caller so
+   * this component's total height is `height + touchPadding * 2 + timesGap +
+   * timesHeight` exactly — the now-playing deck reserves that same sum.
+   */
+  timesHeight?: number;
   /** Track file URI used to load/cache the offline waveform peaks. */
   trackPath?: string;
   /**
@@ -73,6 +81,8 @@ export function WaveformSeekBar({
   onSeek,
   height = CANVAS_HEIGHT,
   touchPadding = spacing.md,
+  timesGap = spacing.xs,
+  timesHeight,
   trackPath,
   active = true,
 }: WaveformSeekBarProps) {
@@ -293,7 +303,13 @@ export function WaveformSeekBar({
           ) : null}
         </Canvas>
       </View>
-      <View style={styles.times}>
+      <View
+        style={[
+          styles.times,
+          { marginTop: timesGap },
+          timesHeight != null && { height: timesHeight },
+        ]}
+      >
         <Text variant="mono" style={[styles.time, scrubFraction != null && styles.timeActive]}>
           {formatDuration(shownTime)}
         </Text>
@@ -311,8 +327,8 @@ const useStyles = createThemedStyles((colors) => ({
   },
   times: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.xs,
   },
   time: {
     color: colors.textTertiary,

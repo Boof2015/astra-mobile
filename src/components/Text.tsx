@@ -4,8 +4,10 @@ import {
   type TextProps as RNTextProps
 } from 'react-native';
 import {
+  MAX_FONT_SCALE,
   fonts,
   fontSize,
+  variantLineHeight,
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 
@@ -58,6 +60,11 @@ export function Text({ variant = 'body', color, style, ...rest }: TextProps) {
   const fallback = NON_LATIN.test(collectText(rest.children));
   return (
     <RNText
+      // Every variant carries an explicit lineHeight, so a line box is the same
+      // height on every OEM and stays the same when the fallback family kicks in
+      // above. Capping the scale keeps that height predictable for layouts that
+      // reserve space for text — see theme/typography.ts.
+      maxFontSizeMultiplier={MAX_FONT_SCALE}
       style={[
         styles[variant],
         {
@@ -75,26 +82,32 @@ export function Text({ variant = 'body', color, style, ...rest }: TextProps) {
 const useStyles = createThemedStyles((colors) => ({
   title: {
     fontSize: fontSize.xxl,
+    lineHeight: variantLineHeight.title,
     color: colors.textPrimary,
   },
   heading: {
     fontSize: fontSize.lg,
+    lineHeight: variantLineHeight.heading,
     color: colors.textPrimary,
   },
   body: {
     fontSize: fontSize.base,
+    lineHeight: variantLineHeight.body,
     color: colors.textPrimary,
   },
   label: {
     fontSize: fontSize.sm,
+    lineHeight: variantLineHeight.label,
     color: colors.textSecondary,
   },
   caption: {
     fontSize: fontSize.xs,
+    lineHeight: variantLineHeight.caption,
     color: colors.textTertiary,
   },
   mono: {
     fontSize: fontSize.sm,
+    lineHeight: variantLineHeight.mono,
     color: colors.textSecondary,
   },
 }));

@@ -2,6 +2,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
+  PixelRatio,
   View,
   Pressable,
   StyleSheet,
@@ -56,7 +57,7 @@ import {
 } from '@/components/renderPresenceTiming';
 import { useAppForeground } from '@/lib/useAppForeground';
 import { SleepTimerControls } from '@/components/player/SleepTimerControls';
-import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
+import { AppSheet, AppSheetItem, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   radius,
   spacing,
@@ -77,9 +78,7 @@ import {
   NOW_PLAYING_CONTENT_TOP_PADDING,
   NOW_PLAYING_HEADER_HEIGHT,
   NOW_PLAYING_PLAY_BUTTON_SIZE,
-  NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
   NOW_PLAYING_SUB_BUTTON_SIZE,
-  NOW_PLAYING_WAVEFORM_TOUCH_PADDING,
   NOW_PLAYING_WIDE_PANE_GAP,
 } from '@/components/player/nowPlayingLayout';
 import { useReturnToTabs } from '@/navigation/returnToTabs';
@@ -131,7 +130,6 @@ import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 const HEADER_HEIGHT = NOW_PLAYING_HEADER_HEIGHT;
 const CONTENT_TOP_PADDING = NOW_PLAYING_CONTENT_TOP_PADDING;
 const CONTENT_BOTTOM_PADDING = NOW_PLAYING_CONTENT_BOTTOM_PADDING;
-const WAVEFORM_TOUCH_PADDING = NOW_PLAYING_WAVEFORM_TOUCH_PADDING;
 const PLAY_BUTTON_SIZE = NOW_PLAYING_PLAY_BUTTON_SIZE;
 const SKIP_ICON_SIZE = 32;
 const PLAY_ICON_SIZE = 34;
@@ -173,6 +171,7 @@ export function NowPlayingOverlay() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
+  const [artistPickerOpen, setArtistPickerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const themeIsDark = useThemeStore((s) => s.theme.isDark);
@@ -273,19 +272,29 @@ export function NowPlayingOverlay() {
   // The rack style swaps the art card's face in place, so only the rail style
   // reserves stage height for a scope strip below the art.
   const layoutScopeVisible = effectiveScopeStageVisible && railStyle;
+  // Deck rows reserve real line boxes, so the font scale is an input to the
+  // geometry rather than something the estimates silently got wrong.
+  const fontScale = PixelRatio.getFontScale();
   const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
-    layoutScopeVisible
+    layoutScopeVisible,
+    false,
+    fontScale
   );
   const tabletCompanionLayout = getTabletCompanionLayout(
     effectiveWidth,
     availableHeight,
-    layoutScopeVisible
+    layoutScopeVisible,
+    fontScale
   );
   const hasTabletCompanion = tabletCompanionLayout !== null;
-  const lyricPeekEnabled = !isDesktopTarget && availableHeight >= 720;
   const layout = tabletCompanionLayout?.playerLayout ?? standardLayout;
+  const deck = layout.deck;
+  // The density tier owns whether there is room for the lyric row, and it is
+  // chosen without reference to the scope state — so this can never change
+  // while the screen is open and shift the deck.
+  const lyricPeekEnabled = !isDesktopTarget && deck.lyricRowHeight > 0;
   const contentPadding = tabletCompanionLayout ? spacing.lg : layout.contentPadding;
   const shellWidth = tabletCompanionLayout?.shellWidth ?? layout.contentWidth;
   // Lyrics takes over only on the phone. Roomy tablets keep the player visible
@@ -822,6 +831,10 @@ export function NowPlayingOverlay() {
         setSleepTimerOpen(false);
         return true;
       }
+      if (artistPickerOpen) {
+        setArtistPickerOpen(false);
+        return true;
+      }
       if (playlistActionTrack) {
         setPlaylistActionTrack(null);
         return true;
@@ -840,6 +853,7 @@ export function NowPlayingOverlay() {
     menuOpen,
     targetPickerOpen,
     sleepTimerOpen,
+    artistPickerOpen,
     playlistActionTrack,
     queueOpen,
     closeQueue,
@@ -865,13 +879,24 @@ export function NowPlayingOverlay() {
   // state-dependent by design.
   const railChoreographed = railStyle && !layout.isWide && !isDesktopTarget;
   const artBoxSize = railChoreographed ? layout.artSizeScopeOff : layout.artSize;
+  const playButtonSizing = {
+    width: deck.playButtonSize,
+    height: deck.playButtonSize,
+    borderRadius: deck.playButtonSize / 2,
+  };
+  const subButtonSizing = {
+    width: deck.subButtonSize,
+    height: deck.subButtonSize,
+  };
   const railArtScale =
     railChoreographed && layout.artSizeScopeOff > 0
       ? layout.artSizeScopeOn / layout.artSizeScopeOff
       : 1;
-  const railArtShift = railChoreographed
-    ? layout.artSizeScopeOn / 2 - layout.mediaStackHeight / 2
-    : 0;
+  // The art box is centred in the stage at its scope-off size. Turning the rail
+  // on centres it in the space *above* the rail instead, which is exactly half
+  // the rail block higher — independent of either art size, so the two states
+  // can never disagree about where the stage's middle is.
+  const railArtShift = railChoreographed ? -layout.scopeBlockHeight / 2 : 0;
   const artStageTransitionStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: stageProgress.value * railArtShift },
@@ -986,15 +1011,10 @@ export function NowPlayingOverlay() {
                 <View style={[styles.player, layout.isWide && styles.playerWide]}>
                   <View
                     style={[
-                      styles.middleStack,
-                      !layout.isWide && styles.middleStackCentered,
+                      styles.stage,
                       layout.isWide
-                        ? { width: layout.leftPaneWidth, justifyContent: 'center' }
-                        : {
-                            height: layout.mediaStackHeight,
-                            marginTop: layout.mediaTopMargin,
-                            marginBottom: layout.mediaBottomGap,
-                          },
+                        ? { width: layout.leftPaneWidth }
+                        : styles.stageFill,
                     ]}
                   >
                     <NowPlayingTrackFadeThrough
@@ -1022,20 +1042,18 @@ export function NowPlayingOverlay() {
 
                   <View
                     style={[
-                      styles.playerControls,
+                      styles.deck,
+                      styles.deckSpread,
+                      { rowGap: deck.rowGap },
                       layout.isWide
                         ? { width: layout.rightPaneWidth }
-                        : styles.playerControlsFill,
+                        : { height: deck.height },
                   ]}
                 >
-                    <View style={styles.primaryControls}>
                     <NowPlayingTrackFadeThrough
                       transitionKey={transitionTrackKey}
-                      style={styles.trackInfoFrame}
-                      contentStyle={[
-                        styles.trackInfo,
-                        { marginBottom: layout.trackInfoGap },
-                      ]}
+                      style={[styles.trackInfoFrame, { height: deck.identityRowHeight }]}
+                      contentStyle={styles.trackInfo}
                     >
                       <View style={styles.trackTextStack}>
                         <MarqueeText
@@ -1086,7 +1104,7 @@ export function NowPlayingOverlay() {
                       onSeek={(seconds) => void sendDesktopControl('seek', seconds)}
                     />
 
-                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                    <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
                         android_ripple={ripple.icon(24)}
@@ -1132,7 +1150,8 @@ export function NowPlayingOverlay() {
                         haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
-                        style={styles.playButton} android_ripple={ripple.onAccent()}
+                        style={[styles.playButton, playButtonSizing]}
+                        android_ripple={ripple.onAccent()}
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
                       >
                         <Ionicons
@@ -1188,16 +1207,8 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                     </View>
-                    </View>
 
-                    <View
-                      style={[
-                        styles.subRow,
-                        layout.isWide
-                          ? { marginTop: layout.controlsGap }
-                          : styles.utilityFooter,
-                      ]}
-                    >
+                    <View style={[styles.subRow, { height: deck.utilityRowHeight }]}>
                       <View style={styles.statusPill}>
                         <View
                           style={[
@@ -1278,15 +1289,10 @@ export function NowPlayingOverlay() {
               <View style={[styles.player, layout.isWide && styles.playerWide]}>
                 <View
                   style={[
-                    styles.middleStack,
-                    !layout.isWide && styles.middleStackCentered,
+                    styles.stage,
                     layout.isWide
-                      ? { width: layout.leftPaneWidth, justifyContent: 'center' }
-                      : {
-                          height: layout.mediaStackHeight,
-                          marginTop: layout.mediaTopMargin,
-                          marginBottom: layout.mediaBottomGap,
-                        },
+                      ? { width: layout.leftPaneWidth }
+                      : styles.stageFill,
                   ]}
                 >
                   <Animated.View
@@ -1346,7 +1352,7 @@ export function NowPlayingOverlay() {
                     )}
                   </Animated.View>
 
-                  {railStyle && !layout.isWide && renderScopeSurfaces && (
+                  {railStyle && !layout.isWide && layout.scopeRailFits && renderScopeSurfaces && (
                     <Animated.View
                       pointerEvents={effectiveScopeStageVisible ? 'auto' : 'none'}
                       style={[
@@ -1355,7 +1361,7 @@ export function NowPlayingOverlay() {
                         {
                           width: layout.scopeWidth,
                           height: layout.scopeHeight,
-                          bottom: NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
+                          bottom: layout.railBottomOffset,
                         },
                       ]}
                     >
@@ -1395,54 +1401,78 @@ export function NowPlayingOverlay() {
 
                 <View
                   style={[
-                    styles.playerControls,
+                    styles.deck,
+                    { rowGap: deck.rowGap },
                     layout.isWide
                       ? { width: layout.rightPaneWidth }
-                      : styles.playerControlsFill,
+                      : { height: deck.height },
                   ]}
                 >
-                  <View style={styles.primaryControls}>
-                    {lyricPeekEnabled ? (
-                      <CachedLyricPeek
-                        track={track}
-                        active={surfacesLive && !queueOpen}
-                        hidden={
-                          hasTabletCompanion && nowPlayingCompanion === 'lyrics'
-                        }
-                        onOpenLyrics={showLyrics}
-                      />
-                    ) : null}
-                    <NowPlayingTrackFadeThrough
-                      transitionKey={transitionTrackKey}
-                      style={styles.trackInfoFrame}
-                      contentStyle={[
-                        styles.trackInfo,
-                        { marginBottom: layout.trackInfoGap },
-                      ]}
-                    >
-                      <View style={styles.trackTextStack}>
-                        <MarqueeText
-                          variant="heading"
-                          containerStyle={styles.trackTitle}
-                          style={styles.trackTitleText}
+                  <View style={[styles.identityGroup, { rowGap: deck.lyricGap }]}>
+                  {lyricPeekEnabled ? (
+                    <CachedLyricPeek
+                      track={track}
+                      height={deck.lyricRowHeight}
+                      active={surfacesLive && !queueOpen}
+                      hidden={
+                        hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                      }
+                      onOpenLyrics={showLyrics}
+                    />
+                  ) : null}
+                  <NowPlayingTrackFadeThrough
+                    transitionKey={transitionTrackKey}
+                    style={[
+                      styles.trackInfoFrame,
+                      { height: deck.identityRowHeight },
+                    ]}
+                    contentStyle={styles.trackInfo}
+                  >
+                    <View style={styles.trackTextStack}>
+                      <MarqueeText
+                        variant="heading"
+                        containerStyle={[
+                          styles.trackTitle,
+                          { height: deck.titleLineHeight },
+                        ]}
+                        style={styles.trackTitleText}
+                      >
+                        {track.title}
+                      </MarqueeText>
+                      {/* One credit line, never two — a wrapping credit used to
+                          add a line box and shove every control below it.
+                          Nested pressable <Text> rather than a row of Pressables:
+                          a flex row shrinks *every* child to fit, so a seven-way
+                          collab truncated all seven names to nothing. As one text
+                          run the names keep their full width, the line ellipsizes
+                          once at the end, and each name is still its own link
+                          sized to exactly its own glyphs. */}
+                      <View
+                        style={[
+                          styles.creditLine,
+                          {
+                            height: deck.artistLineHeight,
+                            marginTop: deck.identityGap,
+                          },
+                        ]}
+                      >
+                        <Text
+                          variant="body"
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                          style={styles.trackMetaRow}
                         >
-                          {track.title}
-                        </MarqueeText>
-                        <View style={styles.trackMetaRow}>
                           {artistCreditTokens.map(({ artist, separator }) => (
                             <Fragment key={artist}>
-                              <Pressable
+                              <Text
+                                variant="body"
+                                style={styles.artist}
                                 onPress={() => navigateToArtist(artist, true)}
-                                hitSlop={4}
-                                style={styles.artistCreditButton}
-                                android_ripple={ripple.bounded}
                                 accessibilityRole="link"
                                 accessibilityLabel={`View artist ${artist}`}
                               >
-                                <Text variant="body" style={styles.artist}>
-                                  {artist}
-                                </Text>
-                              </Pressable>
+                                {artist}
+                              </Text>
                               {separator ? (
                                 <Text variant="body" style={styles.artistSeparator}>
                                   {separator}
@@ -1450,47 +1480,71 @@ export function NowPlayingOverlay() {
                               ) : null}
                             </Fragment>
                           ))}
-                        </View>
+                        </Text>
+                        {/* Credits past the ellipsis are otherwise unreachable
+                            from this screen. The chip sits inside the reserved
+                            line box, so it can't disturb the deck. */}
+                        {artistCreditTokens.length > 1 ? (
+                          <TactilePressable
+                            hitSlop={10}
+                            haptic="selection"
+                            style={[styles.creditChip, { height: deck.artistLineHeight }]}
+                            android_ripple={ripple.bounded}
+                            onPress={() => setArtistPickerOpen(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`All ${artistCreditTokens.length} artists`}
+                          >
+                            <Text variant="label" style={styles.creditChipLabel}>
+                              {artistCreditTokens.length}
+                            </Text>
+                          </TactilePressable>
+                        ) : null}
                       </View>
-                      <TactilePressable
-                        hitSlop={10}
-                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
-                        haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
-                        confirmationScale={1.08}
-                        onPress={() => void toggleFavorite(track)}
-                        accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                        accessibilityState={{ selected: isFavorite }}
-                      >
-                        <PlayerStateIcon
-                          selected={isFavorite}
-                          size={SUB_ICON_SIZE + 4}
-                          inactive={
-                            <Ionicons
-                              name="heart-outline"
-                              size={SUB_ICON_SIZE + 4}
-                              color={colors.textTertiary}
-                            />
-                          }
-                          active={
-                            <Ionicons
-                              name="heart"
-                              size={SUB_ICON_SIZE + 4}
-                              color={colors.accent}
-                            />
-                          }
-                        />
-                      </TactilePressable>
-                    </NowPlayingTrackFadeThrough>
+                    </View>
+                    <TactilePressable
+                      hitSlop={10}
+                      style={[styles.inlineActionBtn, subButtonSizing]}
+                      android_ripple={ripple.icon(22)}
+                      haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
+                      confirmationScale={1.08}
+                      onPress={() => void toggleFavorite(track)}
+                      accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                      accessibilityState={{ selected: isFavorite }}
+                    >
+                      <PlayerStateIcon
+                        selected={isFavorite}
+                        size={SUB_ICON_SIZE + 4}
+                        inactive={
+                          <Ionicons
+                            name="heart-outline"
+                            size={SUB_ICON_SIZE + 4}
+                            color={colors.textTertiary}
+                          />
+                        }
+                        active={
+                          <Ionicons
+                            name="heart"
+                            size={SUB_ICON_SIZE + 4}
+                            color={colors.accent}
+                          />
+                        }
+                      />
+                    </TactilePressable>
+                  </NowPlayingTrackFadeThrough>
+                  </View>
 
+                  <View style={[styles.controlBlock, { rowGap: deck.controlGap }]}>
                     <WaveformSeekBar
                       active={surfacesLive}
-                      height={layout.waveformHeight}
-                      touchPadding={WAVEFORM_TOUCH_PADDING}
+                      height={deck.waveformHeight}
+                      touchPadding={deck.waveformTouchPadding}
+                      timesGap={deck.timesGap}
+                      timesHeight={deck.timesRowHeight}
                       trackPath={track.path}
                       onSeek={(seconds) => void seekTo(seconds)}
                     />
 
-                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                    <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
                         style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
@@ -1528,7 +1582,7 @@ export function NowPlayingOverlay() {
                         haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
-                        style={styles.playButton}
+                        style={[styles.playButton, playButtonSizing]}
                         android_ripple={ripple.onAccent()}
                         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                       >
@@ -1579,14 +1633,7 @@ export function NowPlayingOverlay() {
                     </View>
                   </View>
 
-                  <View
-                    style={[
-                      styles.subRow,
-                      layout.isWide
-                        ? { marginTop: layout.controlsGap }
-                        : styles.utilityFooter,
-                    ]}
-                  >
+                  <View style={[styles.subRow, { height: deck.utilityRowHeight }]}>
                     <View style={styles.subBadges}>
                       <RemoteSourceBadge sourceType={track.sourceType} />
                       <FormatBadges track={track} wrap={false} variant="plain" />
@@ -1594,7 +1641,8 @@ export function NowPlayingOverlay() {
                     <View style={styles.subActions}>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        style={[styles.subBtn, subButtonSizing]}
+                        android_ripple={ripple.icon(20)}
                         haptic={scopeStageVisible ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
@@ -1621,7 +1669,8 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        style={[styles.subBtn, subButtonSizing]}
+                        android_ripple={ripple.icon(20)}
                         haptic="selection"
                         onPress={showQueue}
                         accessibilityLabel="Queue"
@@ -1634,7 +1683,8 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        style={[styles.subBtn, subButtonSizing]}
+                        android_ripple={ripple.icon(20)}
                         haptic="selection"
                         onPress={showLyrics}
                         accessibilityLabel={
@@ -1744,6 +1794,22 @@ export function NowPlayingOverlay() {
         <AppSheet onClose={() => setSleepTimerOpen(false)}>
           <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerStatus(sleepTimer) : undefined} />
           <SleepTimerControls />
+        </AppSheet>
+      ) : null}
+      {artistPickerOpen && track ? (
+        <AppSheet scrollable onClose={() => setArtistPickerOpen(false)}>
+          <AppSheetTitle title="Artists" subtitle={track.title} />
+          {artistCreditTokens.map(({ artist }) => (
+            <AppSheetItem
+              key={artist}
+              label={artist}
+              icon="person-outline"
+              onPress={() => {
+                setArtistPickerOpen(false);
+                navigateToArtist(artist, true);
+              }}
+            />
+          ))}
         </AppSheet>
       ) : null}
       {/* The native queue presents its own dialog from AstraQueue.present(). */}
@@ -1953,12 +2019,17 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     columnGap: NOW_PLAYING_WIDE_PANE_GAP,
   },
-  middleStack: {
+  // The stage is the screen's only elastic region. It owns every spare pixel,
+  // so surplus height reads as breathing room around the artwork instead of
+  // pooling as one dead gap above the controls.
+  stage: {
     width: '100%',
     alignItems: 'center',
-  },
-  middleStackCentered: {
     justifyContent: 'center',
+  },
+  stageFill: {
+    flex: 1,
+    minHeight: 0,
   },
   artButton: {
     alignItems: 'center',
@@ -2047,15 +2118,28 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trackMetaRow: {
+  creditLine: {
     alignSelf: 'stretch',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    marginTop: spacing.xs,
+    gap: spacing.sm,
   },
-  artistCreditButton: {
-    alignSelf: 'flex-start',
+  trackMetaRow: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'left',
+  },
+  creditChip: {
+    flexShrink: 0,
+    minWidth: 22,
+    paddingHorizontal: spacing.xs + 1,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glassBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditChipLabel: {
+    color: colors.textSecondary,
   },
   artistSeparator: {
     color: colors.textTertiary,
@@ -2066,18 +2150,26 @@ const useStyles = createThemedStyles((colors) => ({
   artist: {
     color: colors.accentText,
   },
-  playerControls: {
+  // Rigid by construction: every child declares its own height and the deck is
+  // rendered at exactly `deck.height`, the same number the stage was sized
+  // against. Nothing in here can grow and push the artwork around, and nothing
+  // outside it can leave slack behind that shifts the controls upward.
+  deck: {
     width: '100%',
   },
-  playerControlsFill: {
-    flex: 1,
+  // Desktop-remote deck only — it has one row fewer than the phone's, so its
+  // leftover height spreads between rows rather than trailing off the bottom.
+  deckSpread: {
+    justifyContent: 'space-between',
   },
-  primaryControls: {
+  // Deck pairs. Grouping is what stops the reserved-but-often-empty lyric row
+  // from reading as a hole between the scope and the title: it sits on the
+  // title's leading, not on a band of its own.
+  identityGroup: {
     width: '100%',
   },
-  utilityFooter: {
-    marginTop: 'auto',
-    paddingTop: spacing.lg,
+  controlBlock: {
+    width: '100%',
   },
   transport: {
     flexDirection: 'row',
