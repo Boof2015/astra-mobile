@@ -20,6 +20,7 @@ import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
+  layout,
   radius,
   spacing,
 } from '@/theme';
@@ -293,7 +294,7 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 76,
+    paddingBottom: layout.miniPlayerFloat,
   },
   empty: {
     alignItems: 'center',

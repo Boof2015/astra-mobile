@@ -25,6 +25,7 @@ import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionShe
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
+  layout,
   fontSize,
   radius,
   spacing,
@@ -320,7 +321,7 @@ export default function ArtistScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: layout.miniPlayerFloat,
         }}
       />
       <CollapsingHeader

@@ -23,6 +23,7 @@ import {
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
 import {
+  layout,
   fonts,
   radius,
   spacing,
@@ -788,7 +789,7 @@ export default function HomeScreen() {
 
 const useStyles = createThemedStyles((colors) => ({
   content: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
   },
   masthead: {
     minHeight: 72,

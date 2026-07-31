@@ -106,7 +106,14 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
 
   return (
     <View style={styles.wrap}>
-      <MiniPlayer />
+      {/* Out of the layout flow, sitting on top of the scene rather than
+          beside it. In flow, this element's height was subtracted from the
+          scene, so content stopped in a band above the pill and it read as a
+          slab of chrome no matter what colour it was painted. Scrollable
+          content reserves `layout.miniPlayerFloat` at its bottom to clear it. */}
+      <View style={styles.floatingPlayer} pointerEvents="box-none">
+        <MiniPlayer />
+      </View>
       <View
         style={[
           styles.bar,
@@ -201,8 +208,14 @@ function TabButton({ meta, focused, onPress, rail = false, height }: TabButtonPr
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  wrap: {
-    backgroundColor: colors.bgSecondary,
+  // Deliberately unpainted, and sized by the bar alone. Only the bar is chrome.
+  wrap: {},
+  floatingPlayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    // Directly above this element's top edge, i.e. over the scene.
+    bottom: '100%',
   },
   bar: {
     flexDirection: 'row',

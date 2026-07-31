@@ -11,7 +11,7 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   listContent: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
   },
   emptyState: {
     alignItems: 'center',

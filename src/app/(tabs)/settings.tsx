@@ -16,7 +16,7 @@ import {
   SettingsNavRow,
   SettingsSectionLabel,
 } from '@/components/settings/SettingsSectionScaffold';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { formatRelativeTime } from '@/lib/format';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
@@ -161,7 +161,7 @@ export default function SettingsScreen() {
 
 const useStyles = createThemedStyles(() => ({
   content: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
     gap: spacing.sm,
   },
   heading: {

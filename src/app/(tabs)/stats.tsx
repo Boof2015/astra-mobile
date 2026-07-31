@@ -20,7 +20,7 @@ import { formatListeningTime, formatRecordedSince } from '@/listeningStats/forma
 import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
-import { fonts, radius, spacing } from '@/theme';
+import { layout, fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type {
@@ -477,7 +477,7 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
     gap: spacing.lg,
   },
   pausedBanner: {

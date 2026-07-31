@@ -41,7 +41,7 @@ import {
   PullSearchScrollView,
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { useShellShowsScreenTitle } from '@/navigation/useShellLayout';
@@ -432,6 +432,7 @@ export default function LibraryScreen() {
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  contentContainerStyle={styles.listContent}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -477,6 +478,7 @@ export default function LibraryScreen() {
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  contentContainerStyle={styles.listContent}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -521,6 +523,7 @@ export default function LibraryScreen() {
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  contentContainerStyle={styles.listContent}
                   renderScrollComponent={PullSearchScrollView}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -693,6 +696,10 @@ const styles = StyleSheet.create({
   },
   listArea: {
     flex: 1,
+  },
+  // Clears the floating mini player so the last row is readable.
+  listContent: {
+    paddingBottom: layout.miniPlayerFloat,
   },
   listFooter: {
     paddingVertical: spacing.lg,

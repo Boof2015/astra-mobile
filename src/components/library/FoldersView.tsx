@@ -27,7 +27,7 @@ import {
 } from '@/audio/playbackController';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -421,7 +421,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
 
 const useStyles = createThemedStyles((colors) => ({
   listContent: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
   },
   indent: {
     flexShrink: 0,

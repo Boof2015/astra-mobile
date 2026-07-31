@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   View,
   Pressable,
-  StyleSheet,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle
@@ -21,8 +20,10 @@ import Animated, {
 import { usePlayerOnScreen, usePlayerUiStore } from '@/stores/playerUiStore';
 import { Text } from './Text';
 import { AstraLogo } from './AstraLogo';
+import { MiniPlayerScrim } from './MiniPlayerScrim';
 import { SpectrumCurve } from './SpectrumCurve';
 import {
+  layout,
   radius,
   spacing,
 } from '@/theme';
@@ -56,8 +57,12 @@ import {
   type MiniPlayerSwipeDirection,
 } from './miniPlayerSwipe';
 
-const PILL_HEIGHT = 56;
-const ART = 42;
+// The theme already declared this height and the component had drifted off it.
+// Artwork is the height minus a uniform 8dp inset, matching the row's
+// horizontal padding — the whole pill on one spacing step.
+const PILL_HEIGHT = layout.miniPlayerHeight;
+const ART = PILL_HEIGHT - spacing.sm * 2;
+const CONTROL = 40;
 const CURVE_POINTS = 64;
 const SWIPE_ACTIVE_OFFSET_X = 10;
 const SWIPE_FAIL_OFFSET_Y = 20;
@@ -560,7 +565,7 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
               style={[styles.control, { width: controlSize, height: controlSize }]}
               accessibilityLabel="Next"
             >
-              <Ionicons name="play-skip-forward" size={20} color={colors.textPrimary} />
+              <Ionicons name="play-skip-forward" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
         </View>
@@ -574,6 +579,12 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
 
   return (
     <>
+      {/* Rendered from here rather than from TabBar so it's gated by the same
+          `presentation.visible` early return the pill is — a scrim with no pill
+          under it would just be an unexplained dark band. Absolute, so it fills
+          TabBar's `floatingPlayer` box; first in tree order so it paints behind
+          the pill. */}
+      <MiniPlayerScrim />
       <GestureDetector gesture={swipeGesture}>
         <Animated.View style={styles.pill} onLayout={onLayout}>
           <Pressable
@@ -625,7 +636,7 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
                         contentFit="cover"
                       />
                     ) : (
-                      <AstraLogo size={20} />
+                      <AstraLogo size={24} />
                     )}
                   </View>
 
@@ -658,8 +669,12 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
                   color={colors.accent}
                 />
               </Pressable>
+              {/* Secondary, so play/pause stays the brightest thing in the
+                  pill. A filled accent disc would read better on a flat
+                  surface, but here it would punch a hole through the live
+                  spectrum drawing behind all of this. */}
               <Pressable hitSlop={10} android_ripple={ripple.icon(22)} onPress={onSkipNext} style={styles.control}>
-                <Ionicons name="play-skip-forward" size={22} color={colors.textPrimary} />
+                <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
 
@@ -690,15 +705,29 @@ export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {
 const useStyles = createThemedStyles((colors) => ({
   pill: {
     height: PILL_HEIGHT,
-    marginHorizontal: spacing.md,
+    // Matches the screens' content gutter (Screen's paddingHorizontal), so the
+    // pill's edges line up with the grid it floats over instead of running
+    // 4dp wider than it.
+    marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
     borderRadius: radius.lg,
     backgroundColor: colors.bgTertiary,
-    borderColor: colors.glassBorder,
-    borderWidth: StyleSheet.hairlineWidth,
+    // A full 1dp at the stronger alpha, not a hairline at the ambient one: this
+    // rim is the pill's only hard edge against whatever content is underneath,
+    // and `glassBorder` at hairline width is invisible over album art.
+    borderColor: colors.glassBorderStrong,
+    borderWidth: 1,
     overflow: 'hidden',
     justifyContent: 'center',
+    // It does float over the list, so it should look like it rather than
+    // sitting flush on the tab bar's surface. Reads only where it falls on
+    // bright artwork — the rim is what carries the edge everywhere else.
+    shadowColor: '#000',
+    shadowOpacity: 0.34,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
   },
   pillPressable: {
     flex: 1,
@@ -769,8 +798,8 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 15,
   },
   control: {
-    width: 36,
-    height: 36,
+    width: CONTROL,
+    height: CONTROL,
     alignItems: 'center',
     justifyContent: 'center',
   },

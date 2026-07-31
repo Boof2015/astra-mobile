@@ -11,7 +11,7 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -116,7 +116,7 @@ export default function AlbumScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: layout.miniPlayerFloat,
         }}
         renderItem={({ item }) =>
           item.kind === 'disc' ? (

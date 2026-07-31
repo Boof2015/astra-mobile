@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   listContent: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: layout.miniPlayerFloat,
   },
   gridCell: {
     flex: 1,

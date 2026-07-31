@@ -25,7 +25,7 @@ import {
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -292,7 +292,7 @@ export default function PlaylistScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: layout.miniPlayerFloat,
         }}
         renderItem={({ item }) =>
           item.track ? (
