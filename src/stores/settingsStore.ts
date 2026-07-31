@@ -32,6 +32,7 @@ const HOME_GREETING_TEXT_MODE_KEY = 'home_greeting_text_mode';
 const LISTENING_HISTORY_ENABLED_KEY = 'listening_history_enabled';
 const ARTIST_IMAGE_AUTO_POLICY_KEY = 'artist_image_auto_policy';
 const ARTIST_IMAGE_DISCLOSURE_KEY = 'artist_image_disclosure_seen';
+const PLAYER_DOCK_KEY = 'player_dock_open';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -69,6 +70,12 @@ interface SettingsStore {
   includeSingles: boolean;
   scopeMode: ScopeMode;
   scopeStageVisible: boolean;
+  /**
+   * Whether the user wants the side-by-side player pane. Only honoured on a
+   * window wide enough to seat one without squeezing the shell — the shell
+   * arbitrates via `dockAllowed`, so this is a wish, not a fact.
+   */
+  playerDockOpen: boolean;
   nowPlayingScopeStyle: NowPlayingScopeStyle;
   /** Whether the now-playing top half shows lyrics instead of art/scope. */
   lyricsVisible: boolean;
@@ -83,6 +90,7 @@ interface SettingsStore {
   setIncludeSingles: (include: boolean) => Promise<void>;
   setScopeMode: (mode: ScopeMode) => Promise<void>;
   setScopeStageVisible: (visible: boolean) => Promise<void>;
+  setPlayerDockOpen: (open: boolean) => Promise<void>;
   setNowPlayingScopeStyle: (style: NowPlayingScopeStyle) => Promise<void>;
   setLyricsVisible: (visible: boolean) => Promise<void>;
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
@@ -97,6 +105,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   includeSingles: false,
   scopeMode: 'spectrum',
   scopeStageVisible: false,
+  playerDockOpen: false,
   nowPlayingScopeStyle: 'rail',
   lyricsVisible: false,
   nowPlayingCompanion: 'queue',
@@ -121,6 +130,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       LISTENING_HISTORY_ENABLED_KEY,
       ARTIST_IMAGE_AUTO_POLICY_KEY,
       ARTIST_IMAGE_DISCLOSURE_KEY,
+      PLAYER_DOCK_KEY,
     ]);
     const grouping = values[ARTIST_GROUPING_KEY] ?? null;
     const includeSingles = values[INCLUDE_SINGLES_KEY] ?? null;
@@ -135,11 +145,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       values[ARTIST_IMAGE_AUTO_POLICY_KEY] ?? null
     );
     const artistImageDisclosureSeen = values[ARTIST_IMAGE_DISCLOSURE_KEY] === '1';
+    const playerDockOpen = values[PLAYER_DOCK_KEY] ?? null;
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
       scopeMode: parseScopeMode(scope),
       scopeStageVisible: parseBoolean(scopeStageVisible),
+      playerDockOpen: parseBoolean(playerDockOpen),
       nowPlayingScopeStyle: parseScopeStyle(scopeStyle),
       lyricsVisible: parseBoolean(lyricsVisible),
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
@@ -173,6 +185,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (get().scopeStageVisible === visible) return;
     set({ scopeStageVisible: visible });
     await AstraLibraryData.setSettings({ [SCOPE_STAGE_VISIBLE_KEY]: visible ? 'true' : 'false' });
+  },
+
+  setPlayerDockOpen: async (open) => {
+    if (get().playerDockOpen === open) return;
+    set({ playerDockOpen: open });
+    await AstraLibraryData.setSettings({ [PLAYER_DOCK_KEY]: open ? 'true' : 'false' });
   },
 
   setNowPlayingScopeStyle: async (style) => {

@@ -94,6 +94,16 @@ const SPLIT_BAR_HEIGHT = 72;
 const SPLIT_NAV_ITEM_IDEAL_WIDTH = 88;
 /** Floor before a nav item's label starts truncating. */
 const SPLIT_NAV_ITEM_MIN_WIDTH = 64;
+/**
+ * Nav items tighten while a player pane is up — the nav card is no longer the
+ * co-star of the bar, so it steps back and gives the pane the emphasis.
+ *
+ * Declared, not incidental. This shrink first appeared as a side effect of the
+ * bar reserving room for a player card it had stopped rendering; the effect
+ * looked right, so it is now a stated intent with the items animating in step
+ * with the card rather than snapping inside it.
+ */
+const SPLIT_NAV_ITEM_DOCKED_WIDTH = 64;
 /** Below this the mini player can't hold artwork, two text lines and two controls. */
 const SPLIT_MINI_MIN_WIDTH = 280;
 /** A player card, not a smear. Past this the pair centres instead of stretching. */
@@ -120,6 +130,51 @@ const SPLIT_MIN_CONTENT_WIDTH =
   SPLIT_CARD_PADDING * 2 +
   SPLIT_GAP +
   SPLIT_MINI_MIN_WIDTH;
+
+/**
+ * Same, for a column that is already showing a dock — the player card is the
+ * pane in that case, so only the nav card has to fit.
+ *
+ * Without this split, opening the dock knocked the column down to flat bottom
+ * tabs on a foldable: it was still demanding room for a mini player it had
+ * stopped rendering. Keeping the floating nav card means expanding the pane
+ * changes one thing rather than restyling the whole bar underneath it.
+ */
+const SPLIT_MIN_CONTENT_WIDTH_DOCKED =
+  SPLIT_NAV_ITEM_MIN_WIDTH * NAV_ITEM_COUNT + SPLIT_CARD_PADDING * 2;
+
+/* ── player dock (tablet stage B) ───────────────────────────────────────── */
+
+/**
+ * The dock is a *toggle*, not a breakpoint: a window wide enough to seat one
+ * offers it, and the user decides. That keeps the automatic shapes at three and
+ * lets someone reclaim the width for browsing.
+ *
+ * It is sized as a share of the window rather than a constant, because it has
+ * to leave a shell behind it — the split bar still needs room for both its
+ * cards in what's left, and a fixed 560dp dock would strand a 1024dp tablet.
+ */
+const DOCK_WIDTH_RATIO = 0.36;
+/** Narrower than this and it's a wide mini player, not a player. */
+const DOCK_MIN_WIDTH = 340;
+/** Wider than this it stops earning the width it takes from the library. */
+const DOCK_MAX_WIDTH = 520;
+/**
+ * Column the scene keeps behind a dock. About a phone in portrait — enough to
+ * browse a library in.
+ *
+ * Deliberately NOT "the split bar must still fit". Once the dock is up the
+ * shell no longer carries a player, so it only has to seat *navigation*, and
+ * demanding room for a mini player it will not render excluded windows for
+ * space they did not need — which is what kept the dock off the Fold.
+ */
+const DOCK_MIN_SCENE_WIDTH = 420;
+/**
+ * Shortest window worth a dock. Equal to `RAIL_MAX_WINDOW_HEIGHT` on purpose:
+ * a window short enough to want a rail is too short to also host a player
+ * column, so the two shapes can never collide.
+ */
+const DOCK_MIN_HEIGHT = RAIL_MAX_WINDOW_HEIGHT;
 
 export interface ShellInsets {
   top: number;
@@ -171,6 +226,30 @@ export interface ShellLayout {
   miniPlayer: RailMiniPlayerLayout;
   splitBar: SplitBarLayout;
   /**
+   * Whether this window could seat a player dock at all. The toggle should be
+   * hidden, not just disabled, when this is false — offering a control that
+   * cannot do anything is worse than not offering it.
+   */
+  dockAllowed: boolean;
+  /** True when the dock is both wanted and possible. */
+  docked: boolean;
+  /** Trailing-edge width the dock occupies; 0 when not docked. */
+  dockWidth: number;
+  /**
+   * The width a dock *would* take on this window, whether or not one is open.
+   * The open/close animation interpolates toward it, and the pane's contents
+   * lay out at it once rather than re-flowing on every frame of the reveal.
+   */
+  dockCandidateWidth: number;
+  /** Width the scene actually gets: the window minus the dock. */
+  sceneWidth: number;
+  /**
+   * Trailing safe-area inset the *scene* owes. Zero while docked, because the
+   * dock is the thing on that edge — the mirror of `ShellRailContext` taking
+   * the leading inset. See `Screen`.
+   */
+  sceneInsetRight: number;
+  /**
    * What a scrollable surface must reserve at its bottom so its last row isn't
    * hidden by chrome that sits *outside* the layout flow.
    *
@@ -211,9 +290,37 @@ export function getShellLayout(
   width: number,
   height: number,
   insets: ShellInsets,
-  fontScale = 1
+  fontScale = 1,
+  /**
+   * The user's dock preference. Honoured only if the window can seat a dock
+   * *and* still leave a working shell — see `dockAllowed`.
+   */
+  dockRequested = false
 ): ShellLayout {
   const scale = clamp(fontScale, 1, MAX_FONT_SCALE);
+  // The dock takes its width off the trailing edge before anything else is
+  // measured, so every shape below sizes to the content column rather than to
+  // the window. Its own trailing safe-area inset is the dock's to pay.
+  const dockCandidate = Math.round(
+    clamp(width * DOCK_WIDTH_RATIO, DOCK_MIN_WIDTH, DOCK_MAX_WIDTH)
+  );
+  // Docked, the scene stops paying the trailing inset — the dock is what's on
+  // that edge — so the column it keeps is measured without it.
+  const contentIfDocked = width - dockCandidate - insets.left;
+  // Landscape-ish and tall enough to be worth a player column, with a usable
+  // scene left behind it. Portrait keeps the fullscreen player instead.
+  const dockAllowed =
+    width > height &&
+    height >= DOCK_MIN_HEIGHT &&
+    contentIfDocked >= DOCK_MIN_SCENE_WIDTH;
+  const docked = dockRequested && dockAllowed;
+  const dockWidth = docked ? dockCandidate : 0;
+  // Everything below measures the column the scene actually gets, not the
+  // window. The dock sits on the trailing edge, so it also inherits the
+  // trailing safe-area inset — the scene stops paying it, exactly as the rail
+  // takes the leading one.
+  const sceneWidth = width - dockWidth;
+  const sceneInsetRight = docked ? 0 : insets.right;
   const railHeight = Math.max(0, height - insets.top - insets.bottom);
   const preferredNavItem = Math.max(
     NAV_ITEM_HEIGHT,
@@ -244,9 +351,9 @@ export function getShellLayout(
 
   const splitContentWidth = Math.max(
     0,
-    width - insets.left - insets.right - SPLIT_BAR_MARGIN * 2
+    sceneWidth - insets.left - sceneInsetRight - SPLIT_BAR_MARGIN * 2
   );
-  const splitBar = fitSplitBar(splitContentWidth, scale);
+  const splitBar = fitSplitBar(splitContentWidth, scale, docked);
 
   // A rail is for a window that is landscape, short enough to actually need the
   // height back, wide enough to afford 104dp of it, and tall enough to host the
@@ -259,12 +366,13 @@ export function getShellLayout(
   // in either orientation — and a window too short for a rail but wide enough
   // to share a row.
   const mode: ShellNavigationMode =
-    width > height &&
-    width >= RAIL_MIN_WINDOW_WIDTH &&
+    sceneWidth > height &&
+    sceneWidth >= RAIL_MIN_WINDOW_WIDTH &&
     height < RAIL_MAX_WINDOW_HEIGHT &&
     navItemHeight >= NAV_ITEM_MIN_HEIGHT
       ? 'rail'
-      : splitContentWidth >= SPLIT_MIN_CONTENT_WIDTH
+      : splitContentWidth >=
+          (docked ? SPLIT_MIN_CONTENT_WIDTH_DOCKED : SPLIT_MIN_CONTENT_WIDTH)
         ? 'split'
         : 'tabs';
 
@@ -286,12 +394,20 @@ export function getShellLayout(
     navLabelGap: NAV_LABEL_GAP,
     miniPlayer,
     splitBar,
+    dockAllowed,
+    docked,
+    dockWidth,
+    dockCandidateWidth: dockAllowed ? dockCandidate : 0,
+    sceneWidth,
+    sceneInsetRight,
     // Both shapes that float chrome over the scene owe it the space back. The
     // rail is the only one that doesn't, because it sits beside the scene
     // rather than on top of it.
     sceneBottomInset:
       mode === 'tabs'
-        ? layoutTokens.miniPlayerFloat
+        // Docked, the pill is gone — the dock is the player — so the plain bar
+        // is in flow and the scene owes nothing.
+        ? (docked ? 0 : layoutTokens.miniPlayerFloat)
         : mode === 'split'
           ? splitBar.blockHeight + insets.bottom
           : 0,
@@ -310,7 +426,11 @@ export function getShellLayout(
  * tablet's bottom chrome should look composed, not like two things that drifted
  * apart.
  */
-function fitSplitBar(availableWidth: number, scale: number): SplitBarLayout {
+function fitSplitBar(
+  availableWidth: number,
+  scale: number,
+  docked: boolean
+): SplitBarLayout {
   // The card's own padding is part of the height, not on top of it: the nav
   // items live in the padded box so the selection indicator clears the clipped
   // rounded edge. A larger font setting grows the box rather than the overhang.
@@ -324,8 +444,17 @@ function fitSplitBar(availableWidth: number, scale: number): SplitBarLayout {
   );
   const cardChrome = SPLIT_CARD_PADDING * 2;
   const navAtIdeal = SPLIT_NAV_ITEM_IDEAL_WIDTH * NAV_ITEM_COUNT + cardChrome;
-  const navItemWidth =
-    availableWidth - navAtIdeal - SPLIT_GAP >= SPLIT_MINI_MIN_WIDTH
+  // Docked, the nav card steps back to its compact width — see
+  // SPLIT_NAV_ITEM_DOCKED_WIDTH. It is sized from a declared constant rather
+  // than from whatever is left over after reserving for a player card that is
+  // no longer rendered, which is what it used to do by accident.
+  const navItemWidth = docked
+    ? clamp(
+        SPLIT_NAV_ITEM_DOCKED_WIDTH,
+        SPLIT_NAV_ITEM_MIN_WIDTH,
+        Math.floor((availableWidth - cardChrome) / NAV_ITEM_COUNT)
+      )
+    : availableWidth - navAtIdeal - SPLIT_GAP >= SPLIT_MINI_MIN_WIDTH
       ? SPLIT_NAV_ITEM_IDEAL_WIDTH
       : clamp(
           Math.floor(
@@ -336,11 +465,9 @@ function fitSplitBar(availableWidth: number, scale: number): SplitBarLayout {
           SPLIT_NAV_ITEM_IDEAL_WIDTH
         );
   const navWidth = navItemWidth * NAV_ITEM_COUNT + cardChrome;
-  const miniWidth = clamp(
-    availableWidth - navWidth - SPLIT_GAP,
-    0,
-    SPLIT_MINI_MAX_WIDTH
-  );
+  const miniWidth = docked
+    ? 0
+    : clamp(availableWidth - navWidth - SPLIT_GAP, 0, SPLIT_MINI_MAX_WIDTH);
   return {
     height,
     navItemWidth,

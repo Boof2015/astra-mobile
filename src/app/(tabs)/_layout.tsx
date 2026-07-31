@@ -1,9 +1,7 @@
 import { useMemo, useRef } from 'react';
-import { PixelRatio, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
-import { getShellLayout } from '@/navigation/shellLayout';
+import { useShellLayout } from '@/navigation/useShellLayout';
 import { ShellRailContext } from '@/navigation/shellRailContext';
 import {
   TAB_SCENE_ANIMATION,
@@ -17,14 +15,17 @@ import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 export default function TabsLayout() {
   const colors = useColors();
   const lastSwitchAt = useRef(0);
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+
   // Landscape moves navigation to a rail down the leading edge and hands the
   // scene back the ~152dp the tab bar and mini player were costing it. The
   // navigator does the reflow itself: `tabBarPosition: 'left'` flips its
   // container to a row and renders the tab-bar element ahead of the scenes,
   // so no screen has to know about any of this.
-  const shell = getShellLayout(width, height, insets, PixelRatio.getFontScale());
+  // Must be the hook, not a bare getShellLayout(window): the dock takes width
+  // off the trailing edge, so this navigator lives in a narrower column than
+  // the window. Sizing to the window left the bar's cards too wide and left it
+  // still rendering a mini player the dock had replaced.
+  const shell = useShellLayout();
   const tabBarPosition = shell.mode === 'rail' ? ('left' as const) : ('bottom' as const);
   // Stable screenOptions identity: handing the navigator a fresh options object
   // mid-transition (e.g. on a Material You palette change) re-runs the scene

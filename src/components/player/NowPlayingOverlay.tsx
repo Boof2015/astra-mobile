@@ -152,17 +152,65 @@ interface NowPlayingMenuItem {
   onPress: () => void;
 }
 
-export function NowPlayingOverlay() {
+/**
+ * Wraps its child in the dismiss-gesture detector only where dismissing is a
+ * thing. A docked pane has nowhere to be dragged to, and a live pan recognizer
+ * around it would just eat vertical drags meant for the scene.
+ */
+function MaybePan({
+  enabled,
+  gesture,
+  children,
+}: {
+  enabled: boolean;
+  gesture: ReturnType<typeof Gesture.Pan>;
+  children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
+}
+
+export interface NowPlayingOverlayProps {
+  /**
+   * `overlay` is the fullscreen sheet: absolutely filling, pan-to-dismiss,
+   * gated by the player phase machine.
+   *
+   * `dock` is the persistent tablet pane: a sized column that is always on
+   * screen, so it has no slide, no dismiss gesture and no close. Everything
+   * below it — the deck geometry, the scope, the queue, the sheets — is shared,
+   * because the pane is portrait-shaped and that is exactly what the standard
+   * layout branch already solves.
+   */
+  presentation?: 'overlay' | 'dock';
+  /** Dock only: the column's width, which is not the window's. */
+  dockWidth?: number;
+}
+
+export function NowPlayingOverlay({
+  presentation = 'overlay',
+  dockWidth = 0,
+}: NowPlayingOverlayProps = {}) {
+  const dock = presentation === 'dock';
   const appColors = useColors();
   const ripple = useRipple();
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
-  const insets = useSafeAreaInsets();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const rawInsets = useSafeAreaInsets();
+  const { width: rawWindowWidth, height: windowHeight } = useWindowDimensions();
+  // The whole layout is a function of these two. Pointing them at the dock's
+  // box is what lets the pane reuse every line of geometry below rather than
+  // growing a parallel set: its leading edge is interior so it carries no
+  // inset, and its trailing edge is the window's.
+  const insets = dock ? { ...rawInsets, left: 0 } : rawInsets;
+  const windowWidth = dock ? dockWidth : rawWindowWidth;
   const phase = usePlayerUiStore((s) => s.phase);
   const openRequest = usePlayerUiStore((s) => s.openRequest);
   const exitAnimated = usePlayerUiStore((s) => s.exitAnimated);
-  const playerOpen = isPlayerOnScreen(phase);
+  const fullscreenUp = isPlayerOnScreen(phase);
+  // Docked, this pane is always present — except while the fullscreen player is
+  // over it, which is precisely when its scope surfaces should go quiet. That
+  // is the same gate MiniPlayer uses to avoid a second frame loop.
+  const playerOpen = dock ? !fullscreenUp : fullscreenUp;
   // Heavy scope/spectrum surfaces release their native backing in the
   // background. The overlay itself stays mounted — unmounting it mid-close used
   // to tear down the exit animation and strand the phase.
@@ -345,7 +393,7 @@ export function NowPlayingOverlay() {
   // child/body state updates these gates rather than replacing the recognizer.
   const translateY = useSharedValue(windowHeight);
   const panEnabled = useSharedValue(
-    shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching)
+    !dock && shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching)
   );
   const panDismissRequested = useSharedValue(false);
   const panRecoveryLease = useSharedValue(0);
@@ -525,11 +573,11 @@ export function NowPlayingOverlay() {
 
   useEffect(() => {
     panEnabled.value = shouldEnableNowPlayingPan(
-      playerOpen,
+      playerOpen && !dock,
       queueOpen,
       lyricsBodySwitching
     );
-  }, [lyricsBodySwitching, panEnabled, playerOpen, queueOpen]);
+  }, [dock, lyricsBodySwitching, panEnabled, playerOpen, queueOpen]);
 
   useEffect(() => {
     screenHeight.value = windowHeight;
@@ -554,12 +602,13 @@ export function NowPlayingOverlay() {
    * which renders outside the translating content.
    */
   const beginDismiss = useCallback(() => {
+    if (dock) return;
     setMenuOpen(false);
     setQueueOpen(false);
     // `true`: this path drives the sheet away itself, so the effect below must
     // not overwrite the offset with a competing generic slide-out.
     usePlayerUiStore.getState().closePlayer(true);
-  }, []);
+  }, [dock]);
   const finishCloseMenu = () => setMenuOpen(false);
 
   function openMenu() {
@@ -845,12 +894,16 @@ export function NowPlayingOverlay() {
         closeQueue();
         return true;
       }
+      // Overlay only. A docked pane is not a thing you can back out of, so the
+      // press belongs to whatever screen is beside it.
+      if (dock) return false;
       dismissSheet();
       return true;
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- closeMenu/dismissSheet are re-created every render; re-subscribing on each would thrash the LIFO chain. windowHeight is listed because dismissSheet captures it.
   }, [
+    dock,
     playerOpen,
     menuOpen,
     targetPickerOpen,
@@ -863,7 +916,7 @@ export function NowPlayingOverlay() {
   ]);
 
   const contentStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: dock ? 0 : translateY.value }],
   }));
 
   const menuLayerStyle = useAnimatedStyle(() => ({
@@ -927,10 +980,16 @@ export function NowPlayingOverlay() {
     [railStyle]
   );
 
+  // The only structural differences between the two presentations: an overlay
+  // fills the window and is draggable away, a dock is a sized column that is
+  // simply there. Everything inside is identical.
   return (
     <ScopedPaletteProvider colors={colors}>
-    <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'box-none' : 'none'}>
-      <GestureDetector gesture={pan}>
+    <View
+      style={dock ? styles.dockFrame : StyleSheet.absoluteFill}
+      pointerEvents={playerOpen || dock ? 'box-none' : 'none'}
+    >
+      <MaybePan enabled={!dock} gesture={pan}>
         <Animated.View
           style={[
             styles.content,
@@ -955,8 +1014,27 @@ export function NowPlayingOverlay() {
             {!lyricsMode && (
               <View style={styles.header}>
                 <View style={styles.headerSide}>
-                  <Pressable style={styles.headerBtn} android_ripple={ripple.icon(22)} onPress={() => dismissSheet()} hitSlop={12}>
-                    <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
+                  {/* One chevron, two meanings: the overlay dismisses itself
+                      downward, the pane collapses sideways back to the bar
+                      card. Adding a second control alongside this one just
+                      gave the dock two chevrons that did different things. */}
+                  <Pressable
+                    style={styles.headerBtn}
+                    android_ripple={ripple.icon(22)}
+                    onPress={() =>
+                      dock
+                        ? void useSettingsStore.getState().setPlayerDockOpen(false)
+                        : dismissSheet()
+                    }
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={dock ? 'Collapse player pane' : 'Close player'}
+                  >
+                    <Ionicons
+                      name={dock ? 'chevron-forward' : 'chevron-down'}
+                      size={26}
+                      color={colors.textSecondary}
+                    />
                   </Pressable>
                 </View>
                 <View style={styles.headerMid}>
@@ -968,6 +1046,21 @@ export function NowPlayingOverlay() {
                   </Text>
                 </View>
                 <View style={[styles.headerSide, styles.headerActions]}>
+                  {/* Lives in the header row rather than floating over it: the
+                      dock used to draw its own expand button on top of this
+                      one, which is what made it read as tacked on. */}
+                  {dock ? (
+                    <Pressable
+                      style={styles.headerBtn}
+                      android_ripple={ripple.icon(22)}
+                      onPress={() => usePlayerUiStore.getState().openPlayer()}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open full screen player"
+                    >
+                      <Ionicons name="expand-outline" size={20} color={colors.textSecondary} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     style={styles.headerBtn} android_ripple={ripple.icon(22)}
                     onPress={openMenu}
@@ -1763,7 +1856,7 @@ export function NowPlayingOverlay() {
             </View>
           </View>
         </Animated.View>
-      </GestureDetector>
+      </MaybePan>
       {menuOpen && menuItems.length > 0 && (
         <Animated.View
           pointerEvents="box-none"
@@ -1903,6 +1996,10 @@ function ScopeRail({ width, height, mode, paused, revealed, onSwap }: ScopeRailP
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  // Fills the dock column rather than the window.
+  dockFrame: {
+    flex: 1,
+  },
   content: {
     flex: 1,
     backgroundColor: colors.bgPrimary,

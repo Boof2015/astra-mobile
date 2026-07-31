@@ -83,6 +83,13 @@ interface MiniPlayerProps {
   railLayout?: RailMiniPlayerLayout;
   /** Required for the bar variant; sizes come from `getShellLayout`. */
   barLayout?: SplitBarLayout;
+  /**
+   * Bar variant only. When provided, tapping the card opens the player pane
+   * instead of going straight to fullscreen. There is deliberately no separate
+   * expand button — the card's own tap is the affordance, and a chevron beside
+   * it was just a second way to do the same thing.
+   */
+  onExpandToDock?: () => void;
 }
 
 interface MiniPlayerMediaPresentation {
@@ -175,7 +182,12 @@ function PhoneMiniProgress({
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
  * opens the full now-playing screen.
  */
-export function MiniPlayer({ variant = 'pill', railLayout, barLayout }: MiniPlayerProps = {}) {
+export function MiniPlayer({
+  variant = 'pill',
+  railLayout,
+  barLayout,
+  onExpandToDock,
+}: MiniPlayerProps = {}) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -508,12 +520,18 @@ export function MiniPlayer({ variant = 'pill', railLayout, barLayout }: MiniPlay
             <Pressable
               android_ripple={ripple.bounded}
               style={styles.barTap}
-              onPress={() => usePlayerUiStore.getState().openPlayer()}
+              // Where a dock is available the pane is the next step up, not
+              // fullscreen: tap the card → pane, expand the pane → fullscreen.
+              onPress={() =>
+                onExpandToDock
+                  ? onExpandToDock()
+                  : usePlayerUiStore.getState().openPlayer()
+              }
               accessibilityRole="button"
               accessibilityLabel={
-                presentation.hasTrack
-                  ? `Now playing: ${displayedMedia.title}. Open player`
-                  : 'Open player'
+                `${presentation.hasTrack ? `Now playing: ${displayedMedia.title}. ` : ''}${
+                  onExpandToDock ? 'Show player pane' : 'Open player'
+                }`
               }
             >
               {/* The bar is wide enough for the scope to read, and it's the thing
@@ -960,6 +978,12 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
   },
   barTap: {
+    // Must fill the card: the spectrum canvas and its veil are absolutely
+    // positioned against THIS box, so a content-height Pressable painted them
+    // as a dark band across the card's middle instead of covering it. The
+    // pill's equivalent has always been flex: 1, which is why only the bar
+    // variant showed it.
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.sm,

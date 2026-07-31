@@ -219,7 +219,9 @@ export function PlaylistsView({
         }
       />
 
-      <View style={styles.addBar}>
+      {/* Pinned to the bottom of the scene, so it has to clear the floating
+          chrome the same way the lists above it do. */}
+      <View style={[styles.addBar, { paddingBottom: spacing.sm + sceneBottomInset }]}>
         <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.addButton}
           onPress={() => setAddSheetOpen(true)}

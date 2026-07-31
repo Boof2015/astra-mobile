@@ -13,6 +13,7 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export interface ActionSheetItem {
   key: string;
@@ -42,6 +43,7 @@ export function ActionSheet({
   const colors = useColors();
   const ripple = useRipple();
   const insets = useSafeAreaInsets();
+  const sceneBottomInset = useSceneBottomInset();
 
   return (
     <Modal
@@ -52,7 +54,7 @@ export function ActionSheet({
       onRequestClose={onClose}
     >
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
-        <Pressable style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]}>
+        <Pressable style={[styles.card, { paddingBottom: Math.max(insets.bottom, sceneBottomInset) + spacing.md }]}>
           <View style={styles.grabber} />
           {title ? (
             <Text variant="label" numberOfLines={1} style={styles.title}>

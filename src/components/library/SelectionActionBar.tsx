@@ -8,6 +8,7 @@ import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 interface SelectionActionBarProps {
   count: number;
@@ -24,9 +25,13 @@ export function SelectionActionBar({
   onAddToPlaylist,
 }: SelectionActionBarProps) {
   const styles = useStyles();
+  // Pinned to the bottom of the scene, so it has to clear the floating chrome
+  // itself — the lists above it reserve this in their content inset, but a bar
+  // outside the scroll view has to ask.
+  const sceneBottomInset = useSceneBottomInset();
   const disabled = count === 0;
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { paddingBottom: sceneBottomInset }]}>
       <BarButton
         icon="play-skip-forward"
         label={`Play next (${count})`}

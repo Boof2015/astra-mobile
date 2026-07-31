@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShellRailPresent } from '@/navigation/shellRailContext';
+import { useShellLayout } from '@/navigation/useShellLayout';
 import { spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 
@@ -28,6 +29,9 @@ export function Screen({ children, style, padded = true, ...rest }: ScreenProps)
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const railPresent = useShellRailPresent();
+  // The dock claims the trailing edge, so it pays that inset — the mirror of
+  // the rail taking the leading one. `sceneInsetRight` is the shell's answer.
+  const sceneInsetRight = useShellLayout().sceneInsetRight;
   return (
     <View
       style={[
@@ -35,7 +39,7 @@ export function Screen({ children, style, padded = true, ...rest }: ScreenProps)
         {
           paddingTop: insets.top,
           paddingLeft: railPresent ? 0 : insets.left,
-          paddingRight: insets.right,
+          paddingRight: sceneInsetRight,
         },
         style,
       ]}

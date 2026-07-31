@@ -1,6 +1,9 @@
 import { PixelRatio, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShellLayout, type ShellLayout } from './shellLayout';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import { motion } from '@/theme/motion';
 
 /**
  * The shell geometry for the current window.
@@ -14,7 +17,21 @@ import { getShellLayout, type ShellLayout } from './shellLayout';
 export function useShellLayout(): ShellLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  return getShellLayout(width, height, insets, PixelRatio.getFontScale());
+  const dockRequested = useSettingsStore((s) => s.playerDockOpen);
+  // Held true until the pane has finished sliding out. The preference flips the
+  // instant it's tapped, but the pane is still physically occupying its column
+  // for another beat — releasing the geometry early widened the scene and
+  // brought the mini-player card back *underneath* a pane that was still there,
+  // costing a second reflow. Lagging it means exactly one layout change per
+  // direction, and it happens when the pane is out of the way.
+  const dockPresent = useDelayedUnmountPresence(dockRequested, motion.snap.duration);
+  return getShellLayout(
+    width,
+    height,
+    insets,
+    PixelRatio.getFontScale(),
+    dockPresent
+  );
 }
 
 /**

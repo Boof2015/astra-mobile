@@ -7,6 +7,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
+  FadeInRight,
+  FadeOutRight,
+  LinearTransition,
+  ReduceMotion,
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
@@ -23,6 +27,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   RAIL_SIDE_PADDING,
   SPLIT_BAR_MARGIN,
@@ -30,6 +35,18 @@ import {
   SPLIT_GAP,
   type ShellLayout,
 } from '@/navigation/shellLayout';
+
+/**
+ * Layout animations only run on Animated components, and a nav item is a
+ * Pressable. Without this the card's bounds travelled while the items inside
+ * snapped to their new width — which is what made the icons look late.
+ */
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/** Shared by the nav card and its items, so they move as one object. */
+const NAV_TRANSITION = LinearTransition.duration(motion.snap.duration).reduceMotion(
+  ReduceMotion.System
+);
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -135,15 +152,25 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
           ]}
           pointerEvents="box-none"
         >
-          <View
+          {/* Glides to its new centre when the player card leaves, instead of
+              being shoved there. Its position depends on whether it has a
+              neighbour, so it has to move — the point is that it moves once,
+              smoothly, rather than being pushed frame by frame. */}
+          <Animated.View
+            layout={NAV_TRANSITION}
             style={[
               styles.splitCard,
               { width: shell.splitBar.navWidth, height: shell.splitBar.height },
             ]}
           >
             {buttons}
-          </View>
-          <MiniPlayer variant="bar" barLayout={shell.splitBar} />
+          </Animated.View>
+          {/* Docked, the player card IS the pane — showing both would be the
+              same track twice. It collapses its own width rather than
+              vanishing, and because the row is centred the nav card slides
+              across to fill the space as a consequence. Same driver as the
+              pane's reveal, opposite direction. */}
+          <SplitPlayerCard shell={shell} />
         </View>
       </View>
     );
@@ -156,9 +183,13 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
           scene, so content stopped in a band above the pill and it read as a
           slab of chrome no matter what colour it was painted. Scrollable
           content reserves `shell.sceneBottomInset` at its bottom to clear it. */}
-      <View style={styles.floatingPlayer} pointerEvents="box-none">
-        <MiniPlayer />
-      </View>
+      {/* Docked, the dock is the player, so the pill would be the same track
+          twice — and `sceneBottomInset` is 0 to match, because nothing floats. */}
+      {shell.docked ? null : (
+        <View style={styles.floatingPlayer} pointerEvents="box-none">
+          <MiniPlayer />
+        </View>
+      )}
       <View
         style={[
           styles.bar,
@@ -168,6 +199,45 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
         {buttons}
       </View>
     </View>
+  );
+}
+
+/**
+ * The split bar's player card, which leaves toward the pane it is becoming.
+ *
+ * It used to collapse its own width, which kept it in the layout for the whole
+ * exit and shoved the nav card along frame by frame. Now it drops out of layout
+ * immediately and fades out *rightward* on top — so the nav card makes exactly
+ * one move, and the card exits in the direction the pane arrives from.
+ *
+ * The exit is deliberately quicker than the entrance: the bar should settle
+ * before the pane finishes sliding in, not compete with it.
+ */
+function SplitPlayerCard({ shell }: { shell: ShellLayout }) {
+  if (shell.docked) return null;
+
+  return (
+    <Animated.View
+      // Waits for the nav card to finish travelling before appearing. Entering
+      // alongside it put the card on top of a nav card that was still moving —
+      // the return has to read as a sequence, not a pile-up.
+      entering={FadeInRight.duration(motion.quick.duration)
+        .delay(motion.quick.duration)
+        .reduceMotion(ReduceMotion.System)}
+      exiting={FadeOutRight.duration(motion.quick.duration).reduceMotion(
+        ReduceMotion.System
+      )}
+    >
+      <MiniPlayer
+        variant="bar"
+        barLayout={shell.splitBar}
+        onExpandToDock={
+          shell.dockAllowed
+            ? () => void useSettingsStore.getState().setPlayerDockOpen(true)
+            : undefined
+        }
+      />
+    </Animated.View>
   );
 }
 
@@ -221,7 +291,10 @@ function TabButton({ meta, focused, onPress, rail = false, height, width }: TabB
   };
 
   return (
-    <Pressable
+    <AnimatedPressable
+      // Same transition as the card around it, so a resize is one movement
+      // rather than a container gliding over children that jumped.
+      layout={width ? NAV_TRANSITION : undefined}
       android_ripple={ripple.icon(26)}
       style={[
         styles.tab,
@@ -256,7 +329,7 @@ function TabButton({ meta, focused, onPress, rail = false, height, width }: TabB
         </Animated.View>
       </Animated.View>
       <Animated.Text style={[styles.label, labelStyle]}>{meta.label}</Animated.Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

@@ -50,6 +50,7 @@ import {
   type DynamicPlaylistTextCondition,
   type DynamicPlaylistTextField,
 } from '@/shared/playlists/dynamicPlaylist';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type ConditionFieldKey =
   `${DynamicPlaylistCondition['kind']}:${DynamicPlaylistTextField | DynamicPlaylistNumericField | DynamicPlaylistDateField | DynamicPlaylistExactField}`;
@@ -747,6 +748,7 @@ function FilterCard({
 }
 
 export default function DynamicPlaylistEditorScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const ripple = useRipple();
   const colors = useColors();
@@ -1163,7 +1165,9 @@ export default function DynamicPlaylistEditorScreen() {
           </View>
         </ScrollView>
 
-        <View style={styles.stickyBar}>
+        {/* Sits after the ScrollView, so it clears the floating chrome
+            itself — the list's own content inset does not cover it. */}
+        <View style={[styles.stickyBar, { paddingBottom: sceneBottomInset }]}>
           <View style={styles.stickyMeta}>
             <Text variant="caption" color={colors.textTertiary}>
               PREVIEW

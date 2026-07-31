@@ -19,6 +19,7 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { playHaptic } from '@/lib/haptics';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export function AppSheet({
   onClose,
@@ -31,6 +32,7 @@ export function AppSheet({
 }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const sceneBottomInset = useSceneBottomInset();
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -56,14 +58,14 @@ export function AppSheet({
     >
       {scrollable ? (
         <BottomSheetScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.md }]}
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, sceneBottomInset) + spacing.md }]}
           showsVerticalScrollIndicator={false}
         >
           {children}
         </BottomSheetScrollView>
       ) : (
         <BottomSheetView
-          style={[styles.content, { paddingBottom: insets.bottom + spacing.md }]}
+          style={[styles.content, { paddingBottom: Math.max(insets.bottom, sceneBottomInset) + spacing.md }]}
         >
           {children}
         </BottomSheetView>

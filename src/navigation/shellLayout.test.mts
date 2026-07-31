@@ -214,6 +214,36 @@ test('the nav card leaves room for the indicator inside its clipped edge', () =>
   }
 });
 
+test('the nav card steps back to a declared compact width when docked', () => {
+  // A stated intent, not a leftover: it must be the SAME compact width on every
+  // window, never "whatever is left after reserving for a card we do not draw".
+  const widths = new Set<number>();
+  for (const [w, h] of [[1274, 796], [1112, 834], [1024, 768], [930, 775]] as const) {
+    const bare = getShellLayout(w, h, PORTRAIT, 1, false);
+    const docked = getShellLayout(w, h, PORTRAIT, 1, true);
+    if (!docked.docked || bare.mode !== 'split' || docked.mode !== 'split') continue;
+    assert.ok(
+      docked.splitBar.navItemWidth < bare.splitBar.navItemWidth,
+      `${w}x${h}: nav items should tighten beside a pane`
+    );
+    assert.ok(docked.splitBar.navItemWidth >= 64, 'never below the label floor');
+    widths.add(docked.splitBar.navItemWidth);
+  }
+  assert.equal(widths.size, 1, `docked width varied by window: ${[...widths]}`);
+});
+
+test('a docked split bar reserves nothing for the player card', () => {
+  for (const [w, h] of [[1274, 796], [1024, 768], [930, 775]] as const) {
+    const docked = getShellLayout(w, h, PORTRAIT, 1, true);
+    if (!docked.docked || docked.mode !== 'split') continue;
+    assert.equal(
+      docked.splitBar.miniWidth,
+      0,
+      `${w}x${h}: still sizing a player card the dock replaced`
+    );
+  }
+});
+
 test('both cards are the same height, because they are peers', () => {
   for (const width of [600, 768, 1024, 1274]) {
     const bar = getShellLayout(width, width + 600, PORTRAIT, 1).splitBar;
@@ -357,6 +387,124 @@ test('a larger font setting grows the nav items but never overflows', () => {
   const capped = getShellLayout(891, 411, LANDSCAPE, 1.2);
   const beyond = getShellLayout(891, 411, LANDSCAPE, 3);
   assert.deepEqual(beyond, capped);
+});
+
+/* ── player dock ────────────────────────────────────────────────────────── */
+
+test('only a window that can spare the width is offered a dock', () => {
+  // Landscape and tall enough to be worth a player column, with a usable scene
+  // behind it. Portrait keeps the fullscreen player; phones never dock.
+  for (const [w, h, allowed, why] of [
+    [1274, 796, true, 'large tablet landscape'],
+    [1112, 834, true, 'iPad-ish landscape'],
+    [1024, 768, true, '10" landscape'],
+    [930, 775, true, 'Pixel Fold unfolded'],
+    [841, 701, true, 'foldable, narrower'],
+    [768, 1024, false, '10" portrait — vertical keeps fullscreen'],
+    [796, 1274, false, 'large tablet portrait'],
+    [891, 411, false, 'phone landscape — too short for a player column'],
+    [411, 891, false, 'phone portrait'],
+  ] as const) {
+    assert.equal(
+      getShellLayout(w, h, PORTRAIT, 1, true).dockAllowed,
+      allowed,
+      `${why} (${w}x${h})`
+    );
+  }
+});
+
+test('the dock and the rail can never both be up', () => {
+  // Their thresholds are the same number on purpose: a window short enough to
+  // want a rail is too short to host a player column beside it.
+  for (let width = 480; width <= 2000; width += 20) {
+    for (let height = 300; height <= 1200; height += 20) {
+      const layout = getShellLayout(width, height, PORTRAIT, 1, true);
+      assert.ok(
+        !(layout.docked && layout.mode === 'rail'),
+        `${width}x${height} produced a rail and a dock at once`
+      );
+    }
+  }
+});
+
+test('a dock the window cannot seat is refused, not squeezed in', () => {
+  for (const [w, h] of [[768, 1024], [891, 411], [411, 891]] as const) {
+    const layout = getShellLayout(w, h, PORTRAIT, 1, true);
+    assert.equal(layout.docked, false);
+    assert.equal(layout.dockWidth, 0);
+    assert.equal(layout.sceneWidth, w, 'the scene should keep the whole window');
+  }
+});
+
+test('a docked shell never floats a player of its own', () => {
+  // The dock IS the player. Whatever shape the column behind it lands on, it
+  // must not also render a mini player — that would be the same track twice —
+  // so a docked `tabs` shell owes the scene nothing at its bottom.
+  for (const [w, h] of [
+    [1274, 796], [1112, 834], [1024, 768], [930, 775], [841, 701], [1600, 1000],
+  ] as const) {
+    const docked = getShellLayout(w, h, PORTRAIT, 1, true);
+    assert.equal(docked.docked, true, `${w}x${h} should dock`);
+    assert.notEqual(docked.mode, 'rail');
+    if (docked.mode === 'tabs') {
+      assert.equal(
+        docked.sceneBottomInset,
+        0,
+        `${w}x${h}: docked tabs reserved space for a pill that isn't rendered`
+      );
+    } else {
+      assert.ok(
+        splitBarContentsFit(
+          docked,
+          docked.sceneWidth,
+          { ...PORTRAIT, right: docked.sceneInsetRight }
+        ),
+        `${w}x${h}: nav card overflows the column left beside the dock`
+      );
+    }
+  }
+});
+
+test('the scene keeps a usable column behind any dock it accepts', () => {
+  for (let width = 600; width <= 2400; width += 8) {
+    for (const height of [700, 800, 1000]) {
+      const layout = getShellLayout(width, height, PORTRAIT, 1, true);
+      if (!layout.docked) continue;
+      assert.ok(
+        layout.sceneWidth - PORTRAIT.left >= 420,
+        `${width}x${height}: dock left only ${layout.sceneWidth}dp of scene`
+      );
+    }
+  }
+});
+
+test('the dock takes the trailing edge, and its safe-area inset with it', () => {
+  const insets: ShellInsets = { top: 24, bottom: 24, left: 48, right: 24 };
+  const docked = getShellLayout(1274, 796, insets, 1, true);
+  assert.equal(docked.sceneWidth, 1274 - docked.dockWidth);
+  assert.equal(docked.sceneInsetRight, 0, 'the dock is what sits on that edge now');
+
+  const bare = getShellLayout(1274, 796, insets, 1, false);
+  assert.equal(bare.sceneInsetRight, insets.right, 'undocked, the scene pays it');
+});
+
+test('dock width is a share of the window, clamped at both ends', () => {
+  for (const width of [1024, 1274, 1600, 2400, 4000]) {
+    const bar = getShellLayout(width, 900, PORTRAIT, 1, true);
+    if (!bar.docked) continue;
+    assert.ok(bar.dockWidth >= 340, `${width}dp gave a ${bar.dockWidth}dp dock`);
+    assert.ok(bar.dockWidth <= 520, `${width}dp gave a ${bar.dockWidth}dp dock`);
+  }
+});
+
+test('dock availability only ever turns on as a window widens', () => {
+  let sawAllowed = false;
+  for (let width = 600; width <= 2000; width += 4) {
+    const allowed = getShellLayout(width, 900, PORTRAIT, 1, true).dockAllowed;
+    if (allowed) sawAllowed = true;
+    else assert.ok(!sawAllowed, `dock became unavailable again at ${width}dp`);
+  }
+  assert.ok(sawAllowed, 'the sweep should cross the threshold');
 });
 
 test('keeps every dimension finite and non-negative', () => {

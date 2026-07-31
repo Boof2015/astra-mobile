@@ -18,6 +18,7 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
 import { NowPlayingHost } from '@/components/player/NowPlayingHost';
+import { PlayerDock } from '@/components/player/PlayerDock';
 import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -411,14 +412,25 @@ export default function RootLayout() {
             <DesktopSyncAutoTrigger />
           </>
         ) : null}
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.bgPrimary },
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-        </Stack>
+        {/* The player dock sits BESIDE the whole Stack, not inside (tabs), so
+            the pane survives every route — settings sub-pages and the other
+            root-stack screens are pushed above the tabs navigator and would
+            otherwise make a ~460dp pane vanish and reappear. It renders nothing
+            unless the shell says this window can seat one, so on a phone this
+            row is a plain full-width Stack. */}
+        <View style={styles.shellRow}>
+          <View style={styles.shellScene}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: theme.colors.bgPrimary },
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+          </View>
+          <PlayerDock />
+        </View>
         {onboardingComplete && !fatalUserData ? <SessionLifecycle onReady={handleSessionReady} /> : null}
         {fatalUserData ? (
           <View
@@ -473,3 +485,16 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  // A row only in the sense that the dock may claim the trailing edge. With no
+  // dock the scene is the only child and this is indistinguishable from the
+  // Stack rendering on its own.
+  shellRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  shellScene: {
+    flex: 1,
+  },
+});
