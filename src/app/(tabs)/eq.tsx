@@ -37,9 +37,11 @@ import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
 import { EQPresetQrSheet } from '@/components/eq/EQPresetQrSheet';
 import { PresetDeviceAssignmentSheet } from '@/components/eq/PresetDeviceAssignmentSheet';
 import {
+  layout,
   radius,
   spacing,
 } from '@/theme';
+import { useShellRailPresent } from '@/navigation/shellRailContext';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { hapticForToggle } from '@/lib/hapticCatalog';
@@ -113,6 +115,7 @@ export default function EQScreen() {
   const closeSheet = useCallback(() => setSheet('none'), []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const railPresent = useShellRailPresent();
   const availableWidth = windowWidth - insets.left - insets.right;
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const isWide = isWideWindow(availableWidth, availableHeight);
@@ -366,7 +369,18 @@ export default function EQScreen() {
   );
 
   const bottomBarEl = (
-    <View style={[styles.bottomBar, !isWide && styles.bottomBarNarrow, isWide && styles.bottomBarWide]}>
+    <View
+      style={[
+        styles.bottomBar,
+        !isWide && styles.bottomBarNarrow,
+        isWide && styles.bottomBarWide,
+        // This screen doesn't scroll — the preamp row is pinned to the bottom of
+        // the scene, so it can't reserve the pill's space in a content inset the
+        // way every list does. Only the tab-bar shape floats a pill; in rail
+        // mode the mini player is docked in the rail and nothing overlaps here.
+        railPresent ? null : { paddingBottom: spacing.sm + layout.miniPlayerFloat },
+      ]}
+    >
       <View style={styles.preamp}>
         <EQSlider
           label="Preamp"
@@ -398,12 +412,7 @@ export default function EQScreen() {
 
   return (
     <Screen padded={false}>
-      <View
-        style={[
-          styles.header,
-          { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
-        ]}
-      >
+      <View style={styles.header}>
         <View style={styles.headerTitle}>
           <Text variant="heading">Equalizer</Text>
           <Text
@@ -426,12 +435,7 @@ export default function EQScreen() {
       </View>
 
       {isWide ? (
-        <View
-          style={[
-            styles.wideBody,
-            { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
-          ]}
-        >
+        <View style={styles.wideBody}>
           <View style={styles.wideGraphPane}>{isGraphic ? graphicEditorEl : graphEl}</View>
           <View style={{ width: sidePaneWidth }}>
             {modeSwitcherEl}
@@ -737,6 +741,8 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // Safe-area insets are `Screen`'s job; this is only the content gutter.
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     gap: spacing.md,
@@ -800,6 +806,8 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     flexDirection: 'row',
     gap: spacing.lg,
+    // Safe-area insets are `Screen`'s job; this is only the content gutter.
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
   wideGraphPane: {
