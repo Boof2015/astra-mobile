@@ -79,7 +79,7 @@
     "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
     "test:seek-bar": "node --experimental-strip-types --test src/audio/playbackClock.test.mts src/audio/playbackNavigation.test.mts src/audio/playbackProgressProjection.test.mts src/components/waveformScrubDetents.test.mts",
     "test:recent-play": "node --experimental-strip-types --test src/audio/recentPlayTracking.test.mts",
-    "test:listening-stats": "node --experimental-strip-types --test src/audio/listeningHistoryState.test.mts src/listeningStats/shareModel.test.mts",
+    "test:listening-stats": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/listeningHistoryState.test.mts src/components/listening/activityChartMath.test.mts",
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts src/lyrics/embedded.test.mts src/lyrics/resolver.test.mts",
     "test:sleep": "node --experimental-strip-types --test src/audio/sleepTimerState.test.mts",
     "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/cacheInvalidation.test.mts",

@@ -15,6 +15,10 @@ private const val SHORT_TRACK_COMPLETION_TOLERANCE_SECONDS = 0.5
 private const val SHORT_TRACK_COMPLETION_TOLERANCE_RATIO = 0.1
 private const val TOP_LIMIT = 10
 private const val CATALOG_BATCH_SIZE = 400
+/** Up to ~2 months of history, the "all" range still buckets by day. */
+private const val ALL_RANGE_DAY_SPAN_MS = 60L * 24 * 60 * 60 * 1000
+/** Up to ~2 years, by week; beyond that, by month. */
+private const val ALL_RANGE_WEEK_SPAN_MS = 730L * 24 * 60 * 60 * 1000
 
 private data class ListeningCheckpointResult(
   val accepted: Boolean,
@@ -379,9 +383,12 @@ internal object ListeningStatsEngine {
       tracksPlayed += identity.trackKey
       listenedSeconds += overlap
       buckets.forEach { bucket ->
+        // The first bucket is snapped back to a calendar boundary, so it can start
+        // before rangeStartAt; clamp it or the bars would total more than the
+        // summary's listening time.
         bucket.listenedSeconds += overlapSeconds(
           segment,
-          bucket.startAt,
+          max(bucket.startAt, rangeStartAt),
           min(bucket.endAt, now + 1),
         )
       }
@@ -693,9 +700,14 @@ private fun buildBuckets(
   rangeStartAt: Long?,
   now: Long,
 ): Pair<String, List<ActivityBucket>> {
-  val granularity = when (range) {
-    "7d", "30d" -> "day"
-    "1y" -> "week"
+  // "all" spans however much history exists, so its granularity follows the span:
+  // a fixed month bucket gave a user with two weeks of history a single lonely bar.
+  val granularity = when {
+    range == "7d" || range == "30d" -> "day"
+    range == "1y" -> "week"
+    rangeStartAt == null -> "month"
+    now - rangeStartAt <= ALL_RANGE_DAY_SPAN_MS -> "day"
+    now - rangeStartAt <= ALL_RANGE_WEEK_SPAN_MS -> "week"
     else -> "month"
   }
   if (rangeStartAt == null) return granularity to emptyList()

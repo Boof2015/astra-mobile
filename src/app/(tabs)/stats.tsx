@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   AppState,
   Pressable,
@@ -6,21 +6,17 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  useWindowDimensions,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { SegmentedControl } from '@/components/SegmentedControl';
-import { ListeningStatsShareSheet } from '@/components/listening/ListeningStatsShareSheet';
+import { ActivityChart } from '@/components/listening/ActivityChart';
 import { listeningArtworkSource } from '@/library/artwork';
-import {
-  formatBucketDate,
-  formatListeningTime,
-  formatRecordedSince,
-} from '@/listeningStats/format';
+import { formatListeningTime, formatRecordedSince } from '@/listeningStats/format';
 import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -30,6 +26,7 @@ import { useRipple } from '@/theme/ripple';
 import type {
   ListeningStatsCategory,
   ListeningStatsDashboard,
+  ListeningStatsRankingMetric,
   RankedListeningAlbum,
   RankedListeningArtist,
   RankedListeningTrack,
@@ -52,110 +49,48 @@ const CATEGORY_SEGMENTS = [
   { key: 'albums', label: 'Albums' },
 ];
 
-function SummaryGrid({
-  dashboard,
-  wide,
-}: {
-  dashboard: ListeningStatsDashboard;
-  wide: boolean;
-}) {
+/** Checkpoints land every ~10s of playback; collapse a burst into one query. */
+const HISTORY_REFRESH_DEBOUNCE_MS = 2_000;
+const BACKGROUND_REFRESH_MS = 15_000;
+/** Sections rise in sequence so the page assembles instead of snapping in. */
+const SECTION_STEP_MS = 60;
+
+function sectionEntering(index: number) {
+  return FadeInDown.delay(index * SECTION_STEP_MS).duration(260);
+}
+
+/** The one number that leads the page; everything else supports it. */
+function HeroStat({ dashboard }: { dashboard: ListeningStatsDashboard }) {
   const styles = useStyles();
   const colors = useColors();
-  const tiles = [
-    ['Listening Time', formatListeningTime(dashboard.summary.listenedSeconds, true)],
-    ['Qualified Plays', String(dashboard.summary.qualifiedPlays)],
-    ['Tracks Played', String(dashboard.summary.tracksPlayed)],
-    ['Active Days', String(dashboard.summary.activeDays)],
-  ];
+  const plays = dashboard.summary.qualifiedPlays;
   return (
-    <View style={[styles.summaryGrid, wide && styles.summaryGridWide]}>
-      {tiles.map(([label, value]) => (
-        <View key={label} style={[styles.summaryTile, wide && styles.summaryTileWide]}>
-          <Text variant="title" style={styles.summaryValue} numberOfLines={1}>{value}</Text>
-          <Text variant="caption" color={colors.textSecondary}>{label}</Text>
-        </View>
-      ))}
+    <View style={styles.hero}>
+      <Text style={styles.heroValue} numberOfLines={1}>
+        {formatListeningTime(dashboard.summary.listenedSeconds, true)}
+      </Text>
+      <Text variant="body" color={colors.textSecondary}>
+        listening time · {plays} qualified {plays === 1 ? 'play' : 'plays'}
+      </Text>
     </View>
   );
 }
 
-function ActivityChart({ dashboard }: { dashboard: ListeningStatsDashboard }) {
+function SummaryPair({ dashboard }: { dashboard: ListeningStatsDashboard }) {
   const styles = useStyles();
   const colors = useColors();
-  const scrollRef = useRef<ScrollView>(null);
-  const [selectedStartAt, setSelectedStartAt] = useState<number | null>(null);
-  const selectedIndex = dashboard.activity.findIndex(
-    (bucket) => bucket.startAt === selectedStartAt,
-  );
-  const resolvedSelectedIndex = selectedIndex >= 0
-    ? selectedIndex
-    : Math.max(0, dashboard.activity.length - 1);
-  const selected = dashboard.activity[resolvedSelectedIndex] ?? dashboard.activity.at(-1) ?? null;
-  const maxSeconds = Math.max(1, ...dashboard.activity.map((bucket) => bucket.listenedSeconds));
-  const fillsCard = dashboard.range === '7d';
-
-  const bars = dashboard.activity.map((bucket, index) => {
-    const height = Math.max(3, Math.round((bucket.listenedSeconds / maxSeconds) * 118));
-    const focused = index === resolvedSelectedIndex;
-    return (
-      <Pressable
-        key={`${bucket.startAt}-${index}`}
-        style={[styles.barSlot, fillsCard && styles.barSlotFill]}
-        onPress={() => setSelectedStartAt(bucket.startAt)}
-        accessibilityRole="button"
-        accessibilityState={{ selected: focused }}
-        accessibilityLabel={`${formatBucketDate(bucket.startAt, bucket.endAt)}, ${formatListeningTime(bucket.listenedSeconds)}, ${bucket.qualifiedPlays} qualified plays`}
-      >
-        <View
-          style={[
-            styles.bar,
-            { height, backgroundColor: focused ? colors.accent : colors.accentHover },
-          ]}
-        />
-        {(fillsCard || index % Math.max(1, Math.ceil(dashboard.activity.length / 7)) === 0) ? (
-          <Text variant="caption" color={focused ? colors.textPrimary : colors.textTertiary} numberOfLines={1}>
-            {bucket.label}
-          </Text>
-        ) : (
-          <View style={styles.barLabelSpacer} />
-        )}
-      </Pressable>
-    );
-  });
-
+  const tiles = [
+    ['Tracks Played', String(dashboard.summary.tracksPlayed)],
+    ['Active Days', String(dashboard.summary.activeDays)],
+  ];
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text variant="heading">Activity</Text>
-        <Text variant="caption" color={colors.textSecondary}>
-          {dashboard.granularity === 'day'
-            ? 'Daily'
-            : dashboard.granularity === 'week'
-              ? 'Weekly'
-              : 'Monthly'}
-        </Text>
-      </View>
-      {selected ? (
-        <View style={styles.chartDetail}>
-          <Text variant="label">{formatBucketDate(selected.startAt, selected.endAt)}</Text>
-          <Text variant="caption" color={colors.textSecondary}>
-            {formatListeningTime(selected.listenedSeconds)} · {selected.qualifiedPlays}{' '}
-            {selected.qualifiedPlays === 1 ? 'play' : 'plays'}
-          </Text>
+    <View style={styles.summaryGrid}>
+      {tiles.map(([label, value]) => (
+        <View key={label} style={styles.summaryTile}>
+          <Text variant="title" style={styles.summaryValue} numberOfLines={1}>{value}</Text>
+          <Text variant="caption" color={colors.textSecondary}>{label}</Text>
         </View>
-      ) : null}
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        scrollEnabled={!fillsCard}
-        showsHorizontalScrollIndicator={false}
-        onContentSizeChange={() => {
-          if (!fillsCard) scrollRef.current?.scrollToEnd({ animated: false });
-        }}
-        contentContainerStyle={[styles.chart, fillsCard && styles.chartFill]}
-      >
-        {bars}
-      </ScrollView>
+      ))}
     </View>
   );
 }
@@ -178,17 +113,24 @@ function rankingCopy(item: RankedItem, category: ListeningStatsCategory) {
   return { title: album.album, subtitle: album.artist, icon: 'disc' as const };
 }
 
+function metricValue(item: RankedItem, metric: ListeningStatsRankingMetric): number {
+  return metric === 'plays' ? item.qualifiedPlays : item.listenedSeconds;
+}
+
 function RankingRow({
   item,
   index,
   category,
   selectedMetric,
+  share,
   onPress,
 }: {
   item: RankedItem;
   index: number;
   category: ListeningStatsCategory;
-  selectedMetric: 'plays' | 'time';
+  selectedMetric: ListeningStatsRankingMetric;
+  /** 0–1 against the top-ranked entry, for the inline proportion bar. */
+  share: number;
   onPress: () => void;
 }) {
   const styles = useStyles();
@@ -219,6 +161,16 @@ function RankingRow({
         <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
           {item.available ? copy.subtitle : `${copy.subtitle} · Unavailable`}
         </Text>
+        {/* Turns the list into a visible ranking rather than a column of numbers.
+            Safe as a percentage: the row has a definite width. */}
+        <View style={styles.shareTrack}>
+          <View
+            style={[
+              styles.shareFill,
+              { width: `${Math.round(share * 100)}%`, backgroundColor: colors.accent },
+            ]}
+          />
+        </View>
       </View>
       <View style={styles.rankingMetrics}>
         <Text
@@ -274,7 +226,6 @@ export default function ListeningStatsScreen() {
   const ripple = useRipple();
   const router = useRouter();
   const openLibrary = useHomeLibraryNavigation();
-  const { width } = useWindowDimensions();
   const range = useListeningStatsStore((s) => s.range);
   const metric = useListeningStatsStore((s) => s.rankingMetric);
   const category = useListeningStatsStore((s) => s.category);
@@ -286,18 +237,25 @@ export default function ListeningStatsScreen() {
   const setMetric = useListeningStatsStore((s) => s.setRankingMetric);
   const setCategory = useListeningStatsStore((s) => s.setCategory);
   const load = useListeningStatsStore((s) => s.loadDashboard);
-  const [shareSnapshot, setShareSnapshot] = useState<ListeningStatsDashboard | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
-      const interval = setInterval(() => void load(), 15_000);
-      const unsubscribe = subscribeToListeningHistory(() => void load());
+      // Background reloads stay silent so the pull-to-refresh spinner only ever
+      // appears for an actual pull.
+      const refresh = () => void load({ silent: true });
+      refresh();
+      const interval = setInterval(refresh, BACKGROUND_REFRESH_MS);
+      let debounce: ReturnType<typeof setTimeout> | null = null;
+      const unsubscribe = subscribeToListeningHistory(() => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(refresh, HISTORY_REFRESH_DEBOUNCE_MS);
+      });
       const subscription = AppState.addEventListener('change', (state) => {
-        if (state === 'active') void load();
+        if (state === 'active') refresh();
       });
       return () => {
         clearInterval(interval);
+        if (debounce) clearTimeout(debounce);
         unsubscribe();
         subscription.remove();
       };
@@ -310,6 +268,9 @@ export default function ListeningStatsScreen() {
     if (category === 'albums') return dashboard.topAlbums;
     return dashboard.topTracks;
   }, [category, dashboard]);
+
+  // Rankings arrive sorted by the active metric, so the leader sets the scale.
+  const rankingPeak = rankings.length > 0 ? metricValue(rankings[0], metric) : 0;
 
   const openRanking = (item: RankedItem) => {
     if (!dashboard || !item.available) return;
@@ -352,21 +313,11 @@ export default function ListeningStatsScreen() {
           <Ionicons name="chevron-back" size={23} color={colors.textPrimary} />
         </Pressable>
         <View style={styles.headerCopy}>
-          <Text variant="title">Listening Stats</Text>
+          <Text variant="title" style={styles.headerTitle}>Listening Stats</Text>
           <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
             {formatRecordedSince(dashboard?.status.startedAt ?? null)}
           </Text>
         </View>
-        <Pressable
-          style={[styles.iconButton, (!dashboard || noActivity) && styles.unavailable]}
-          android_ripple={dashboard && !noActivity ? ripple.icon(22) : undefined}
-          disabled={!dashboard || noActivity}
-          onPress={() => setShareSnapshot(dashboard)}
-          accessibilityRole="button"
-          accessibilityLabel="Share Listening Stats"
-        >
-          <Ionicons name="share-outline" size={21} color={colors.textPrimary} />
-        </Pressable>
       </View>
 
       <ScrollView
@@ -427,7 +378,16 @@ export default function ListeningStatsScreen() {
               </View>
             ) : null}
 
-            <SummaryGrid dashboard={dashboard} wide={width >= 720} />
+            <Animated.View entering={sectionEntering(0)}>
+              <HeroStat dashboard={dashboard} />
+            </Animated.View>
+
+            {/* Page-level: drives the chart's bars as well as the rankings. */}
+            <SegmentedControl
+              segments={METRIC_SEGMENTS}
+              value={metric}
+              onChange={(value) => setMetric(value as typeof metric)}
+            />
 
             {noActivity ? (
               <EmptyState
@@ -437,9 +397,23 @@ export default function ListeningStatsScreen() {
               />
             ) : (
               <>
-                <ActivityChart dashboard={dashboard} />
+                {/* Keyed so a range or metric change remounts the chart: the reveal
+                    restarts and the bucket selection resets. Same-range refreshes
+                    reuse the mount, so bars glide instead of re-sweeping. */}
+                <Animated.View entering={sectionEntering(1)}>
+                  <ActivityChart
+                    key={`${dashboard.range}-${metric}`}
+                    buckets={dashboard.activity}
+                    granularity={dashboard.granularity}
+                    metric={metric}
+                  />
+                </Animated.View>
 
-                <View style={styles.rankingsSection}>
+                <Animated.View entering={sectionEntering(2)}>
+                  <SummaryPair dashboard={dashboard} />
+                </Animated.View>
+
+                <Animated.View entering={sectionEntering(3)} style={styles.rankingsSection}>
                   <View style={styles.rankingsHeader}>
                     <Text variant="heading">Rankings</Text>
                     {error ? (
@@ -448,11 +422,6 @@ export default function ListeningStatsScreen() {
                       </Pressable>
                     ) : null}
                   </View>
-                  <SegmentedControl
-                    segments={METRIC_SEGMENTS}
-                    value={metric}
-                    onChange={(value) => setMetric(value as typeof metric)}
-                  />
                   <SegmentedControl
                     segments={CATEGORY_SEGMENTS}
                     value={category}
@@ -466,23 +435,17 @@ export default function ListeningStatsScreen() {
                         index={index}
                         category={category}
                         selectedMetric={metric}
+                        share={rankingPeak > 0 ? metricValue(item, metric) / rankingPeak : 0}
                         onPress={() => openRanking(item)}
                       />
                     ))}
                   </View>
-                </View>
+                </Animated.View>
               </>
             )}
           </>
         )}
       </ScrollView>
-
-      {shareSnapshot ? (
-        <ListeningStatsShareSheet
-          snapshot={shareSnapshot}
-          onClose={() => setShareSnapshot(null)}
-        />
-      ) : null}
     </Screen>
   );
 }
@@ -500,6 +463,10 @@ const useStyles = createThemedStyles((colors) => ({
     minWidth: 0,
     gap: 2,
   },
+  headerTitle: {
+    fontSize: 22,
+    lineHeight: 27,
+  },
   iconButton: {
     width: 42,
     height: 42,
@@ -511,7 +478,7 @@ const useStyles = createThemedStyles((colors) => ({
   content: {
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
-    gap: spacing.xl,
+    gap: spacing.lg,
   },
   pausedBanner: {
     flexDirection: 'row',
@@ -526,75 +493,33 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     gap: 2,
   },
+  hero: {
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  heroValue: {
+    fontSize: 44,
+    lineHeight: 50,
+    color: colors.textPrimary,
+    fontFamily: fonts.sans.bold,
+  },
   summaryGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.md,
   },
-  summaryGridWide: {
-    flexWrap: 'nowrap',
-  },
   summaryTile: {
-    width: '47%',
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     padding: spacing.lg,
     gap: spacing.xs,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
-  },
-  summaryTileWide: {
-    width: undefined,
-    flex: 1,
   },
   summaryValue: {
     fontSize: 24,
     lineHeight: 29,
-  },
-  card: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  chartDetail: {
-    gap: 2,
-  },
-  chart: {
-    minHeight: 156,
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-    paddingTop: spacing.sm,
-  },
-  chartFill: {
-    width: '100%',
-  },
-  barSlot: {
-    width: 36,
-    height: 150,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.xs,
-  },
-  barSlotFill: {
-    width: undefined,
-    flex: 1,
-  },
-  bar: {
-    width: 18,
-    minHeight: 3,
-    borderRadius: 4,
-  },
-  barLabelSpacer: {
-    height: 14,
   },
   rankingsSection: {
     gap: spacing.md,
@@ -644,6 +569,17 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     minWidth: 0,
     gap: 2,
+  },
+  shareTrack: {
+    marginTop: 3,
+    height: 3,
+    borderRadius: 2,
+    overflow: 'hidden',
+    backgroundColor: colors.bgTertiary,
+  },
+  shareFill: {
+    height: '100%',
+    borderRadius: 2,
   },
   rankingMetrics: {
     alignItems: 'flex-end',

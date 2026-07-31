@@ -20,7 +20,13 @@ interface ListeningStatsStore {
   setRange: (range: ListeningStatsRange) => void;
   setRankingMetric: (metric: ListeningStatsRankingMetric) => void;
   setCategory: (category: ListeningStatsCategory) => void;
-  loadDashboard: () => Promise<void>;
+  /**
+   * `silent` refreshes leave `refreshing` alone. Background triggers must use it:
+   * the screen reloads on a timer and on every listening checkpoint (~10s apart
+   * during playback), and `refreshing` drives the pull-to-refresh spinner, so
+   * non-silent background loads made the spinner flash on its own.
+   */
+  loadDashboard: (options?: { silent?: boolean }) => Promise<void>;
   loadHomePreview: () => Promise<void>;
 }
 
@@ -53,25 +59,29 @@ export const useListeningStatsStore = create<ListeningStatsStore>((set, get) => 
   refreshing: false,
   error: null,
 
+  // Switching range or metric reloads silently: the segmented control and the
+  // chart's own reveal already show that something changed, and driving
+  // `refreshing` here would flash the pull-to-refresh spinner on every tap.
   setRange: (range) => {
     if (get().range === range) return;
     set({ range });
-    void get().loadDashboard();
+    void get().loadDashboard({ silent: true });
   },
 
   setRankingMetric: (rankingMetric) => {
     if (get().rankingMetric === rankingMetric) return;
     set({ rankingMetric });
-    void get().loadDashboard();
+    void get().loadDashboard({ silent: true });
   },
 
   setCategory: (category) => set({ category }),
 
-  loadDashboard: async () => {
+  loadDashboard: async (options) => {
     const request = ++dashboardRequest;
+    const silent = options?.silent === true;
     set((state) => ({
       loading: state.dashboard == null,
-      refreshing: state.dashboard != null,
+      refreshing: silent ? state.refreshing : state.dashboard != null,
       error: null,
     }));
     try {
