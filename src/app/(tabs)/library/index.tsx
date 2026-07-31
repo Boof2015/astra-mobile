@@ -69,7 +69,7 @@ import {
 } from '@/lib/artistSort';
 import {
   LIBRARY_LAYOUT_OPTIONS,
-  libraryLayoutColumns,
+  libraryGridColumns,
   libraryLayoutLabel,
   type LibraryLayout,
 } from '@/library/libraryLayout';
@@ -135,6 +135,11 @@ export default function LibraryScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
+  // Measured rather than derived from the window: the grid's width depends on
+  // the nav rail, the safe-area insets and the screen gutters, and measuring is
+  // one source of truth instead of a copy of all three. 0 until first layout,
+  // which `libraryGridColumns` reads as "use the preference".
+  const [gridWidth, setGridWidth] = useState(0);
   const scrollTop = useScrollTopGate();
 
   const showLibraryStatus =
@@ -313,6 +318,12 @@ export default function LibraryScreen() {
         : null;
   const activeLayoutLabel = activeLayout ? libraryLayoutLabel(activeLayout) : null;
   const layoutSheetLabel = viewMode === 'albums' ? 'ALBUM LAYOUT' : 'ARTIST LAYOUT';
+  // The preference is a tile-size choice, so the count follows the width the
+  // grid actually got. Both feed the FlashList `key` as well as `numColumns` —
+  // the key already carried the layout because changing column count needs a
+  // remount, and a rotation changes the count without changing the preference.
+  const albumColumns = libraryGridColumns(albumLayout, gridWidth);
+  const artistColumns = libraryGridColumns(artistLayout, gridWidth);
 
   const setActiveLayout = (layout: LibraryLayout) => {
     scrollTop.setScrollAtTop(true);
@@ -423,12 +434,15 @@ export default function LibraryScreen() {
               </View>
             ) : null}
 
-            <View style={styles.listArea}>
+            <View
+              style={styles.listArea}
+              onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+            >
               {viewMode === 'albums' ? (
                 <FlashList
-                  key={`albums-${albumSort}-${albumLayout}-${sectionJumpRevision}`}
+                  key={`albums-${albumSort}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
                   data={sortedAlbums}
-                  numColumns={libraryLayoutColumns(albumLayout)}
+                  numColumns={albumColumns}
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
@@ -472,9 +486,9 @@ export default function LibraryScreen() {
 
               {viewMode === 'artists' ? (
                 <FlashList
-                  key={`artists-${artistSort}-${artistLayout}-${sectionJumpRevision}`}
+                  key={`artists-${artistSort}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
                   data={sortedArtists}
-                  numColumns={libraryLayoutColumns(artistLayout)}
+                  numColumns={artistColumns}
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { getShellLayout } from '@/navigation/shellLayout';
+import { ShellRailContext } from '@/navigation/shellRailContext';
 import {
   TAB_SCENE_ANIMATION,
   TAB_TRANSITION_SETTLE_MS,
@@ -43,59 +44,64 @@ export default function TabsLayout() {
     [colors.bgPrimary, tabBarPosition]
   );
   return (
-    <Tabs
-      detachInactiveScreens={false}
-      screenOptions={screenOptions}
-      tabBar={({ state, navigation }) => {
-        const activeRouteName = state.routes[state.index]?.name;
-        const items: TabItem[] = state.routes.map((route, index) => ({
-          key: route.key,
-          name: route.name,
-          focused: isDisplayedTabFocused(
-            route.name,
-            index,
-            state.index,
-            activeRouteName,
-          ),
-        }));
+    // Tells every scene below that the rail is already standing in the leading
+    // cutout's way, so `Screen` pays only the trailing inset. Screens outside
+    // this navigator get the default `false` and pay both.
+    <ShellRailContext.Provider value={shell.mode === 'rail'}>
+      <Tabs
+        detachInactiveScreens={false}
+        screenOptions={screenOptions}
+        tabBar={({ state, navigation }) => {
+          const activeRouteName = state.routes[state.index]?.name;
+          const items: TabItem[] = state.routes.map((route, index) => ({
+            key: route.key,
+            name: route.name,
+            focused: isDisplayedTabFocused(
+              route.name,
+              index,
+              state.index,
+              activeRouteName,
+            ),
+          }));
 
-        const handlePress = (item: TabItem) => {
-          // Interrupting the native-driver scene animation can drop its
-          // completion frame and leave the incoming scene invisible; swallow
-          // taps until the current transition has finished.
-          const now = Date.now();
-          if (now - lastSwitchAt.current < TAB_TRANSITION_SETTLE_MS + 30) return;
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: item.key,
-            canPreventDefault: true,
-          });
-          if (event.defaultPrevented) return;
+          const handlePress = (item: TabItem) => {
+            // Interrupting the native-driver scene animation can drop its
+            // completion frame and leave the incoming scene invisible; swallow
+            // taps until the current transition has finished.
+            const now = Date.now();
+            if (now - lastSwitchAt.current < TAB_TRANSITION_SETTLE_MS + 30) return;
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: item.key,
+              canPreventDefault: true,
+            });
+            if (event.defaultPrevented) return;
 
-          const actuallyFocused = state.routes[state.index]?.key === item.key;
-          if (actuallyFocused) {
-            // Re-tapping the active tab resets its nested stack. This is the
-            // one-tap escape from a deep library chain (artist → album →
-            // another artist), which is why back itself only pops one level.
-            const nested = state.routes[state.index]?.state;
-            if (nested?.key && (nested.index ?? 0) > 0) {
-              navigation.dispatch({ ...popToTop(), target: nested.key });
+            const actuallyFocused = state.routes[state.index]?.key === item.key;
+            if (actuallyFocused) {
+              // Re-tapping the active tab resets its nested stack. This is the
+              // one-tap escape from a deep library chain (artist → album →
+              // another artist), which is why back itself only pops one level.
+              const nested = state.routes[state.index]?.state;
+              if (nested?.key && (nested.index ?? 0) > 0) {
+                navigation.dispatch({ ...popToTop(), target: nested.key });
+              }
+              return;
             }
-            return;
-          }
 
-          lastSwitchAt.current = now;
-          navigation.navigate(item.name);
-        };
+            lastSwitchAt.current = now;
+            navigation.navigate(item.name);
+          };
 
-        return <TabBar items={items} onPress={handlePress} shell={shell} />;
-      }}
-    >
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="library" />
-      <Tabs.Screen name="eq" />
-      <Tabs.Screen name="settings" />
-      <Tabs.Screen name="stats" options={{ href: null }} />
-    </Tabs>
+          return <TabBar items={items} onPress={handlePress} shell={shell} />;
+        }}
+      >
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="library" />
+        <Tabs.Screen name="eq" />
+        <Tabs.Screen name="settings" />
+        <Tabs.Screen name="stats" options={{ href: null }} />
+      </Tabs>
+    </ShellRailContext.Provider>
   );
 }
