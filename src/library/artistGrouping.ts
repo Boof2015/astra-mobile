@@ -244,6 +244,7 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
         track_count,
         primary_track_count,
         artwork_hash,
+        artwork_source: artwork_hash ? 'track' as const : null,
         album_count: albumKeys.size,
         artwork_hashes,
       };

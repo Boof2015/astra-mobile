@@ -6,6 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { ScanProgress } from '@/components/library/ScanProgress';
+import { ScanNotificationPermissionCard } from '@/components/library/ScanNotificationPermissionCard';
+import { ArtistImageSweepStatus } from '@/components/library/ArtistImageSweepStatus';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
 import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
@@ -393,11 +395,51 @@ export function LibrarySettingsPanel() {
   const setIncludeSingles = useSettingsStore((s) => s.setIncludeSingles);
   const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const setIncludeCollabArtists = useLibraryStore((s) => s.setIncludeCollabArtists);
+  const artistImageAutoPolicy = useSettingsStore((s) => s.artistImageAutoPolicy);
+  const setArtistImageAutoPolicy = useSettingsStore((s) => s.setArtistImageAutoPolicy);
+  const artistImagesEnabled = artistImageAutoPolicy !== 'off';
 
   return (
     <>
       <SettingsSectionLabel>LOCAL FOLDERS</SettingsSectionLabel>
       <LibraryFoldersSettings />
+      {/* Renders nothing once the permission is granted — the style carries the
+          spacing so no empty gap is left behind. */}
+      <ScanNotificationPermissionCard style={styles.cardSpacing} />
+
+      <SettingsSectionLabel spaced>ARTIST IMAGES</SettingsSectionLabel>
+      <SettingsCard>
+        <SettingsToggleRow
+          title="Automatic artist images"
+          description="Send artist names to Deezer and cache selected images locally for offline use."
+          value={artistImagesEnabled}
+          onValueChange={(enabled) =>
+            void setArtistImageAutoPolicy(enabled ? 'wifi' : 'off')
+          }
+        />
+        {artistImagesEnabled ? (
+          <View style={styles.indent}>
+            <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+              Download network
+            </Text>
+            <SegmentedControl
+              segments={[
+                { key: 'wifi', label: 'Wi-Fi / Ethernet' },
+                { key: 'any', label: 'Any network' },
+              ]}
+              value={artistImageAutoPolicy}
+              onChange={(value) =>
+                void setArtistImageAutoPolicy(value === 'any' ? 'any' : 'wifi')
+              }
+            />
+          </View>
+        ) : (
+          <Text variant="caption" color={colors.textTertiary} style={styles.settingNote}>
+            Manual Deezer searches remain available from an artist’s menu.
+          </Text>
+        )}
+        <ArtistImageSweepStatus enabled={artistImagesEnabled} />
+      </SettingsCard>
 
       <SettingsSectionLabel spaced>LIBRARY VIEW</SettingsSectionLabel>
       <Text variant="body" style={styles.settingTitle}>

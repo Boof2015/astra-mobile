@@ -14,6 +14,7 @@ import {
   resumeListeningHistoryTracking,
 } from '@/audio/listeningHistoryTracker';
 import { notifyListeningHistoryChanged } from '@/listeningStats/events';
+import type { ArtistImageAutoPolicy } from '@/types/artistImages';
 
 /**
  * Persisted app preferences. SQLite (settings table) is the source of truth — this
@@ -29,6 +30,8 @@ const LYRICS_VISIBLE_KEY = 'lyrics_visible';
 const NOW_PLAYING_COMPANION_KEY = 'now_playing_companion';
 const HOME_GREETING_TEXT_MODE_KEY = 'home_greeting_text_mode';
 const LISTENING_HISTORY_ENABLED_KEY = 'listening_history_enabled';
+const ARTIST_IMAGE_AUTO_POLICY_KEY = 'artist_image_auto_policy';
+const ARTIST_IMAGE_DISCLOSURE_KEY = 'artist_image_disclosure_seen';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -56,6 +59,10 @@ function parseBoolean(value: string | null): boolean {
   return value === 'true';
 }
 
+function parseArtistImageAutoPolicy(value: string | null): ArtistImageAutoPolicy {
+  return value === 'off' || value === 'any' ? value : 'wifi';
+}
+
 interface SettingsStore {
   artistGroupingMode: ArtistGroupingMode;
   /** Show 1-track albums in the Albums view (desktop parity default: hidden). */
@@ -68,6 +75,8 @@ interface SettingsStore {
   nowPlayingCompanion: NowPlayingCompanion;
   homeGreetingTextMode: HomeGreetingTextMode;
   listeningHistoryEnabled: boolean;
+  artistImageAutoPolicy: ArtistImageAutoPolicy;
+  artistImageDisclosureSeen: boolean;
   loaded: boolean;
   load: () => Promise<void>;
   setArtistGroupingMode: (mode: ArtistGroupingMode) => Promise<void>;
@@ -79,6 +88,8 @@ interface SettingsStore {
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
   setHomeGreetingTextMode: (mode: HomeGreetingTextMode) => Promise<void>;
   setListeningHistoryEnabled: (enabled: boolean) => Promise<void>;
+  setArtistImageAutoPolicy: (policy: ArtistImageAutoPolicy) => Promise<void>;
+  acknowledgeArtistImageDisclosure: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -91,6 +102,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   nowPlayingCompanion: 'queue',
   homeGreetingTextMode: 'messages',
   listeningHistoryEnabled: true,
+  artistImageAutoPolicy: 'wifi',
+  artistImageDisclosureSeen: false,
   loaded: false,
 
   load: async () => {
@@ -106,6 +119,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       NOW_PLAYING_COMPANION_KEY,
       HOME_GREETING_TEXT_MODE_KEY,
       LISTENING_HISTORY_ENABLED_KEY,
+      ARTIST_IMAGE_AUTO_POLICY_KEY,
+      ARTIST_IMAGE_DISCLOSURE_KEY,
     ]);
     const grouping = values[ARTIST_GROUPING_KEY] ?? null;
     const includeSingles = values[INCLUDE_SINGLES_KEY] ?? null;
@@ -116,6 +131,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const nowPlayingCompanion = values[NOW_PLAYING_COMPANION_KEY] ?? null;
     const homeGreetingTextMode = values[HOME_GREETING_TEXT_MODE_KEY] ?? null;
     const listeningHistoryEnabled = values[LISTENING_HISTORY_ENABLED_KEY] !== '0';
+    const artistImageAutoPolicy = parseArtistImageAutoPolicy(
+      values[ARTIST_IMAGE_AUTO_POLICY_KEY] ?? null
+    );
+    const artistImageDisclosureSeen = values[ARTIST_IMAGE_DISCLOSURE_KEY] === '1';
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
@@ -126,6 +145,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
       homeGreetingTextMode: parseHomeGreetingTextMode(homeGreetingTextMode),
       listeningHistoryEnabled,
+      artistImageAutoPolicy,
+      artistImageDisclosureSeen,
       loaded: true,
     });
   },
@@ -193,5 +214,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (!enabled) resumeListeningHistoryTracking();
       throw error;
     }
+  },
+
+  setArtistImageAutoPolicy: async (policy) => {
+    const previous = get().artistImageAutoPolicy;
+    if (previous === policy) return;
+    set({ artistImageAutoPolicy: policy });
+    try {
+      await AstraLibraryData.setSettings({ [ARTIST_IMAGE_AUTO_POLICY_KEY]: policy });
+    } catch (error) {
+      set({ artistImageAutoPolicy: previous });
+      throw error;
+    }
+  },
+
+  acknowledgeArtistImageDisclosure: async () => {
+    if (get().artistImageDisclosureSeen) return;
+    await AstraLibraryData.setSettings({ [ARTIST_IMAGE_DISCLOSURE_KEY]: '1' });
+    set({ artistImageDisclosureSeen: true });
   },
 }));

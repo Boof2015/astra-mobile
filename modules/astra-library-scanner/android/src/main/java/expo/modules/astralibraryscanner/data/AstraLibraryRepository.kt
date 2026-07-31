@@ -2047,7 +2047,7 @@ class AstraLibraryRepository private constructor(
     }
     val next = rows.lastOrNull()?.let { row -> artistCursor(revision, kind, sort, row).encode() }
     mapOf(
-      "items" to rows.map(ArtistSummaryEntity::toBridgeMap),
+      "items" to bridgeArtistSummaries(rows),
       "nextCursor" to next,
       "previousCursor" to null,
       "totalCount" to dao.countArtists(revision, mode, includeCollaborations).toDouble(),
@@ -2085,7 +2085,7 @@ class AstraLibraryRepository private constructor(
       ?.lastOrNull()
       ?.let { row -> artistCursor(revision, kind, sort, row).encode() }
     mapOf(
-      "items" to descending.reversed().map(ArtistSummaryEntity::toBridgeMap),
+      "items" to bridgeArtistSummaries(descending.reversed()),
       "nextCursor" to null,
       "previousCursor" to previous,
       "totalCount" to dao.countArtists(revision, mode, includeCollaborations).toDouble(),
@@ -2187,7 +2187,9 @@ class AstraLibraryRepository private constructor(
       ).encode()
     }
     mapOf(
-      "summary" to dao.getArtistSummary(revision, mode, normalizedArtistKey)?.toBridgeMap(),
+      "summary" to bridgeArtistSummary(
+        dao.getArtistSummary(revision, mode, normalizedArtistKey),
+      ),
       "items" to rows.map(ActiveTrackView::toBridgeMap),
       "nextCursor" to next,
       "previousCursor" to null,
@@ -2269,9 +2271,311 @@ class AstraLibraryRepository private constructor(
     mapOf(
       "tracks" to tracks.map(ActiveTrackView::toBridgeMap),
       "albums" to albums.map(AlbumSummaryEntity::toBridgeMap),
-      "artists" to artists.map(ArtistSummaryEntity::toBridgeMap),
+      "artists" to bridgeArtistSummaries(artists),
     )
   }
+
+  /**
+   * The single rule for "this artist still needs a lookup". `not_found` and
+   * `found` are both terminal here — see [clearArtistImageLookupFailures] for
+   * how unmatched artists become eligible again.
+   */
+  private fun isArtistImagePending(image: ArtistImageEntity?, now: Long): Boolean =
+    image == null ||
+      image.lookupStatus == "never" ||
+      (image.lookupStatus == "transient_error" && (image.nextRetryAt ?: 0L) <= now)
+
+  /**
+   * Both numbers the artist-image UI needs, from one pass over the catalog.
+   *
+   * `pending` spans both grouping modes because the sweep does, and is counted
+   * by normalized name rather than by row: the caller batches same-name artists
+   * into one provider request, and each artist is listed under both modes, so a
+   * row count would roughly double the real amount of work.
+   *
+   * `missing` is scoped to [groupingMode] instead, because it is shown to the
+   * user and has to match the artist list they are actually looking at. It
+   * counts artists with no portrait from any source, so it includes the ones
+   * already written off as `not_found` — those are exactly the candidates for a
+   * retry sweep, and `pending` deliberately excludes them.
+   */
+  suspend fun getArtistImageStats(
+    groupingMode: String,
+    now: Long,
+  ): Map<String, Any?> = withCatalogRecovery { database ->
+    val revision = database.catalogDao().getRevision()
+    val mode = normalizeGroupingMode(groupingMode)
+    val byMode = listOf("astra", "fileTags").associateWith { entry ->
+      database.catalogDao().getAllArtistSummaries(revision, entry)
+    }
+    if (byMode.values.all { it.isEmpty() }) {
+      return@withCatalogRecovery mapOf("pending" to 0, "missing" to 0)
+    }
+
+    val images = requireUser().userDao().getAllArtistImages()
+      .associateBy { artistImageMapKey(it.groupingMode, it.artistKey) }
+    fun named(summaries: List<ArtistSummaryEntity>, keep: (ArtistSummaryEntity) -> Boolean): Int =
+      summaries.asSequence()
+        .filterNot { it.artist.equals("Unknown Artist", ignoreCase = true) }
+        .filter(keep)
+        .map { normalizeArtistKey(it.artist) }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .count()
+
+    val pending = named(byMode.values.flatten()) { summary ->
+      isArtistImagePending(
+        images[artistImageMapKey(summary.groupingMode, summary.artistKey)],
+        now,
+      )
+    }
+    val missing = named(byMode[mode].orEmpty()) { summary ->
+      val image = images[artistImageMapKey(summary.groupingMode, summary.artistKey)]
+      image?.manualImageHash == null && image?.automaticImageHash == null
+    }
+    mapOf("pending" to pending, "missing" to missing)
+  }
+
+  suspend fun getPendingArtistImageLookups(
+    requestedLimit: Int,
+    now: Long,
+  ): List<Map<String, Any?>> = withCatalogRecovery { database ->
+    val revision = database.catalogDao().getRevision()
+    val summaries = listOf("astra", "fileTags").flatMap { mode ->
+      database.catalogDao().getAllArtistSummaries(revision, mode)
+    }
+    if (summaries.isEmpty()) return@withCatalogRecovery emptyList()
+
+    // Initial backfills can contain tens of thousands of artists; avoid an
+    // SQLite IN clause large enough to exceed the device's bind-variable cap.
+    val images = requireUser().userDao().getAllArtistImages()
+      .associateBy { artistImageMapKey(it.groupingMode, it.artistKey) }
+    val pending = summaries.asSequence()
+      .filterNot { it.artist.equals("Unknown Artist", ignoreCase = true) }
+      .filter { summary ->
+        isArtistImagePending(
+          images[artistImageMapKey(summary.groupingMode, summary.artistKey)],
+          now,
+        )
+      }
+      .sortedWith(
+        compareBy<ArtistSummaryEntity>(
+          ArtistSummaryEntity::nameSortKey,
+          ArtistSummaryEntity::artist,
+          ArtistSummaryEntity::groupingMode,
+          ArtistSummaryEntity::artistKey,
+        ),
+      )
+      .toList()
+    val limit = requestedLimit.coerceIn(1, 500)
+    val boundaryArtist = pending.getOrNull(limit - 1)?.artist?.let(::normalizeArtistKey)
+    (pending.take(limit) + pending.drop(limit).takeWhile { summary ->
+      normalizeArtistKey(summary.artist) == boundaryArtist
+    }).asSequence()
+      .map { summary ->
+        mapOf(
+          "groupingMode" to summary.groupingMode,
+          "artistKey" to summary.artistKey,
+          "artistName" to summary.artist,
+          "retryCount" to (
+            images[artistImageMapKey(summary.groupingMode, summary.artistKey)]?.retryCount ?: 0
+          ),
+        )
+      }
+      .toList()
+  }
+
+  suspend fun getArtistImageState(
+    artistKey: String,
+    groupingMode: String,
+  ): Map<String, Any?> {
+    initialize()
+    val mode = normalizeGroupingMode(groupingMode)
+    val key = normalizeArtistKey(artistKey)
+    val image = requireUser().userDao().getArtistImage(mode, key)
+    return image?.toBridgeMap() ?: mapOf(
+      "groupingMode" to mode,
+      "artistKey" to key,
+      "manualImageHash" to null,
+      "automaticImageHash" to null,
+      "automaticProvider" to null,
+      "automaticSourceId" to null,
+      "lookupStatus" to "never",
+      "retryCount" to 0,
+      "lastAttemptAt" to null,
+      "nextRetryAt" to null,
+      "updatedAt" to null,
+    )
+  }
+
+  /**
+   * Makes previously unmatched artists eligible for lookup again, returning how
+   * many were re-queued. `not_found` is otherwise terminal — without this a
+   * provider outage, or a bug in the provider client, permanently poisons every
+   * artist it touched. Scans call this so "rescan" also means "re-check the
+   * artists that came back empty".
+   */
+  suspend fun clearArtistImageLookupFailures(): Int {
+    initialize()
+    val cleared = requireUser().userDao().deleteFailedArtistImageLookups()
+    if (cleared > 0) scheduleSnapshot()
+    return cleared
+  }
+
+  suspend fun recordArtistImageLookup(
+    artistKey: String,
+    artistName: String,
+    groupingMode: String,
+    status: String,
+    automaticImageHash: String?,
+    provider: String?,
+    sourceId: String?,
+    attemptedAt: Long,
+    nextRetryAt: Long?,
+    clearManual: Boolean,
+  ) {
+    initialize()
+    val mode = normalizeGroupingMode(groupingMode)
+    val key = normalizeArtistKey(artistKey)
+    val safeStatus = when (status) {
+      "found", "not_found", "transient_error" -> status
+      else -> error("Invalid artist image lookup status")
+    }
+    if (safeStatus == "found" && automaticImageHash.isNullOrBlank()) {
+      error("A found artist image requires a cached artwork hash")
+    }
+    val dao = requireUser().userDao()
+    val existing = dao.getArtistImage(mode, key)
+    dao.putArtistImage(
+      ArtistImageEntity(
+        groupingMode = mode,
+        artistKey = key,
+        artistName = artistName.trim().ifEmpty { existing?.artistName ?: artistKey },
+        manualImageHash = if (clearManual) null else existing?.manualImageHash,
+        automaticImageHash = when (safeStatus) {
+          "found" -> automaticImageHash
+          "not_found" -> null
+          else -> existing?.automaticImageHash
+        },
+        automaticProvider = when (safeStatus) {
+          "found" -> provider
+          "not_found" -> null
+          else -> existing?.automaticProvider
+        },
+        automaticSourceId = when (safeStatus) {
+          "found" -> sourceId
+          "not_found" -> null
+          else -> existing?.automaticSourceId
+        },
+        lookupStatus = safeStatus,
+        retryCount = if (safeStatus == "transient_error") {
+          (existing?.retryCount ?: 0) + 1
+        } else {
+          0
+        },
+        lastAttemptAt = attemptedAt,
+        nextRetryAt = if (safeStatus == "transient_error") nextRetryAt else null,
+        updatedAt = System.currentTimeMillis(),
+      ),
+    )
+    scheduleSnapshot()
+  }
+
+  suspend fun setManualArtistImage(
+    artistKey: String,
+    artistName: String,
+    groupingMode: String,
+    artworkHash: String,
+  ) {
+    initialize()
+    require(artworkHash.isNotBlank()) { "A cached artwork hash is required" }
+    val mode = normalizeGroupingMode(groupingMode)
+    val key = normalizeArtistKey(artistKey)
+    val dao = requireUser().userDao()
+    val existing = dao.getArtistImage(mode, key)
+    dao.putArtistImage(
+      (existing ?: ArtistImageEntity(
+        groupingMode = mode,
+        artistKey = key,
+        artistName = artistName.trim().ifEmpty { artistKey },
+        updatedAt = System.currentTimeMillis(),
+      )).copy(
+        artistName = artistName.trim().ifEmpty { existing?.artistName ?: artistKey },
+        manualImageHash = artworkHash,
+        updatedAt = System.currentTimeMillis(),
+      ),
+    )
+    scheduleSnapshot()
+  }
+
+  suspend fun clearManualArtistImage(
+    artistKey: String,
+    artistName: String,
+    groupingMode: String,
+  ) {
+    initialize()
+    val mode = normalizeGroupingMode(groupingMode)
+    val key = normalizeArtistKey(artistKey)
+    val dao = requireUser().userDao()
+    val existing = dao.getArtistImage(mode, key) ?: return
+    dao.putArtistImage(
+      existing.copy(
+        artistName = artistName.trim().ifEmpty { existing.artistName },
+        manualImageHash = null,
+        updatedAt = System.currentTimeMillis(),
+      ),
+    )
+    scheduleSnapshot()
+  }
+
+  private suspend fun bridgeArtistSummary(row: ArtistSummaryEntity?): Map<String, Any?>? =
+    row?.let { summary ->
+      val image = requireUser().userDao().getArtistImage(summary.groupingMode, summary.artistKey)
+      summary.toBridgeMap(image)
+    }
+
+  private suspend fun bridgeArtistSummaries(
+    rows: List<ArtistSummaryEntity>,
+  ): List<Map<String, Any?>> {
+    if (rows.isEmpty()) return emptyList()
+    val images = loadArtistImages(rows)
+    return rows.map { summary ->
+      summary.toBridgeMap(images[artistImageMapKey(summary.groupingMode, summary.artistKey)])
+    }
+  }
+
+  private suspend fun loadArtistImages(
+    rows: List<ArtistSummaryEntity>,
+  ): Map<String, ArtistImageEntity> {
+    val dao = requireUser().userDao()
+    return rows
+      .groupBy(ArtistSummaryEntity::groupingMode)
+      .flatMap { (mode, summaries) ->
+        dao.getArtistImages(mode, summaries.map(ArtistSummaryEntity::artistKey).distinct())
+      }
+      .associateBy { artistImageMapKey(it.groupingMode, it.artistKey) }
+  }
+
+  private fun ArtistImageEntity.toBridgeMap(): Map<String, Any?> = mapOf(
+    "groupingMode" to groupingMode,
+    "artistKey" to artistKey,
+    "artistName" to artistName,
+    "manualImageHash" to manualImageHash,
+    "automaticImageHash" to automaticImageHash,
+    "automaticProvider" to automaticProvider,
+    "automaticSourceId" to automaticSourceId,
+    "lookupStatus" to lookupStatus,
+    "retryCount" to retryCount,
+    "lastAttemptAt" to lastAttemptAt?.toDouble(),
+    "nextRetryAt" to nextRetryAt?.toDouble(),
+    "updatedAt" to updatedAt.toDouble(),
+  )
+
+  private fun artistImageMapKey(groupingMode: String, artistKey: String): String =
+    "$groupingMode\u0000$artistKey"
+
+  private fun normalizeGroupingMode(value: String): String =
+    if (value == "fileTags") "fileTags" else "astra"
 
   suspend fun matchSignal(
     title: String,
@@ -2919,7 +3223,7 @@ class AstraLibraryRepository private constructor(
   private fun buildUserDatabase(): AstraUserDatabase =
     Room.databaseBuilder(applicationContext, AstraUserDatabase::class.java, USER_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-      .addMigrations(USER_MIGRATION_1_2, USER_MIGRATION_2_3)
+      .addMigrations(USER_MIGRATION_1_2, USER_MIGRATION_2_3, USER_MIGRATION_3_4)
       .build()
 
   private fun buildCatalogDatabase(): AstraCatalogDatabase =

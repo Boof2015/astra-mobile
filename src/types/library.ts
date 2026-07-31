@@ -88,6 +88,7 @@ export interface Artist {
   /** Tracks where this artist is the resolved primary browse artist. */
   primary_track_count: number;
   artwork_hash: string | null;
+  artwork_source: 'manual' | 'deezer' | 'track' | null;
   album_count: number;
   /** Primary hash first, then one distinct cover per further album (max 4) — grid mosaic. */
   artwork_hashes: string[];

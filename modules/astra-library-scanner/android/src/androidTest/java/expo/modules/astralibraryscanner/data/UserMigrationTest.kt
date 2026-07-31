@@ -181,6 +181,47 @@ class UserMigrationTest {
     )
   }
 
+  @Test
+  fun artistImageV4MigrationPreservesUserDataAndCreatesRetryIndex() {
+    helper.createDatabase(TEST_DATABASE, 3).apply {
+      execSQL("INSERT INTO settings (`key`, value) VALUES ('theme_base', 'dark')")
+      close()
+    }
+
+    val database = helper.runMigrationsAndValidate(
+      TEST_DATABASE,
+      4,
+      true,
+      USER_MIGRATION_3_4,
+    )
+
+    assertEquals("dark", database.singleString("SELECT value FROM settings WHERE `key` = 'theme_base'"))
+    database.execSQL(
+      """
+        INSERT INTO artist_images (
+          grouping_mode, artist_key, artist_name, manual_image_hash,
+          automatic_image_hash, automatic_provider, automatic_source_id,
+          lookup_status, retry_count, last_attempt_at, next_retry_at, updated_at
+        ) VALUES (
+          'astra', 'björk', 'Björk', 'manual.jpg',
+          'deezer.jpg', 'deezer', '42',
+          'found', 0, 10, NULL, 20
+        )
+      """.trimIndent(),
+    )
+    assertEquals(1, database.singleInt("SELECT COUNT(*) FROM artist_images"))
+    assertEquals(
+      1,
+      database.singleInt(
+        """
+          SELECT COUNT(*) FROM sqlite_master
+          WHERE type = 'index'
+            AND name = 'index_artist_images_lookup_status_next_retry_at'
+        """.trimIndent(),
+      ),
+    )
+  }
+
   private fun androidx.sqlite.db.SupportSQLiteDatabase.singleString(query: String): String =
     this.query(query).use { cursor ->
       assertTrue(cursor.moveToFirst())

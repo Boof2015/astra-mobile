@@ -25,6 +25,7 @@ class AstraLibraryDataModule : Module() {
       "onLibraryStatus",
       "onScanProgress",
       "onCatalogChanged",
+      "onArtistImagesChanged",
     )
 
     OnCreate {
@@ -465,6 +466,71 @@ class AstraLibraryDataModule : Module() {
         limit: Int,
       ->
       repository().getArtistAlbums(artistKey, groupingMode, offset, limit)
+    }
+
+    AsyncFunction("getPendingArtistImageLookups") Coroutine { limit: Int, now: Double ->
+      repository().getPendingArtistImageLookups(limit, now.toLong())
+    }
+
+    AsyncFunction("clearArtistImageLookupFailures").Coroutine<Double> {
+      repository().clearArtistImageLookupFailures().toDouble()
+    }
+
+    AsyncFunction("getArtistImageStats") Coroutine { groupingMode: String, now: Double ->
+      repository().getArtistImageStats(groupingMode, now.toLong())
+    }
+
+    AsyncFunction("getArtistImageState") Coroutine { artistKey: String, groupingMode: String ->
+      repository().getArtistImageState(artistKey, groupingMode)
+    }
+
+    AsyncFunction("recordArtistImageLookup") Coroutine {
+        artistKey: String,
+        artistName: String,
+        groupingMode: String,
+        values: Map<String, Any?>,
+      ->
+      repository().recordArtistImageLookup(
+        artistKey = artistKey,
+        artistName = artistName,
+        groupingMode = groupingMode,
+        status = values["status"] as? String ?: "transient_error",
+        automaticImageHash = values["automaticImageHash"] as? String,
+        provider = values["provider"] as? String,
+        sourceId = values["sourceId"] as? String,
+        attemptedAt = (values["attemptedAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+        nextRetryAt = (values["nextRetryAt"] as? Number)?.toLong(),
+        clearManual = values["clearManual"] as? Boolean ?: false,
+      )
+      sendEvent(
+        "onArtistImagesChanged",
+        mapOf("artistKey" to artistKey, "groupingMode" to groupingMode),
+      )
+    }
+
+    AsyncFunction("setManualArtistImage") Coroutine {
+        artistKey: String,
+        artistName: String,
+        groupingMode: String,
+        artworkHash: String,
+      ->
+      repository().setManualArtistImage(artistKey, artistName, groupingMode, artworkHash)
+      sendEvent(
+        "onArtistImagesChanged",
+        mapOf("artistKey" to artistKey, "groupingMode" to groupingMode),
+      )
+    }
+
+    AsyncFunction("clearManualArtistImage") Coroutine {
+        artistKey: String,
+        artistName: String,
+        groupingMode: String,
+      ->
+      repository().clearManualArtistImage(artistKey, artistName, groupingMode)
+      sendEvent(
+        "onArtistImagesChanged",
+        mapOf("artistKey" to artistKey, "groupingMode" to groupingMode),
+      )
     }
 
     AsyncFunction("searchTracks") Coroutine { query: String, limit: Int ->

@@ -128,6 +128,7 @@ export function CollapsingHeader({
   onBack,
   backLabel,
   onMore,
+  moreAccessibilityLabel = 'More options',
   onPlay,
   onShuffle,
   scrollY,
@@ -149,6 +150,7 @@ export function CollapsingHeader({
   /** Names the screen `onBack` returns to; must track the real action. */
   backLabel: string;
   onMore?: () => void;
+  moreAccessibilityLabel?: string;
   onPlay: () => void;
   onShuffle: () => void;
   scrollY: SharedValue<number>;
@@ -327,7 +329,7 @@ export function CollapsingHeader({
           hitSlop={8}
           style={[styles.moreButton, { top: barCenterY - 16, right: spacing.md }]}
           accessibilityRole="button"
-          accessibilityLabel="Playlist options"
+          accessibilityLabel={moreAccessibilityLabel}
         >
           <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
         </Pressable>

@@ -1,6 +1,6 @@
 # Privacy Policy — Astra
 
-**Last updated: July 15, 2026**
+**Last updated: July 30, 2026**
 
 ## Overview
 
@@ -10,7 +10,7 @@ Most Astra data stays on your device. Optional features connect only when you ch
 
 ## Data stored on your device
 
-Astra stores your selected library folders, indexed music metadata, playlists, playback history, preferences, cached artwork and lyrics, and optional service configuration on your device.
+Astra stores your selected library folders, indexed music metadata, playlists, playback history, preferences, cached album and artist artwork, lyrics, and optional service configuration on your device. Artist images downloaded from a provider or chosen from a local file remain available offline until Astra's app data is cleared or the app is uninstalled.
 
 Passwords, session keys, and paired-desktop control tokens are stored using Android-backed secure storage. Other app data is stored in Astra's local database and files.
 
@@ -19,6 +19,7 @@ Passwords, session keys, and paired-desktop control tokens are stored using Andr
 Depending on the features you enable, Astra may send data to the following destinations:
 
 - **Lyrics providers:** Track title, artist, album, and duration may be sent to LRCLIB or XLRCDB to find lyrics.
+- **Deezer artist images:** If you enable automatic artist images or manually search Deezer, Astra sends the artist name to Deezer. The selected image and its provider identifier are stored locally. Automatic downloads default to Wi-Fi or Ethernet and can be disabled in Settings.
 - **Remote music servers:** If you add a Subsonic-compatible or Jellyfin server, Astra sends connection details, credentials, catalog requests, and playback requests directly to the server you configured.
 - **Scrobbling services:** If you enable Last.fm-compatible scrobbling, ListenBrainz, or another configured destination, Astra sends track and playback information to that service.
 - **Paired Astra Desktop:** If you pair a desktop, Astra exchanges remote-control, library-sync, playlist, favorite, queue, and playback data directly with that paired desktop.
@@ -34,7 +35,7 @@ Astra may request:
 
 - **Folder and file access** through Android's system picker, so you can choose music folders and import or export supported files.
 - **Camera access** only when you open a QR-code scanner for desktop pairing, EQ presets, or Signal sharing.
-- **Notification access** for playback controls, library scans, and paired-desktop sessions.
+- **Notification access** for playback controls, library scans, and paired-desktop sessions. Scan notification access is requested only after you tap its explained permission button; scans can still run if it is skipped or denied.
 - **Local-network and internet access** for optional servers, scrobbling, lyrics, sharing, and desktop features.
 
 Astra does not request microphone access.

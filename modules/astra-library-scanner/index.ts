@@ -181,6 +181,13 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
   getArtworkDirPath(): string;
   getArtworkThumbDirPath(): string;
   ensureArtworkThumbnails(hashes: string[]): Promise<number>;
+  /** Validate and content-addressably cache a JPEG, PNG, or WebP URI plus thumbnail. */
+  cacheArtworkFromUri(uri: string): Promise<string>;
+  /**
+   * A wait that still elapses while the app is backgrounded, unlike `setTimeout`
+   * — React Native stops firing JS timers once the activity pauses.
+   */
+  backgroundDelay(milliseconds: number): Promise<void>;
   getPersistedTreeUris(): string[];
   takePersistableUriPermission(uri: string): Promise<boolean>;
   releasePersistedUriPermission(uri: string): Promise<void>;
@@ -296,6 +303,28 @@ export interface NativeLibraryLoudnessStats {
   medianRgTrackDb: number | null;
 }
 
+export interface NativeArtistImageLookupTarget {
+  groupingMode: 'astra' | 'fileTags';
+  artistKey: string;
+  artistName: string;
+  retryCount: number;
+}
+
+export interface NativeArtistImageState {
+  groupingMode: 'astra' | 'fileTags';
+  artistKey: string;
+  artistName?: string;
+  manualImageHash: string | null;
+  automaticImageHash: string | null;
+  automaticProvider: 'deezer' | null;
+  automaticSourceId: string | null;
+  lookupStatus: 'never' | 'found' | 'not_found' | 'transient_error';
+  retryCount: number;
+  lastAttemptAt: number | null;
+  nextRetryAt: number | null;
+  updatedAt: number | null;
+}
+
 type AstraLibraryDataEvents = {
   onLibraryStatus: (event: LibraryStatusSnapshot) => void;
   onScanProgress: (event: {
@@ -306,6 +335,10 @@ type AstraLibraryDataEvents = {
     folderName: string;
   }) => void;
   onCatalogChanged: (event: { catalogRevision: string }) => void;
+  onArtistImagesChanged: (event: {
+    artistKey: string;
+    groupingMode: 'astra' | 'fileTags';
+  }) => void;
 };
 
 declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEvents> {
@@ -505,6 +538,53 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     totalCount: number;
     catalogRevision: string;
   }>;
+  getPendingArtistImageLookups(
+    limit: number,
+    now: number
+  ): Promise<NativeArtistImageLookupTarget[]>;
+  /**
+   * Re-queues artists a provider previously had no match for, returning how many
+   * became pending. `not_found` is otherwise terminal.
+   */
+  clearArtistImageLookupFailures(): Promise<number>;
+  /**
+   * `pending` = distinct artists awaiting a lookup across both grouping modes
+   * (the denominator for sweep progress). `missing` = artists in `groupingMode`
+   * with no portrait at all, including ones already written off as not_found.
+   */
+  getArtistImageStats(
+    groupingMode: 'astra' | 'fileTags',
+    now: number
+  ): Promise<{ pending: number; missing: number }>;
+  getArtistImageState(
+    artistKey: string,
+    groupingMode: 'astra' | 'fileTags'
+  ): Promise<NativeArtistImageState>;
+  recordArtistImageLookup(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags',
+    values: {
+      status: 'found' | 'not_found' | 'transient_error';
+      automaticImageHash?: string | null;
+      provider?: 'deezer' | null;
+      sourceId?: string | null;
+      attemptedAt: number;
+      nextRetryAt?: number | null;
+      clearManual?: boolean;
+    }
+  ): Promise<void>;
+  setManualArtistImage(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags',
+    artworkHash: string
+  ): Promise<void>;
+  clearManualArtistImage(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags'
+  ): Promise<void>;
   searchTracks<T>(query: string, limit: number): Promise<T[]>;
   searchLibrary<TTrack, TAlbum, TArtist>(
     query: string,

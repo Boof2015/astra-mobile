@@ -4,37 +4,67 @@
 // This starts the FGS on the first progress tick and tears it down when the scan ends.
 // All no-ops on non-Android and on native binaries built before the FGS methods existed.
 
-import { PermissionsAndroid, Platform } from 'react-native';
-import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
+import { Linking, PermissionsAndroid, Platform } from 'react-native';
+import { AstraLibraryData, AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import type { ScanProgress } from './scanner';
 
 const supported =
   Platform.OS === 'android' &&
   typeof (AstraLibraryScanner as { startScanService?: unknown }).startScanService === 'function';
 
-// runScan guarantees scans never overlap, so single-scan module state is safe.
-let active = false;
-let notifPermRequested = false;
-
 /**
- * POST_NOTIFICATIONS is Android 13+ (API 33); PermissionsAndroid resolves it granted
- * automatically below that. Requested contextually on the first scan. The FGS +
- * wakelock still keep the scan alive without it — only the visible notification needs it.
+ * Who currently needs the foreground service. A scan is no longer the only
+ * producer — the artist-image sweep runs on the same JS thread and starts right
+ * after a scan finishes — so ownership is ref-counted: the service starts when
+ * the set becomes non-empty and stops only when the last owner releases it.
+ * A plain boolean here would let either side tear down the other's keepalive.
  */
-async function ensureNotificationPermission(): Promise<void> {
-  if (notifPermRequested) return;
-  notifPermRequested = true;
+type ServiceOwner = 'scan' | 'artistImages';
+const owners = new Set<ServiceOwner>();
+const latest = new Map<ServiceOwner, ScanNotification>();
+
+const NOTIFICATION_PERMISSION_REQUESTED_KEY = 'scan_notification_permission_requested';
+
+export type ScanNotificationPermissionState =
+  | 'not_required'
+  | 'prompt'
+  | 'granted'
+  | 'denied';
+
+function notificationPermission(): Parameters<typeof PermissionsAndroid.check>[0] | null {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 33) return null;
   const permission = (PermissionsAndroid.PERMISSIONS as Record<string, string | undefined>)
     .POST_NOTIFICATIONS;
-  if (!permission) return;
+  return permission
+    ? (permission as Parameters<typeof PermissionsAndroid.check>[0])
+    : null;
+}
+
+export async function getScanNotificationPermissionState(): Promise<ScanNotificationPermissionState> {
+  const permission = notificationPermission();
+  if (!permission) return 'not_required';
+  if (await PermissionsAndroid.check(permission)) return 'granted';
+  const values = await AstraLibraryData.getSettings([NOTIFICATION_PERMISSION_REQUESTED_KEY]);
+  return values[NOTIFICATION_PERMISSION_REQUESTED_KEY] === '1' ? 'denied' : 'prompt';
+}
+
+export async function requestScanNotificationPermission(): Promise<ScanNotificationPermissionState> {
+  const permission = notificationPermission();
+  if (!permission) return 'not_required';
+  await AstraLibraryData.setSettings({ [NOTIFICATION_PERMISSION_REQUESTED_KEY]: '1' });
   try {
-    await PermissionsAndroid.request(permission as Parameters<typeof PermissionsAndroid.request>[0]);
+    const result = await PermissionsAndroid.request(permission);
+    return result === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied';
   } catch {
-    // Denied/unavailable — the scan still runs, the notification just won't show.
+    return 'denied';
   }
 }
 
-interface ScanNotification {
+export async function openScanNotificationSettings(): Promise<void> {
+  await Linking.openSettings();
+}
+
+export interface ScanNotification {
   title: string;
   text: string;
   subText: string | null;
@@ -77,22 +107,57 @@ function notificationFor(progress: ScanProgress): ScanNotification {
   };
 }
 
-/** Report a scan progress tick — starts the FGS on the first call, updates it after. */
-export async function reportScanProgress(progress: ScanProgress): Promise<void> {
+/**
+ * Publish a progress tick for one owner — starts the service on the first call,
+ * updates the notification after. A scan outranks the sweep when both are live:
+ * it is the operation the user just asked for, and it finishes sooner.
+ */
+export function reportServiceProgress(
+  owner: ServiceOwner,
+  notification: ScanNotification
+): void {
   if (!supported) return;
-  const { title, text, subText, current, total, indeterminate } = notificationFor(progress);
-  if (!active) {
-    active = true;
-    await ensureNotificationPermission();
-    if (!active) return; // scan ended while we awaited the permission dialog
-    AstraLibraryScanner.startScanService(title, text);
+  const starting = owners.size === 0;
+  owners.add(owner);
+  latest.set(owner, notification);
+  if (starting) {
+    AstraLibraryScanner.startScanService(notification.title, notification.text);
   }
-  AstraLibraryScanner.updateScanNotification(title, text, subText, current, total, indeterminate);
+  publish();
 }
 
-/** Tear down the scan foreground service when a scan finishes (or errors). */
-export function endScanService(): void {
-  if (!supported || !active) return;
-  active = false;
+/** Release one owner's claim; the service stops once nobody holds it. */
+export function endServiceFor(owner: ServiceOwner): void {
+  if (!supported || !owners.has(owner)) return;
+  owners.delete(owner);
+  latest.delete(owner);
+  if (owners.size > 0) {
+    publish();
+    return;
+  }
   AstraLibraryScanner.stopScanService();
+}
+
+function publish(): void {
+  const owner: ServiceOwner = owners.has('scan') ? 'scan' : 'artistImages';
+  const next = latest.get(owner);
+  if (!next) return;
+  AstraLibraryScanner.updateScanNotification(
+    next.title,
+    next.text,
+    next.subText,
+    next.current,
+    next.total,
+    next.indeterminate
+  );
+}
+
+/** Report a scan progress tick — starts the FGS on the first call, updates it after. */
+export async function reportScanProgress(progress: ScanProgress): Promise<void> {
+  reportServiceProgress('scan', notificationFor(progress));
+}
+
+/** Tear down the scan's claim on the foreground service when a scan finishes (or errors). */
+export function endScanService(): void {
+  endServiceFor('scan');
 }

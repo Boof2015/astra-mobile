@@ -10,6 +10,7 @@ import {
   View
 } from 'react-native';
 import { Image } from 'expo-image';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,6 +20,9 @@ import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
+import { ArtistImageSearchSheet } from '@/components/library/ArtistImageSearchSheet';
+import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
   fontSize,
@@ -43,6 +47,13 @@ import {
 } from '@/library/nativePages';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
+import type { DeezerArtistCandidate } from '@/types/artistImages';
+import { normalizeKey } from '@/shared/library/albumGrouping';
+import {
+  resetLocalArtistImage,
+  selectDeezerArtistImage,
+  selectLocalArtistImage,
+} from '@/library/artistImageLookup';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type ArtistSectionTarget = 'songs' | 'albums' | 'appearances';
@@ -79,6 +90,9 @@ export default function ArtistScreen() {
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [imageSearchOpen, setImageSearchOpen] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
 
   const allPage = useNativeArtistDetail(name, detailGroupingMode, 'all');
   const songsPage = useNativeArtistDetail(name, detailGroupingMode, 'songs');
@@ -211,6 +225,78 @@ export default function ArtistScreen() {
 
   const backdropHash = detail.artworkHashes[0] ?? null;
   const disabled = detail.playbackTracks.length === 0;
+  const artistKey = normalizeKey(name);
+
+  const reportImageError = (message: string) => {
+    showAppDialog({
+      title: 'Artist image unchanged',
+      message,
+    });
+  };
+
+  const chooseLocalImage = async () => {
+    setImageMenuOpen(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'image/webp'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      setImageBusy(true);
+      await selectLocalArtistImage(
+        artistKey,
+        name,
+        detailGroupingMode,
+        result.assets[0].uri
+      );
+    } catch {
+      reportImageError('Choose a valid JPEG, PNG, or WebP image smaller than 12 MB.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const chooseDeezerImage = async (candidate: DeezerArtistCandidate) => {
+    await selectDeezerArtistImage(artistKey, name, detailGroupingMode, candidate);
+  };
+
+  const resetImage = async () => {
+    setImageMenuOpen(false);
+    setImageBusy(true);
+    try {
+      await resetLocalArtistImage(artistKey, name, detailGroupingMode);
+    } catch {
+      reportImageError('Astra could not reset this artist image. Try again.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const imageActions: ActionSheetItem[] = [
+    {
+      key: 'search-deezer',
+      label: 'Search Deezer',
+      icon: 'search-outline',
+      onPress: () => {
+        setImageMenuOpen(false);
+        setImageSearchOpen(true);
+      },
+    },
+    {
+      key: 'choose-local',
+      label: imageBusy ? 'Choosing local image…' : 'Choose local image',
+      icon: 'image-outline',
+      onPress: () => void chooseLocalImage(),
+    },
+    ...(allPage.summary?.artwork_source === 'manual'
+      ? [{
+          key: 'reset',
+          label: 'Reset to automatic',
+          icon: 'refresh-outline' as const,
+          onPress: () => void resetImage(),
+        }]
+      : []),
+  ];
 
   return (
     <Screen padded={false} style={styles.screen}>
@@ -260,6 +346,8 @@ export default function ArtistScreen() {
         backLabel={backLabel}
         onPlay={playArtist}
         onShuffle={shuffleArtist}
+        onMore={() => setImageMenuOpen(true)}
+        moreAccessibilityLabel="Artist image options"
         scrollY={scrollY}
         heroFaded={heroFaded}
         collapsed={collapsed}
@@ -267,6 +355,19 @@ export default function ArtistScreen() {
         onHeroBlockLayout={onHeroBlockLayout}
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
+      <ActionSheet
+        visible={imageMenuOpen}
+        title={`${name} image`}
+        items={imageActions}
+        onClose={() => setImageMenuOpen(false)}
+      />
+      {imageSearchOpen ? (
+        <ArtistImageSearchSheet
+          artistName={name}
+          onClose={() => setImageSearchOpen(false)}
+          onSelect={chooseDeezerImage}
+        />
+      ) : null}
     </Screen>
   );
 }

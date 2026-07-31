@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -23,6 +23,9 @@ import { Text } from '@/components/Text';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
 import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
+import { StepHeader } from '@/components/onboarding/StepHeader';
+import { NotificationStep } from '@/components/onboarding/NotificationStep';
+import { ArtistImageStep } from '@/components/onboarding/ArtistImageStep';
 import { formatFolderCount, formatTrackCount } from '@/components/settings/SettingsPanels';
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
@@ -30,14 +33,33 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { playHaptic } from '@/lib/haptics';
 import type { BaseThemeId } from '@/theme/resolve';
+import { useScanNotificationPermission } from '@/library/useScanNotificationPermission';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore, type NowPlayingScopeStyle } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
-type StepId = 'welcome' | 'library' | 'theme' | 'player' | 'done';
+type StepId =
+  | 'welcome'
+  | 'library'
+  | 'notifications'
+  | 'artistImages'
+  | 'theme'
+  | 'player'
+  | 'done';
 
-const STEP_ORDER: StepId[] = ['welcome', 'library', 'theme', 'player', 'done'];
+// Folders first so the notification ask lands with a visible reason ("your scan
+// is running"), then the Deezer consent. Each is its own page: they are three
+// unrelated decisions and stacking them made the library step's real action —
+// picking a folder — the third thing on screen.
+const STEP_ORDER: StepId[] = [
+  'welcome',
+  'library',
+  'notifications',
+  'artistImages',
+  'theme',
+  'player',
+  'done',
+];
 
 const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
   { id: 'system', title: 'System' },
@@ -63,6 +85,9 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const step = STEP_ORDER[stepIndex];
   const foldersCount = useLibraryStore((s) => s.folders.length);
   const isScanning = useLibraryStore((s) => s.isScanning);
+  // Owned here so the footer label can distinguish "Continue" from "Skip for
+  // now" using the same state the notification step renders.
+  const notificationPermission = useScanNotificationPermission();
   // Deliberately unset until tapped: preselecting a card would bias the
   // pre-release style feedback. Skipping through keeps the store default.
   const [scopeStyleChoice, setScopeStyleChoice] = useState<NowPlayingScopeStyle | null>(null);
@@ -77,7 +102,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   };
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
-  const canGoBack = step === 'library' || step === 'theme' || step === 'player';
+  const canGoBack = stepIndex > 0 && step !== 'done';
   const primaryLabel =
     step === 'welcome'
       ? 'Get started'
@@ -88,9 +113,14 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           foldersCount > 0 || isScanning
           ? 'Continue'
           : 'Skip for now'
-        : step === 'theme' || step === 'player'
-          ? 'Continue'
-          : 'Start listening';
+        : step === 'notifications'
+          ? // The grant is optional, so moving on without it really is skipping.
+            notificationPermission.granted
+            ? 'Continue'
+            : 'Skip for now'
+          : step === 'artistImages' || step === 'theme' || step === 'player'
+            ? 'Continue'
+            : 'Start listening';
 
   return (
     <View style={styles.root}>
@@ -123,6 +153,10 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           <Animated.View key={step} entering={FadeIn.duration(220)} style={styles.stepWrap}>
             {step === 'welcome' ? <WelcomeStep /> : null}
             {step === 'library' ? <LibraryStep /> : null}
+            {step === 'notifications' ? (
+              <NotificationStep permission={notificationPermission} />
+            ) : null}
+            {step === 'artistImages' ? <ArtistImageStep /> : null}
             {step === 'theme' ? <ThemeStep /> : null}
             {step === 'player' ? (
               <PlayerStep choice={scopeStyleChoice} onChoose={chooseScopeStyle} />
@@ -203,6 +237,7 @@ function LibraryStep() {
         title="Add your music"
         subtitle="Point Astra at the folders where your music lives. It scans them into your library — files on disk are never modified."
       />
+
       <Pressable android_ripple={ripple.bounded}
         style={[styles.choiceButton, isScanning && styles.disabled]}
         disabled={isScanning}
@@ -332,32 +367,6 @@ function DoneStep() {
             : 'Add music anytime from Settings › Library.'}
         </Text>
       </Animated.View>
-    </View>
-  );
-}
-
-function StepHeader({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: IoniconName;
-  title: string;
-  subtitle: string;
-}) {
-  const styles = useStyles();
-  const colors = useColors();
-  return (
-    <View style={styles.stepHeader}>
-      <View style={styles.stepIconWrap}>
-        <Ionicons name={icon} size={26} color={colors.accent} />
-      </View>
-      <Text variant="heading" style={styles.centeredTitle}>
-        {title}
-      </Text>
-      <Text variant="body" color={colors.textSecondary} style={styles.centeredSubtitle}>
-        {subtitle}
-      </Text>
     </View>
   );
 }
@@ -495,22 +504,6 @@ const useStyles = createThemedStyles((colors) => ({
   stepBody: {
     width: '100%',
     gap: spacing.lg,
-  },
-  stepHeader: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  stepIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.glassBg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   choiceButton: {
     flexDirection: 'row',

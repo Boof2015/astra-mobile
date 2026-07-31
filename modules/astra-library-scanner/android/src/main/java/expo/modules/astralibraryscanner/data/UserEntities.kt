@@ -283,3 +283,23 @@ data class SnapshotMetadataEntity(
   @PrimaryKey val id: Int = 1,
   @ColumnInfo(name = "last_snapshot_at") val lastSnapshotAt: Long,
 )
+
+@Entity(
+  tableName = "artist_images",
+  primaryKeys = ["grouping_mode", "artist_key"],
+  indices = [Index(value = ["lookup_status", "next_retry_at"])],
+)
+data class ArtistImageEntity(
+  @ColumnInfo(name = "grouping_mode") val groupingMode: String,
+  @ColumnInfo(name = "artist_key") val artistKey: String,
+  @ColumnInfo(name = "artist_name") val artistName: String,
+  @ColumnInfo(name = "manual_image_hash") val manualImageHash: String? = null,
+  @ColumnInfo(name = "automatic_image_hash") val automaticImageHash: String? = null,
+  @ColumnInfo(name = "automatic_provider") val automaticProvider: String? = null,
+  @ColumnInfo(name = "automatic_source_id") val automaticSourceId: String? = null,
+  @ColumnInfo(name = "lookup_status") val lookupStatus: String = "never",
+  @ColumnInfo(name = "retry_count") val retryCount: Int = 0,
+  @ColumnInfo(name = "last_attempt_at") val lastAttemptAt: Long? = null,
+  @ColumnInfo(name = "next_retry_at") val nextRetryAt: Long? = null,
+  @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)

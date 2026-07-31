@@ -111,9 +111,23 @@ export function useNativeArtistDetail(
 
   useEffect(() => {
     queueMicrotask(() => void reset());
-    const subscription = AstraLibraryData.addListener('onCatalogChanged', () => void reset());
-    return () => subscription.remove();
-  }, [reset]);
+    const catalogSubscription = AstraLibraryData.addListener(
+      'onCatalogChanged',
+      () => void reset()
+    );
+    const imageSubscription = AstraLibraryData.addListener(
+      'onArtistImagesChanged',
+      (event) => {
+        if (event.artistKey === artistKey && event.groupingMode === groupingMode) {
+          void reset();
+        }
+      }
+    );
+    return () => {
+      catalogSubscription.remove();
+      imageSubscription.remove();
+    };
+  }, [artistKey, groupingMode, reset]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loading) return;

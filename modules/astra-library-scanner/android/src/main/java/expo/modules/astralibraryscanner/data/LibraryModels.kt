@@ -188,21 +188,39 @@ fun AlbumSummaryEntity.toBridgeMap(): Map<String, Any?> = mapOf(
   "latest_added_at" to latestAddedAt.toDouble(),
 )
 
-fun ArtistSummaryEntity.toBridgeMap(): Map<String, Any?> = mapOf(
-  "artist" to artist,
-  "track_count" to trackCount.toDouble(),
-  "primary_track_count" to primaryTrackCount.toDouble(),
-  "album_count" to albumCount.toDouble(),
-  "artwork_hash" to artworkHash,
-  "source_type" to sourceType,
-  "source_id" to sourceId?.toDouble(),
-  "artwork_source_id" to artworkSourceId,
-  "is_collaboration" to isCollaboration,
-  "artwork_hashes" to runCatching {
-    val array = JSONArray(artworkHashesJson)
-    List(array.length()) { index -> array.getString(index) }
-  }.getOrDefault(emptyList<String>()),
-)
+fun ArtistSummaryEntity.toBridgeMap(): Map<String, Any?> = toBridgeMap(null)
+
+fun ArtistSummaryEntity.toBridgeMap(image: ArtistImageEntity?): Map<String, Any?> {
+  val portraitHash = image?.manualImageHash ?: image?.automaticImageHash
+  val resolvedHash = portraitHash ?: artworkHash
+  val resolvedHashes = if (portraitHash != null) {
+    listOf(portraitHash)
+  } else {
+    runCatching {
+      val array = JSONArray(artworkHashesJson)
+      List(array.length()) { index -> array.getString(index) }
+    }.getOrDefault(emptyList())
+  }
+  val artworkSource = when {
+    image?.manualImageHash != null -> "manual"
+    image?.automaticImageHash != null -> "deezer"
+    artworkHash != null -> "track"
+    else -> null
+  }
+  return mapOf(
+    "artist" to artist,
+    "track_count" to trackCount.toDouble(),
+    "primary_track_count" to primaryTrackCount.toDouble(),
+    "album_count" to albumCount.toDouble(),
+    "artwork_hash" to resolvedHash,
+    "source_type" to sourceType,
+    "source_id" to sourceId?.toDouble(),
+    "artwork_source_id" to artworkSourceId,
+    "is_collaboration" to isCollaboration,
+    "artwork_hashes" to resolvedHashes,
+    "artwork_source" to artworkSource,
+  )
+}
 
 fun RemoteSourceEntity.toBridgeMap(): Map<String, Any?> = mapOf(
   "id" to id.toDouble(),

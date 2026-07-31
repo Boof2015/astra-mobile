@@ -49,6 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -266,6 +267,10 @@ class AstraLibraryScannerModule : Module() {
       withContext(Dispatchers.IO) { ensureArtworkThumbnails(hashes) }
     }
 
+    AsyncFunction("cacheArtworkFromUri") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { cacheArtworkFromUri(uri) }
+    }
+
     Function("getPersistedTreeUris") {
       requireContext().contentResolver.persistedUriPermissions
         .filter { it.isReadPermission }
@@ -307,6 +312,20 @@ class AstraLibraryScannerModule : Module() {
 
     Function("stopScanService") {
       ScanForegroundService.stop(requireContext())
+    }
+
+    /**
+     * A wait that still elapses while Astra is backgrounded.
+     *
+     * React Native drives `setTimeout` from a Choreographer frame callback that
+     * `JavaTimerManager.onHostPause()` removes, so JS timers simply stop firing
+     * once the activity is paused — a foreground service keeps the process alive
+     * but does not bring them back. Work that must pace itself across a
+     * backgrounded stretch has to wait on native instead, because a promise
+     * resolved from here reaches the JS thread without the frame callback.
+     */
+    AsyncFunction("backgroundDelay") Coroutine { milliseconds: Int ->
+      delay(milliseconds.toLong().coerceIn(0L, 60_000L))
     }
   }
 
@@ -1431,6 +1450,18 @@ class AstraLibraryScannerModule : Module() {
     return fileName
   }
 
+  private fun cacheArtworkFromUri(rawUri: String): String {
+    val uri = Uri.parse(rawUri.trim().ifEmpty { error("An image URI is required") })
+    val bytes = requireContext().contentResolver.openInputStream(uri)
+      ?.use(::readImportedArtworkBytes)
+      ?: error("The selected image could not be opened")
+    return ImportedArtworkCache(
+      artworkDirectory = artworkDir(),
+      thumbnailDirectory = artworkThumbDir(),
+      thumbnailSize = artworkThumbSize,
+    ).cache(bytes)
+  }
+
   private fun ensureArtworkThumbnails(hashes: List<String>): Int {
     var generated = 0
     val seen = mutableSetOf<String>()
@@ -1533,11 +1564,19 @@ class AstraLibraryScannerModule : Module() {
   private fun md5Hex(bytes: ByteArray): String =
     MessageDigest.getInstance("MD5").digest(bytes).joinToString("") { "%02x".format(it) }
 
-  private fun sniffImageExtension(bytes: ByteArray): String = when {
+  private fun sniffSupportedImageExtension(bytes: ByteArray): String? = when {
     bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> ".jpg"
-    bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() -> ".png"
-    bytes.size >= 12 && bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
+    bytes.size >= 8 &&
+      bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+      bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> ".png"
+    bytes.size >= 12 &&
+      bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+      bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+      bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
       bytes[10] == 'B'.code.toByte() && bytes[11] == 'P'.code.toByte() -> ".webp"
-    else -> ".jpg"
+    else -> null
   }
+
+  private fun sniffImageExtension(bytes: ByteArray): String =
+    sniffSupportedImageExtension(bytes) ?: ".jpg"
 }

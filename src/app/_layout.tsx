@@ -44,13 +44,16 @@ import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { SyncConflictPrompt } from '@/components/sync/SyncConflictPrompt';
 import { useThemeStore } from '@/stores/themeStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { ArtistImageDisclosurePrompt } from '@/components/onboarding/ArtistImageDisclosurePrompt';
 import { useTheme } from '@/theme/themed';
 import { SessionLifecycle } from '@/session/SessionLifecycle';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { Text } from '@/components/Text';
 import { AppDialogHost } from '@/components/dialogs/AppDialog';
+import { startArtistImageLookupCoordinator } from '@/library/artistImageLookup';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -349,6 +352,7 @@ export default function RootLayout() {
   // Library tab + playback adapters get data immediately. EQ + audio settings load
   // alongside so the native EQ/gain reflect persisted prefs from the first play.
   useEffect(() => {
+    startArtistImageLookupCoordinator();
     useThemeStore
       .getState()
       .load()
@@ -448,6 +452,7 @@ export default function RootLayout() {
             <NowPlayingHost />
             <QuickSearchOverlay />
             <SyncConflictPrompt />
+            <ArtistImageDisclosurePrompt />
           </>
         ) : (
           // First-run gate: opaque full-screen wizard over the (hidden) navigator.
@@ -455,7 +460,10 @@ export default function RootLayout() {
           <View style={StyleSheet.absoluteFill}>
             <OnboardingFlow
               onDone={() => {
-                void useOnboardingStore.getState().markComplete();
+                void (async () => {
+                  await useSettingsStore.getState().acknowledgeArtistImageDisclosure();
+                  await useOnboardingStore.getState().markComplete();
+                })();
               }}
             />
           </View>

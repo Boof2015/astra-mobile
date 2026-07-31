@@ -368,6 +368,8 @@ class RoomLibraryRepositoryTest {
 
     val valid = snapshots.newestValid()
     assertTrue(valid != null)
+    // A pre-feature v1 snapshot has no artistImages property.
+    valid?.payload?.remove("artistImages")
     val replacement = Room.inMemoryDatabaseBuilder(context, AstraUserDatabase::class.java)
       .allowMainThreadQueries()
       .build()
@@ -378,6 +380,91 @@ class RoomLibraryRepositoryTest {
       replacement.close()
       snapshotDirectory.deleteRecursively()
     }
+  }
+
+  @Test
+  fun artistImageSnapshotRoundTripPreservesManualAndAutomaticLayers() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val snapshotDirectory = context.filesDir.resolve("astra-user-snapshots")
+    snapshotDirectory.deleteRecursively()
+    val snapshots = UserSnapshotStore(context)
+    user.userDao().putArtistImage(
+      ArtistImageEntity(
+        groupingMode = "fileTags",
+        artistKey = "björk",
+        artistName = "Björk",
+        manualImageHash = "manual.webp",
+        automaticImageHash = "deezer.jpg",
+        automaticProvider = "deezer",
+        automaticSourceId = "42",
+        lookupStatus = "transient_error",
+        retryCount = 2,
+        lastAttemptAt = 10,
+        nextRetryAt = 30,
+        updatedAt = 20,
+      ),
+    )
+    snapshots.write(user)
+
+    val replacement = Room.inMemoryDatabaseBuilder(context, AstraUserDatabase::class.java)
+      .allowMainThreadQueries()
+      .build()
+    try {
+      snapshots.restore(replacement, requireNotNull(snapshots.newestValid()))
+      val restored = replacement.userDao().getArtistImage("fileTags", "björk")
+      assertEquals("manual.webp", restored?.manualImageHash)
+      assertEquals("deezer.jpg", restored?.automaticImageHash)
+      assertEquals("42", restored?.automaticSourceId)
+      assertEquals("transient_error", restored?.lookupStatus)
+      assertEquals(2, restored?.retryCount)
+      assertEquals(30L, restored?.nextRetryAt)
+    } finally {
+      replacement.close()
+      snapshotDirectory.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun artistArtworkBridgeUsesManualThenDeezerThenTrack() {
+    val summary = ArtistSummaryEntity(
+      revision = 1,
+      artistKey = "björk",
+      artist = "Björk",
+      groupingMode = "astra",
+      trackCount = 2,
+      primaryTrackCount = 2,
+      albumCount = 2,
+      artworkHash = "track.jpg",
+      nameSortKey = "bjork",
+      sectionLabel = "B",
+      isCollaboration = false,
+      artworkHashesJson = """["track.jpg","other.jpg"]""",
+    )
+    val automatic = ArtistImageEntity(
+      groupingMode = "astra",
+      artistKey = "björk",
+      artistName = "Björk",
+      automaticImageHash = "deezer.jpg",
+      automaticProvider = "deezer",
+      lookupStatus = "found",
+      updatedAt = 1,
+    )
+
+    val automaticMap = summary.toBridgeMap(automatic)
+    assertEquals("deezer.jpg", automaticMap["artwork_hash"])
+    assertEquals(listOf("deezer.jpg"), automaticMap["artwork_hashes"])
+    assertEquals("deezer", automaticMap["artwork_source"])
+
+    val manualMap = summary.toBridgeMap(
+      automatic.copy(manualImageHash = "manual.webp"),
+    )
+    assertEquals("manual.webp", manualMap["artwork_hash"])
+    assertEquals(listOf("manual.webp"), manualMap["artwork_hashes"])
+    assertEquals("manual", manualMap["artwork_source"])
+
+    val trackMap = summary.toBridgeMap()
+    assertEquals("track.jpg", trackMap["artwork_hash"])
+    assertEquals("track", trackMap["artwork_source"])
   }
 
   @Test

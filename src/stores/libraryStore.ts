@@ -17,6 +17,7 @@ import {
   type ScanResult,
 } from '@/library/scanner';
 import { endScanService, reportScanProgress } from '@/library/scanService';
+import { requeueMissingArtistImages } from '@/library/artistImageLookup';
 import { ALBUM_SORT_LABELS, type AlbumSort } from '@/lib/albumSort';
 import { ARTIST_SORT_LABELS, type ArtistSort } from '@/lib/artistSort';
 import { TRACK_SORT_LABELS, type TrackSort } from '@/lib/trackSort';
@@ -191,6 +192,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     artists: 0,
   };
   let anchorGeneration = 0;
+  let artistImageRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Re-entrancy guards, per list and per direction, so a backward refill, a forward
   // page and a different view's load never block one another — the single shared flag
@@ -391,6 +393,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     } finally {
       try {
         await get().refresh();
+        // A scan is the user asking Astra to look at their library again, so it
+        // also re-opens artist-image lookups that previously found no match.
+        // New artists queue on their own; these would never retry otherwise.
+        await requeueMissingArtistImages();
       } finally {
         if (activeScanCancellation === cancellation) activeScanCancellation = null;
         set({
@@ -489,6 +495,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
               anchorGeneration += 1;
               set({ sectionAnchors: [] });
               void get().refresh();
+            });
+            AstraLibraryData.addListener('onArtistImagesChanged', () => {
+              if (artistImageRefreshTimer) clearTimeout(artistImageRefreshTimer);
+              artistImageRefreshTimer = setTimeout(() => {
+                artistImageRefreshTimer = null;
+                void get().refresh();
+              }, 300);
             });
             useSettingsStore.subscribe((next, previous) => {
               if (next.artistGroupingMode !== previous.artistGroupingMode) {

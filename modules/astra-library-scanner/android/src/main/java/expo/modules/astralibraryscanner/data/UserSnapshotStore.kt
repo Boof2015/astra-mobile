@@ -39,6 +39,7 @@ class UserSnapshotStore(
       json.put("pendingFavorites", dao.getPendingFavorites().toJsonArray { it.toJson() })
       json.put("playlistTombstones", dao.getPlaylistTombstones().toJsonArray { it.toJson() })
       json.put("playlistSyncStates", dao.getPlaylistSyncStates().toJsonArray { it.toJson() })
+      json.put("artistImages", dao.getAllArtistImages().toJsonArray { it.toJson() })
       val sessions = dao.getPlaybackSessions()
       json.put("playbackSessions", sessions.toJsonArray { it.toJson() })
       json.put(
@@ -102,6 +103,7 @@ class UserSnapshotStore(
       dao.putPendingFavorites(payload.array("pendingFavorites").mapObjects(::pendingFavoriteFromJson))
       dao.putPlaylistTombstones(payload.array("playlistTombstones").mapObjects(::playlistTombstoneFromJson))
       dao.putPlaylistSyncStates(payload.array("playlistSyncStates").mapObjects(::playlistSyncStateFromJson))
+      dao.putArtistImages(payload.array("artistImages").mapObjects(::artistImageFromJson))
       val sessions = payload.array("playbackSessions").mapObjects(::playbackSessionFromJson)
       if (sessions.isNotEmpty()) {
         sessions.forEach { dao.putPlaybackSession(it) }
@@ -326,6 +328,35 @@ private fun playlistSyncStateFromJson(json: JSONObject) = PlaylistSyncStateEntit
   syncUid = json.getString("syncUid"),
   localUpdatedAt = json.getLong("localUpdatedAt"),
   remoteUpdatedAt = json.getLong("remoteUpdatedAt"),
+)
+
+private fun ArtistImageEntity.toJson() = JSONObject()
+  .put("groupingMode", groupingMode)
+  .put("artistKey", artistKey)
+  .put("artistName", artistName)
+  .putNullable("manualImageHash", manualImageHash)
+  .putNullable("automaticImageHash", automaticImageHash)
+  .putNullable("automaticProvider", automaticProvider)
+  .putNullable("automaticSourceId", automaticSourceId)
+  .put("lookupStatus", lookupStatus)
+  .put("retryCount", retryCount)
+  .putNullable("lastAttemptAt", lastAttemptAt)
+  .putNullable("nextRetryAt", nextRetryAt)
+  .put("updatedAt", updatedAt)
+
+private fun artistImageFromJson(json: JSONObject) = ArtistImageEntity(
+  groupingMode = json.getString("groupingMode"),
+  artistKey = json.getString("artistKey"),
+  artistName = json.getString("artistName"),
+  manualImageHash = json.nullableString("manualImageHash"),
+  automaticImageHash = json.nullableString("automaticImageHash"),
+  automaticProvider = json.nullableString("automaticProvider"),
+  automaticSourceId = json.nullableString("automaticSourceId"),
+  lookupStatus = json.optString("lookupStatus", "never"),
+  retryCount = json.optInt("retryCount", 0),
+  lastAttemptAt = json.nullableLong("lastAttemptAt"),
+  nextRetryAt = json.nullableLong("nextRetryAt"),
+  updatedAt = json.optLong("updatedAt", 0),
 )
 
 private fun PlaybackSessionEntity.toJson() = JSONObject()

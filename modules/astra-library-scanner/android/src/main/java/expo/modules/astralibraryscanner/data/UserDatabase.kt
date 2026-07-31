@@ -39,6 +39,31 @@ interface UserDao {
   @Query("SELECT * FROM settings ORDER BY key")
   suspend fun snapshotSettings(): List<SettingEntity>
 
+  @Query("SELECT * FROM artist_images ORDER BY grouping_mode, artist_key")
+  suspend fun getAllArtistImages(): List<ArtistImageEntity>
+
+  @Query("SELECT * FROM artist_images WHERE grouping_mode = :groupingMode AND artist_key IN (:artistKeys)")
+  suspend fun getArtistImages(groupingMode: String, artistKeys: List<String>): List<ArtistImageEntity>
+
+  @Query("SELECT * FROM artist_images WHERE grouping_mode = :groupingMode AND artist_key = :artistKey LIMIT 1")
+  suspend fun getArtistImage(groupingMode: String, artistKey: String): ArtistImageEntity?
+
+  /**
+   * Drops rows that record nothing but "the provider had no match", so those
+   * artists are pending again. Rows holding a manual image are kept: they
+   * already have a portrait and never need an automatic one.
+   */
+  @Query(
+    "DELETE FROM artist_images WHERE lookup_status = 'not_found' AND manual_image_hash IS NULL",
+  )
+  suspend fun deleteFailedArtistImageLookups(): Int
+
+  @Upsert
+  suspend fun putArtistImage(image: ArtistImageEntity)
+
+  @Upsert
+  suspend fun putArtistImages(images: List<ArtistImageEntity>)
+
   @Query("SELECT * FROM folders ORDER BY added_at, id")
   suspend fun getFolders(): List<FolderEntity>
 
@@ -779,8 +804,9 @@ interface UserDao {
     PlaybackQueueEntryEntity::class,
     PlaybackOriginalQueueEntryEntity::class,
     SnapshotMetadataEntity::class,
+    ArtistImageEntity::class,
   ],
-  version = 3,
+  version = 4,
   exportSchema = true,
 )
 abstract class AstraUserDatabase : RoomDatabase() {
@@ -1008,6 +1034,34 @@ internal val USER_MIGRATION_2_3 = object : Migration(2, 3) {
               0
             )
       """.trimIndent(),
+    )
+  }
+}
+
+internal val USER_MIGRATION_3_4 = object : Migration(3, 4) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL(
+      """
+        CREATE TABLE IF NOT EXISTS `artist_images` (
+          `grouping_mode` TEXT NOT NULL,
+          `artist_key` TEXT NOT NULL,
+          `artist_name` TEXT NOT NULL,
+          `manual_image_hash` TEXT,
+          `automatic_image_hash` TEXT,
+          `automatic_provider` TEXT,
+          `automatic_source_id` TEXT,
+          `lookup_status` TEXT NOT NULL,
+          `retry_count` INTEGER NOT NULL,
+          `last_attempt_at` INTEGER,
+          `next_retry_at` INTEGER,
+          `updated_at` INTEGER NOT NULL,
+          PRIMARY KEY(`grouping_mode`, `artist_key`)
+        )
+      """.trimIndent(),
+    )
+    database.execSQL(
+      "CREATE INDEX IF NOT EXISTS `index_artist_images_lookup_status_next_retry_at` " +
+        "ON `artist_images` (`lookup_status`, `next_retry_at`)",
     )
   }
 }
