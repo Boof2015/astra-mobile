@@ -496,104 +496,129 @@ export function MiniPlayer({ variant = 'pill', railLayout, barLayout }: MiniPlay
     return (
       <>
         {/* Height matches the nav card beside it: they are peers, and a
-            mismatched pair is the difference between composed and slapped on. */}
-        <View style={[styles.barBlock, { width: miniWidth, height }]}>
-          <Pressable
-            android_ripple={ripple.bounded}
-            style={styles.barTap}
-            onPress={() => usePlayerUiStore.getState().openPlayer()}
+            mismatched pair is the difference between composed and slapped on.
+            Swipe-to-skip works here as it does on the pill — the rail is the
+            only variant without it, because 88dp of width can't carry a
+            horizontal fling. */}
+        <GestureDetector gesture={swipeGesture}>
+          <Animated.View
+            style={[styles.barBlock, { width: miniWidth, height }]}
             onLayout={onLayout}
-            accessibilityRole="button"
-            accessibilityLabel={
-              presentation.hasTrack
-                ? `Now playing: ${displayedMedia.title}. Open player`
-                : 'Open player'
-            }
           >
-            {/* The bar is wide enough for the scope to read, and it's the thing
-                that makes this a music player's bar rather than a nav bar with a
-                track glued to it. */}
-            {liveScopeActive && pillWidth > 0 && (
-              <View pointerEvents="none" style={styles.spectrum}>
-                <SpectrumCurve
-                  active={liveScopeActive}
-                  pointCount={CURVE_POINTS}
-                  dbMin={-84}
-                  dbMax={-20}
-                  width={pillWidth}
-                  height={artSize + spacing.sm * 2}
-                  lineWidth={1.25}
-                  lineOpacity={0.38}
-                  fillOpacity={0.3}
-                  glow
-                  glowOpacity={0.06}
-                />
-              </View>
-            )}
-            {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
+            <Pressable
+              android_ripple={ripple.bounded}
+              style={styles.barTap}
+              onPress={() => usePlayerUiStore.getState().openPlayer()}
+              accessibilityRole="button"
+              accessibilityLabel={
+                presentation.hasTrack
+                  ? `Now playing: ${displayedMedia.title}. Open player`
+                  : 'Open player'
+              }
+            >
+              {/* The bar is wide enough for the scope to read, and it's the thing
+                  that makes this a music player's bar rather than a nav bar with a
+                  track glued to it. */}
+              {liveScopeActive && pillWidth > 0 && (
+                <View pointerEvents="none" style={styles.spectrum}>
+                  <SpectrumCurve
+                    active={liveScopeActive}
+                    pointCount={CURVE_POINTS}
+                    dbMin={-84}
+                    dbMax={-20}
+                    width={pillWidth}
+                    height={height}
+                    lineWidth={1.25}
+                    lineOpacity={0.38}
+                    fillOpacity={0.3}
+                    glow
+                    glowOpacity={0.06}
+                  />
+                </View>
+              )}
+              {liveScopeActive && pillWidth > 0 && <View pointerEvents="none" style={styles.spectrumVeil} />}
 
-            <View style={[styles.art, { width: artSize, height: artSize }]}>
-              {displayedMedia.artworkUri ? (
-                <Image
-                  source={{
-                    uri:
-                      artworkThumbFromSource(displayedMedia.artworkUri) ??
-                      displayedMedia.artworkUri,
-                  }}
-                  style={styles.artImage}
-                  contentFit="cover"
+              {/* Only the artwork and metadata travel; the controls stay put, so a
+                  swipe never drags the button you might be about to press. */}
+              <View style={[styles.mediaFrame, { height: artSize }]}>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.swipeCue, styles.previousCue, previousCueStyle]}
+                >
+                  <Ionicons name="play-skip-back" size={20} color={colors.accent} />
+                </Animated.View>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.swipeCue, styles.nextCue, nextCueStyle]}
+                >
+                  <Ionicons name="play-skip-forward" size={20} color={colors.accent} />
+                </Animated.View>
+                <Animated.View style={[styles.media, mediaStyle]} onLayout={onMediaLayout}>
+                  <View style={[styles.art, { width: artSize, height: artSize }]}>
+                    {displayedMedia.artworkUri ? (
+                      <Image
+                        source={{
+                          uri:
+                            artworkThumbFromSource(displayedMedia.artworkUri) ??
+                            displayedMedia.artworkUri,
+                        }}
+                        style={styles.artImage}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <AstraLogo size={Math.round(artSize * 0.55)} />
+                    )}
+                  </View>
+
+                  <View style={styles.meta}>
+                    <Text variant="body" numberOfLines={1} style={styles.title}>
+                      {displayedMedia.title}
+                    </Text>
+                    <Text variant="label" numberOfLines={1}>
+                      {displayedMedia.subtitle}
+                    </Text>
+                  </View>
+                </Animated.View>
+              </View>
+
+              <Pressable
+                hitSlop={8}
+                android_ripple={ripple.icon(22)}
+                onPress={onTogglePlay}
+                style={[styles.control, { width: controlSize, height: controlSize }]}
+                accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+              >
+                <Ionicons
+                  name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+                  size={24}
+                  color={colors.accent}
+                />
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                android_ripple={ripple.icon(22)}
+                onPress={onSkipNext}
+                style={[styles.control, { width: controlSize, height: controlSize }]}
+                accessibilityLabel="Next"
+              >
+                <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </Pressable>
+            {presentation.hasTrack ? (
+              isDesktop ? (
+                <MiniProgress
+                  currentTime={presentation.currentTime}
+                  duration={presentation.duration}
+                  isPlaying={isPlaying}
+                  active={!playerOpen}
+                  trackKey={presentation.trackKey}
                 />
               ) : (
-                <AstraLogo size={Math.round(artSize * 0.55)} />
-              )}
-            </View>
-
-            <View style={styles.meta}>
-              <Text variant="body" numberOfLines={1} style={styles.title}>
-                {displayedMedia.title}
-              </Text>
-              <Text variant="label" numberOfLines={1}>
-                {displayedMedia.subtitle}
-              </Text>
-            </View>
-
-            <Pressable
-              hitSlop={8}
-              android_ripple={ripple.icon(22)}
-              onPress={onTogglePlay}
-              style={[styles.control, { width: controlSize, height: controlSize }]}
-              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-            >
-              <Ionicons
-                name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                size={24}
-                color={colors.accent}
-              />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              android_ripple={ripple.icon(22)}
-              onPress={onSkipNext}
-              style={[styles.control, { width: controlSize, height: controlSize }]}
-              accessibilityLabel="Next"
-            >
-              <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
-            </Pressable>
-          </Pressable>
-          {presentation.hasTrack ? (
-            isDesktop ? (
-              <MiniProgress
-                currentTime={presentation.currentTime}
-                duration={presentation.duration}
-                isPlaying={isPlaying}
-                active={!playerOpen}
-                trackKey={presentation.trackKey}
-              />
-            ) : (
-              <PhoneMiniProgress isPlaying={isPlaying} active={!playerOpen} />
-            )
-          ) : null}
-        </View>
+                <PhoneMiniProgress isPlaying={isPlaying} active={!playerOpen} />
+              )
+            ) : null}
+          </Animated.View>
+        </GestureDetector>
         <PlaybackTargetPicker
           visible={targetPickerOpen}
           onClose={() => setTargetPickerOpen(false)}
