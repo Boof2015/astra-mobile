@@ -30,12 +30,14 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 
 function formatEnabled(value: boolean): string {
   return value ? 'On' : 'Off';
 }
 
 export default function SettingsScreen() {
+  const showScreenTitle = useShellShowsScreenTitle();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -88,9 +90,13 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Text variant="title" style={styles.heading}>
-          Settings
-        </Text>
+        {/* The rail names this destination itself; repeating it would just
+            spend a landscape window's scarce height on the same word. */}
+        {showScreenTitle ? (
+          <Text variant="title" style={styles.heading}>
+            Settings
+          </Text>
+        ) : null}
 
         <SettingsSectionLabel>SETTINGS</SettingsSectionLabel>
         <SettingsNavRow

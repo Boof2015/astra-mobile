@@ -44,6 +44,7 @@ import {
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
+import { useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -126,6 +127,7 @@ export default function LibraryScreen() {
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
+  const showScreenTitle = useShellShowsScreenTitle();
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -321,36 +323,57 @@ export default function LibraryScreen() {
   return (
     <Screen>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
-        <View style={styles.headingRow}>
-          <Text variant="title" style={styles.heading}>
-            Library
-          </Text>
-          {!showLibraryStatus ? (
-            <Pressable android_ripple={ripple.bounded}
-              hitSlop={8}
-              onPress={() => openQuickSearch()}
-              accessibilityRole="button"
-              accessibilityLabel="Search library"
-            >
-              <Ionicons name="search" size={22} color={colors.textSecondary} />
-            </Pressable>
-          ) : null}
-        </View>
+        {/* The rail already names this destination, so in landscape the title
+            row is the same word twice for ~80dp of a 411dp-tall window. Search
+            moves in beside the switcher; pull-to-search still works either way. */}
+        {showScreenTitle ? (
+          <View style={styles.headingRow}>
+            <Text variant="title" style={styles.heading}>
+              Library
+            </Text>
+            {!showLibraryStatus ? (
+              <Pressable android_ripple={ripple.bounded}
+                hitSlop={8}
+                onPress={() => openQuickSearch()}
+                accessibilityRole="button"
+                accessibilityLabel="Search library"
+              >
+                <Ionicons name="search" size={22} color={colors.textSecondary} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         {showLibraryStatus ? (
           <EmptyLibrary />
         ) : (
           <>
-            <View style={styles.switcher}>
-              <ViewModeSwitcher
-                value={viewMode}
-                onChange={(mode) => {
-                  if (selectMode) exitSelection();
-                  setLayoutSheetOpen(false);
-                  scrollTop.setScrollAtTop(true);
-                  setViewMode(mode);
-                }}
-              />
+            <View style={[styles.switcher, !showScreenTitle && styles.switcherRow]}>
+              {/* Only in rail mode, where the parent is a row. In portrait the
+                  parent is a column, and `flex: 1` there resolves against the
+                  height — collapsing the switcher to nothing. */}
+              <View style={!showScreenTitle ? styles.switcherFill : undefined}>
+                <ViewModeSwitcher
+                  value={viewMode}
+                  onChange={(mode) => {
+                    if (selectMode) exitSelection();
+                    setLayoutSheetOpen(false);
+                    scrollTop.setScrollAtTop(true);
+                    setViewMode(mode);
+                  }}
+                />
+              </View>
+              {!showScreenTitle ? (
+                <Pressable android_ripple={ripple.bounded}
+                  hitSlop={8}
+                  style={styles.switcherSearch}
+                  onPress={() => openQuickSearch()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Search library"
+                >
+                  <Ionicons name="search" size={22} color={colors.textSecondary} />
+                </Pressable>
+              ) : null}
             </View>
             <ScanProgress />
             {scanError ? (
@@ -621,6 +644,21 @@ const styles = StyleSheet.create({
   },
   switcher: {
     marginBottom: spacing.md,
+  },
+  // Rail mode: the switcher shares its row with search, since the title row
+  // that used to carry search is gone.
+  switcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  switcherFill: {
+    flex: 1,
+    minWidth: 0,
+  },
+  switcherSearch: {
+    flexShrink: 0,
   },
   error: {
     marginBottom: spacing.md,

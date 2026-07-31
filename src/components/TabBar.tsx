@@ -22,6 +22,7 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
+import { RAIL_SIDE_PADDING, type ShellLayout } from '@/navigation/shellLayout';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -41,17 +42,67 @@ export interface TabItem {
 interface TabBarProps {
   items: TabItem[];
   onPress: (item: TabItem) => void;
+  shell: ShellLayout;
 }
 
 /**
- * Astra bottom tab bar with the persistent mini-player glued above it.
+ * Astra navigation chrome with the persistent mini-player attached.
+ *
+ * Portrait renders a bottom bar with the mini-player pill above it; landscape
+ * renders a vertical rail with the mini player docked at its foot, because that
+ * chrome costs a ~411dp-tall window 152dp it cannot spare. Both shapes share
+ * every destination, the haptics and the selection animation — only the
+ * arrangement differs.
+ *
  * Receives plain props (no react-navigation types) so the typed navigation
  * logic stays in the layout's `tabBar` callback.
  */
-export function TabBar({ items, onPress }: TabBarProps) {
+export function TabBar({ items, onPress, shell }: TabBarProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const tabs = items.filter((item) => TAB_META[item.name]);
+  const rail = shell.mode === 'rail';
+
+  const buttons = tabs.map((item) => {
+    const meta = TAB_META[item.name];
+    if (!meta) return null;
+    return (
+      <TabButton
+        key={item.key}
+        meta={meta}
+        focused={item.focused}
+        rail={rail}
+        height={rail ? shell.navItemHeight : undefined}
+        onPress={() => onPress(item)}
+      />
+    );
+  });
+
+  if (rail) {
+    return (
+      <View
+        style={[
+          styles.rail,
+          {
+            width: shell.railWidth,
+            paddingLeft: insets.left + RAIL_SIDE_PADDING,
+            paddingRight: RAIL_SIDE_PADDING,
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <View style={styles.railNav}>{buttons}</View>
+        {/* Wrapped so the rail has exactly one flexible child. MiniPlayer also
+            renders a PlaybackTargetPicker Modal as a sibling, and a bare
+            justifyContent here would have treated that as a third item and
+            stranded the player in the middle of the rail. */}
+        <View style={styles.railFoot}>
+          <MiniPlayer variant="rail" railLayout={shell.miniPlayer} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>
@@ -62,18 +113,7 @@ export function TabBar({ items, onPress }: TabBarProps) {
           { paddingBottom: insets.bottom, height: layout.tabBarHeight + insets.bottom },
         ]}
       >
-        {tabs.map((item) => {
-          const meta = TAB_META[item.name];
-          if (!meta) return null;
-          return (
-            <TabButton
-              key={item.key}
-              meta={meta}
-              focused={item.focused}
-              onPress={() => onPress(item)}
-            />
-          );
-        })}
+        {buttons}
       </View>
     </View>
   );
@@ -83,6 +123,9 @@ interface TabButtonProps {
   meta: { label: string; icon: IconName };
   focused: boolean;
   onPress: () => void;
+  /** Rail items are fixed-height and mark selection on their leading edge. */
+  rail?: boolean;
+  height?: number;
 }
 
 /**
@@ -93,7 +136,7 @@ interface TabButtonProps {
  * between a grey base icon and an accent one stacked on top. Spring-free per
  * theme/motion.
  */
-function TabButton({ meta, focused, onPress }: TabButtonProps) {
+function TabButton({ meta, focused, onPress, rail = false, height }: TabButtonProps) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -126,7 +169,7 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
   return (
     <Pressable
       android_ripple={ripple.icon(26)}
-      style={styles.tab}
+      style={[styles.tab, rail && styles.railTab, height ? { height } : null]}
       onPress={handlePress}
       onPressIn={() => {
         press.value = withTiming(1, motion.quick);
@@ -139,8 +182,11 @@ function TabButton({ meta, focused, onPress }: TabButtonProps) {
       accessibilityState={{ selected: focused }}
     >
       {focused ? (
-        <View style={styles.indicator} pointerEvents="none">
-          <View style={styles.indicatorBar} />
+        <View
+          style={rail ? styles.railIndicator : styles.indicator}
+          pointerEvents="none"
+        >
+          <View style={rail ? styles.railIndicatorBar : styles.indicatorBar} />
         </View>
       ) : null}
       <Animated.View style={depressStyle}>
@@ -164,6 +210,19 @@ const useStyles = createThemedStyles((colors) => ({
     borderTopColor: colors.glassBorder,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  // Landscape rail: destinations at the top, mini player pushed to the foot by
+  // `railFoot`'s auto margin. `getShellLayout` guarantees both fit.
+  rail: {
+    backgroundColor: colors.bgSecondary,
+    borderRightColor: colors.glassBorder,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  railNav: {
+    flexGrow: 0,
+  },
+  railFoot: {
+    marginTop: 'auto',
+  },
   indicator: {
     position: 'absolute',
     top: 0,
@@ -177,11 +236,31 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: 999,
     backgroundColor: colors.accent,
   },
+  // The rail's selection mark reads down the leading edge rather than across
+  // the top, so it points along the rail's own axis.
+  railIndicator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    justifyContent: 'center',
+  },
+  railIndicatorBar: {
+    width: 3,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+  },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.sm,
+  },
+  railTab: {
+    flex: 0,
+    alignSelf: 'stretch',
+    paddingTop: 0,
   },
   label: {
     marginTop: 2,

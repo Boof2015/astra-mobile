@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type ReactNode
@@ -35,22 +36,23 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import {
+  DETAIL_ART_COLLAPSED,
+  DETAIL_BAR_H,
+  getDetailExpandedHeight,
+  getDetailHeroLayout,
+} from '@/components/library/detailHeroLayout';
 
 // Collapsing detail header. An absolute container whose height shrinks with the
 // scroll and clips its faded content, so the track list (padded to the expanded
 // height) rises to meet it — no mid-scroll dead space. The artwork is a single
 // element that shrinks/tucks into the top-left corner as the header collapses.
-// Tune on device.
-const ART_SIZE = 210;
-const ART_COLLAPSED = 34;
-const BAR_H = 48;
-const ART_TOP = 44;
-/** Top of the title/meta/buttons block, just below the artwork. */
-const HERO_BLOCK_TOP = 262;
-/** Gap below the buttons to the header's bottom edge (where row 1 sits at rest). */
-const BLOCK_BOTTOM_PAD = 20;
-/** Expanded header height below the inset until the block is measured. */
-const FALLBACK_EXPANDED = 424;
+//
+// Hero geometry — artwork size/position, where the title block goes, and the
+// ceiling that keeps the list reachable — lives in ./detailHeroLayout so it can
+// be tested without a renderer. See the note there about landscape.
+const ART_COLLAPSED = DETAIL_ART_COLLAPSED;
+const BAR_H = DETAIL_BAR_H;
 const FADE_H = 150;
 
 /**
@@ -61,18 +63,37 @@ const FADE_H = 150;
  * taps mid-transition.
  */
 export function useDetailCollapse() {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const hero = getDetailHeroLayout(width, height, insets.top);
+  const fallback = Math.min(hero.fallbackExpandedHeight, hero.maxExpandedHeight);
   const scrollY = useSharedValue(0);
-  const [expandedHeight, setExpandedHeight] = useState(FALLBACK_EXPANDED);
-  const expandedRef = useRef(FALLBACK_EXPANDED);
+  // The measurement carries the orientation it was taken in. Rotating reshapes
+  // the hero underneath it, and a portrait measurement applied to a landscape
+  // window is taller than the window itself — so a mismatched one is ignored in
+  // favour of the fallback rather than kept until the next layout pass.
+  const [measured, setMeasured] = useState<{ wide: boolean; height: number } | null>(
+    null
+  );
+  const expandedHeight = Math.min(
+    measured && measured.wide === hero.wide ? measured.height : fallback,
+    hero.maxExpandedHeight
+  );
   const ref = useRef({ heroFaded: false, collapsed: false });
   const [state, setState] = useState({ heroFaded: false, collapsed: false });
 
+  const expandedRef = useRef(expandedHeight);
+  useEffect(() => {
+    expandedRef.current = expandedHeight;
+  }, [expandedHeight]);
+
   const onHeroBlockLayout = (e: LayoutChangeEvent) => {
-    const next = HERO_BLOCK_TOP + e.nativeEvent.layout.height + BLOCK_BOTTOM_PAD;
-    if (Math.abs(next - expandedRef.current) > 1) {
-      expandedRef.current = next;
-      setExpandedHeight(next);
-    }
+    const next = getDetailExpandedHeight(hero, e.nativeEvent.layout.height);
+    setMeasured((prev) =>
+      prev && prev.wide === hero.wide && Math.abs(prev.height - next) <= 1
+        ? prev
+        : { wide: hero.wide, height: next }
+    );
   };
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -164,18 +185,21 @@ export function CollapsingHeader({
   const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { width: W } = useWindowDimensions();
+  const { width: W, height: H } = useWindowDimensions();
+  const hero = getDetailHeroLayout(W, H, insets.top);
   const dist = expandedHeight - BAR_H;
   const settle = dist - 36;
 
   const maxH = insets.top + expandedHeight;
   const minH = insets.top + BAR_H;
   const barCenterY = insets.top + BAR_H / 2;
-  const artExpandedTop = insets.top + ART_TOP;
+  const artExpandedTop = insets.top + hero.artTop;
   const thumbCenterX = spacing.md + 24 + spacing.sm + ART_COLLAPSED / 2;
-  const txTarget = thumbCenterX - W / 2;
-  const tyTarget = barCenterY - (artExpandedTop + ART_SIZE / 2);
-  const scaleTarget = ART_COLLAPSED / ART_SIZE;
+  // Measured from where the artwork actually sits: landscape puts it against
+  // the leading edge rather than centred, so `W / 2` would fly it off target.
+  const txTarget = thumbCenterX - hero.artCenterX;
+  const tyTarget = barCenterY - (artExpandedTop + hero.artSize / 2);
+  const scaleTarget = ART_COLLAPSED / hero.artSize;
 
   const containerStyle = useAnimatedStyle(() => ({
     height: interpolate(scrollY.value, [0, dist], [maxH, minH], Extrapolation.CLAMP),
@@ -243,11 +267,26 @@ export function CollapsingHeader({
       </Animated.View>
 
       <Animated.View
-        style={[styles.heroBlock, { top: insets.top + HERO_BLOCK_TOP }, heroBlockStyle]}
+        style={[
+          styles.heroBlock,
+          {
+            top: insets.top + hero.blockTop,
+            left: hero.blockLeft,
+            right: hero.blockRight,
+            alignItems: hero.blockAlign,
+          },
+          heroBlockStyle,
+        ]}
         pointerEvents={heroFaded ? 'none' : 'auto'}
         onLayout={onHeroBlockLayout}
       >
-        <Text variant="title" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.heroTitle}>
+        <Text
+          variant="title"
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          style={[styles.heroTitle, { textAlign: hero.textAlign }]}
+        >
           {title}
         </Text>
         {heroMeta}
@@ -339,7 +378,12 @@ export function CollapsingHeader({
       <Animated.View
         style={[
           styles.art,
-          { top: artExpandedTop, left: (W - ART_SIZE) / 2, width: ART_SIZE, height: ART_SIZE },
+          {
+            top: artExpandedTop,
+            left: hero.artLeft,
+            width: hero.artSize,
+            height: hero.artSize,
+          },
           artStyle,
         ]}
         pointerEvents="none"
@@ -410,16 +454,14 @@ const useStyles = createThemedStyles((colors) => ({
     bottom: 0,
     backgroundColor: colors.bgSecondary,
   },
+  // left / right / alignItems come from getDetailHeroLayout: the block sits
+  // under the artwork in portrait and beside it in landscape.
   heroBlock: {
     position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    alignItems: 'center',
     gap: spacing.xs,
   },
   heroTitle: {
     maxWidth: '100%',
-    textAlign: 'center',
   },
   actionRow: {
     width: '100%',

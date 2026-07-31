@@ -1,6 +1,9 @@
 import { useMemo, useRef } from 'react';
+import { PixelRatio, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
+import { getShellLayout } from '@/navigation/shellLayout';
 import {
   TAB_SCENE_ANIMATION,
   TAB_TRANSITION_SETTLE_MS,
@@ -13,9 +16,20 @@ import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 export default function TabsLayout() {
   const colors = useColors();
   const lastSwitchAt = useRef(0);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // Landscape moves navigation to a rail down the leading edge and hands the
+  // scene back the ~152dp the tab bar and mini player were costing it. The
+  // navigator does the reflow itself: `tabBarPosition: 'left'` flips its
+  // container to a row and renders the tab-bar element ahead of the scenes,
+  // so no screen has to know about any of this.
+  const shell = getShellLayout(width, height, insets, PixelRatio.getFontScale());
+  const tabBarPosition = shell.mode === 'rail' ? ('left' as const) : ('bottom' as const);
   // Stable screenOptions identity: handing the navigator a fresh options object
   // mid-transition (e.g. on a Material You palette change) re-runs the scene
-  // animation effect and can strand the incoming scene at opacity 0.
+  // animation effect and can strand the incoming scene at opacity 0. The
+  // position belongs in here, but it only changes on rotation — never during a
+  // tab switch — so it is safe as a dependency.
   const screenOptions = useMemo(
     () => ({
       headerShown: false,
@@ -24,8 +38,9 @@ export default function TabsLayout() {
       // Retained scenes cross-fade without translating two full pages.
       animation: TAB_SCENE_ANIMATION,
       transitionSpec: TAB_TRANSITION_SPEC,
+      tabBarPosition,
     }),
-    [colors.bgPrimary]
+    [colors.bgPrimary, tabBarPosition]
   );
   return (
     <Tabs
@@ -73,7 +88,7 @@ export default function TabsLayout() {
           navigation.navigate(item.name);
         };
 
-        return <TabBar items={items} onPress={handlePress} />;
+        return <TabBar items={items} onPress={handlePress} shell={shell} />;
       }}
     >
       <Tabs.Screen name="index" />

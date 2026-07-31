@@ -4,7 +4,9 @@ import {
   View,
   Pressable,
   StyleSheet,
-  type LayoutChangeEvent
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +35,10 @@ import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { skipToNext, skipToPrevious, togglePlay } from '@/audio/playbackController';
 import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import { useScopeActive } from '@/scope/scopeStore';
+import {
+  RAIL_MINI_TOP_MARGIN,
+  type RailMiniPlayerLayout,
+} from '@/navigation/shellLayout';
 import { artworkThumbFromSource } from '@/library/artwork';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
 import { useAppForeground } from '@/lib/useAppForeground';
@@ -57,6 +63,14 @@ const SWIPE_ACTIVE_OFFSET_X = 10;
 const SWIPE_FAIL_OFFSET_Y = 20;
 const SWIPE_RESPONSE_TIMEOUT_MS = 1500;
 const COMMITTED_MEDIA_OPACITY = 0.18;
+
+interface MiniPlayerProps {
+  /** 'pill' floats above the bottom tabs; 'rail' docks at the foot of the
+   * landscape navigation rail, where there is ~88dp of width to work with. */
+  variant?: 'pill' | 'rail';
+  /** Required for the rail variant; sizes come from `getShellLayout`. */
+  railLayout?: RailMiniPlayerLayout;
+}
 
 interface MiniPlayerMediaPresentation {
   key: string;
@@ -90,12 +104,15 @@ function MiniProgress({
   isPlaying,
   active,
   trackKey,
+  trackStyle,
 }: {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
   active: boolean;
   trackKey: string | null;
+  /** Overrides the pill's bottom-pinned track; the rail stacks it in flow. */
+  trackStyle?: StyleProp<ViewStyle>;
 }) {
   const styles = useStyles();
   const progress = useAnimatedPlaybackProgress({
@@ -109,14 +126,22 @@ function MiniProgress({
     transform: [{ scaleX: progress.value }],
   }));
   return (
-    <View style={styles.progressTrack}>
+    <View style={trackStyle ?? styles.progressTrack}>
       <Animated.View style={[styles.progressFill, progressStyle]} />
     </View>
   );
 }
 
 /** Phone-target progress: subscribes here so the 2Hz tick skips the whole pill. */
-function PhoneMiniProgress({ isPlaying, active }: { isPlaying: boolean; active: boolean }) {
+function PhoneMiniProgress({
+  isPlaying,
+  active,
+  trackStyle,
+}: {
+  isPlaying: boolean;
+  active: boolean;
+  trackStyle?: StyleProp<ViewStyle>;
+}) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
   const trackKey = usePlayerStore((s) => s.currentTrack?.path ?? null);
@@ -127,6 +152,7 @@ function PhoneMiniProgress({ isPlaying, active }: { isPlaying: boolean; active: 
       isPlaying={isPlaying}
       active={active}
       trackKey={trackKey}
+      trackStyle={trackStyle}
     />
   );
 }
@@ -136,7 +162,7 @@ function PhoneMiniProgress({ isPlaying, active }: { isPlaying: boolean; active: 
  * bar with the live filled-line spectrum drifting behind the metadata. Tapping
  * opens the full now-playing screen.
  */
-export function MiniPlayer() {
+export function MiniPlayer({ variant = 'pill', railLayout }: MiniPlayerProps = {}) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -452,6 +478,100 @@ export function MiniPlayer() {
     setMediaWidth(e.nativeEvent.layout.width);
   };
 
+  if (variant === 'rail' && railLayout) {
+    const { artSize, titleLineHeight, controlSize, gap, blockHeight } = railLayout;
+    return (
+      <>
+        <View style={[styles.railBlock, { height: blockHeight - RAIL_MINI_TOP_MARGIN }]}>
+          <Pressable
+            android_ripple={ripple.bounded}
+            style={styles.railTap}
+            onPress={() => usePlayerUiStore.getState().openPlayer()}
+            accessibilityRole="button"
+            accessibilityLabel={
+              presentation.hasTrack
+                ? `Now playing: ${displayedMedia.title}. Open player`
+                : 'Open player'
+            }
+          >
+            {artSize > 0 ? (
+              <View style={[styles.railArt, { width: artSize, height: artSize }]}>
+                {displayedMedia.artworkUri ? (
+                  <Image
+                    source={{
+                      uri:
+                        artworkThumbFromSource(displayedMedia.artworkUri) ??
+                        displayedMedia.artworkUri,
+                    }}
+                    style={styles.artImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <AstraLogo size={Math.round(artSize * 0.4)} />
+                )}
+              </View>
+            ) : null}
+            {artSize > 0 && presentation.hasTrack ? (
+              isDesktop ? (
+                <MiniProgress
+                  currentTime={presentation.currentTime}
+                  duration={presentation.duration}
+                  isPlaying={isPlaying}
+                  active={!playerOpen}
+                  trackKey={presentation.trackKey}
+                  trackStyle={[styles.railProgress, { width: artSize, marginTop: gap }]}
+                />
+              ) : (
+                <PhoneMiniProgress
+                  isPlaying={isPlaying}
+                  active={!playerOpen}
+                  trackStyle={[styles.railProgress, { width: artSize, marginTop: gap }]}
+                />
+              )
+            ) : null}
+            {titleLineHeight > 0 ? (
+              <Text
+                variant="label"
+                numberOfLines={1}
+                style={[styles.railTitle, { height: titleLineHeight, marginTop: gap }]}
+              >
+                {displayedMedia.title}
+              </Text>
+            ) : null}
+          </Pressable>
+          <View style={[styles.railControls, { height: controlSize, marginTop: gap }]}>
+            <Pressable
+              hitSlop={8}
+              android_ripple={ripple.icon(20)}
+              onPress={onTogglePlay}
+              style={[styles.control, { width: controlSize, height: controlSize }]}
+              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+            >
+              <Ionicons
+                name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
+                size={22}
+                color={colors.accent}
+              />
+            </Pressable>
+            <Pressable
+              hitSlop={8}
+              android_ripple={ripple.icon(20)}
+              onPress={onSkipNext}
+              style={[styles.control, { width: controlSize, height: controlSize }]}
+              accessibilityLabel="Next"
+            >
+              <Ionicons name="play-skip-forward" size={20} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+        </View>
+        <PlaybackTargetPicker
+          visible={targetPickerOpen}
+          onClose={() => setTargetPickerOpen(false)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <GestureDetector gesture={swipeGesture}>
@@ -651,6 +771,37 @@ const useStyles = createThemedStyles((colors) => ({
   control: {
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Rail variant: a compact stack docked at the foot of the landscape rail.
+  railBlock: {
+    alignItems: 'center',
+  },
+  railTap: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  railArt: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railProgress: {
+    height: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: colors.glassBorder,
+  },
+  railTitle: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    color: colors.textPrimary,
+  },
+  railControls: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
