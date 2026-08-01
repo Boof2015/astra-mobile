@@ -349,7 +349,28 @@ export function NowPlayingOverlay({
   );
   const companionCapable = companionFit !== null && !dock;
   const hasTabletCompanion = companionCapable && companionOpen;
-  const tabletCompanionLayout = hasTabletCompanion ? companionFit : null;
+  // Held true until the pane has finished sliding out, so the player's geometry
+  // changes exactly once per direction and does it while the pane is out of the
+  // way. Releasing it the instant the button is tapped would widen the deck
+  // underneath a pane that is still physically there — the same second reflow
+  // the dock had.
+  const companionMounted = useDelayedUnmountPresence(
+    hasTabletCompanion,
+    motion.snap.duration
+  );
+  const tabletCompanionLayout = companionMounted ? companionFit : null;
+  /**
+   * The player is laid out across the *whole* shell and shifted left by half the
+   * pane's footprint. Centring in the full width and shifting by half is
+   * arithmetically the same as centring in what's left, which means the push is
+   * a transform — no width is ever animated, and the artwork (height-bound in
+   * every state) never resizes at all.
+   */
+  const companionFootprint = companionFit
+    ? companionFit.companionWidth + companionFit.gap
+    : 0;
+  const companionShift = useSharedValue(0);
+  const companionSlide = useSharedValue(companionFit?.companionWidth ?? 0);
   const layout = tabletCompanionLayout?.playerLayout ?? standardLayout;
   const deck = layout.deck;
   // The density tier owns whether there is room for the lyric row, and it is
@@ -615,6 +636,24 @@ export function NowPlayingOverlay({
   useEffect(() => {
     companionTouchStartX.value = companionStartX;
   }, [companionStartX, companionTouchStartX]);
+
+  useEffect(() => {
+    const paneWidth = companionFit?.companionWidth ?? 0;
+    companionShift.value = withTiming(
+      hasTabletCompanion ? -companionFootprint / 2 : 0,
+      motion.snap
+    );
+    companionSlide.value = withTiming(hasTabletCompanion ? 0 : paneWidth, motion.snap);
+    // `companionFootprint` retargets when the companion changes as well as when
+    // it opens, so switching queue → lyrics animates the width difference too
+    // rather than jumping between two shells.
+  }, [
+    companionFit,
+    companionFootprint,
+    companionShift,
+    companionSlide,
+    hasTabletCompanion,
+  ]);
 
   useEffect(() => {
     stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
@@ -948,6 +987,14 @@ export function NowPlayingOverlay({
     transform: [{ translateY: dock ? 0 : translateY.value }],
   }));
 
+  const playerShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: companionShift.value }],
+  }));
+
+  const companionSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: companionSlide.value }],
+  }));
+
   const menuLayerStyle = useAnimatedStyle(() => ({
     opacity: menuProgress.value,
   }));
@@ -1102,18 +1149,8 @@ export function NowPlayingOverlay({
               </View>
             )}
 
-            <View style={[styles.playerBody, hasTabletCompanion && styles.playerBodyTablet]}>
-              <View
-                style={[
-                  styles.playerRegion,
-                  hasTabletCompanion && styles.playerRegionTablet,
-                  tabletCompanionLayout
-                    ? {
-                        width: tabletCompanionLayout.playerRegionWidth,
-                      }
-                    : null,
-                ]}
-              >
+            <View style={[styles.playerBody, companionMounted && styles.playerBodyTablet]}>
+              <Animated.View style={[styles.playerRegion, playerShiftStyle]}>
                 <View style={[styles.playerCanvas, { width: layout.contentWidth }]}>
             {lyricsMode && track ? (
               <LyricsView
@@ -1869,12 +1906,13 @@ export function NowPlayingOverlay({
               </View>
             )}
                 </View>
-              </View>
+              </Animated.View>
               {tabletCompanionLayout ? (
-                <View
+                <Animated.View
                   style={[
                     styles.companionRegion,
                     { width: tabletCompanionLayout.companionWidth },
+                    companionSlideStyle,
                   ]}
                 >
                   <NowPlayingCompanionPane
@@ -1882,7 +1920,7 @@ export function NowPlayingOverlay({
                     desktopTarget={isDesktopTarget}
                     track={track}
                   />
-                </View>
+                </Animated.View>
               ) : null}
             </View>
           </View>
@@ -2050,19 +2088,14 @@ const useStyles = createThemedStyles((colors) => ({
   },
   playerBodyTablet: {
     position: 'relative',
+    // The pane parks itself one full width past the right edge when closed;
+    // without this it is simply drawn outside the body instead of gone.
+    overflow: 'hidden',
   },
   playerRegion: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
-  },
-  playerRegionTablet: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    flexGrow: 0,
-    flexShrink: 0,
   },
   playerCanvas: {
     flex: 1,
