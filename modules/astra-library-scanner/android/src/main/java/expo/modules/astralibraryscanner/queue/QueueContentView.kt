@@ -3,6 +3,7 @@ package expo.modules.astralibraryscanner.queue
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -103,6 +104,21 @@ class QueueContentView(
     set(value) {
       field = value
       sheetHandle.visibility = if (value) VISIBLE else GONE
+      applyPalette()
+    }
+
+  /**
+   * Embedded as the now-playing companion pane. The pane is opened from a
+   * button that already names it, so the title and count are a second copy of
+   * something the screen says elsewhere. Edit is a function rather than a
+   * label, so it stays and simply right-aligns in the row the labels leave.
+   */
+  var paneMode: Boolean = false
+    set(value) {
+      field = value
+      val labelVisibility = if (value) GONE else VISIBLE
+      titleView.visibility = labelVisibility
+      countView.visibility = labelVisibility
       applyPalette()
     }
 
@@ -559,10 +575,14 @@ class QueueContentView(
     }
 
   private fun applyPalette() {
-    background = if (sheetMode) {
-      topRounded(palette.background, 16f)
-    } else {
-      ColorDrawable(palette.background)
+    background = when {
+      sheetMode -> topRounded(palette.background, 16f)
+      // The companion pane is a region of the player's own surface, not a panel
+      // on top of it. Painting `background` here drew a second slab inside the
+      // column — a bordered card floating in the middle of the screen, while
+      // the lyrics companion beside it had none.
+      paneMode -> null
+      else -> ColorDrawable(palette.background)
     }
     sheetHandle.background = rounded(palette.divider, 999f)
     titleView.setTextColor(palette.text)
@@ -930,7 +950,14 @@ class QueueContentView(
         row.artwork.visibility = if (editing) GONE else VISIBLE
         row.handle.visibility = if (editing) GONE else VISIBLE
         row.setSurfaceColor(
-          if (item.entryId in selected) palette.selectedSurface else palette.surface,
+          when {
+            item.entryId in selected -> palette.selectedSurface
+            // Rows paint their own surface so a sheet reads as a stack of
+            // cards. In the pane that surface is a second slab per row on top
+            // of the player's background — the pane is the player's surface.
+            this@QueueContentView.paneMode -> Color.TRANSPARENT
+            else -> palette.surface
+          },
         )
         loadArtwork(row.artwork, item.artworkThumbPath)
         row.setOnClickListener { onRowClick?.invoke(item) }

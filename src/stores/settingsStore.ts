@@ -33,6 +33,7 @@ const LISTENING_HISTORY_ENABLED_KEY = 'listening_history_enabled';
 const ARTIST_IMAGE_AUTO_POLICY_KEY = 'artist_image_auto_policy';
 const ARTIST_IMAGE_DISCLOSURE_KEY = 'artist_image_disclosure_seen';
 const PLAYER_DOCK_KEY = 'player_dock_open';
+const NOW_PLAYING_COMPANION_OPEN_KEY = 'now_playing_companion_open';
 
 /** Which visualizer the now-playing scope stage shows. */
 export type ScopeMode = 'spectrum' | 'scope';
@@ -80,6 +81,12 @@ interface SettingsStore {
   /** Whether the now-playing top half shows lyrics instead of art/scope. */
   lyricsVisible: boolean;
   nowPlayingCompanion: NowPlayingCompanion;
+  /**
+   * Whether the tablet queue/lyrics pane is out beside the player. Like
+   * `playerDockOpen` this is a wish: only a window that can seat a pane without
+   * squeezing the player honours it, and the layout arbitrates.
+   */
+  nowPlayingCompanionOpen: boolean;
   homeGreetingTextMode: HomeGreetingTextMode;
   listeningHistoryEnabled: boolean;
   artistImageAutoPolicy: ArtistImageAutoPolicy;
@@ -94,6 +101,7 @@ interface SettingsStore {
   setNowPlayingScopeStyle: (style: NowPlayingScopeStyle) => Promise<void>;
   setLyricsVisible: (visible: boolean) => Promise<void>;
   setNowPlayingCompanion: (companion: NowPlayingCompanion) => Promise<void>;
+  setNowPlayingCompanionOpen: (open: boolean) => Promise<void>;
   setHomeGreetingTextMode: (mode: HomeGreetingTextMode) => Promise<void>;
   setListeningHistoryEnabled: (enabled: boolean) => Promise<void>;
   setArtistImageAutoPolicy: (policy: ArtistImageAutoPolicy) => Promise<void>;
@@ -109,6 +117,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   nowPlayingScopeStyle: 'rail',
   lyricsVisible: false,
   nowPlayingCompanion: 'queue',
+  nowPlayingCompanionOpen: false,
   homeGreetingTextMode: 'messages',
   listeningHistoryEnabled: true,
   artistImageAutoPolicy: 'wifi',
@@ -146,6 +155,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     );
     const artistImageDisclosureSeen = values[ARTIST_IMAGE_DISCLOSURE_KEY] === '1';
     const playerDockOpen = values[PLAYER_DOCK_KEY] ?? null;
+    const companionOpen = values[NOW_PLAYING_COMPANION_OPEN_KEY] ?? null;
     set({
       artistGroupingMode: parseGroupingMode(grouping),
       includeSingles: parseBoolean(includeSingles),
@@ -155,6 +165,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       nowPlayingScopeStyle: parseScopeStyle(scopeStyle),
       lyricsVisible: parseBoolean(lyricsVisible),
       nowPlayingCompanion: parseNowPlayingCompanion(nowPlayingCompanion),
+      nowPlayingCompanionOpen: parseBoolean(companionOpen),
       homeGreetingTextMode: parseHomeGreetingTextMode(homeGreetingTextMode),
       listeningHistoryEnabled,
       artistImageAutoPolicy,
@@ -191,6 +202,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (get().playerDockOpen === open) return;
     set({ playerDockOpen: open });
     await AstraLibraryData.setSettings({ [PLAYER_DOCK_KEY]: open ? 'true' : 'false' });
+  },
+
+  setNowPlayingCompanionOpen: async (open) => {
+    if (get().nowPlayingCompanionOpen === open) return;
+    set({ nowPlayingCompanionOpen: open });
+    await AstraLibraryData.setSettings({
+      [NOW_PLAYING_COMPANION_OPEN_KEY]: open ? 'true' : 'false',
+    });
   },
 
   setNowPlayingScopeStyle: async (style) => {

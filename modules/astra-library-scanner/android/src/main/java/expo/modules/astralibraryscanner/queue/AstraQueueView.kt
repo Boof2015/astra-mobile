@@ -22,6 +22,12 @@ class AstraQueueView(
       content.palette = value
     }
 
+  var paneMode: Boolean = false
+    set(value) {
+      field = value
+      content.paneMode = value
+    }
+
   init {
     addView(
       content,

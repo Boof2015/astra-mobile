@@ -319,15 +319,124 @@ test('caps reserved line boxes so a huge font setting cannot run away', () => {
   assert.ok(capped.deck.height > layoutFor(device, 1, true).deck.height);
 });
 
+/**
+ * Windows that must use the side-by-side row: too short to stack, whatever
+ * their width. Tablets used to be in here because the branch was picked by
+ * `isWideWindow` — see `STACKED_TABLETS`.
+ */
 const LANDSCAPE = [
   { name: 'Pixel 7 Pro landscape', width: 891, height: 339 },
   { name: 'S22 landscape', width: 780, height: 312 },
   { name: 'Poco M5 landscape', width: 873, height: 345 },
   { name: 'S25 Ultra landscape', width: 918, height: 363 },
-  { name: 'Tablet 12" landscape', width: 1366, height: 1000 },
-  { name: 'Foldable open landscape', width: 800, height: 650 },
   { name: 'very short landscape', width: 800, height: 300 },
 ] as const;
+
+/**
+ * Windows with the height to stack artwork over a deck. Side-by-side is the
+ * phone-in-landscape compromise, not the big-screen layout, so none of these
+ * may take it — including a tablet in landscape.
+ */
+const STACKED_TABLETS = [
+  { name: 'Tablet 10" landscape', width: 1248, height: 752 },
+  { name: 'Tablet 12" landscape', width: 1366, height: 1000 },
+  { name: 'Tablet portrait', width: 768, height: 1150 },
+  { name: 'Foldable open landscape', width: 800, height: 650 },
+  { name: 'Foldable open portrait', width: 808, height: 868 },
+  { name: 'Tablet 10" landscape, companion out', width: 856, height: 752 },
+] as const;
+
+test('a window with the height to stack never uses the side-by-side row', () => {
+  for (const fontScale of FONT_SCALES) {
+    for (const window of STACKED_TABLETS) {
+      for (const scope of [false, true]) {
+        // `forceWide` is the companion tier asking for the landscape row. Even
+        // that must lose: the player cannot change shape because a pane slid in
+        // beside it.
+        for (const forceWide of [false, true]) {
+          const layout = getNowPlayingLayout(
+            window.width,
+            window.height,
+            scope,
+            forceWide,
+            fontScale
+          );
+          assert.equal(
+            layout.presentation,
+            'standard',
+            `${window.name} (scope ${scope}, forceWide ${forceWide}) should stack`
+          );
+        }
+      }
+    }
+  }
+});
+
+test('a stacked tablet gives the artwork the height a phone cannot', () => {
+  for (const window of STACKED_TABLETS) {
+    const layout = getNowPlayingLayout(window.width, window.height, false, false, 1);
+    assert.ok(
+      layout.artSizeScopeOff >= 320,
+      `${window.name}: art ${layout.artSizeScopeOff} is a thumbnail on this screen`
+    );
+    // Height-bound, not ceiling-bound: the artwork is square, so it can only
+    // ever spend height, and it must still clear the deck.
+    assert.ok(
+      layout.artSizeScopeOff <= layout.stageHeight,
+      `${window.name}: art ${layout.artSizeScopeOff} overflows stage ${layout.stageHeight}`
+    );
+  }
+});
+
+test('a stacked tablet spends spare width on the deck, not on the artwork', () => {
+  // The waveform is the only control that turns width into resolution. The
+  // artwork is square and gains nothing, so a wider column must not inflate it.
+  // Both windows are below the deck's ceiling so the deck is still growing.
+  const wider = getNowPlayingLayout(700, 1000, false, false, 1);
+  const narrower = getNowPlayingLayout(620, 1000, false, false, 1);
+  assert.ok(wider.contentWidth > narrower.contentWidth);
+  assert.equal(wider.artSizeScopeOff, narrower.artSizeScopeOff);
+});
+
+test('the deck stops widening well before it fills a tablet', () => {
+  // Past about half a 10" tablet the extra width stops buying a better scrub
+  // and starts stretching the rows around it — title hard left, favourite hard
+  // right, void between. Same failure as a full-width `TrackRow`.
+  for (const window of STACKED_TABLETS) {
+    const layout = getNowPlayingLayout(window.width, window.height, false, false, 1);
+    assert.ok(
+      layout.contentWidth <= 640,
+      `${window.name}: deck ${layout.contentWidth} exceeds the ceiling`
+    );
+    // A portrait tablet *should* fill its column — there is no surplus to
+    // leave. The margin only has to appear where the window is genuinely wide.
+    if (window.width < 1000) continue;
+    assert.ok(
+      layout.contentWidth <= window.width * 0.6,
+      `${window.name}: deck ${layout.contentWidth} of ${window.width} is a stretched row`
+    );
+  }
+  // And the ceiling actually binds on a tablet, rather than the window doing it.
+  assert.equal(getNowPlayingLayout(1248, 752, false, false, 1).contentWidth, 640);
+  assert.equal(getNowPlayingLayout(1366, 1000, false, false, 1).contentWidth, 640);
+});
+
+test('a phone is untouched by every tablet ceiling and floor', () => {
+  const phones = [...LANDSCAPE, { name: 'Pixel 7 Pro portrait', width: 380, height: 850 }];
+  for (const window of phones) {
+    for (const scope of [false, true]) {
+      const layout = getNowPlayingLayout(window.width, window.height, scope, false, 1);
+      assert.ok(
+        layout.artSize <= 400,
+        `${window.name}: art ${layout.artSize} exceeds the phone ceiling`
+      );
+      assert.ok(
+        layout.contentWidth <= 960,
+        `${window.name}: row ${layout.contentWidth} exceeds the phone ceiling`
+      );
+    }
+  }
+});
 
 test('landscape sizes its panes from their contents, not a fixed split', () => {
   for (const fontScale of FONT_SCALES) {
@@ -435,6 +544,61 @@ test('landscape never grows the artwork when the scope comes on', () => {
   }
 });
 
+test('gives lyrics the majority of the shell and the queue a sidecar share', () => {
+  for (const [width, height] of [
+    [1248, 752],
+    [1366, 1000],
+  ]) {
+    const queue = getTabletCompanionLayout(width, height, false, 1, 'queue');
+    const lyrics = getTabletCompanionLayout(width, height, false, 1, 'lyrics');
+    assert.ok(queue && lyrics, `${width}x${height} should qualify`);
+    // A queue row is a thumbnail and two short lines; a lyric line is a
+    // sentence. Sizing both the same is what left lyrics wrapping mid-phrase.
+    assert.ok(
+      queue.companionWidth / queue.shellWidth <= 0.4,
+      `queue took ${queue.companionWidth} of ${queue.shellWidth}`
+    );
+    assert.ok(
+      lyrics.companionWidth / lyrics.shellWidth >= 0.55,
+      `lyrics took only ${lyrics.companionWidth} of ${lyrics.shellWidth}`
+    );
+  }
+});
+
+test('never lets a companion starve the player, however wide it wants to be', () => {
+  for (let width = 720; width <= 2000; width += 1) {
+    for (const companion of ['queue', 'lyrics'] as const) {
+      const layout = getTabletCompanionLayout(width, 900, false, 1, companion);
+      if (!layout) continue;
+      assert.ok(
+        layout.playerRegionWidth >= 320,
+        `${companion} at ${width} left the player ${layout.playerRegionWidth}`
+      );
+      assert.equal(
+        layout.playerRegionWidth + layout.gap + layout.companionWidth,
+        layout.shellWidth,
+        `${companion} at ${width} does not account for the shell`
+      );
+    }
+  }
+});
+
+test('a companion never changes the artwork it sits beside', () => {
+  // The pane takes width from the deck, not from the cover: the artwork is
+  // height-bound, so opening or widening a companion must not shrink it. This
+  // is also what lets the pane animate in as a translate rather than a resize.
+  const closed = getNowPlayingLayout(1248, 752, false, false, 1, true);
+  for (const companion of ['queue', 'lyrics'] as const) {
+    const open = getTabletCompanionLayout(1248, 752, false, 1, companion);
+    assert.ok(open, `${companion} should qualify`);
+    assert.equal(
+      open.playerLayout.artSizeScopeOff,
+      closed.artSizeScopeOff,
+      `${companion} resized the artwork`
+    );
+  }
+});
+
 test('adds the companion only to roomy tablet canvases', () => {
   for (const device of DEVICES) {
     assert.equal(getTabletCompanionLayout(device.width, device.height, true), null);
@@ -442,13 +606,17 @@ test('adds the companion only to roomy tablet canvases', () => {
   for (const [width, height] of [
     [600, 840],
     [800, 600],
+    // A 600dp-tall tablet cannot stack artwork over a deck, and the
+    // side-by-side player it used to fall back to is the phone-in-landscape
+    // compromise rather than a tablet layout. With nothing good to show beside
+    // the player, it gets the full window instead of a companion.
+    [1024, 600],
   ]) {
     assert.equal(getTabletCompanionLayout(width, height, true), null);
   }
 
   for (const [width, height] of [
     [768, 1024],
-    [1024, 600],
     [1024, 768],
     [1366, 1024],
   ]) {

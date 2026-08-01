@@ -70,6 +70,14 @@ declare class AstraQueueModuleType extends NativeModule<AstraQueueEvents> {
 export interface AstraQueueViewProps extends ViewProps {
   active: boolean;
   palette: NativeQueuePalette;
+  /**
+   * Embedded as the now-playing companion pane rather than presented as a
+   * sheet. Drops the "Queue" title and its count — the pane is reached from a
+   * button that already names it, and the player header a few hundred dp to the
+   * left already says what is playing from where. Edit stays: it is a function,
+   * not a label.
+   */
+  paneMode?: boolean;
 }
 
 function nativeColor(value: string): number {

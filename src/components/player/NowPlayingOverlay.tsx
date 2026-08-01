@@ -39,6 +39,7 @@ import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
+import type { NowPlayingCompanion } from '@/components/player/nowPlayingPreferences';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
 import {
@@ -236,6 +237,8 @@ export function NowPlayingOverlay({
   const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
   const nowPlayingCompanion = useSettingsStore((s) => s.nowPlayingCompanion);
   const setNowPlayingCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
+  const companionOpen = useSettingsStore((s) => s.nowPlayingCompanionOpen);
+  const setCompanionOpen = useSettingsStore((s) => s.setNowPlayingCompanionOpen);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -332,13 +335,21 @@ export function NowPlayingOverlay({
     false,
     fontScale
   );
-  const tabletCompanionLayout = getTabletCompanionLayout(
+  // Two separate facts, the same split the shell makes for the dock: whether
+  // this window *could* seat a pane beside the player, and whether the pane is
+  // actually out. The default tablet player is the full-width composition with
+  // nothing docked — the queue and lyrics buttons open the pane, exactly as they
+  // open a sheet and a takeover on a phone.
+  const companionFit = getTabletCompanionLayout(
     effectiveWidth,
     availableHeight,
     layoutScopeVisible,
-    fontScale
+    fontScale,
+    nowPlayingCompanion
   );
-  const hasTabletCompanion = tabletCompanionLayout !== null;
+  const companionCapable = companionFit !== null && !dock;
+  const hasTabletCompanion = companionCapable && companionOpen;
+  const tabletCompanionLayout = hasTabletCompanion ? companionFit : null;
   const layout = tabletCompanionLayout?.playerLayout ?? standardLayout;
   const deck = layout.deck;
   // The density tier owns whether there is room for the lyric row, and it is
@@ -349,8 +360,11 @@ export function NowPlayingOverlay({
   const shellWidth = tabletCompanionLayout?.shellWidth ?? layout.contentWidth;
   // Lyrics takes over only on the phone. Roomy tablets keep the player visible
   // and render lyrics in the companion rail.
+  // Gated on *capable*, not open: a window that can seat the pane never shows
+  // the phone's full-body lyrics takeover, even while the pane is closed. Lyrics
+  // there is a pane, and `lyricsVisible` only pre-selects which tab it opens on.
   const lyricsMode =
-    !hasTabletCompanion && !isDesktopTarget && !!track && lyricsVisible;
+    !companionCapable && !isDesktopTarget && !!track && lyricsVisible;
   const source = activePresentation.sourceLabel;
   const shellRight =
     insets.right +
@@ -414,30 +428,45 @@ export function NowPlayingOverlay({
   };
 
   useEffect(() => {
-    if (!hasTabletCompanion || isDesktopTarget) return;
+    if (!companionCapable || isDesktopTarget) return;
+    // A queue sheet reached by some other path can't coexist with the pane, so
+    // fold it in — that one *does* open the pane, because the user asked for the
+    // queue. A stale `lyricsVisible` only picks the tab; it must not force the
+    // pane out, or the default composition would never be what you see first.
     if (queueOpen) {
       const frame = requestAnimationFrame(() => {
         setQueueOpen(false);
         void setNowPlayingCompanion('queue');
+        void setCompanionOpen(true);
       });
       return () => cancelAnimationFrame(frame);
     }
     if (lyricsVisible) void setNowPlayingCompanion('lyrics');
     return undefined;
   }, [
+    companionCapable,
     isDesktopTarget,
     lyricsVisible,
     queueOpen,
+    setCompanionOpen,
     setNowPlayingCompanion,
-    hasTabletCompanion,
   ]);
 
+  /**
+   * Open the pane on `which`, or close it if that is already what it is showing.
+   * The buttons are the pane's only trigger, so each has to be able to undo
+   * itself the way the phone's sheet and takeover do.
+   */
+  const toggleCompanion = (which: NowPlayingCompanion) => {
+    const alreadyShowing = companionOpen && nowPlayingCompanion === which;
+    void setNowPlayingCompanion(which);
+    void setCompanionOpen(!alreadyShowing);
+  };
+
   const showQueue = () => {
-    if (hasTabletCompanion) {
-      if (!isDesktopTarget) {
-        void setLyricsVisible(false);
-        void setNowPlayingCompanion('queue');
-      }
+    if (companionCapable) {
+      if (!isDesktopTarget) void setLyricsVisible(false);
+      toggleCompanion('queue');
       return;
     }
     suspendPanForChildTransition();
@@ -558,8 +587,8 @@ export function NowPlayingOverlay({
   };
 
   const showLyrics = () => {
-    if (hasTabletCompanion) {
-      void setNowPlayingCompanion('lyrics');
+    if (companionCapable) {
+      toggleCompanion('lyrics');
       return;
     }
     setPhoneLyricsVisible(!lyricsVisible);
@@ -1791,11 +1820,13 @@ export function NowPlayingOverlay({
                         haptic="selection"
                         onPress={showLyrics}
                         accessibilityLabel={
-                          hasTabletCompanion
-                            ? 'Show lyrics in companion'
-                            : lyricsVisible
-                              ? 'Hide lyrics'
-                              : 'Show lyrics'
+                          (
+                            companionCapable
+                              ? hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                              : lyricsVisible
+                          )
+                            ? 'Hide lyrics'
+                            : 'Show lyrics'
                         }
                         accessibilityState={{
                           selected: hasTabletCompanion

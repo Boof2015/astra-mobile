@@ -27,6 +27,32 @@ import type { Track } from '@/types/audio';
 
 const ANCHOR_RATIO = 0.4;
 const H_PADDING = 22;
+
+/**
+ * Type sizing per surface.
+ *
+ * The phone body scales its type with its column, which is fine when the column
+ * is the whole screen — there is no other use for the width.
+ *
+ * A pane must not do that. Scaling type with width means widening the pane
+ * spends the new space on bigger glyphs and every line still breaks in the same
+ * place: going 504 → 576dp took the type 29pt → 32pt and changed nothing about
+ * the wrapping. So the pane declares its size and lets width buy *characters*,
+ * which is the only thing that actually stops a line breaking mid-phrase.
+ */
+interface LyricsSurfaceSpec {
+  /** Declared point size; `null` scales with the column instead. */
+  fixedSize: number | null;
+  /** Ceiling for the scaled path. */
+  maxSize: number;
+  hPadding: number;
+}
+const SURFACE: Record<'band' | 'panel', LyricsSurfaceSpec> = {
+  band: { fixedSize: null, maxSize: 24, hPadding: H_PADDING },
+  panel: { fixedSize: 26, maxSize: 26, hPadding: 28 },
+};
+
+export type LyricsSurface = keyof typeof SURFACE;
 // The displayed active line lags the audio by a fixed pipeline delay (RNTP
 // position reporting + poll/smoothing) that the desktop doesn't have, so advance
 // the lyrics clock by this much. Tune to taste — bigger = earlier highlight.
@@ -37,13 +63,23 @@ interface LyricsBandProps {
   duration: number;
   isPlaying: boolean;
   onSeek: (seconds: number) => void;
+  /** `panel` is the tablet companion column; `band` is the phone body. */
+  surface?: LyricsSurface;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: LyricsBandProps) {
+export function LyricsBand({
+  track,
+  currentTime,
+  duration,
+  isPlaying,
+  onSeek,
+  surface = 'band',
+}: LyricsBandProps) {
+  const { fixedSize, maxSize, hPadding } = SURFACE[surface];
   const colors = useColors();
   const ripple = useRipple();
   const entry = useLyricsStore((s) => s.byPath[track.path]);
@@ -84,7 +120,8 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
 
   // Uniform size for every line (LyricsLine no longer scales font per tier), so pick
   // a comfortable reading size rather than the old oversized active value.
-  const baseSize = size.w > 0 ? Math.round(clamp(size.w * 0.058, 18, 24)) : 22;
+  const baseSize =
+    fixedSize ?? (size.w > 0 ? Math.round(clamp(size.w * 0.058, 18, maxSize)) : 22);
 
   // --- auto-scroll centering ---
   const scrollRef = useRef<ScrollView>(null);
@@ -146,7 +183,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
     return (
       <View style={{ flex: 1 }} onLayout={onContainerLayout}>
         <ScrollView
-          contentContainerStyle={{ paddingVertical: 24, paddingHorizontal: H_PADDING }}
+          contentContainerStyle={{ paddingVertical: 24, paddingHorizontal: hPadding }}
           showsVerticalScrollIndicator={false}
         >
           <Text variant="body" color={colors.textSecondary} style={{ lineHeight: 28 }}>
@@ -178,7 +215,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
         onScrollBeginDrag={() => setFollowPaused(true)}
         contentContainerStyle={{
           paddingVertical: size.h > 0 ? Math.round(size.h * ANCHOR_RATIO) : 120,
-          paddingHorizontal: H_PADDING,
+          paddingHorizontal: hPadding,
           alignItems: 'stretch',
         }}
       >

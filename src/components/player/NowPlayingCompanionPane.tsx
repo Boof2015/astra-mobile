@@ -1,9 +1,7 @@
 import { StyleSheet, View } from 'react-native';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { LyricsBand } from '@/components/lyrics/LyricsBand';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { seekTo } from '@/audio/playbackController';
-import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import {
   getNowPlayingTrackTransitionKey,
@@ -11,17 +9,11 @@ import {
 } from './nowPlayingTrackTransition';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import type { NowPlayingCompanion } from './nowPlayingPreferences';
 import type { Track } from '@/types/audio';
 import {
   AstraQueueView,
   toNativeQueuePalette,
 } from '../../../modules/astra-library-scanner';
-
-const COMPANION_SEGMENTS = [
-  { key: 'queue', label: 'Queue' },
-  { key: 'lyrics', label: 'Lyrics' },
-];
 
 const noop = () => {};
 
@@ -40,7 +32,6 @@ export function NowPlayingCompanionPane({
   const styles = useStyles();
   const colors = useColors();
   const companion = useSettingsStore((s) => s.nowPlayingCompanion);
-  const setCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
   const currentTime = usePlayerStore((s) => (active && !desktopTarget ? s.currentTime : 0));
   const duration = usePlayerStore((s) => (desktopTarget ? 0 : s.duration));
   const isPlaying = usePlayerStore(
@@ -51,49 +42,36 @@ export function NowPlayingCompanionPane({
     track?.path ?? null
   );
 
-  const selectCompanion = (next: string) => {
-    const value: NowPlayingCompanion = next === 'lyrics' ? 'lyrics' : 'queue';
-    if (value === companion) return;
-    void setCompanion(value);
-  };
-
   return (
     <View style={styles.root}>
       {desktopTarget ? (
         <RemoteQueueSheet embedded onClose={noop} />
       ) : (
-        <>
-          <View style={styles.switcher}>
-            <SegmentedControl
-              segments={COMPANION_SEGMENTS}
-              value={companion}
-              onChange={selectCompanion}
+        <View style={styles.content}>
+          {companion === 'queue' ? (
+            <AstraQueueView
+              active={active}
+              paneMode
+              palette={toNativeQueuePalette(colors)}
+              style={styles.nativeQueue}
             />
-          </View>
-          <View style={styles.content}>
-            {companion === 'queue' ? (
-              <AstraQueueView
-                active={active}
-                palette={toNativeQueuePalette(colors)}
-                style={styles.nativeQueue}
+          ) : track ? (
+            <NowPlayingTrackFadeThrough
+              transitionKey={transitionTrackKey}
+              style={styles.lyricsFrame}
+              contentStyle={StyleSheet.absoluteFill}
+            >
+              <LyricsBand
+                track={track}
+                currentTime={currentTime}
+                duration={duration}
+                isPlaying={isPlaying}
+                surface="panel"
+                onSeek={(seconds) => void seekTo(seconds)}
               />
-            ) : track ? (
-              <NowPlayingTrackFadeThrough
-                transitionKey={transitionTrackKey}
-                style={styles.lyricsFrame}
-                contentStyle={StyleSheet.absoluteFill}
-              >
-                <LyricsBand
-                  track={track}
-                  currentTime={currentTime}
-                  duration={duration}
-                  isPlaying={isPlaying}
-                  onSeek={(seconds) => void seekTo(seconds)}
-                />
-              </NowPlayingTrackFadeThrough>
-            ) : null}
-          </View>
-        </>
+            </NowPlayingTrackFadeThrough>
+          ) : null}
+        </View>
       )}
     </View>
   );
@@ -101,16 +79,12 @@ export function NowPlayingCompanionPane({
 
 const useStyles = createThemedStyles((colors) => ({
   root: {
+    // No border and no card: the pane is a region of the same surface as the
+    // player, separated by the gap the layout already reserves. A rule down the
+    // middle plus a bordered slab was two frames around one thing.
     flex: 1,
     minWidth: 0,
-    borderLeftColor: colors.glassBorder,
-    borderLeftWidth: 1,
-    paddingLeft: spacing.lg,
     overflow: 'hidden',
-  },
-  switcher: {
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.lg,
   },
   content: {
     flex: 1,

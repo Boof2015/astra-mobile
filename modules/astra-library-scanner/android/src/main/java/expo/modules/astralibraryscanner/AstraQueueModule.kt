@@ -126,6 +126,9 @@ class AstraQueueModule : Module() {
       Prop("palette") { view, values: Map<String, Any?>? ->
         view.palette = QueuePalette.from(values)
       }
+      Prop("paneMode") { view, paneMode: Boolean? ->
+        view.paneMode = paneMode == true
+      }
       OnViewDidUpdateProps { view ->
         view.setPlaybackRequestListener { entryId, revision ->
           emitPlaybackRequest(entryId, revision)
