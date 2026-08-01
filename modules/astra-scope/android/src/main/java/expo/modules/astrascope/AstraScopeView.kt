@@ -447,7 +447,10 @@ internal class AstraScopeView(
               Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
             )
           } else {
-            surface.clearFrameRate()
+            surface.setFrameRate(
+              0f,
+              Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
+            )
           }
         } catch (_: IllegalArgumentException) {
           // The TextureView may detach while a frame-rate vote is being updated.
