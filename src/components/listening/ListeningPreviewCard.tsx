@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Text } from '@/components/Text';
 import { listeningArtworkSource } from '@/library/artwork';
@@ -10,17 +10,28 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import type { ListeningStatsDashboard } from '@/types/listeningStats';
 
+/**
+ * True when the card has something to draw. Callers seating it in a layout need
+ * this *before* rendering: a card that returns null still occupies a column, so
+ * the row beside it would sit half empty rather than closing up.
+ */
+export function hasListeningPreview(dashboard: ListeningStatsDashboard | null): boolean {
+  return Boolean(dashboard?.status.startedAt);
+}
+
 export function ListeningPreviewCard({
   dashboard,
   onPress,
+  style,
 }: {
   dashboard: ListeningStatsDashboard | null;
   onPress: () => void;
+  style?: StyleProp<ViewStyle>;
 }) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
-  if (!dashboard?.status.startedAt) return null;
+  if (!hasListeningPreview(dashboard) || !dashboard) return null;
 
   const topTrack = dashboard.topTracks[0] ?? null;
   const artwork = topTrack ? listeningArtworkSource(topTrack, true) : null;
@@ -28,7 +39,7 @@ export function ListeningPreviewCard({
 
   return (
     <Pressable
-      style={styles.card}
+      style={[styles.card, style]}
       android_ripple={ripple.tile}
       onPress={onPress}
       accessibilityRole="button"
@@ -98,7 +109,9 @@ export function ListeningPreviewCard({
 
 const useStyles = createThemedStyles((colors) => ({
   card: {
-    marginTop: spacing.xl,
+    // No outer margin: the card is seated by whatever lays it out (Home puts it
+    // in a band beside the spotlight card), and a margin of its own would
+    // double up against that band's spacing.
     padding: spacing.lg,
     gap: spacing.md,
     borderRadius: radius.md,

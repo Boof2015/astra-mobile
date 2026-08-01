@@ -11,6 +11,7 @@ const TEST_SCRIPTS = [
   'test:eq-share',
   'test:signal',
   'test:eq-math',
+  'test:eq-layout',
   'test:audio-startup',
   'test:seek-bar',
   'test:lyrics',

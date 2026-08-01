@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AppState,
   Pressable,
@@ -6,6 +6,9 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,15 +45,18 @@ import {
   HOME_GREETING_ROTATION_MS,
   type HomeGreetingTextMode,
 } from '@/home/homeGreeting';
+import { getHomeLayout, HOME_COLUMN_GAP } from '@/home/homeLayout';
 import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import type { Album, Artist, DbTrack } from '@/types/library';
-import { ListeningPreviewCard } from '@/components/listening/ListeningPreviewCard';
+import {
+  hasListeningPreview,
+  ListeningPreviewCard,
+} from '@/components/listening/ListeningPreviewCard';
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { subscribeToListeningHistory } from '@/listeningStats/events';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 const RECENT_ALBUM_LIMIT = 8;
-const RECENT_TRACK_LIMIT = 3;
 const PLAYLIST_LIMIT = 4;
 
 type RandomSpotlight =
@@ -337,16 +343,18 @@ function ArtistCover({ artist, size }: { artist: Artist; size: number }) {
 
 function RecentlyAddedAlbum({
   album,
+  size,
   onPress,
 }: {
   album: Album;
+  size: number;
   onPress: () => void;
 }) {
   const styles = useStyles();
   const ripple = useRipple();
   return (
-    <Pressable style={styles.recentAlbum} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
-      <AlbumCover album={album} size={112} />
+    <Pressable style={[styles.recentAlbum, { width: size }]} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
+      <AlbumCover album={album} size={size} />
       <Text variant="body" numberOfLines={1} style={styles.recentAlbumTitle}>
         {album.album}
       </Text>
@@ -360,6 +368,8 @@ function RecentlyAddedAlbum({
 function RandomSpotlightCard({
   spotlight,
   hasTracks,
+  coverSize,
+  style,
   onPlay,
   onShuffle,
   onReroll,
@@ -367,6 +377,8 @@ function RandomSpotlightCard({
 }: {
   spotlight: { kind: 'album'; album: Album } | { kind: 'artist'; artist: Artist };
   hasTracks: boolean;
+  coverSize: number;
+  style?: StyleProp<ViewStyle>;
   onPlay: () => void;
   onShuffle: () => void;
   onReroll: () => void;
@@ -388,7 +400,7 @@ function RandomSpotlightCard({
 
   return (
     <Pressable
-      style={styles.randomCard}
+      style={[styles.randomCard, style]}
       android_ripple={ripple.tile}
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onOpen}
@@ -397,9 +409,9 @@ function RandomSpotlightCard({
     >
       <View style={styles.randomMain}>
         {spotlight.kind === 'album' ? (
-          <AlbumCover album={spotlight.album} size={88} />
+          <AlbumCover album={spotlight.album} size={coverSize} />
         ) : (
-          <ArtistCover artist={spotlight.artist} size={88} />
+          <ArtistCover artist={spotlight.artist} size={coverSize} />
         )}
         <View style={styles.randomMeta}>
           <Text variant="label" color={colors.textTertiary}>
@@ -516,6 +528,53 @@ function EmptyHomeCard({
   );
 }
 
+/**
+ * One Home section and the space above it. Sections carry no margin of their
+ * own so the same section can be stacked or seated in a band without either
+ * shape double-paying for it.
+ */
+function HomeSection({ children }: { children: ReactNode }) {
+  const styles = useStyles();
+  if (!children) return null;
+  return <View style={styles.section}>{children}</View>;
+}
+
+/**
+ * Two Home sections of similar weight, seated side by side when the scene is
+ * wide enough and stacked when it isn't.
+ *
+ * Collapses to a single full-width section whenever one half has nothing to
+ * show — otherwise the survivor sits in half a row beside an empty column.
+ */
+function HomeBand({
+  paired,
+  stretch = false,
+  primary,
+  secondary,
+}: {
+  paired: boolean;
+  /** Match the two columns to the taller one. For cards; wrong for row lists. */
+  stretch?: boolean;
+  primary: ReactNode;
+  secondary: ReactNode;
+}) {
+  const styles = useStyles();
+  if (!paired || !primary || !secondary) {
+    return (
+      <>
+        <HomeSection>{primary}</HomeSection>
+        <HomeSection>{secondary}</HomeSection>
+      </>
+    );
+  }
+  return (
+    <View style={[styles.section, styles.band, stretch && styles.bandStretch]}>
+      <View style={styles.bandColumn}>{primary}</View>
+      <View style={styles.bandColumn}>{secondary}</View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
@@ -542,6 +601,15 @@ export default function HomeScreen() {
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
   const hasLibrary = totalTrackCount > 0;
+
+  // Measured, not derived from the window: the player dock takes a column out
+  // of the scene, so a tablet with the dock open has a phone's worth of content
+  // width and has to lay out like one.
+  const [contentWidth, setContentWidth] = useState(0);
+  const measureContent = useCallback((event: LayoutChangeEvent) => {
+    setContentWidth(event.nativeEvent.layout.width);
+  }, []);
+  const home = getHomeLayout(contentWidth);
 
   const recentlyAddedAlbums = useMemo(
     () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
@@ -594,8 +662,8 @@ export default function HomeScreen() {
       ? ({ kind: 'artist', artist: randomArtist } as const)
       : null;
 
-  const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
-  const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
+  const recentTracks = recentlyPlayedTracks.slice(0, home.recentTrackCount);
+  const canExpandRecentTracks = recentlyPlayedTracks.length > home.recentTrackCount;
 
   const openAlbum = (album: Album) => {
     openLibrary({ kind: 'album', key: album.identity_key });
@@ -650,6 +718,108 @@ export default function HomeScreen() {
     }, [loadListeningPreview]),
   );
 
+  const spotlightCard = spotlightContent ? (
+    <RandomSpotlightCard
+      spotlight={spotlightContent}
+      hasTracks={
+        spotlightContent.kind === 'album'
+          ? spotlightContent.album.track_count > 0
+          : spotlightContent.artist.track_count > 0
+      }
+      coverSize={home.spotlightCoverSize}
+      style={home.paired ? styles.bandCard : undefined}
+      onOpen={() => spotlightContent.kind === 'album'
+        ? openAlbum(spotlightContent.album)
+        : openArtist(spotlightContent.artist)}
+      onPlay={() => playSpotlight()}
+      onShuffle={() => playSpotlight(true)}
+      onReroll={rerollSpotlight}
+    />
+  ) : null;
+
+  // Asked before rendering rather than after: the card returns null on its own
+  // when there is no history, which inside a band would leave an empty column.
+  const listeningCard = hasListeningPreview(listeningPreview) ? (
+    <ListeningPreviewCard
+      dashboard={listeningPreview}
+      style={home.paired ? styles.bandCard : undefined}
+      onPress={() => router.push('/stats' as never)}
+    />
+  ) : null;
+
+  const recentlyPlayedSection = recentTracks.length > 0 ? (
+    <>
+      <SectionHeader
+        title="Recently Played"
+        trailing={formatCount(recentlyPlayedTracks.length, 'track')}
+        actionLabel={canExpandRecentTracks ? 'See all' : undefined}
+        onActionPress={
+          canExpandRecentTracks ? () => router.push('/recently-played') : undefined
+        }
+      />
+      <View style={styles.listBlock}>
+        {recentTracks.map((track, index) => (
+          <TrackRow
+            key={track.path}
+            track={track}
+            active={track.path === currentPath}
+            swipeToQueue={false}
+            onPress={() => playRecentlyPlayed(recentTracks, index)}
+            onLongPress={() => setActionTrack(track)}
+            onOpenActions={() => setActionTrack(track)}
+          />
+        ))}
+      </View>
+    </>
+  ) : null;
+
+  const recentlyAddedSection = recentlyAddedAlbums.length > 0 ? (
+    <>
+      <SectionHeader title="Recently Added" />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.albumRail}
+      >
+        {recentlyAddedAlbums.map((album) => (
+          <RecentlyAddedAlbum
+            key={album.identity_key}
+            album={album}
+            size={home.railCoverSize}
+            onPress={() => openAlbum(album)}
+          />
+        ))}
+      </ScrollView>
+    </>
+  ) : null;
+
+  const playlistsSection = favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
+    <>
+      <SectionHeader title="Favorites & Playlists" />
+      <View style={styles.listBlock}>
+        {favoriteTracks.length > 0 ? (
+          <PlaylistRow
+            name="Favorites"
+            trackCount={favoriteTracks.length}
+            coverHash={favoriteTracks[0]?.artwork_hash ?? null}
+            pinned
+            onPress={() => openLibrary({ kind: 'playlist', id: 'favorites' })}
+          />
+        ) : null}
+        {homePlaylists.map((playlist) => (
+          <PlaylistRow
+            key={playlist.id}
+            name={playlist.name}
+            trackCount={playlist.track_count}
+            missingCount={playlist.missing_track_count}
+            coverHash={playlist.auto_cover_hash}
+            onPress={() => openLibrary({ kind: 'playlist', id: playlist.id })}
+          />
+        ))}
+      </View>
+    </>
+  ) : null;
+
   return (
     <Screen>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
@@ -657,6 +827,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+          onLayout={measureContent}
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
         >
@@ -669,116 +840,40 @@ export default function HomeScreen() {
           <ScanProgress />
 
           {!hasLibrary ? (
+            <HomeBand
+              paired={home.paired}
+              primary={
+                <EmptyHomeCard
+                  scanError={scanError}
+                  status={libraryStatus}
+                  onManageFolders={() => router.push(
+                    libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
+                  )}
+                />
+              }
+              secondary={listeningCard}
+            />
+          ) : home.paired ? (
+            // Wide: two bands of paired sections around the one section that
+            // genuinely wants the full width. Recently Added moves above
+            // Recently Played here and only here — a rail is the natural break
+            // between two bands, and it has nothing to pair with.
             <>
-              <EmptyHomeCard
-                scanError={scanError}
-                status={libraryStatus}
-                onManageFolders={() => router.push(
-                  libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
-                )}
-              />
-              <ListeningPreviewCard
-                dashboard={listeningPreview}
-                onPress={() => router.push('/stats' as never)}
+              <HomeBand paired stretch primary={spotlightCard} secondary={listeningCard} />
+              <HomeSection>{recentlyAddedSection}</HomeSection>
+              <HomeBand
+                paired
+                primary={recentlyPlayedSection}
+                secondary={playlistsSection}
               />
             </>
           ) : (
             <>
-            {spotlightContent ? (
-              <View style={styles.topFeature}>
-                <RandomSpotlightCard
-                  spotlight={spotlightContent}
-                  hasTracks={
-                    spotlightContent.kind === 'album'
-                      ? spotlightContent.album.track_count > 0
-                      : spotlightContent.artist.track_count > 0
-                  }
-                  onOpen={() => spotlightContent.kind === 'album'
-                    ? openAlbum(spotlightContent.album)
-                    : openArtist(spotlightContent.artist)}
-                  onPlay={() => playSpotlight()}
-                  onShuffle={() => playSpotlight(true)}
-                  onReroll={rerollSpotlight}
-                />
-              </View>
-            ) : null}
-
-            <ListeningPreviewCard
-              dashboard={listeningPreview}
-              onPress={() => router.push('/stats' as never)}
-            />
-
-            {recentTracks.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader
-                  title="Recently Played"
-                  trailing={formatCount(recentlyPlayedTracks.length, 'track')}
-                  actionLabel={canExpandRecentTracks ? 'See all' : undefined}
-                  onActionPress={
-                    canExpandRecentTracks ? () => router.push('/recently-played') : undefined
-                  }
-                />
-                <View style={styles.listBlock}>
-                  {recentTracks.map((track, index) => (
-                    <TrackRow
-                      key={track.path}
-                      track={track}
-                      active={track.path === currentPath}
-                      swipeToQueue={false}
-                      onPress={() => playRecentlyPlayed(recentTracks, index)}
-                      onLongPress={() => setActionTrack(track)}
-                      onOpenActions={() => setActionTrack(track)}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {recentlyAddedAlbums.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader title="Recently Added" />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.albumRail}
-                >
-                  {recentlyAddedAlbums.map((album) => (
-                    <RecentlyAddedAlbum
-                      key={album.identity_key}
-                      album={album}
-                      onPress={() => openAlbum(album)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
-
-            {favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader title="Favorites & Playlists" />
-                <View style={styles.listBlock}>
-                  {favoriteTracks.length > 0 ? (
-                    <PlaylistRow
-                      name="Favorites"
-                      trackCount={favoriteTracks.length}
-                      coverHash={favoriteTracks[0]?.artwork_hash ?? null}
-                      pinned
-                      onPress={() => openLibrary({ kind: 'playlist', id: 'favorites' })}
-                    />
-                  ) : null}
-                  {homePlaylists.map((playlist) => (
-                    <PlaylistRow
-                      key={playlist.id}
-                      name={playlist.name}
-                      trackCount={playlist.track_count}
-                      missingCount={playlist.missing_track_count}
-                      coverHash={playlist.auto_cover_hash}
-                      onPress={() => openLibrary({ kind: 'playlist', id: playlist.id })}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
+              <HomeSection>{spotlightCard}</HomeSection>
+              <HomeSection>{listeningCard}</HomeSection>
+              <HomeSection>{recentlyPlayedSection}</HomeSection>
+              <HomeSection>{recentlyAddedSection}</HomeSection>
+              <HomeSection>{playlistsSection}</HomeSection>
             </>
           )}
         </PullSearchScrollView>
@@ -828,11 +923,25 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
   },
-  topFeature: {
-    marginTop: spacing.xl,
-  },
   section: {
     marginTop: spacing.xl,
+  },
+  band: {
+    flexDirection: 'row',
+    // Row lists end where their content ends; only cards are matched.
+    alignItems: 'flex-start',
+    gap: HOME_COLUMN_GAP,
+  },
+  bandStretch: {
+    alignItems: 'stretch',
+  },
+  bandColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  /** Fills the height a stretched column hands down. */
+  bandCard: {
+    flex: 1,
   },
   sectionHeader: {
     minHeight: 32,
@@ -862,7 +971,8 @@ const useStyles = createThemedStyles((colors) => ({
     paddingRight: spacing.lg,
   },
   recentAlbum: {
-    width: 112,
+    // Width comes from the layout — the rail keeps the full scene width, so its
+    // tiles are what grows when the scene does.
   },
   recentAlbumTitle: {
     marginTop: spacing.sm,
@@ -891,6 +1001,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   randomCard: {
     minHeight: 112,
+    // Centres the cover and meta in whatever height a stretched band hands
+    // down; a no-op when the card is sizing itself.
+    justifyContent: 'center',
     borderRadius: radius.md,
     backgroundColor: colors.glassBg,
     borderColor: colors.glassBorder,
@@ -953,7 +1066,6 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.bgPrimary,
   },
   emptyCard: {
-    marginTop: spacing.xl,
     padding: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.glassBg,
