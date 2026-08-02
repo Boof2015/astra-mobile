@@ -7,14 +7,17 @@
 // static scroll; loading/not-found/error states get a centered message.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
+import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import {
+  getLyricsEmptyStatePresentation,
   getLyricsLineSeekTimeSeconds,
   getSyncedLyricsDisplayLines,
   getSyncedLyricsGapProgress,
@@ -164,19 +167,7 @@ export function LyricsBand({
     centerOn(focusIndex, true);
   }, [centerOn, focusIndex]);
 
-  const message = !hasSynced
-    ? result?.status === 'transient_error'
-      ? 'Lyrics lookup ran into a problem. A retry may work.'
-      : result?.status === 'not_found'
-        ? result.reason === 'online-disabled'
-          ? 'Online lyrics lookup is off.'
-          : result.reason === 'provider-unavailable'
-            ? "Lyrics providers didn't respond in time."
-            : 'No lyrics found for this track.'
-        : isLoading
-          ? 'Finding lyrics…'
-          : 'Lyrics are ready when a track is playing.'
-    : null;
+  const emptyState = getLyricsEmptyStatePresentation({ result, isLoading });
 
   // --- plain (unsynced) hit ---
   if (result?.status === 'hit' && !hasSynced) {
@@ -197,10 +188,52 @@ export function LyricsBand({
   // --- loading / not-found / error ---
   if (!hasSynced) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.md,
+          paddingHorizontal: 28,
+        }}
+      >
         <Text variant="body" color={colors.textTertiary} style={{ textAlign: 'center' }}>
-          {message}
+          {emptyState.message}
         </Text>
+        {emptyState.retryable ? (
+          <Pressable
+            android_ripple={ripple.bounded}
+            disabled={isLoading}
+            onPress={() => void loadForTrack(track, { force: true })}
+            accessibilityRole="button"
+            accessibilityLabel="Retry lyrics lookup"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
+            style={({ pressed }) => ({
+              minHeight: 40,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.sm,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: colors.glassBorder,
+              backgroundColor: colors.accentGlow,
+              overflow: 'hidden',
+              opacity: isLoading ? 0.65 : pressed ? 0.82 : 1,
+            })}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={colors.accentTextStrong} />
+            ) : (
+              <Ionicons name="refresh" size={16} color={colors.accentTextStrong} />
+            )}
+            <Text variant="label" color={colors.accentTextStrong}>
+              {isLoading ? 'Retrying…' : 'Retry'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
