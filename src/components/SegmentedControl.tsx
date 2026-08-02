@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import {
   Pressable,
   StyleSheet,
-  View
+  View,
+  type LayoutChangeEvent
 } from 'react-native';
 import Animated, {
   interpolateColor,
@@ -18,7 +19,10 @@ import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
+import { useSelectionSlide } from './selectionSlide.ts';
 
+/** The pill's breathing room inside the track. Now the track's own padding, so
+ * the pill can be positioned in the same box its segments are measured in. */
 const THUMB_INSET = 3;
 
 export interface Segment {
@@ -33,23 +37,43 @@ interface SegmentedControlProps {
 }
 
 /**
- * Equal-width segmented control with a selection pill anchored inside the
- * active segment. The structural tie to `focused` keeps the pill and content
- * selection synchronized; labels still cross-fade via Animated.Text.
+ * Segmented control whose selection pill slides to the chosen segment.
+ *
+ * The pill follows the segment's *measured* box rather than its index — see
+ * `selectionSlideMath` for why that distinction is the whole point. A `value`
+ * matching no segment leaves the pill hidden instead of parked on the first one,
+ * so it can never claim a selection the caller doesn't have. Labels still
+ * cross-fade via Animated.Text.
  */
 export function SegmentedControl({ segments, value, onChange }: SegmentedControlProps) {
   const styles = useStyles();
+  const slide = useSelectionSlide(
+    segments.some((segment) => segment.key === value) ? value : null,
+    'horizontal'
+  );
+  const { offset, extent, presence } = slide;
+  const thumbStyle = useAnimatedStyle(() => ({
+    opacity: presence.value,
+    width: extent.value,
+    transform: [{ translateX: offset.value }],
+  }));
 
   return (
     <View style={styles.track}>
-      {segments.map((segment) => (
-        <SegmentButton
-          key={segment.key}
-          label={segment.label}
-          focused={segment.key === value}
-          onPress={() => onChange(segment.key)}
-        />
-      ))}
+      {/* The track carries the pill's inset as padding, so this row is the box
+          both the pill and the segments are measured in. */}
+      <View style={styles.row}>
+        <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
+        {segments.map((segment) => (
+          <SegmentButton
+            key={segment.key}
+            label={segment.label}
+            focused={segment.key === value}
+            onLayout={slide.measure(segment.key)}
+            onPress={() => onChange(segment.key)}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -58,10 +82,12 @@ function SegmentButton({
   label,
   focused,
   onPress,
+  onLayout,
 }: {
   label: string;
   focused: boolean;
   onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
@@ -92,10 +118,10 @@ function SegmentButton({
       android_ripple={ripple.bounded}
       style={styles.segment}
       onPress={handlePress}
+      onLayout={onLayout}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
-      {focused ? <View style={styles.thumb} pointerEvents="none" /> : null}
       <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
         {label}
       </Animated.Text>
@@ -112,10 +138,18 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     padding: THUMB_INSET,
   },
+  // `flex` because the segments inside share it out from a zero basis: without
+  // it this row sizes to their content, which is nothing, and the control
+  // collapses.
+  row: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  // Width and offset come from the focused segment's measurement; the vertical
+  // inset is the track's padding around this row.
   thumb: {
     position: 'absolute',
     top: 0,
-    right: 0,
     bottom: 0,
     left: 0,
     backgroundColor: colors.glassHighlight,

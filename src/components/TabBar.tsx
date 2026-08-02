@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import {
   View,
   Pressable,
-  StyleSheet
+  StyleSheet,
+  type LayoutChangeEvent
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import { MiniPlayer } from './MiniPlayer';
+import { useSelectionSlide, type SelectionSlide } from './selectionSlide.ts';
 import {
   fonts,
   layout,
@@ -88,6 +90,19 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
   const rail = shell.mode === 'rail';
   const split = shell.mode === 'split';
 
+  // The mark follows the focused item's measured rect. It reads the same
+  // `focused` flag the item colours itself from, so the two cannot point at
+  // different tabs — and when nothing is focused there is deliberately no key to
+  // follow rather than a fallback slot. The mode is its shape key: changing
+  // shells invalidates every measurement at once, so the mark is re-placed from
+  // the new ones without travelling. Rotating should find it already in
+  // position, not watch it cross the screen diagonally.
+  const slide = useSelectionSlide(
+    tabs.find((item) => item.focused)?.key ?? null,
+    rail ? 'vertical' : 'horizontal',
+    shell.mode
+  );
+
   const buttons = tabs.map((item) => {
     const meta = TAB_META[item.name];
     if (!meta) return null;
@@ -97,6 +112,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
         meta={meta}
         focused={item.focused}
         rail={rail}
+        onLayout={slide.measure(item.key)}
         height={rail ? shell.navItemHeight : undefined}
         // Split items are sized by the shell rather than sharing the row
         // equally: the mini player takes the rest, and the leftover becomes the
@@ -121,7 +137,10 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
           },
         ]}
       >
-        <View style={styles.railNav}>{buttons}</View>
+        <View style={styles.railNav}>
+          <SelectionMark key={shell.mode} slide={slide} rail />
+          {buttons}
+        </View>
         {/* Wrapped so the rail has exactly one flexible child. MiniPlayer also
             renders a PlaybackTargetPicker Modal as a sibling, and a bare
             justifyContent here would have treated that as a third item and
@@ -163,7 +182,13 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
               { width: shell.splitBar.navWidth, height: shell.splitBar.height },
             ]}
           >
-            {buttons}
+            {/* The mark is placed from the items' own measured offsets, so it
+                has to share a box with them that adds no padding or border of
+                its own — the card has both. */}
+            <View style={styles.splitRow}>
+              <SelectionMark key={shell.mode} slide={slide} />
+              {buttons}
+            </View>
           </Animated.View>
           {/* Docked, the player card IS the pane — showing both would be the
               same track twice. It collapses its own width rather than
@@ -196,6 +221,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
           { paddingBottom: insets.bottom, height: layout.tabBarHeight + insets.bottom },
         ]}
       >
+        <SelectionMark key={shell.mode} slide={slide} />
         {buttons}
       </View>
     </View>
@@ -241,10 +267,52 @@ function SplitPlayerCard({ shell }: { shell: ShellLayout }) {
   );
 }
 
+/**
+ * The accent mark, sliding to whichever destination is selected.
+ *
+ * It is a sibling of the nav items rather than a child of the focused one, which
+ * is the only way it can travel — but that means it has to be positioned rather
+ * than placed, and positioning it by *counting slots* is what made the previous
+ * one land on the wrong tab. It follows measured rects instead; see
+ * `selectionSlideMath`.
+ *
+ * Mount this with `key={shell.mode}`: the two axes animate different style
+ * properties, so the worklet has to be rebuilt when the shell changes shape
+ * instead of carrying a width into a rail that has no use for one.
+ */
+function SelectionMark({ slide, rail = false }: { slide: SelectionSlide; rail?: boolean }) {
+  const styles = useStyles();
+  const { offset, extent, presence } = slide;
+  const markStyle = useAnimatedStyle(() =>
+    rail
+      ? {
+          opacity: presence.value,
+          height: extent.value,
+          transform: [{ translateY: offset.value }],
+        }
+      : {
+          opacity: presence.value,
+          width: extent.value,
+          transform: [{ translateX: offset.value }],
+        }
+  );
+
+  return (
+    <Animated.View
+      style={[rail ? styles.railIndicator : styles.indicator, markStyle]}
+      pointerEvents="none"
+    >
+      <View style={rail ? styles.railIndicatorBar : styles.indicatorBar} />
+    </Animated.View>
+  );
+}
+
 interface TabButtonProps {
   meta: { label: string; icon: IconName };
   focused: boolean;
   onPress: () => void;
+  /** Reports this item's box so the shared mark can travel to it. */
+  onLayout: (event: LayoutChangeEvent) => void;
   /** Rail items are fixed-height and mark selection on their leading edge. */
   rail?: boolean;
   height?: number;
@@ -259,8 +327,20 @@ interface TabButtonProps {
  * class-wrapped Text that Animated can't drive, so colour is a cross-fade
  * between a grey base icon and an accent one stacked on top. Spring-free per
  * theme/motion.
+ *
+ * It does not draw the selection mark: a mark that belongs to the focused item
+ * can only appear and disappear, never travel. It reports its box instead, and
+ * `SelectionMark` slides to it.
  */
-function TabButton({ meta, focused, onPress, rail = false, height, width }: TabButtonProps) {
+function TabButton({
+  meta,
+  focused,
+  onPress,
+  onLayout,
+  rail = false,
+  height,
+  width,
+}: TabButtonProps) {
   const styles = useStyles();
   const colors = useColors();
   const ripple = useRipple();
@@ -304,6 +384,7 @@ function TabButton({ meta, focused, onPress, rail = false, height, width }: TabB
         width ? { width } : null,
       ]}
       onPress={handlePress}
+      onLayout={onLayout}
       onPressIn={() => {
         press.value = withTiming(1, motion.quick);
       }}
@@ -314,14 +395,6 @@ function TabButton({ meta, focused, onPress, rail = false, height, width }: TabB
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
-      {focused ? (
-        <View
-          style={rail ? styles.railIndicator : styles.indicator}
-          pointerEvents="none"
-        >
-          <View style={rail ? styles.railIndicatorBar : styles.indicatorBar} />
-        </View>
-      ) : null}
       <Animated.View style={depressStyle}>
         <Ionicons name={meta.icon} size={22} color={colors.textTertiary} />
         <Animated.View style={[StyleSheet.absoluteFill, accentStyle]}>
@@ -378,6 +451,18 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  // The card's padded interior as its own box, so the mark and the items it
+  // measures share one coordinate space. Measured offsets count from the card's
+  // border, an absolute child counts from inside it, and the difference would be
+  // a permanent 1dp lean.
+  // `alignSelf` because the card centres its children: without it this row would
+  // shrink to its content and take the items — which stretch to *it* — with it,
+  // dropping them off the card's padded top edge along with the mark.
+  splitRow: {
+    flex: 1,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+  },
   // Landscape rail: destinations at the top, mini player pushed to the foot by
   // `railFoot`'s auto margin. `getShellLayout` guarantees both fit.
   rail: {
@@ -391,11 +476,13 @@ const useStyles = createThemedStyles((colors) => ({
   railFoot: {
     marginTop: 'auto',
   },
+  // Width and offset come from the focused item's measurement, so the mark is
+  // exactly as wide as the tab it marks whether the row divides evenly (a
+  // phone's bar) or not (a split card mid-resize). The 28dp bar centres in it.
   indicator: {
     position: 'absolute',
     top: 0,
     left: 0,
-    right: 0,
     alignItems: 'center',
   },
   indicatorBar: {
@@ -405,11 +492,11 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.accent,
   },
   // The rail's selection mark reads down the leading edge rather than across
-  // the top, so it points along the rail's own axis.
+  // the top, so it points along the rail's own axis — and takes its height from
+  // the item rather than a `bottom` anchor, so it can travel between them.
   railIndicator: {
     position: 'absolute',
     top: 0,
-    bottom: 0,
     left: 0,
     justifyContent: 'center',
   },
