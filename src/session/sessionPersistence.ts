@@ -6,7 +6,6 @@ import { useQueueStore } from '@/stores/queueStore';
 import {
   MOBILE_SESSION_KIND,
   MOBILE_SESSION_SCHEMA_VERSION,
-  normalizeStableHref,
   parseMobileSessionSnapshot,
   stringifyMobileSessionSnapshot,
   type MobileSessionSnapshotV1,
@@ -16,8 +15,6 @@ import {
 const STRUCTURAL_SAVE_DEBOUNCE_MS = 250;
 const POSITION_SAVE_THROTTLE_MS = 2000;
 
-let lastStableHref = '/';
-let scheduleStructuralSave: (() => void) | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 
 export async function readPersistedMobileSession(): Promise<MobileSessionSnapshotV1 | null> {
@@ -37,17 +34,6 @@ function enqueueSnapshotWrite(snapshot: MobileSessionSnapshotV1): Promise<void> 
   return writeChain;
 }
 
-export function setInitialStableHref(href: string): void {
-  lastStableHref = normalizeStableHref(href) ?? '/';
-}
-
-export function rememberStableHref(href: string): void {
-  const normalized = normalizeStableHref(href);
-  if (!normalized || normalized === lastStableHref) return;
-  lastStableHref = normalized;
-  scheduleStructuralSave?.();
-}
-
 function currentSnapshot(
   lastKnownPlayback: PlaybackSessionSnapshotV1 | null
 ): { snapshot: MobileSessionSnapshotV1; playback: PlaybackSessionSnapshotV1 | null } {
@@ -63,7 +49,6 @@ function currentSnapshot(
       kind: MOBILE_SESSION_KIND,
       schemaVersion: MOBILE_SESSION_SCHEMA_VERSION,
       savedAt: Date.now(),
-      lastStableHref,
       playback,
     },
     playback,
@@ -122,8 +107,6 @@ export function installMobileSessionPersistence(
     scheduleSave(Math.max(0, POSITION_SAVE_THROTTLE_MS - elapsed));
   };
 
-  scheduleStructuralSave = scheduleDebouncedSave;
-
   const unsubscribePlayer = usePlayerStore.subscribe((state, previous) => {
     if (
       state.playbackState !== previous.playbackState
@@ -155,12 +138,11 @@ export function installMobileSessionPersistence(
     }
   });
 
-  // Persist route validation and queue normalization from hydration. The
-  // snapshot fallback above gives a live native queue time to populate first.
+  // Persist the queue normalization from hydration. The snapshot fallback above
+  // gives a live native queue time to populate first.
   scheduleDebouncedSave();
 
   return () => {
-    if (scheduleStructuralSave === scheduleDebouncedSave) scheduleStructuralSave = null;
     clearSaveTimer();
     unsubscribePlayer();
     unsubscribeQueue();

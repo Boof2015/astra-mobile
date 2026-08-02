@@ -1,15 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Linking } from 'react-native';
-import {
-  useGlobalSearchParams,
-  usePathname,
-  useRootNavigationState,
-  useSegments,
-} from 'expo-router';
-import { useReturnToTabs } from '@/navigation/returnToTabs';
+import { useEffect, useRef } from 'react';
+import { useRootNavigationState } from 'expo-router';
 import { useLibraryStore } from '@/stores/libraryStore';
-import { usePlaylistStore } from '@/stores/playlistStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
@@ -24,78 +15,29 @@ import type { DbTrack } from '@/types/library';
 import {
   installMobileSessionPersistence,
   readPersistedMobileSession,
-  rememberStableHref,
-  setInitialStableHref,
 } from './sessionPersistence';
-import {
-  normalizeStableHref,
-  resolvePlaybackSession,
-  shouldRestoreSavedRoute,
-  stableHrefForRoute,
-} from './sessionState';
+import { resolvePlaybackSession } from './sessionState';
 
 interface SessionLifecycleProps {
   onReady: () => void;
 }
 
-async function validateSavedHref(href: string): Promise<string> {
-  const normalized = normalizeStableHref(href) ?? '/';
-  const [pathname, query = ''] = normalized.split('?', 2);
-  const albumMatch = pathname.match(/^\/library\/album\/([^/]+)$/);
-  if (albumMatch) {
-    const key = decodeURIComponent(albumMatch[1]);
-    const result = await AstraLibraryData.getAlbumDetail<DbTrack, Record<string, unknown>>(
-      key,
-      null,
-      1
-    );
-    return result.summary ? normalized : '/library';
-  }
-  const artistMatch = pathname.match(
-    /^\/library\/artist\/([^/]+)(?:\/(?:albums|songs|appearances))?$/
-  );
-  if (artistMatch) {
-    const name = decodeURIComponent(artistMatch[1]);
-    const groupingMode = new URLSearchParams(query).get('credit') === '1'
-      ? 'astra'
-      : useSettingsStore.getState().artistGroupingMode;
-    const result = await AstraLibraryData.getArtistDetail<DbTrack, Record<string, unknown>>(
-      name,
-      groupingMode,
-      'all',
-      null,
-      1
-    );
-    return result.summary ? normalized : '/library';
-  }
-  const playlistMatch = pathname.match(/^\/library\/playlist\/(favorites|\d+)$/);
-  if (
-    playlistMatch &&
-    playlistMatch[1] !== 'favorites' &&
-    !usePlaylistStore.getState().playlists.some((playlist) => playlist.id === Number(playlistMatch[1]))
-  ) {
-    return '/library';
-  }
-  return normalized;
-}
-
-/** Restores once, then owns stable-route tracking and session autosave. */
+/**
+ * Restores the playback session once, then owns session autosave.
+ *
+ * Deliberately does *not* restore the route. Closing an app on mobile means
+ * "start me fresh"; leaving it in recents keeps the task alive, and React
+ * Navigation already holds that state in memory without our help. So a cold
+ * launch falls through to the router's own initial route (Home) and only the
+ * queue, current track, and position come back off disk.
+ */
 export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
-  const returnToTabs = useReturnToTabs();
-  const pathname = usePathname();
-  const segments = useSegments();
-  const params = useGlobalSearchParams<{
-    key?: string | string[];
-    name?: string | string[];
-    id?: string | string[];
-    credit?: string | string[];
-  }>();
+  // The navigator does not gate anything we restore, but the effect resets the
+  // player overlay, so let the router mount its first screen before we run.
   const rootNavigationState = useRootNavigationState();
   const navigationKey = rootNavigationState?.key;
-  const initialPathname = useRef(pathname);
   const started = useRef(false);
   const uninstallPersistence = useRef<(() => void) | null>(null);
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (!navigationKey || started.current) return;
@@ -106,9 +48,8 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
       const snapshotRead = readPersistedMobileSession();
       let snapshot: Awaited<typeof snapshotRead> = null;
       try {
-        const [loadedSnapshot, initialUrl] = await Promise.all([
+        const [loadedSnapshot] = await Promise.all([
           snapshotRead,
-          Linking.getInitialURL(),
           (async () => {
             await useLibraryStore.getState().initialize();
             try {
@@ -151,21 +92,9 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
         }
         if (cancelled) return;
 
-        const stableHref = await validateSavedHref(snapshot?.lastStableHref ?? '/');
-        setInitialStableHref(stableHref);
-        if (shouldRestoreSavedRoute(initialPathname.current, initialUrl) && stableHref !== '/') {
-          // Never `replace` here. A root-level saved route (`/settings/audio`,
-          // `/sources`, …) would overwrite `(tabs)` at index 0 and destroy the
-          // anchor the root stack is built around, so back would exit the app;
-          // an in-tab saved route would mint a second `(tabs)` instead.
-          returnToTabs(stableHref as never);
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        }
-
         uninstallPersistence.current = installMobileSessionPersistence(
           snapshot?.playback ?? null
         );
-        setHydrated(true);
       } catch (error) {
         if (cancelled) return;
         console.warn('[session] restore failed', error);
@@ -175,13 +104,8 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
           // The normal empty-session fallback below remains safe.
         }
         if (cancelled) return;
-        setInitialStableHref(
-          normalizeStableHref(snapshot?.lastStableHref)
-            ?? normalizeStableHref(initialPathname.current)
-            ?? '/'
-        );
+        // A failed restore must never leave autosave uninstalled.
         uninstallPersistence.current = installMobileSessionPersistence(snapshot?.playback ?? null);
-        setHydrated(true);
       } finally {
         if (!cancelled) onReady();
       }
@@ -193,12 +117,7 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
       uninstallPersistence.current?.();
       uninstallPersistence.current = null;
     };
-  }, [navigationKey, onReady, returnToTabs]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    rememberStableHref(stableHrefForRoute(segments, pathname, params));
-  }, [hydrated, params, pathname, segments]);
+  }, [navigationKey, onReady]);
 
   return null;
 }

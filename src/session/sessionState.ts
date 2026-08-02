@@ -6,7 +6,6 @@ export const MOBILE_SESSION_SCHEMA_VERSION = 1;
 
 const MAX_QUEUE_ITEMS = 100_000;
 const MAX_PATH_LENGTH = 8192;
-const MAX_HREF_LENGTH = 4096;
 const MAX_POSITION_SECONDS = 30 * 24 * 60 * 60;
 
 export type SessionRepeatMode = 'none' | 'one' | 'all';
@@ -26,7 +25,6 @@ export interface MobileSessionSnapshotV1 {
   kind: typeof MOBILE_SESSION_KIND;
   schemaVersion: typeof MOBILE_SESSION_SCHEMA_VERSION;
   savedAt: number;
-  lastStableHref: string;
   playback: PlaybackSessionSnapshotV1 | null;
 }
 
@@ -44,35 +42,6 @@ export interface ResolvedPlaybackSession<T extends SessionTrackLike> {
   originalOrderPaths: string[];
   source: PlaybackSource | null;
 }
-
-export interface StableRouteValidationContext {
-  hasAlbum: (identityKey: string) => boolean;
-  hasArtist: (name: string, credit: boolean) => boolean;
-  hasPlaylist: (id: number) => boolean;
-}
-
-const STATIC_STABLE_PATHS = new Set([
-  '/',
-  '/library',
-  '/eq',
-  '/settings',
-  '/recently-played',
-  '/stats',
-  '/settings/appearance',
-  '/settings/library',
-  '/settings/audio',
-  '/settings/playback',
-  '/settings/services',
-  '/settings/lyrics',
-  '/settings/experimental',
-  '/settings/troubleshooting',
-  '/settings/info',
-  '/settings/haptics-lab',
-  '/sources',
-  '/lastfm',
-  '/desktop-remote',
-  '/desktop-sync',
-]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -116,157 +85,6 @@ function normalizeRepeat(value: unknown): SessionRepeatMode {
   return value === 'one' || value === 'all' ? value : 'none';
 }
 
-function decodeRoutePart(value: string): string | null {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Canonicalizes routes that are safe to restore after a cold launch. Transient
- * editors, scanners, import/redirect routes, and unknown future routes return
- * null so the previously remembered stable page remains authoritative.
- */
-export function normalizeStableHref(value: unknown): string | null {
-  const href = nonEmptyString(value, MAX_HREF_LENGTH);
-  if (!href || !href.startsWith('/') || href.startsWith('//') || href.includes('\\')) return null;
-
-  const hashless = href.split('#', 1)[0] ?? '';
-  const queryIndex = hashless.indexOf('?');
-  const rawPath = queryIndex >= 0 ? hashless.slice(0, queryIndex) : hashless;
-  const rawQuery = queryIndex >= 0 ? hashless.slice(queryIndex + 1) : '';
-  const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
-
-  if (!path || path.includes('//') || /%5c/i.test(path)) return null;
-  const decodedSegments = path.split('/').slice(1).map(decodeRoutePart);
-  if (decodedSegments.some(
-    (segment) => segment === null || segment === '.' || segment === '..' || segment.includes('\\')
-  )) {
-    return null;
-  }
-
-  if (STATIC_STABLE_PATHS.has(path)) return path;
-  if (/^\/library\/album\/[^/]+$/.test(path)) return path;
-  if (/^\/library\/playlist\/(?:favorites|\d+)$/.test(path)) return path;
-
-  if (/^\/library\/artist\/[^/]+(?:\/(?:albums|songs|appearances))?$/.test(path)) {
-    const hasCredit = rawQuery
-      .split('&')
-      .map((part) => part.split('=', 2).map(decodeRoutePart))
-      .some(([key, entry]) => key === 'credit' && entry === '1');
-    return hasCredit ? `${path}?credit=1` : path;
-  }
-
-  return null;
-}
-
-export function validateRestoredHref(
-  href: string,
-  context: StableRouteValidationContext
-): string {
-  const normalized = normalizeStableHref(href) ?? '/';
-  const [pathname, query = ''] = normalized.split('?', 2);
-
-  const albumMatch = pathname.match(/^\/library\/album\/([^/]+)$/);
-  if (albumMatch) {
-    const key = decodeRoutePart(albumMatch[1]);
-    return key && context.hasAlbum(key) ? normalized : '/library';
-  }
-
-  const artistMatch = pathname.match(
-    /^\/library\/artist\/([^/]+)(?:\/(?:albums|songs|appearances))?$/
-  );
-  if (artistMatch) {
-    const name = decodeRoutePart(artistMatch[1]);
-    const credit = new URLSearchParams(query).get('credit') === '1';
-    return name && context.hasArtist(name, credit) ? normalized : '/library';
-  }
-
-  const playlistMatch = pathname.match(/^\/library\/playlist\/(favorites|\d+)$/);
-  if (playlistMatch) {
-    if (playlistMatch[1] === 'favorites') return normalized;
-    return context.hasPlaylist(Number(playlistMatch[1])) ? normalized : '/library';
-  }
-
-  return normalized;
-}
-
-function firstRouteParam(value: unknown): string | null {
-  const entry = Array.isArray(value) ? value[0] : value;
-  return typeof entry === 'string' && entry.length > 0 ? entry : null;
-}
-
-/** Builds an encoded href from Expo Router's file segments and decoded params. */
-export function stableHrefForRoute(
-  segments: readonly string[],
-  pathname: string,
-  params: Record<string, unknown>
-): string {
-  const routeSegments = segments.filter(
-    (segment) => !(segment.startsWith('(') && segment.endsWith(')'))
-  );
-  const key = firstRouteParam(params.key);
-  if (routeSegments.join('/') === 'library/album/[key]' && key) {
-    return `/library/album/${encodeURIComponent(key)}`;
-  }
-
-  const name = firstRouteParam(params.name);
-  if (
-    name
-    && routeSegments[0] === 'library'
-    && routeSegments[1] === 'artist'
-    && routeSegments[2] === '[name]'
-  ) {
-    const subpage = routeSegments[3];
-    const suffix = subpage === 'albums' || subpage === 'songs' || subpage === 'appearances'
-      ? `/${subpage}`
-      : '';
-    const credit = firstRouteParam(params.credit) === '1' ? '?credit=1' : '';
-    return `/library/artist/${encodeURIComponent(name)}${suffix}${credit}`;
-  }
-
-  const id = firstRouteParam(params.id);
-  if (routeSegments.join('/') === 'library/playlist/[id]' && id) {
-    return `/library/playlist/${encodeURIComponent(id)}`;
-  }
-
-  return pathname;
-}
-
-/** Whether an initial OS URL names a destination that must beat disk restore. */
-export function hasExplicitLaunchDestination(value: string | null): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    let path = url.pathname || '';
-    if (url.protocol === 'astra:' && url.hostname) path = `/${url.hostname}${path}`;
-    const expoMarker = path.indexOf('/--/');
-    if (expoMarker >= 0) path = path.slice(expoMarker + 3);
-    return path !== '' && path !== '/';
-  } catch {
-    // A non-empty URL we cannot parse is still an explicit external launch.
-    return true;
-  }
-}
-
-/** Whether restart navigation may replace the router's initial destination. */
-export function shouldRestoreSavedRoute(
-  initialPathname: string,
-  initialUrl: string | null
-): boolean {
-  if (hasExplicitLaunchDestination(initialUrl)) return false;
-  if (initialPathname === '/') return true;
-  if (initialPathname === '/notification.click' || initialPathname === '/eq/import') {
-    return false;
-  }
-  // Stable non-root routes are initial deep-link/widget destinations when the
-  // URL has already been consumed by Expo Router. Transient editor/scanner
-  // state is never allowed to beat the last stable disk route.
-  return normalizeStableHref(initialPathname) === null;
-}
-
 export function normalizePlaybackSession(value: unknown): PlaybackSessionSnapshotV1 | null {
   if (!isPlainRecord(value)) return null;
   const queuePaths = normalizePathArray(value.queuePaths);
@@ -291,6 +109,12 @@ export function normalizePlaybackSession(value: unknown): PlaybackSessionSnapsho
   };
 }
 
+/**
+ * Reads named fields only, so unknown ones are dropped. Snapshots written before
+ * route restore was removed still carry a `lastStableHref` we deliberately
+ * ignore — which is exactly why the schema version stays at 1. Bumping it would
+ * make this return null for every existing install and discard their queue.
+ */
 export function normalizeMobileSessionSnapshot(value: unknown): MobileSessionSnapshotV1 | null {
   if (!isPlainRecord(value)) return null;
   if (value.kind !== MOBILE_SESSION_KIND || value.schemaVersion !== MOBILE_SESSION_SCHEMA_VERSION) {
@@ -301,7 +125,6 @@ export function normalizeMobileSessionSnapshot(value: unknown): MobileSessionSna
     kind: MOBILE_SESSION_KIND,
     schemaVersion: MOBILE_SESSION_SCHEMA_VERSION,
     savedAt: Math.max(0, finiteNumber(value.savedAt)),
-    lastStableHref: normalizeStableHref(value.lastStableHref) ?? '/',
     playback: normalizePlaybackSession(value.playback),
   };
 }
