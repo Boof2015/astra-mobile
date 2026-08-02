@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AppState,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
+  useWindowDimensions,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type StyleProp,
@@ -55,6 +56,8 @@ import {
 import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { subscribeToListeningHistory } from '@/listeningStats/events';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
+import { useTabReselect } from '@/navigation/useTabReselect';
+import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
 
 const RECENT_ALBUM_LIMIT = 8;
 const PLAYLIST_LIMIT = 4;
@@ -601,6 +604,23 @@ export default function HomeScreen() {
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
   const hasLibrary = totalTrackCount > 0;
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  // Stable members of the gate; the object itself is rebuilt on every `atTop` flip.
+  const { offsetRef: scrollOffsetRef, setScrollAtTop } = scrollTop;
+
+  // Re-tapping Home while already on it returns to the top, matching Library.
+  const scrollHomeToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({
+      y: 0,
+      animated: shouldAnimateScrollToTop(scrollOffsetRef.current, windowHeight),
+    });
+    // A programmatic scroll gives the pull-to-search gate no onScroll it can
+    // rely on, so arm it directly.
+    setScrollAtTop(true);
+  }, [scrollOffsetRef, setScrollAtTop, windowHeight]);
+
+  useTabReselect('index', scrollHomeToTop);
 
   // Measured, not derived from the window: the player dock takes a column out
   // of the scene, so a tablet with the dock open has a phone's worth of content
@@ -824,6 +844,7 @@ export default function HomeScreen() {
     <Screen>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
         <PullSearchScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           contentContainerStyle={{ paddingBottom: sceneBottomInset }}

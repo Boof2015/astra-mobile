@@ -1,20 +1,33 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { useShellLayout } from '@/navigation/useShellLayout';
 import { ShellRailContext } from '@/navigation/shellRailContext';
 import {
+  TAB_PRESS_SWALLOW_MS,
   TAB_SCENE_ANIMATION,
-  TAB_TRANSITION_SETTLE_MS,
+  TAB_STACK_RESET_DELAY_MS,
   TAB_TRANSITION_SPEC,
 } from '@/navigation/tabTransition';
 import { popToTop } from '@/navigation/stackActions';
+import {
+  leavingStackResetTarget,
+  shouldApplyStackReset,
+  type TabsStateLike,
+} from '@/navigation/tabStackReset';
+import { emitTabReselect } from '@/navigation/tabReselect';
 import { useColors } from '@/theme/themed';
 import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 
 export default function TabsLayout() {
   const colors = useColors();
   const lastSwitchAt = useRef(0);
+  const pendingStackReset = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (pendingStackReset.current) clearTimeout(pendingStackReset.current);
+    pendingStackReset.current = null;
+  }, []);
 
   // Landscape moves navigation to a rail down the leading edge and hands the
   // scene back the ~152dp the tab bar and mini player were costing it. The
@@ -70,7 +83,7 @@ export default function TabsLayout() {
             // completion frame and leave the incoming scene invisible; swallow
             // taps until the current transition has finished.
             const now = Date.now();
-            if (now - lastSwitchAt.current < TAB_TRANSITION_SETTLE_MS + 30) return;
+            if (now - lastSwitchAt.current < TAB_PRESS_SWALLOW_MS) return;
             const event = navigation.emit({
               type: 'tabPress',
               target: item.key,
@@ -86,12 +99,36 @@ export default function TabsLayout() {
               const nested = state.routes[state.index]?.state;
               if (nested?.key && (nested.index ?? 0) > 0) {
                 navigation.dispatch({ ...popToTop(), target: nested.key });
+                // Escaping the chain is the whole press; the list underneath
+                // keeps the place the user left it in.
+                return;
               }
+              // Already at this tab's root, so the press means "top of the
+              // list" — which is also the only offset where pull-to-search arms.
+              emitTabReselect(item.name);
               return;
             }
 
+            // Rewind the tab being *left*, after the fade rather than on the way
+            // in; see `tabStackReset` for why arrival is the wrong side of the
+            // transition. Read before navigating, while `state` still describes
+            // the tab we are leaving.
+            const resetTarget = leavingStackResetTarget(state);
             lastSwitchAt.current = now;
             navigation.navigate(item.name);
+            if (!resetTarget) return;
+
+            if (pendingStackReset.current) clearTimeout(pendingStackReset.current);
+            pendingStackReset.current = setTimeout(() => {
+              pendingStackReset.current = null;
+              const current = navigation.getState() as TabsStateLike | undefined;
+              if (!shouldApplyStackReset(current, resetTarget)) return;
+              // A targeted action bubbles to the root and back down through every
+              // mounted navigator, focused or not — which holds only because this
+              // navigator keeps inactive scenes attached and unfrozen
+              // (`detachInactiveScreens={false}` + `freezeOnBlur: false` below).
+              navigation.dispatch({ ...popToTop(), target: resetTarget });
+            }, TAB_STACK_RESET_DELAY_MS);
           };
 
           return <TabBar items={items} onPress={handlePress} shell={shell} />;

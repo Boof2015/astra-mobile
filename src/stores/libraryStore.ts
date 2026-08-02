@@ -123,6 +123,7 @@ interface LibraryStore {
   loadPreviousAlbums: () => Promise<void>;
   loadPreviousArtists: () => Promise<void>;
   jumpToSection: (cursor: string) => Promise<boolean>;
+  rewindToHead: () => Promise<boolean>;
   recordTrackPlayed: (path: string) => Promise<void>;
   refreshRecentlyPlayed: () => Promise<void>;
   recomputeArtists: () => void;
@@ -178,9 +179,10 @@ function prependWindow<T>(
 function remountIfShorter(
   current: { sectionJumpRevision: number },
   previousLength: number,
-  nextLength: number
+  nextLength: number,
+  force = false
 ): { sectionJumpRevision: number } | Record<string, never> {
-  return previousLength > nextLength
+  return force || previousLength > nextLength
     ? { sectionJumpRevision: current.sectionJumpRevision + 1 }
     : {};
 }
@@ -271,7 +273,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   const backwardAlbumSort = (sort: AlbumSort): 'artist' | 'name' | null =>
     sort === 'artist' || sort === 'name' ? sort : null;
 
-  const resetTracks = async () => {
+  // `forceRemount` is for `rewindToHead`: the conditional remount above only
+  // fires when page 1 is *shorter* than the window it replaces, which happens to
+  // hold after a rail jump but is arithmetic the caller cannot verify — and a
+  // PAGE_SIZE change would break it silently, leaving the list parked mid-catalog.
+  const resetTracks = async (forceRemount = false) => {
     const sort = get().trackSort;
     const generation = ++pageGenerations.tracks;
     const page = await readTrackPage(null, sort);
@@ -283,12 +289,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       trackPrevCursor: null,
       totalTrackCount: page.totalCount ?? 0,
       jumpAnchorIndex: 0,
-      ...remountIfShorter(current, current.tracks.length, items.length),
+      ...remountIfShorter(current, current.tracks.length, items.length, forceRemount),
     }));
     return true;
   };
 
-  const resetAlbums = async () => {
+  const resetAlbums = async (forceRemount = false) => {
     const sort = get().albumSort;
     const includeSingles = useSettingsStore.getState().includeSingles;
     const generation = ++pageGenerations.albums;
@@ -304,12 +310,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       albumNextCursor: page.nextCursor ?? null,
       albumPrevCursor: null,
       jumpAnchorIndex: 0,
-      ...remountIfShorter(current, current.albums.length, items.length),
+      ...remountIfShorter(current, current.albums.length, items.length, forceRemount),
     }));
     return true;
   };
 
-  const resetArtists = async () => {
+  const resetArtists = async (forceRemount = false) => {
     const sort = get().artistSort;
     const groupingMode = useSettingsStore.getState().artistGroupingMode;
     const includeCollaborations = get().includeCollabArtists;
@@ -327,7 +333,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       artistNextCursor: page.nextCursor ?? null,
       artistPrevCursor: null,
       jumpAnchorIndex: 0,
-      ...remountIfShorter(current, current.artists.length, items.length),
+      ...remountIfShorter(current, current.artists.length, items.length, forceRemount),
     }));
     return true;
   };
@@ -914,6 +920,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         }));
       }
       return true;
+    },
+
+    /**
+     * Rebuilds the current view's window from the head of the catalog and forces
+     * the list to remount at row 0.
+     *
+     * The counterpart to `jumpToSection` — same boolean contract — for getting
+     * back to the true top after one. Bumping the page generation also voids any
+     * jump still in flight, which would otherwise land after this and undo it.
+     */
+    rewindToHead: async () => {
+      const viewMode = get().viewMode;
+      if (viewMode === 'tracks') return resetTracks(true);
+      if (viewMode === 'albums') return resetAlbums(true);
+      if (viewMode === 'artists') return resetArtists(true);
+      return false;
     },
 
     recordTrackPlayed: async (path) => {

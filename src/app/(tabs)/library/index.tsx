@@ -10,10 +10,11 @@ import {
   BackHandler,
   View,
   Pressable,
-  StyleSheet
+  StyleSheet,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
@@ -45,6 +46,10 @@ import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
+import { useTabReselect } from '@/navigation/useTabReselect';
+import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
+import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
+import { needsWindowRewind } from '@/library/libraryWindowTop';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -74,6 +79,8 @@ import {
   type LibraryLayout,
 } from '@/library/libraryLayout';
 import type {
+  Album,
+  Artist,
   DbTrack
 } from '@/types/library';
 
@@ -142,6 +149,28 @@ export default function LibraryScreen() {
   // which `libraryGridColumns` reads as "use the preference".
   const [gridWidth, setGridWidth] = useState(0);
   const scrollTop = useScrollTopGate();
+  // The gate object is rebuilt whenever `atTop` flips; these two members are
+  // stable, so depending on them keeps the re-tap subscription from churning on
+  // every scroll.
+  const { offsetRef: scrollOffsetRef, setScrollAtTop } = scrollTop;
+  const { height: windowHeight } = useWindowDimensions();
+
+  // One ref per view mode so a tab re-tap can send whichever list is on screen
+  // back to the top. The `key` prop already remounts these on sort/layout
+  // changes; refs re-attach with the new instance on their own.
+  const albumListRef = useRef<FlashListRef<Album>>(null);
+  const artistListRef = useRef<FlashListRef<Artist>>(null);
+  const trackListRef = useRef<FlashListRef<DbTrack>>(null);
+  // Callback refs: these two lists are keyed on row types private to their own
+  // components, so they hand back the narrow handle instead.
+  const playlistListRef = useRef<ScrollToTopHandle | null>(null);
+  const folderListRef = useRef<ScrollToTopHandle | null>(null);
+  const setPlaylistList = useCallback((list: ScrollToTopHandle | null) => {
+    playlistListRef.current = list;
+  }, []);
+  const setFolderList = useCallback((list: ScrollToTopHandle | null) => {
+    folderListRef.current = list;
+  }, []);
 
   const showLibraryStatus =
     totalTrackCount === 0 &&
@@ -224,6 +253,51 @@ export default function LibraryScreen() {
     if (pendingJump.current) clearTimeout(pendingJump.current.timer);
     pendingJump.current = null;
   }, []);
+
+  // Re-tapping the Library tab while already on the list means "back to the
+  // top" — which is also the only offset where pull-to-search arms, so this is
+  // the quick way to reach it.
+  const scrollToLibraryTop = useCallback(() => {
+    // A rail scrub still inside its debounce would otherwise land after this
+    // and drop the list straight back down the alphabet.
+    if (pendingJump.current) {
+      clearTimeout(pendingJump.current.timer);
+      pendingJump.current = null;
+    }
+
+    const state = useLibraryStore.getState();
+    if (!needsWindowRewind(state.viewMode, state)) {
+      const list =
+        state.viewMode === 'albums'
+          ? albumListRef.current
+          : state.viewMode === 'artists'
+            ? artistListRef.current
+            : state.viewMode === 'tracks'
+              ? trackListRef.current
+              : state.viewMode === 'playlists'
+                ? playlistListRef.current
+                : folderListRef.current;
+      // Null in the empty-library state, where no list is mounted at all.
+      list?.scrollToTop({
+        animated: shouldAnimateScrollToTop(scrollOffsetRef.current, windowHeight),
+      });
+      // A programmatic scroll gives the gate no onScroll it can rely on, so arm
+      // it directly — the same thing a rail jump (:200), a layout change and a
+      // view-mode change already do.
+      setScrollAtTop(true);
+      return;
+    }
+    // Rows exist above the loaded window (an A-Z jump put them there), so offset
+    // 0 is not the top of the library. Rebuild from page 1 and let the forced
+    // remount bring the list back at row 0. Arming the gate only once that
+    // resolves matters: doing it up front would let a pull open search while the
+    // list is still showing mid-catalog rows at a non-zero offset.
+    void useLibraryStore.getState().rewindToHead().then((applied) => {
+      if (applied) setScrollAtTop(true);
+    });
+  }, [scrollOffsetRef, setScrollAtTop, windowHeight]);
+
+  useTabReselect('library', scrollToLibraryTop);
 
   // Multi-select (tracks view): long-press arms it, batch actions live in the
   // bottom bar, selection order follows the current display order.
@@ -441,6 +515,7 @@ export default function LibraryScreen() {
             >
               {viewMode === 'albums' ? (
                 <FlashList
+                  ref={albumListRef}
                   key={`albums-${albumSort}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
                   data={sortedAlbums}
                   numColumns={albumColumns}
@@ -487,6 +562,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'artists' ? (
                 <FlashList
+                  ref={artistListRef}
                   key={`artists-${artistSort}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
                   data={sortedArtists}
                   numColumns={artistColumns}
@@ -533,6 +609,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'tracks' ? (
                 <FlashList
+                  ref={trackListRef}
                   key={`tracks-${trackSort}-${sectionJumpRevision}`}
                   data={sortedTracks}
                   keyExtractor={(track) => String(track.id)}
@@ -566,6 +643,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'playlists' ? (
                 <PlaylistsView
+                  listRef={setPlaylistList}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                 />
@@ -573,6 +651,7 @@ export default function LibraryScreen() {
 
               {viewMode === 'folders' ? (
                 <FoldersView
+                  listRef={setFolderList}
                   onScroll={scrollTop.onScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                 />

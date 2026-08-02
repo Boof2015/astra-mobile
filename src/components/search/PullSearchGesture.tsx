@@ -96,8 +96,13 @@ export function usePullSearchGestureRef(): PullSearchGestureRef | null {
 export function useScrollTopGate(initialAtTop = true) {
   const atTopRef = useRef(initialAtTop);
   const [atTop, setAtTop] = useState(initialAtTop);
+  // A ref, not state: this only ever feeds an imperative decision (how far a
+  // scroll-to-top has to travel), so re-rendering the screen on every frame of
+  // every scroll to carry it would be pure cost.
+  const offsetRef = useRef(0);
 
   const setScrollAtTop = useCallback((next: boolean) => {
+    if (next) offsetRef.current = 0;
     if (next === atTopRef.current) return;
     atTopRef.current = next;
     setAtTop(next);
@@ -105,12 +110,14 @@ export function useScrollTopGate(initialAtTop = true) {
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      setScrollAtTop(event.nativeEvent.contentOffset.y <= 2);
+      const { y } = event.nativeEvent.contentOffset;
+      offsetRef.current = y;
+      setScrollAtTop(y <= 2);
     },
     [setScrollAtTop]
   );
 
-  return { atTop, onScroll, scrollEventThrottle: 16 as const, setScrollAtTop };
+  return { atTop, offsetRef, onScroll, scrollEventThrottle: 16 as const, setScrollAtTop };
 }
 
 export function PullSearchGesture({

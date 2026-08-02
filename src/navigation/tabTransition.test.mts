@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  TAB_PRESS_SWALLOW_MS,
   TAB_SCENE_ANIMATION,
+  TAB_STACK_RESET_DELAY_MS,
   TAB_TRANSITION_SETTLE_MS,
   TAB_TRANSITION_SPEC,
 } from './tabTransition.ts';
@@ -9,6 +11,12 @@ import {
 test('tab scenes use a cross-fade and retain the short settle guard', () => {
   assert.equal(TAB_SCENE_ANIMATION, 'fade');
   assert.equal(TAB_TRANSITION_SETTLE_MS, 160);
+  assert.equal(TAB_PRESS_SWALLOW_MS, TAB_TRANSITION_SETTLE_MS + 30);
+});
+
+test('a left-behind stack is rewound after the fade but before the next press is accepted', () => {
+  assert.ok(TAB_STACK_RESET_DELAY_MS > TAB_TRANSITION_SETTLE_MS);
+  assert.ok(TAB_STACK_RESET_DELAY_MS < TAB_PRESS_SWALLOW_MS);
 });
 
 test('tab fade uses a critically damped native spring with no overshoot', () => {

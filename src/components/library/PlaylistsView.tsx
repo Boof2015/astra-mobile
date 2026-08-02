@@ -18,6 +18,7 @@ import {
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
+import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
 import {
   radius,
@@ -44,9 +45,12 @@ type Prompt = { kind: 'create' } | { kind: 'rename'; playlist: Playlist } | null
 export function PlaylistsView({
   onScroll,
   scrollEventThrottle,
+  listRef,
 }: {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
+  /** Lets the Library screen send this list back to the top on a tab re-tap. */
+  listRef?: (list: ScrollToTopHandle | null) => void;
 }) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
@@ -179,6 +183,7 @@ export function PlaylistsView({
   return (
     <View style={styles.container}>
       <FlashList
+        ref={listRef}
         data={playlists}
         keyExtractor={(playlist) => String(playlist.id)}
         showsVerticalScrollIndicator={false}

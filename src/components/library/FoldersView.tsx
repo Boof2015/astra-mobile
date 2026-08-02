@@ -33,12 +33,15 @@ import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
+import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 
 const PAGE_SIZE = 100;
 
 interface FoldersViewProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
+  /** Lets the Library screen send this list back to the top on a tab re-tap. */
+  listRef?: (list: ScrollToTopHandle | null) => void;
 }
 
 interface LoadedNode {
@@ -204,7 +207,7 @@ function FolderTrackRow({
   );
 }
 
-export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps) {
+export function FoldersView({ onScroll, scrollEventThrottle, listRef }: FoldersViewProps) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
@@ -329,6 +332,7 @@ export function FoldersView({ onScroll, scrollEventThrottle }: FoldersViewProps)
   return (
     <>
       <FlashList
+        ref={listRef}
         data={rows}
         keyExtractor={(row) => row.id}
         showsVerticalScrollIndicator={false}
