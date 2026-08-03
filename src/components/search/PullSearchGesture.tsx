@@ -31,6 +31,7 @@ import {
   useSharedValue
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
+import { useScreenTopBleed } from '@/components/screenTopBleed';
 import {
   radius,
   spacing,
@@ -133,6 +134,7 @@ export function PullSearchGesture({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const topBleed = useScreenTopBleed();
   const [pull, setPull] = useState(0);
   const [armed, setArmed] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -242,6 +244,10 @@ export function PullSearchGesture({
 
   const progress = clamp(pull / OPEN_THRESHOLD, 0, 1);
   const indicatorStyle = {
+    // The chip pins to the top of whatever screen it's on, and on a screen that
+    // bleeds under the status bar (Home) that top is the top of the *window*.
+    // Zero on Library, which doesn't bleed, so nothing moves there.
+    top: topBleed + spacing.xs,
     opacity: pull <= 0 ? 0 : Math.max(0.72, progress),
     transform: [
       { translateY: -18 + (clamp(pull, 0, MAX_PULL) / MAX_PULL) * 38 },
@@ -273,8 +279,9 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   indicator: {
+    // `top` is applied inline — it depends on whether the screen bleeds under
+    // the status bar.
     position: 'absolute',
-    top: spacing.xs,
     alignSelf: 'center',
     zIndex: 20,
     flexDirection: 'row',

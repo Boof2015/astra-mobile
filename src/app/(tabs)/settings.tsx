@@ -6,6 +6,7 @@ import {
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useTopBleedInset } from '@/components/screenTopBleed';
 import { Text } from '@/components/Text';
 import {
   formatFolderCount,
@@ -39,6 +40,9 @@ function formatEnabled(value: boolean): string {
 export default function SettingsScreen() {
   const showScreenTitle = useShellShowsScreenTitle();
   const sceneBottomInset = useSceneBottomInset();
+  // Re-paid by the content because `<Screen bleedTop>` stopped paying it, and
+  // zero in a window too short to bleed — see `screenTopBleed`.
+  const topBleed = useTopBleedInset();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -89,8 +93,8 @@ export default function SettingsScreen() {
         : desktopRemoteSubtitle;
 
   return (
-    <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: sceneBottomInset }]}>
+    <Screen bleedTop>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingTop: topBleed, paddingBottom: sceneBottomInset }]}>
         {/* The rail names this destination itself; repeating it would just
             spend a landscape window's scarce height on the same word. */}
         {showScreenTitle ? (

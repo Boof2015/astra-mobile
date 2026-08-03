@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useTopBleedInset } from '@/components/screenTopBleed';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -580,6 +581,11 @@ function HomeBand({
 
 export default function HomeScreen() {
   const sceneBottomInset = useSceneBottomInset();
+  // `<Screen bleedTop>` hands this back to the content: the scroll frame runs
+  // to the top of the window so the masthead can travel behind the status bar,
+  // and the content container re-pays the inset so it still starts below it.
+  // Zero in a window too short to bleed, where `Screen` keeps paying it.
+  const topBleed = useTopBleedInset();
   const styles = useStyles();
   const router = useRouter();
   const openLibrary = useHomeLibraryNavigation();
@@ -841,13 +847,13 @@ export default function HomeScreen() {
   ) : null;
 
   return (
-    <Screen>
+    <Screen bleedTop>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
         <PullSearchScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
-          contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+          contentContainerStyle={{ paddingTop: topBleed, paddingBottom: sceneBottomInset }}
           onLayout={measureContent}
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
