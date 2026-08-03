@@ -80,6 +80,7 @@ export default function ArtistSongsScreen() {
           <TrackRow
             track={item}
             subtitle={item.album}
+            showFormat={false}
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}

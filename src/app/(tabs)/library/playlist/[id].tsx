@@ -300,6 +300,7 @@ export default function PlaylistScreen() {
           item.track ? (
             <TrackRow
               track={item.track}
+              showFormat={false}
               active={item.track.path === currentPath}
               onPress={() => startPlayback(playableIndexByEntryId.get(item.id) ?? 0)}
               onLongPress={() => setActionEntry(item)}

@@ -206,6 +206,7 @@ export default function ArtistScreen() {
           <TrackRow
             track={item.track}
             subtitle={trackSubtitle(item.track, item.section)}
+            showFormat={false}
             active={item.track.path === currentPath}
             onPress={() =>
               playTrackListFrom(

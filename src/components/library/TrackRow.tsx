@@ -35,6 +35,8 @@ export function TrackRow({
   onLongPress,
   onOpenActions,
   showArtist = true,
+  showTrackNumber = false,
+  showFormat = true,
   subtitle,
   active = false,
   swipeToQueue = true,
@@ -48,8 +50,12 @@ export function TrackRow({
   onLongPress?: () => void;
   /** Visible trailing affordance for the track actions sheet. */
   onOpenActions?: () => void;
-  /** Hide on album detail where every row shares the artist. */
+  /** Secondary line falls back to the track artist. */
   showArtist?: boolean;
+  /** Leading track number, for album-ordered lists. */
+  showTrackNumber?: boolean;
+  /** Codec/sample-rate line. Off in album-context lists where the artist matters more. */
+  showFormat?: boolean;
   /** Overrides the secondary line; useful for artist pages that need album context. */
   subtitle?: string;
   active?: boolean;
@@ -70,6 +76,11 @@ export function TrackRow({
 
   const thumbUri = failedArtKey !== artKey ? trackArtworkThumbSource(track) : null;
   const secondaryText = subtitle ?? (showArtist ? track.artist : null);
+  // Both children can render nothing; an empty row would still cost `meta`'s gap
+  // plus the badges' own margin as dead space under the secondary line.
+  const isRemote = !!track.source_type && track.source_type !== 'local';
+  const hasFormat = !!(track.format || track.bit_depth || track.sample_rate);
+  const showBadges = isRemote || (showFormat && hasFormat);
   const longPressAction = selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions);
   const handleLongPress = longPressAction
     ? () => {
@@ -116,7 +127,7 @@ export function TrackRow({
         )}
       </View>
 
-      {!showArtist ? (
+      {showTrackNumber ? (
         <Text variant="mono" style={styles.trackNumber}>
           {track.track_number ?? ''}
         </Text>
@@ -135,17 +146,21 @@ export function TrackRow({
             {secondaryText}
           </Text>
         ) : null}
-        <View style={styles.badges}>
-          <RemoteSourceBadge sourceType={track.source_type} />
-          <FormatBadges
-            variant="plain"
-            track={{
-              format: track.format,
-              bitDepth: track.bit_depth ?? undefined,
-              sampleRate: track.sample_rate ?? undefined,
-            }}
-          />
-        </View>
+        {showBadges ? (
+          <View style={styles.badges}>
+            <RemoteSourceBadge sourceType={track.source_type} />
+            {showFormat ? (
+              <FormatBadges
+                variant="plain"
+                track={{
+                  format: track.format,
+                  bitDepth: track.bit_depth ?? undefined,
+                  sampleRate: track.sample_rate ?? undefined,
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <Text variant="mono" style={[styles.duration, selectionMode && styles.durationSelection]}>

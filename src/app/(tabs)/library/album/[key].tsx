@@ -126,7 +126,8 @@ export default function AlbumScreen() {
           ) : (
             <TrackRow
               track={item.track}
-              showArtist={false}
+              showTrackNumber
+              showFormat={false}
               active={item.track.path === currentPath}
               onPress={() => playFrom(item.index)}
               onLongPress={() => setActionTrack(item.track)}

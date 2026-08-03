@@ -80,6 +80,7 @@ export default function ArtistAppearancesScreen() {
           <TrackRow
             track={item}
             subtitle={`${item.artist} - ${item.album}`}
+            showFormat={false}
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}
