@@ -21,6 +21,21 @@ export interface PlaybackPresentation {
   visible: boolean;
 }
 
+export function effectiveMiniPlayerVisible({
+  selectedTarget,
+  phoneHasTrack,
+  desktopConnected,
+  desktopHasTrack,
+}: {
+  selectedTarget: PlaybackTarget;
+  phoneHasTrack: boolean;
+  desktopConnected: boolean;
+  desktopHasTrack: boolean;
+}): boolean {
+  if (selectedTarget === 'desktop') return desktopConnected || desktopHasTrack;
+  return phoneHasTrack || desktopHasTrack;
+}
+
 export function getEffectivePlaybackPresentation({
   selectedTarget,
   phone,

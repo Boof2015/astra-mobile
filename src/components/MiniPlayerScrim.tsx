@@ -7,16 +7,15 @@ import { useColors } from '@/theme/themed';
 /**
  * The gradient that lands the mini-player pill into the tab bar.
  *
- * It occupies exactly the pill's float box and no more: transparent at the
- * pill's top edge, reaching `MAX_ALPHA` where it meets the chrome. Content
- * above the pill is untouched.
+ * By default it occupies exactly the pill's float box: transparent at the
+ * pill's top edge, reaching `MAX_ALPHA` where it meets the chrome. A screen
+ * that owns additional floating controls may pass a taller height so the same
+ * dissolve begins above that real chrome stack.
  *
- * The first attempt reached ~96dp further up the screen to dim the list before
- * it got near the pill. That's the wrong job — it read as a deliberate band and
- * dimmed rows that should be clean. What actually needs softening is the seam
- * where content runs into chrome: the sliver of artwork visible in the pill's
- * side margins and in the gap above the tab bar. This should be doing its work
- * without being noticed.
+ * The first global attempt reached ~96dp further up every screen merely to dim
+ * the list before it got near the pill. That read as a deliberate band. A
+ * taller Library band is different: its command bar genuinely occupies that
+ * space, and the extended fade removes the hard list cutoff behind it.
  *
  * The pill's own separation from content comes from its fill and its rim, not
  * from here.
@@ -33,11 +32,11 @@ import { useColors } from '@/theme/themed';
  */
 const MAX_ALPHA = 0.92;
 /**
- * The pill's float box exactly: its height plus its margins. Same box as
- * TabBar's `floatingPlayer`, so this neither overflows the container nor
- * leaves a gap above the tab bar.
+ * The default is the pill's float box exactly: its height plus its margins.
+ * Same box as TabBar's `floatingPlayer`, so ordinary screens neither overflow
+ * the container nor leave a gap above the tab bar.
  */
-const HEIGHT = layout.miniPlayerFloat;
+const DEFAULT_HEIGHT = layout.miniPlayerFloat;
 
 /**
  * Eased rather than linear — a straight alpha ramp puts a perceptible edge at
@@ -56,8 +55,14 @@ function withAlpha(hex: string, alpha: number): string {
   return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 }
 
-export function MiniPlayerScrim() {
+export function MiniPlayerScrim({
+  height = DEFAULT_HEIGHT,
+}: {
+  /** Taller screen-owned chrome can extend the same fade without inventing a second visual. */
+  height?: number;
+} = {}) {
   const colors = useColors();
+  const safeHeight = Math.max(0, height);
   // `bgPrimary` is guaranteed 6-digit hex by the palette invariant, so the
   // 8-digit alpha suffix is safe (same idiom as NowPlayingWash).
   const { gradientColors, positions } = useMemo(() => ({
@@ -65,13 +70,15 @@ export function MiniPlayerScrim() {
     positions: RAMP.map(([at]) => at),
   }), [colors.bgPrimary]);
 
+  if (safeHeight === 0) return null;
+
   return (
-    <View pointerEvents="none" style={styles.band}>
+    <View pointerEvents="none" style={[styles.band, { height: safeHeight }]}>
       <Canvas style={StyleSheet.absoluteFill}>
         <Fill>
           <LinearGradient
             start={vec(0, 0)}
-            end={vec(0, HEIGHT)}
+            end={vec(0, safeHeight)}
             colors={gradientColors}
             positions={positions}
           />
@@ -89,7 +96,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: HEIGHT,
   },
 });
 

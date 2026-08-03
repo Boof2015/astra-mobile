@@ -8,6 +8,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import {
+  ScreenHeader,
+  ScreenHeaderAction,
+  useScreenHeader,
+} from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
@@ -49,6 +54,7 @@ export default function LastFmScreen() {
   const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const header = useScreenHeader({ actionCount: 1 });
   const status = useLastFmSettingsStore((s) => s.status);
   const authHint = useLastFmSettingsStore((s) => s.authHint);
   const errorMessage = useLastFmSettingsStore((s) => s.errorMessage);
@@ -199,28 +205,15 @@ export default function LastFmScreen() {
   };
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-          <Text variant="body" color={colors.textSecondary}>
-            Settings
-          </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded}
-          onPress={() => router.push('/lastfm/edit')}
-          hitSlop={8}
-          accessibilityLabel="Add destination"
-        >
-          <Ionicons name="add" size={26} color={colors.accent} />
-        </Pressable>
-      </View>
-
-      <Text variant="title" style={styles.heading}>
-        Scrobbling
-      </Text>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    // The header is an overlay the content scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the ScrollView.
+    <Screen padded={false} style={styles.screen}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+      >
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={styles.toggleText}>
@@ -289,27 +282,32 @@ export default function LastFmScreen() {
           seconds are skipped. Failed scrobbles queue offline and retry automatically.
         </Text>
       </ScrollView>
+
+      <ScreenHeader
+        header={header}
+        title="Scrobbling"
+        backLabel="Settings"
+        onBack={() => router.back()}
+        actions={
+          <ScreenHeaderAction
+            onPress={() => router.push('/lastfm/edit')}
+            accessibilityLabel="Add destination"
+          >
+            <Ionicons name="add" size={26} color={colors.accent} />
+          </ScreenHeaderAction>
+        }
+      />
     </Screen>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  heading: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the ScrollView pays the inset.
+  screen: {
+    paddingTop: 0,
   },
   content: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
   card: {

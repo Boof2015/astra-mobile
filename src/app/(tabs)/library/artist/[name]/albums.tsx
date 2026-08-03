@@ -1,5 +1,4 @@
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -7,19 +6,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useNativeArtistAlbums } from '@/library/nativePages';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export default function ArtistAlbumsScreen() {
   const sceneBottomInset = useSceneBottomInset();
-  const colors = useColors();
-  const ripple = useRipple();
+  const header = useScreenHeader({ hasSubtitle: true });
   const router = useRouter();
   const { name = 'Artist', credit } = useLocalSearchParams<{
     name: string;
@@ -30,28 +28,16 @@ export default function ArtistAlbumsScreen() {
   const page = useNativeArtistAlbums(name, detailGroupingMode);
 
   return (
-    <Screen>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-          {name}
-        </Text>
-      </Pressable>
-
-      <View style={styles.heading}>
-        <Text variant="title" numberOfLines={1}>
-          Albums
-        </Text>
-        <Text variant="label">
-          {formatCount(page.totalCount, 'album')}
-        </Text>
-      </View>
-
+    // The header is an overlay the grid scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the grid itself.
+    <Screen padded={false} style={styles.screen}>
       <FlashList
         data={page.items}
         numColumns={2}
         keyExtractor={(album) => album.identity_key}
         showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
         onEndReached={() => void page.loadMore()}
         onEndReachedThreshold={2}
         renderItem={({ item }) => (
@@ -68,7 +54,19 @@ export default function ArtistAlbumsScreen() {
           </View>
         )}
         ListEmptyComponent={<EmptyList label="No albums found for this artist." />}
-        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+        contentContainerStyle={{
+          paddingTop: header.contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: sceneBottomInset,
+        }}
+      />
+
+      <ScreenHeader
+        header={header}
+        title="Albums"
+        subtitle={formatCount(page.totalCount, 'album')}
+        backLabel={name}
+        onBack={() => router.back()}
       />
     </Screen>
   );
@@ -91,18 +89,9 @@ function formatCount(count: number, noun: string): string {
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  heading: {
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the grid pays the inset instead.
+  screen: {
+    paddingTop: 0,
   },
   gridCell: {
     flex: 1,

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
@@ -11,12 +12,19 @@ import {
   View,
   Pressable,
   StyleSheet,
-  useWindowDimensions
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import {
+  ScreenHeader,
+  ScreenHeaderAction,
+  useScreenHeader,
+} from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { ViewModeSwitcher } from '@/components/library/ViewModeSwitcher';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
@@ -25,6 +33,8 @@ import { AlbumRow } from '@/components/library/AlbumRow';
 import { ArtistRow } from '@/components/library/ArtistRow';
 import { TrackRow } from '@/components/library/TrackRow';
 import { FoldersView } from '@/components/library/FoldersView';
+import { LibraryContextBar } from '@/components/library/LibraryContextBar';
+import { MiniPlayerScrim } from '@/components/MiniPlayerScrim';
 import { PlaylistsView } from '@/components/library/PlaylistsView';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { EmptyLibrary } from '@/components/library/EmptyLibrary';
@@ -34,7 +44,8 @@ import { SelectionActionBar } from '@/components/library/SelectionActionBar';
 import {
   AppSheet,
   AppSheetItem,
-  AppSheetSection
+  AppSheetSection,
+  AppSheetTitle,
 } from '@/components/sheets/AppSheet';
 import { PlaylistPickerSheet } from '@/components/sheets/PlaylistPickerSheet';
 import {
@@ -45,11 +56,22 @@ import {
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
-import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
+import { useShellLayout } from '@/navigation/useShellLayout';
 import { useTabReselect } from '@/navigation/useTabReselect';
 import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
 import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 import { needsWindowRewind } from '@/library/libraryWindowTop';
+import {
+  flashListInitialAnchor,
+  libraryContextBottomClearance,
+  libraryContextOverlayHeight,
+  libraryContextScrimHeight,
+} from '@/library/libraryViewPresentation';
+import {
+  LIBRARY_VIEW_MODES,
+  type LibraryViewMode,
+} from '@/library/libraryViewMode';
+import { useMiniPlayerVisible } from '@/playback/useMiniPlayerVisible';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -95,6 +117,47 @@ const JUMP_DEBOUNCE_MS = 100;
  */
 const END_REACHED_THRESHOLD = 2;
 const START_REACHED_THRESHOLD = 0.5;
+const MODE_SHEET_ICONS: Record<LibraryViewMode, keyof typeof Ionicons.glyphMap> = {
+  albums: 'albums-outline',
+  artists: 'people-outline',
+  tracks: 'musical-notes-outline',
+  playlists: 'list-outline',
+  folders: 'folder-outline',
+};
+
+/**
+ * The pinned chrome deck, in declared slots.
+ *
+ * Unlike the other eight screens, Library has controls between its title and its
+ * list that must stay reachable, so the collapsing header carries them and the
+ * lists must clear them. That total has to be a number we *choose*: the header's
+ * height and the lists' top padding both come from it, and a measured value on a
+ * screen with `initialScrollIndex` A-Z jumps is the trap that broke the first
+ * attempt at this feature.
+ *
+ * Each slot is enforced with an explicit `height` on the block that fills it, so
+ * the declaration is true by construction. They are generous on purpose:
+ * `SegmentedControl` has no declared line height of its own, so its natural size
+ * is the font's business, and a slot it can grow into beats a number that has to
+ * predict it.
+ */
+const CHROME_SWITCHER_H = 44;
+const CHROME_CONTROLS_H = 32;
+const CHROME_SCAN_H = 34;
+const CHROME_ERROR_H = 34;
+const CHROME_GAP = spacing.sm;
+
+function libraryChromeHeight(options: {
+  scanning: boolean;
+  scanError: boolean;
+  controls: boolean;
+}): number {
+  let height = CHROME_SWITCHER_H;
+  if (options.scanning) height += CHROME_GAP + CHROME_SCAN_H;
+  if (options.scanError) height += CHROME_GAP + CHROME_ERROR_H;
+  if (options.controls) height += CHROME_GAP + CHROME_CONTROLS_H;
+  return height;
+}
 
 export default function LibraryScreen() {
   const colors = useColors();
@@ -134,12 +197,17 @@ export default function LibraryScreen() {
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
-  const showScreenTitle = useShellShowsScreenTitle();
-  const sceneBottomInset = useSceneBottomInset();
+  const shell = useShellLayout();
+  const phoneContextBar = shell.mode === 'tabs';
+  const showScreenTitle = shell.mode !== 'rail';
+  const sceneBottomInset = shell.sceneBottomInset;
+  const miniPlayerVisible = useMiniPlayerVisible();
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
+  const [modeSheetOpen, setModeSheetOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
+  const [playlistAddMenuOpen, setPlaylistAddMenuOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
@@ -181,6 +249,38 @@ export default function LibraryScreen() {
       libraryStatus === 'degraded' ||
       libraryStatus === 'fatalUserData'
     );
+
+  const sortable =
+    viewMode === 'tracks' || viewMode === 'albums' || viewMode === 'artists';
+  const header = useScreenHeader({
+    // In rail mode the rail names the destination, so the header contributes no
+    // title and no bar — only the chrome the lists still have to clear.
+    hasTitle: showScreenTitle,
+    hasBack: false,
+    actionCount: !phoneContextBar && showScreenTitle && !showLibraryStatus ? 1 : 0,
+    chromeHeight: showLibraryStatus || phoneContextBar
+      ? 0
+      : libraryChromeHeight({
+          scanning: isScanning,
+          scanError: Boolean(scanError),
+          controls: selectMode || sortable,
+        }),
+  });
+  const resetHeader = header.resetScroll;
+  const initialScrollIndex = flashListInitialAnchor(jumpAnchorIndex);
+  // A value of `undefined` is not enough here: construct no prop at all at the
+  // catalog head so FlashList cannot enqueue an item-0 correction.
+  const initialAnchorProps = initialScrollIndex === undefined
+    ? {}
+    : { initialScrollIndex };
+  const contextBottomClearance = libraryContextBottomClearance(
+    sceneBottomInset,
+    miniPlayerVisible
+  );
+  const contextOverlayHeight = libraryContextOverlayHeight(contextBottomClearance);
+  const listBottomPadding = phoneContextBar
+    ? contextOverlayHeight + spacing.lg
+    : sceneBottomInset;
 
   const sortedTracks = viewMode === 'tracks' ? tracks : [];
   const sortedAlbums = viewMode === 'albums' ? albums : [];
@@ -226,9 +326,15 @@ export default function LibraryScreen() {
     void jumpToSection(anchor.cursor).then((applied) => {
       // A jump usually lands with a page of rows above it, so the list is not at true
       // top and pull-to-search must stay disarmed.
-      if (applied) scrollTop.setScrollAtTop(useLibraryStore.getState().jumpAnchorIndex === 0);
+      if (!applied) return;
+      const atHead = useLibraryStore.getState().jumpAnchorIndex === 0;
+      scrollTop.setScrollAtTop(atHead);
+      // A positive anchor is logically mid-catalog and FlashList will position
+      // it after mount; its native event deliberately keeps the header compact.
+      // Only the first anchor represents the actual head.
+      if (atHead) resetHeader();
     });
-  }, [jumpToSection, scrollTop]);
+  }, [jumpToSection, resetHeader, scrollTop]);
 
   const jumpToLetter = useCallback((letter: string) => {
     if (pendingJump.current) clearTimeout(pendingJump.current.timer);
@@ -283,8 +389,10 @@ export default function LibraryScreen() {
       });
       // A programmatic scroll gives the gate no onScroll it can rely on, so arm
       // it directly — the same thing a rail jump (:200), a layout change and a
-      // view-mode change already do.
+      // view-mode change already do. The header is deaf to it for the same
+      // reason and would stay collapsed over a list already back at row 0.
       setScrollAtTop(true);
+      resetHeader();
       return;
     }
     // Rows exist above the loaded window (an A-Z jump put them there), so offset
@@ -293,9 +401,12 @@ export default function LibraryScreen() {
     // resolves matters: doing it up front would let a pull open search while the
     // list is still showing mid-catalog rows at a non-zero offset.
     void useLibraryStore.getState().rewindToHead().then((applied) => {
-      if (applied) setScrollAtTop(true);
+      if (applied) {
+        setScrollAtTop(true);
+        resetHeader();
+      }
     });
-  }, [scrollOffsetRef, setScrollAtTop, windowHeight]);
+  }, [resetHeader, scrollOffsetRef, setScrollAtTop, windowHeight]);
 
   useTabReselect('library', scrollToLibraryTop);
 
@@ -321,6 +432,18 @@ export default function LibraryScreen() {
     setSelectMode(false);
     setSelectedIds(new Set());
     setPlaylistPickerOpen(false);
+  };
+
+  const changeViewMode = (mode: LibraryViewMode) => {
+    setModeSheetOpen(false);
+    setSortSheetOpen(false);
+    setLayoutSheetOpen(false);
+    setPlaylistAddMenuOpen(false);
+    if (selectMode) exitSelection();
+    if (mode === viewMode) return;
+    // setViewMode clears the shared A-Z anchor. The post-commit effect below
+    // resets header + pull-search only after the incoming list is the live one.
+    setViewMode(mode);
   };
 
   // Focus-gated, not a plain effect: the tabs layout keeps this screen mounted
@@ -355,7 +478,6 @@ export default function LibraryScreen() {
   };
 
   // One sort trigger + sheet across the three sortable views.
-  const sortable = viewMode === 'tracks' || viewMode === 'albums' || viewMode === 'artists';
   const sortLabel =
     viewMode === 'tracks'
       ? TRACK_SORT_LABELS[trackSort]
@@ -400,118 +522,170 @@ export default function LibraryScreen() {
   const albumColumns = libraryGridColumns(albumLayout, gridWidth);
   const artistColumns = libraryGridColumns(artistLayout, gridWidth);
 
+  const surfaceHeadIdentity =
+    viewMode === 'albums'
+      ? `albums:${albumSort}:${albumLayout}:${albumColumns}`
+      : viewMode === 'artists'
+        ? `artists:${artistSort}:${artistLayout}:${artistColumns}`
+        : viewMode === 'tracks'
+          ? `tracks:${trackSort}`
+          : viewMode;
+  const listMountIdentity = `${surfaceHeadIdentity}:${sectionJumpRevision}`;
+  const activeListMountIdentity = useRef(listMountIdentity);
+  useLayoutEffect(() => {
+    activeListMountIdentity.current = listMountIdentity;
+  }, [listMountIdentity]);
+
+  useEffect(() => {
+    if (jumpAnchorIndex > 0) return;
+    setScrollAtTop(true);
+    resetHeader();
+  }, [
+    jumpAnchorIndex,
+    resetHeader,
+    sectionJumpRevision,
+    setScrollAtTop,
+    surfaceHeadIdentity,
+  ]);
+
   const setActiveLayout = (layout: LibraryLayout) => {
-    scrollTop.setScrollAtTop(true);
     if (viewMode === 'albums') setAlbumLayout(layout);
     if (viewMode === 'artists') setArtistLayout(layout);
   };
 
-  return (
-    <Screen>
-      <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
-        {/* The rail already names this destination, so in landscape the title
-            row is the same word twice for ~80dp of a 411dp-tall window. Search
-            moves in beside the switcher; pull-to-search still works either way. */}
-        {showScreenTitle ? (
-          <View style={styles.headingRow}>
-            <Text variant="title" style={styles.heading}>
-              Library
-            </Text>
-            {!showLibraryStatus ? (
-              <Pressable android_ripple={ripple.bounded}
-                hitSlop={8}
-                onPress={() => openQuickSearch()}
-                accessibilityRole="button"
-                accessibilityLabel="Search library"
-              >
-                <Ionicons name="search" size={22} color={colors.textSecondary} />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+  // Two independent consumers of the same scroll: the pull-to-search gate and
+  // the collapsing header. Neither owns the list, so the screen fans out.
+  const onListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // Native scroll delivery can trail an unmount. A section, sort, layout, or
+    // A-Z remount must not inherit one last offset from the surface it replaced.
+    if (activeListMountIdentity.current !== listMountIdentity) return;
+    scrollTop.onScroll(event);
+    header.onScroll(event);
+  };
 
+  const inlineStatus = phoneContextBar && (isScanning || scanError) ? (
+    <View style={styles.inlineStatus}>
+      {isScanning ? <ScanProgress /> : null}
+      {scanError ? (
+        <Text variant="caption" color={colors.warning} numberOfLines={2}>
+          Scan problem: {scanError}
+        </Text>
+      ) : null}
+    </View>
+  ) : null;
+
+  // Wide windows can afford the pinned segmented deck. Phones deliberately
+  // leave `chromeHeight` at zero and use the thumb-reachable bar below.
+  const chrome = showLibraryStatus || phoneContextBar ? null : (
+    <>
+      <View
+        style={[
+          styles.switcher,
+          { height: CHROME_SWITCHER_H },
+          !showScreenTitle && styles.switcherRow,
+        ]}
+      >
+        {/* Only in rail mode, where the parent is a row. In portrait the
+            parent is a column, and `flex: 1` there resolves against the
+            height — collapsing the switcher to nothing. */}
+        <View style={!showScreenTitle ? styles.switcherFill : undefined}>
+          <ViewModeSwitcher
+            value={viewMode}
+            onChange={changeViewMode}
+          />
+        </View>
+        {/* The rail already names this destination, so in landscape there is no
+            title row to carry search and it moves in beside the switcher. */}
+        {!showScreenTitle ? (
+          <Pressable android_ripple={ripple.bounded}
+            hitSlop={8}
+            style={styles.switcherSearch}
+            onPress={() => openQuickSearch()}
+            accessibilityRole="button"
+            accessibilityLabel="Search library"
+          >
+            <Ionicons name="search" size={22} color={colors.textSecondary} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {isScanning ? (
+        <View style={[styles.chromeSlot, { height: CHROME_SCAN_H }]}>
+          <ScanProgress />
+        </View>
+      ) : null}
+      {scanError ? (
+        <Text
+          variant="caption"
+          color={colors.warning}
+          style={[styles.error, { height: CHROME_ERROR_H }]}
+          numberOfLines={2}
+        >
+          Scan problem: {scanError}
+        </Text>
+      ) : null}
+
+      {selectMode ? (
+        <View style={[styles.selectionHeader, { height: CHROME_CONTROLS_H }]}>
+          <Text variant="label">
+            {selectedIds.size} selected
+          </Text>
+          <Pressable android_ripple={ripple.bounded} onPress={exitSelection} hitSlop={8} accessibilityRole="button">
+            <Text variant="label" color={colors.accentText}>
+              Cancel
+            </Text>
+          </Pressable>
+        </View>
+      ) : sortable ? (
+        <View style={[styles.controlsRow, { height: CHROME_CONTROLS_H }]}>
+          <Pressable android_ripple={ripple.bounded}
+            style={styles.sortTrigger}
+            onPress={() => setSortSheetOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by ${sortLabel}`}
+          >
+            <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
+            <Text variant="label">{sortLabel}</Text>
+          </Pressable>
+          {activeLayout && activeLayoutLabel ? (
+            <Pressable
+              android_ripple={ripple.bounded}
+              style={styles.layoutTrigger}
+              hitSlop={8}
+              onPress={() => setLayoutSheetOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Change ${viewMode} layout. Current layout: ${activeLayoutLabel}`}
+            >
+              <Ionicons
+                name={activeLayout === 'list' ? 'list-outline' : 'grid-outline'}
+                size={18}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
+
+  return (
+    // The header is an overlay the lists scroll under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the lists.
+    <Screen padded={false} style={styles.screen}>
+      <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
         {showLibraryStatus ? (
-          <EmptyLibrary />
+          <View style={[styles.statusArea, { paddingTop: header.contentPaddingTop }]}>
+            <EmptyLibrary />
+          </View>
         ) : (
           <>
-            <View style={[styles.switcher, !showScreenTitle && styles.switcherRow]}>
-              {/* Only in rail mode, where the parent is a row. In portrait the
-                  parent is a column, and `flex: 1` there resolves against the
-                  height — collapsing the switcher to nothing. */}
-              <View style={!showScreenTitle ? styles.switcherFill : undefined}>
-                <ViewModeSwitcher
-                  value={viewMode}
-                  onChange={(mode) => {
-                    if (selectMode) exitSelection();
-                    setLayoutSheetOpen(false);
-                    scrollTop.setScrollAtTop(true);
-                    setViewMode(mode);
-                  }}
-                />
-              </View>
-              {!showScreenTitle ? (
-                <Pressable android_ripple={ripple.bounded}
-                  hitSlop={8}
-                  style={styles.switcherSearch}
-                  onPress={() => openQuickSearch()}
-                  accessibilityRole="button"
-                  accessibilityLabel="Search library"
-                >
-                  <Ionicons name="search" size={22} color={colors.textSecondary} />
-                </Pressable>
-              ) : null}
-            </View>
-            <ScanProgress />
-            {scanError ? (
-              <Text variant="caption" color={colors.warning} style={styles.error} numberOfLines={2}>
-                Scan problem: {scanError}
-              </Text>
-            ) : null}
-
-            {selectMode ? (
-              <View style={styles.selectionHeader}>
-                <Text variant="label">
-                  {selectedIds.size} selected
-                </Text>
-                <Pressable android_ripple={ripple.bounded} onPress={exitSelection} hitSlop={8} accessibilityRole="button">
-                  <Text variant="label" color={colors.accentText}>
-                    Cancel
-                  </Text>
-                </Pressable>
-              </View>
-            ) : sortable ? (
-              <View style={styles.controlsRow}>
-                <Pressable android_ripple={ripple.bounded}
-                  style={styles.sortTrigger}
-                  onPress={() => setSortSheetOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Sort by ${sortLabel}`}
-                >
-                  <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
-                  <Text variant="label">{sortLabel}</Text>
-                </Pressable>
-                {activeLayout && activeLayoutLabel ? (
-                  <Pressable
-                    android_ripple={ripple.bounded}
-                    style={styles.layoutTrigger}
-                    hitSlop={8}
-                    onPress={() => setLayoutSheetOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Change ${viewMode} layout. Current layout: ${activeLayoutLabel}`}
-                  >
-                    <Ionicons
-                      name={activeLayout === 'list' ? 'list-outline' : 'grid-outline'}
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
             <View
               style={styles.listArea}
-              onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+              // The lists pay the gutter inside their content container now, so
+              // the grid's usable width is this box less that declared padding.
+              onLayout={(e) =>
+                setGridWidth(Math.max(0, e.nativeEvent.layout.width - spacing.lg * 2))
+              }
             >
               {viewMode === 'albums' ? (
                 <FlashList
@@ -522,11 +696,16 @@ export default function LibraryScreen() {
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+                  contentContainerStyle={{
+                    paddingTop: header.contentPaddingTop,
+                    paddingHorizontal: spacing.lg,
+                    paddingBottom: listBottomPadding,
+                  }}
+                  ListHeaderComponent={inlineStatus ?? undefined}
                   renderScrollComponent={PullSearchScrollView}
-                  onScroll={scrollTop.onScroll}
+                  onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
-                  initialScrollIndex={jumpAnchorIndex}
+                  {...initialAnchorProps}
                   onEndReached={() => void loadNextAlbums()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousAlbums()}
@@ -569,11 +748,16 @@ export default function LibraryScreen() {
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+                  contentContainerStyle={{
+                    paddingTop: header.contentPaddingTop,
+                    paddingHorizontal: spacing.lg,
+                    paddingBottom: listBottomPadding,
+                  }}
+                  ListHeaderComponent={inlineStatus ?? undefined}
                   renderScrollComponent={PullSearchScrollView}
-                  onScroll={scrollTop.onScroll}
+                  onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
-                  initialScrollIndex={jumpAnchorIndex}
+                  {...initialAnchorProps}
                   onEndReached={() => void loadNextArtists()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousArtists()}
@@ -615,11 +799,16 @@ export default function LibraryScreen() {
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
-                  contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+                  contentContainerStyle={{
+                    paddingTop: header.contentPaddingTop,
+                    paddingHorizontal: spacing.lg,
+                    paddingBottom: listBottomPadding,
+                  }}
+                  ListHeaderComponent={inlineStatus ?? undefined}
                   renderScrollComponent={PullSearchScrollView}
-                  onScroll={scrollTop.onScroll}
+                  onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
-                  initialScrollIndex={jumpAnchorIndex}
+                  {...initialAnchorProps}
                   onEndReached={() => void loadNextTracks()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousTracks()}
@@ -644,32 +833,90 @@ export default function LibraryScreen() {
               {viewMode === 'playlists' ? (
                 <PlaylistsView
                   listRef={setPlaylistList}
-                  onScroll={scrollTop.onScroll}
+                  onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  contentPaddingTop={header.contentPaddingTop}
+                  contentPaddingBottom={listBottomPadding}
+                  listHeader={inlineStatus}
+                  addMenuOpen={playlistAddMenuOpen}
+                  onCloseAddMenu={() => setPlaylistAddMenuOpen(false)}
                 />
               ) : null}
 
               {viewMode === 'folders' ? (
                 <FoldersView
                   listRef={setFolderList}
-                  onScroll={scrollTop.onScroll}
+                  onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
+                  contentPaddingTop={header.contentPaddingTop}
+                  contentPaddingBottom={listBottomPadding}
+                  listHeader={inlineStatus}
                 />
               ) : null}
 
               {railVisible ? (
-                <AlphabetRail
-                  activeLetters={railLetters}
-                  onJumpToLetter={jumpToLetter}
-                  onScrubEnd={flushJump}
-                />
+                // The list area now runs the full height of the screen, behind
+                // the header. The rail centres itself in its parent and hangs
+                // off its right edge, so it needs a box that matches the part of
+                // the list a finger can actually reach.
+                <View
+                  style={[styles.railArea, { top: header.contentPaddingTop }]}
+                  pointerEvents="box-none"
+                >
+                  <AlphabetRail
+                    activeLetters={railLetters}
+                    onJumpToLetter={jumpToLetter}
+                    onScrubEnd={flushJump}
+                  />
+                </View>
               ) : null}
             </View>
           </>
         )}
+
+        <ScreenHeader
+          header={header}
+          title="Library"
+          chrome={chrome}
+          actions={
+            !phoneContextBar && showScreenTitle && !showLibraryStatus ? (
+              <ScreenHeaderAction onPress={() => openQuickSearch()} accessibilityLabel="Search library">
+                <Ionicons name="search" size={22} color={colors.textSecondary} />
+              </ScreenHeaderAction>
+            ) : undefined
+          }
+        />
       </PullSearchGesture>
 
-      {selectMode && viewMode === 'tracks' ? (
+      {phoneContextBar && !showLibraryStatus ? (
+        <>
+          <MiniPlayerScrim height={libraryContextScrimHeight(contextBottomClearance)} />
+          <LibraryContextBar
+            mode={viewMode}
+            bottomClearance={contextBottomClearance}
+            onOpenModePicker={() => setModeSheetOpen(true)}
+            onSearch={() => openQuickSearch()}
+            onSort={sortable ? () => setSortSheetOpen(true) : undefined}
+            sortLabel={sortable ? sortLabel : undefined}
+            onLayout={activeLayout ? () => setLayoutSheetOpen(true) : undefined}
+            layoutLabel={activeLayoutLabel ?? undefined}
+            onAddPlaylist={
+              viewMode === 'playlists' ? () => setPlaylistAddMenuOpen(true) : undefined
+            }
+            selection={
+              selectMode && viewMode === 'tracks'
+                ? {
+                    count: selectedIds.size,
+                    onPlayNext: batchPlayNext,
+                    onAddToQueue: batchAddToQueue,
+                    onAddToPlaylist: () => setPlaylistPickerOpen(true),
+                    onCancel: exitSelection,
+                  }
+                : undefined
+            }
+          />
+        </>
+      ) : !phoneContextBar && selectMode && viewMode === 'tracks' ? (
         <SelectionActionBar
           count={selectedIds.size}
           onPlayNext={batchPlayNext}
@@ -689,6 +936,20 @@ export default function LibraryScreen() {
             exitSelection();
           }}
         />
+      ) : null}
+      {modeSheetOpen ? (
+        <AppSheet onClose={() => setModeSheetOpen(false)}>
+          <AppSheetTitle title="Browse Library" />
+          {LIBRARY_VIEW_MODES.map((mode) => (
+            <AppSheetItem
+              key={mode.key}
+              label={mode.label}
+              icon={MODE_SHEET_ICONS[mode.key]}
+              selected={mode.key === viewMode}
+              onPress={() => changeViewMode(mode.key)}
+            />
+          ))}
+        </AppSheet>
       ) : null}
       {sortSheetOpen ? (
         <AppSheet onClose={() => setSortSheetOpen(false)}>
@@ -729,18 +990,29 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.xl,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the lists pay the inset instead.
+  screen: {
+    paddingTop: 0,
   },
-  heading: {
+  // No list to scroll here, so this one pays the header as plain padding.
+  statusArea: {
     flex: 1,
+    paddingHorizontal: spacing.lg,
   },
+  inlineStatus: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  // Each chrome block fills the slot `libraryChromeHeight` reserved for it, so
+  // the reservation is enforced rather than predicted. Margins are gone: the
+  // gaps live in the slot arithmetic now.
   switcher: {
-    marginBottom: spacing.md,
+    justifyContent: 'center',
+    marginBottom: CHROME_GAP,
+  },
+  chromeSlot: {
+    justifyContent: 'center',
+    marginBottom: CHROME_GAP,
   },
   // Rail mode: the switcher shares its row with search, since the title row
   // that used to carry search is gone.
@@ -748,7 +1020,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginTop: spacing.sm,
   },
   switcherFill: {
     flex: 1,
@@ -758,14 +1029,14 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   error: {
-    marginBottom: spacing.md,
+    textAlignVertical: 'center',
+    marginBottom: CHROME_GAP,
   },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.md,
-    marginBottom: spacing.xs,
   },
   sortTrigger: {
     flexDirection: 'row',
@@ -781,8 +1052,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.xs,
   },
   gridCell: {
     flex: 1,
@@ -790,6 +1059,14 @@ const styles = StyleSheet.create({
   },
   listArea: {
     flex: 1,
+  },
+  // Spans the reachable list only, and re-establishes the right gutter the
+  // lists now pay inside their content container — the rail overhangs it.
+  railArea: {
+    position: 'absolute',
+    left: 0,
+    right: spacing.lg,
+    bottom: 0,
   },
   listFooter: {
     paddingVertical: spacing.lg,

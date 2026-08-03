@@ -26,9 +26,10 @@ import {
   parseLibraryLayout,
   type LibraryLayout,
 } from '@/library/libraryLayout';
+import type { LibraryViewMode } from '@/library/libraryViewMode';
 import { useSettingsStore } from './settingsStore';
 
-type ViewMode = 'tracks' | 'albums' | 'artists' | 'playlists' | 'folders';
+type ViewMode = LibraryViewMode;
 
 const VIEW_MODE_KEY = 'library_view_mode';
 const TRACK_SORT_KEY = 'library_track_sort';
@@ -957,11 +958,48 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     setViewMode: (viewMode) => {
       anchorGeneration += 1;
-      set({ viewMode, sectionAnchors: [] });
+      const current = get();
+      const staleTrackWindow = viewMode === 'tracks' && current.trackPrevCursor !== null;
+      const staleAlbumWindow = viewMode === 'albums' && current.albumPrevCursor !== null;
+      const staleArtistWindow = viewMode === 'artists' && current.artistPrevCursor !== null;
+      set({
+        viewMode,
+        sectionAnchors: [],
+        jumpAnchorIndex: 0,
+        // Do not briefly present row 0 of a retained A-Z window as the catalog
+        // head. The head page below replaces these empty arrays asynchronously.
+        ...(staleTrackWindow ? {
+          tracks: [],
+          trackNextCursor: null,
+          trackPrevCursor: null,
+        } : {}),
+        ...(staleAlbumWindow ? {
+          albums: [],
+          albumNextCursor: null,
+          albumPrevCursor: null,
+        } : {}),
+        ...(staleArtistWindow ? {
+          artists: [],
+          artistNextCursor: null,
+          artistPrevCursor: null,
+        } : {}),
+      });
       persistSetting(VIEW_MODE_KEY, viewMode);
-      if (viewMode === 'tracks' && get().tracks.length === 0) void resetTracks();
-      if (viewMode === 'albums' && get().albums.length === 0) void resetAlbums();
-      if (viewMode === 'artists' && get().artists.length === 0) void resetArtists();
+      // A-Z windows are useful only while that surface remains active. Returning
+      // to a section means its catalog head, never index 0 of a retained
+      // mid-catalog window from another visit.
+      if (viewMode === 'tracks') {
+        if (staleTrackWindow) void resetTracks(true);
+        else if (current.tracks.length === 0) void resetTracks();
+      }
+      if (viewMode === 'albums') {
+        if (staleAlbumWindow) void resetAlbums(true);
+        else if (current.albums.length === 0) void resetAlbums();
+      }
+      if (viewMode === 'artists') {
+        if (staleArtistWindow) void resetArtists(true);
+        else if (current.artists.length === 0) void resetArtists();
+      }
       void resetSectionAnchors();
     },
 
@@ -1012,14 +1050,27 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
     setAlbumLayout: (albumLayout) => {
       if (get().albumLayout === albumLayout) return;
-      set({ albumLayout, jumpAnchorIndex: 0 });
+      const state = get();
+      const needsHeadRewind = state.albumPrevCursor !== null;
+      set({
+        albumLayout,
+        // Keep a genuine A-Z anchor compact until its head page has committed.
+        jumpAnchorIndex: needsHeadRewind ? state.jumpAnchorIndex : 0,
+      });
       persistSetting(ALBUM_LAYOUT_KEY, albumLayout);
+      if (needsHeadRewind) void resetAlbums(true);
     },
 
     setArtistLayout: (artistLayout) => {
       if (get().artistLayout === artistLayout) return;
-      set({ artistLayout, jumpAnchorIndex: 0 });
+      const state = get();
+      const needsHeadRewind = state.artistPrevCursor !== null;
+      set({
+        artistLayout,
+        jumpAnchorIndex: needsHeadRewind ? state.jumpAnchorIndex : 0,
+      });
       persistSetting(ARTIST_LAYOUT_KEY, artistLayout);
+      if (needsHeadRewind) void resetArtists(true);
     },
 
     setIncludeCollabArtists: (includeCollabArtists) => {

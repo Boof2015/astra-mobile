@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -8,12 +7,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -36,8 +35,7 @@ function EmptyList() {
 }
 
 export default function RecentlyPlayedScreen() {
-  const colors = useColors();
-  const ripple = useRipple();
+  const header = useScreenHeader({ hasSubtitle: true });
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -52,25 +50,15 @@ export default function RecentlyPlayedScreen() {
   };
 
   return (
-    <Screen>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary}>
-          Home
-        </Text>
-      </Pressable>
-
-      <View style={styles.heading}>
-        <Text variant="title" numberOfLines={1}>
-          Recently Played
-        </Text>
-        <Text variant="label">{formatCount(tracks.length, 'track')}</Text>
-      </View>
-
+    // The header is an overlay the list scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the list itself.
+    <Screen padded={false} style={styles.screen}>
       <FlashList
         data={tracks}
         keyExtractor={(track) => track.path}
         showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
         renderItem={({ item, index }) => (
           <TrackRow
             track={item}
@@ -82,27 +70,29 @@ export default function RecentlyPlayedScreen() {
           />
         )}
         ListEmptyComponent={<EmptyList />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: header.contentPaddingTop }]}
       />
+
+      <ScreenHeader
+        header={header}
+        title="Recently Played"
+        subtitle={formatCount(tracks.length, 'track')}
+        backLabel="Home"
+        onBack={() => router.back()}
+      />
+
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    alignSelf: 'flex-start',
-  },
-  heading: {
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the list pays the inset instead.
+  screen: {
+    paddingTop: 0,
   },
   listContent: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
   emptyState: {

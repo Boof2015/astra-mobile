@@ -12,8 +12,11 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import {
+  MAX_FONT_SCALE,
   fonts,
+  fontSize,
   radius,
+  variantLineHeight,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
@@ -122,7 +125,14 @@ function SegmentButton({
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
-      <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+      <Animated.Text
+        style={[styles.label, labelStyle]}
+        numberOfLines={1}
+        // Without these the control's height is the font's business, and it
+        // grows without bound on a large system font setting. Library reserves a
+        // declared slot for this control, so its height has to be knowable.
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+      >
         {label}
       </Animated.Text>
     </Pressable>
@@ -164,7 +174,10 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: 7,
   },
   label: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
+    // Explicit, for the reason theme/typography.ts gives: without it the line box
+    // comes from the font's own metrics and differs by OEM.
+    lineHeight: variantLineHeight.label,
     fontFamily: fonts.sans.medium,
   },
 }));

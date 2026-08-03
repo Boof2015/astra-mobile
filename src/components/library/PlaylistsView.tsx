@@ -1,8 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   View,
-  Pressable,
-  StyleSheet,
   type NativeScrollEvent,
   type NativeSyntheticEvent
 } from 'react-native';
@@ -20,12 +18,8 @@ import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { PlaylistRow } from '@/components/library/PlaylistRow';
 import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 import { PullSearchScrollView } from '@/components/search/PullSearchGesture';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Playlist } from '@/types/playlist';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
@@ -45,16 +39,29 @@ type Prompt = { kind: 'create' } | { kind: 'rename'; playlist: Playlist } | null
 export function PlaylistsView({
   onScroll,
   scrollEventThrottle,
+  contentPaddingTop = 0,
+  contentPaddingBottom,
+  listHeader,
+  addMenuOpen = false,
+  onCloseAddMenu,
   listRef,
 }: {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
+  /** What the list owes so it clears Library's collapsing header. */
+  contentPaddingTop?: number;
+  /** Bottom breathing room after the shell or Library accessory has been paid. */
+  contentPaddingBottom?: number;
+  /** Phone-only scan/error content that scrolls away with the playlist rows. */
+  listHeader?: ReactNode;
+  /** Controlled by Library's contextual add action on phones. */
+  addMenuOpen?: boolean;
+  onCloseAddMenu?: () => void;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
 }) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -67,7 +74,6 @@ export function PlaylistsView({
 
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [menuFor, setMenuFor] = useState<Playlist | 'favorites' | null>(null);
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
 
   const handleExport = async (target: number | 'favorites') => {
     try {
@@ -191,16 +197,23 @@ export function PlaylistsView({
         renderScrollComponent={PullSearchScrollView}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
-        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+        contentContainerStyle={{
+          paddingTop: contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: contentPaddingBottom ?? sceneBottomInset,
+        }}
         ListHeaderComponent={
-          <PlaylistRow
-            name="Favorites"
-            trackCount={favoriteCount}
-            coverHash={null}
-            pinned
-            onPress={() => router.push('/library/playlist/favorites')}
-            onLongPress={() => setMenuFor('favorites')}
-          />
+          <>
+            {listHeader}
+            <PlaylistRow
+              name="Favorites"
+              trackCount={favoriteCount}
+              coverHash={null}
+              pinned
+              onPress={() => router.push('/library/playlist/favorites')}
+              onLongPress={() => setMenuFor('favorites')}
+            />
+          </>
         }
         renderItem={({ item }) => (
           <PlaylistRow
@@ -224,22 +237,6 @@ export function PlaylistsView({
         }
       />
 
-      {/* Pinned to the bottom of the scene, so it has to clear the floating
-          chrome the same way the lists above it do. */}
-      <View style={[styles.addBar, { paddingBottom: spacing.sm + sceneBottomInset }]}>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
-          style={styles.addButton}
-          onPress={() => setAddSheetOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Add playlist"
-        >
-          <Ionicons name="add" size={20} color={colors.accentTextStrong} />
-          <Text variant="body" color={colors.accentTextStrong}>
-            Add
-          </Text>
-        </Pressable>
-      </View>
-
       {menuFor !== null ? (
         <AppSheet onClose={() => setMenuFor(null)}>
           <AppSheetTitle title={menuFor === 'favorites' ? 'Favorites' : menuFor.name} />
@@ -248,14 +245,14 @@ export function PlaylistsView({
           ))}
         </AppSheet>
       ) : null}
-      {addSheetOpen ? (
-        <AppSheet onClose={() => setAddSheetOpen(false)}>
+      {addMenuOpen ? (
+        <AppSheet onClose={() => onCloseAddMenu?.()}>
           <AppSheetTitle title="Add playlist" />
           <AppSheetItem
             label="Standard playlist"
             icon="list-outline"
             onPress={() => {
-              setAddSheetOpen(false);
+              onCloseAddMenu?.();
               setPrompt({ kind: 'create' });
             }}
           />
@@ -263,7 +260,7 @@ export function PlaylistsView({
             label="Dynamic playlist"
             icon="sparkles-outline"
             onPress={() => {
-              setAddSheetOpen(false);
+              onCloseAddMenu?.();
               router.push('/library/playlist/edit-dynamic' as never);
             }}
           />
@@ -271,7 +268,7 @@ export function PlaylistsView({
             label="Import M3U"
             icon="document-text-outline"
             onPress={() => {
-              setAddSheetOpen(false);
+              onCloseAddMenu?.();
               void handleImport();
             }}
           />
@@ -309,24 +306,5 @@ const useStyles = createThemedStyles((colors) => ({
   emptyText: {
     textAlign: 'center',
     maxWidth: 260,
-  },
-  addBar: {
-    borderTopColor: colors.glassBorder,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.bgPrimary,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  addButton: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentGlow,
   },
 }));

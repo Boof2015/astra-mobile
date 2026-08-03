@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -40,6 +40,11 @@ const PAGE_SIZE = 100;
 interface FoldersViewProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
+  /** What the list owes so it clears Library's collapsing header. */
+  contentPaddingTop?: number;
+  contentPaddingBottom?: number;
+  /** Phone-only scan/error content that scrolls away with the folder rows. */
+  listHeader?: ReactNode;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
 }
@@ -207,7 +212,14 @@ function FolderTrackRow({
   );
 }
 
-export function FoldersView({ onScroll, scrollEventThrottle, listRef }: FoldersViewProps) {
+export function FoldersView({
+  onScroll,
+  scrollEventThrottle,
+  contentPaddingTop = 0,
+  contentPaddingBottom,
+  listHeader,
+  listRef,
+}: FoldersViewProps) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
@@ -319,12 +331,23 @@ export function FoldersView({ onScroll, scrollEventThrottle, listRef }: FoldersV
 
   if (rootIds.length === 0) {
     return (
-      <View style={styles.empty}>
-        <Ionicons name="folder-open-outline" size={36} color={colors.textTertiary} />
-        <Text variant="heading">No folders with tracks</Text>
-        <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
-          Add or rescan local folders in Settings.
-        </Text>
+      <View
+        style={[
+          styles.emptyShell,
+          {
+            paddingTop: contentPaddingTop,
+            paddingBottom: contentPaddingBottom ?? sceneBottomInset,
+          },
+        ]}
+      >
+        {listHeader}
+        <View style={styles.empty}>
+          <Ionicons name="folder-open-outline" size={36} color={colors.textTertiary} />
+          <Text variant="heading">No folders with tracks</Text>
+          <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
+            Add or rescan local folders in Settings.
+          </Text>
+        </View>
       </View>
     );
   }
@@ -340,7 +363,12 @@ export function FoldersView({ onScroll, scrollEventThrottle, listRef }: FoldersV
         renderScrollComponent={PullSearchScrollView}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
-        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+        contentContainerStyle={{
+          paddingTop: contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: contentPaddingBottom ?? sceneBottomInset,
+        }}
+        ListHeaderComponent={listHeader ? <>{listHeader}</> : undefined}
         renderItem={({ item }) => {
           if (item.type === 'folder') {
             return (
@@ -426,6 +454,10 @@ export function FoldersView({ onScroll, scrollEventThrottle, listRef }: FoldersV
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  emptyShell: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+  },
   indent: {
     flexShrink: 0,
   },

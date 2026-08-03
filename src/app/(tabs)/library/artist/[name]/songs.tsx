@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -8,12 +7,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -23,8 +22,7 @@ import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export default function ArtistSongsScreen() {
   const sceneBottomInset = useSceneBottomInset();
-  const colors = useColors();
-  const ripple = useRipple();
+  const header = useScreenHeader({ hasSubtitle: true });
   const router = useRouter();
   const { name = 'Artist', credit } = useLocalSearchParams<{
     name: string;
@@ -55,25 +53,15 @@ export default function ArtistSongsScreen() {
   };
 
   return (
-    <Screen>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-          {name}
-        </Text>
-      </Pressable>
-
-      <View style={styles.heading}>
-        <Text variant="title" numberOfLines={1}>
-          Songs
-        </Text>
-        <Text variant="label">{formatCount(totalCount, 'track')}</Text>
-      </View>
-
+    // The header is an overlay the list scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the list itself.
+    <Screen padded={false} style={styles.screen}>
       <FlashList
         data={tracks}
         keyExtractor={(track) => String(track.id)}
         showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={2}
         renderItem={({ item, index }) => (
@@ -88,7 +76,19 @@ export default function ArtistSongsScreen() {
           />
         )}
         ListEmptyComponent={<EmptyList label="No songs found for this artist." />}
-        contentContainerStyle={{ paddingBottom: sceneBottomInset }}
+        contentContainerStyle={{
+          paddingTop: header.contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: sceneBottomInset,
+        }}
+      />
+
+      <ScreenHeader
+        header={header}
+        title="Songs"
+        subtitle={formatCount(totalCount, 'track')}
+        backLabel={name}
+        onBack={() => router.back()}
       />
 
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
@@ -113,18 +113,9 @@ function formatCount(count: number, noun: string): string {
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  heading: {
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the list pays the inset instead.
+  screen: {
+    paddingTop: 0,
   },
   emptyState: {
     alignItems: 'center',

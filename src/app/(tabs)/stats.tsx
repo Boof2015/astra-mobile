@@ -12,6 +12,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ActivityChart } from '@/components/listening/ActivityChart';
@@ -223,9 +224,9 @@ function EmptyState({
 
 export default function ListeningStatsScreen() {
   const sceneBottomInset = useSceneBottomInset();
+  const header = useScreenHeader({ hasSubtitle: true });
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const router = useRouter();
   const openLibrary = useHomeLibraryNavigation();
   const range = useListeningStatsStore((s) => s.range);
@@ -303,34 +304,27 @@ export default function ListeningStatsScreen() {
     : false;
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable
-          style={styles.iconButton}
-          android_ripple={ripple.icon(22)}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back to Home"
-        >
-          <Ionicons name="chevron-back" size={23} color={colors.textPrimary} />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text variant="title" style={styles.headerTitle}>Listening Stats</Text>
-          <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-            {formatRecordedSince(dashboard?.status.startedAt ?? null)}
-          </Text>
-        </View>
-      </View>
-
+    // The header is an overlay the content scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the ScrollView.
+    <Screen padded={false} style={styles.screen}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: sceneBottomInset }]}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: header.contentPaddingTop, paddingBottom: sceneBottomInset },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => void load()}
             tintColor={colors.accent}
             colors={[colors.accent]}
+            // Android's SwipeRefreshLayout places the spinner against the
+            // ScrollView, not the content, so contentContainerStyle padding
+            // does not move it — without this it spins behind the header.
+            progressViewOffset={header.contentPaddingTop}
           />
         }
       >
@@ -448,37 +442,25 @@ export default function ListeningStatsScreen() {
           </>
         )}
       </ScrollView>
+
+      <ScreenHeader
+        header={header}
+        title="Listening Stats"
+        subtitle={formatRecordedSince(dashboard?.status.startedAt ?? null)}
+        backLabel="Home"
+        onBack={() => router.back()}
+      />
     </Screen>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  header: {
-    minHeight: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  headerTitle: {
-    fontSize: 22,
-    lineHeight: 27,
-  },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+  // The header draws behind the status bar; the ScrollView pays the inset.
+  screen: {
+    paddingTop: 0,
   },
   content: {
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
     gap: spacing.lg,
   },
   pausedBanner: {
