@@ -83,6 +83,45 @@ test('file-tags artist records count every indexed track as primary', () => {
   assert.ok(artists.every((artist) => artist.primary_track_count === artist.track_count));
 });
 
+test('a compilation counts as an album only for its album artist', () => {
+  const compilation = {
+    album_artist: 'Various Artists',
+    album_identity_key: 'album:comp',
+    artwork_hash: 'comp-art',
+  };
+  const artists = buildArtistList([
+    createTrack({ artist: 'Yoko Takahashi', ...compilation }),
+    createTrack({ artist: 'Megumi Hayashibara', ...compilation }),
+    createTrack({
+      artist: 'Yoko Takahashi',
+      album_artist: 'Yoko Takahashi',
+      album_identity_key: 'album:own',
+      artwork_hash: 'own-art',
+    }),
+  ], 'astra');
+
+  const byName = new Map(artists.map((artist) => [artist.artist, artist]));
+
+  // Featured on the compilation, but it is not one of her albums — only the
+  // record she is the album artist of counts. Her track total still includes it.
+  const featured = byName.get('Yoko Takahashi');
+  assert.ok(featured);
+  assert.equal(featured.track_count, 2);
+  assert.equal(featured.album_count, 1);
+
+  // Nothing but the compilation: no albums, but the cover still feeds the mosaic.
+  const appearanceOnly = byName.get('Megumi Hayashibara');
+  assert.ok(appearanceOnly);
+  assert.equal(appearanceOnly.track_count, 1);
+  assert.equal(appearanceOnly.primary_track_count, 0);
+  assert.equal(appearanceOnly.album_count, 0);
+  assert.deepEqual(appearanceOnly.artwork_hashes, ['comp-art']);
+
+  const various = byName.get('Various Artists');
+  assert.ok(various);
+  assert.equal(various.album_count, 1);
+});
+
 test('artist browse filter defaults to primary artists and restores collab-only artists', () => {
   const artists = buildArtistList([
     createTrack({ artist: 'Primary Artist feat. Guest Artist' }),

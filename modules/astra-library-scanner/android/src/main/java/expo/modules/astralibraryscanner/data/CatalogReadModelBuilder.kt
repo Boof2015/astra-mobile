@@ -260,13 +260,20 @@ object CatalogReadModelBuilder {
         } else {
           canonicalArtistNames(track)
         }
+        val primaryKey = normalizeKey(primary)
         for (name in names) {
           val key = normalizeKey(name)
           if (key.isEmpty()) continue
+          val isPrimary = key == primaryKey
           val aggregate = aggregates.getOrPut(key) { Aggregate(name) }
           aggregate.trackCount += 1
-          if (key == normalizeKey(primary)) aggregate.primaryCount += 1
-          aggregate.albumKeys += row.identityKey
+          if (isPrimary) {
+            aggregate.primaryCount += 1
+            // Albums the artist only guests on are not their albums; counting
+            // them here credited a Various Artists compilation to every featured
+            // performer. Artwork stays ungated so those artists keep a mosaic.
+            aggregate.albumKeys += row.identityKey
+          }
           val current = aggregate.artworkTrack
           if (track.artworkHash != null && (current == null || newerArtwork(track, current))) {
             aggregate.artworkTrack = track
@@ -277,7 +284,7 @@ object CatalogReadModelBuilder {
             groupingMode = mode,
             artistKey = key,
             trackId = track.id,
-            relationship = if (key == normalizeKey(primary)) "song" else "appearance",
+            relationship = if (isPrimary) "song" else "appearance",
           )
         }
       }

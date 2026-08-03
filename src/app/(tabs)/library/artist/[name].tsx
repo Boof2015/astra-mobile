@@ -127,8 +127,14 @@ export default function ArtistScreen() {
   ]);
 
   const listItems = useMemo(
-    () => buildListItems(detail, songsPage.totalCount, appearancesPage.totalCount),
-    [appearancesPage.totalCount, detail, songsPage.totalCount]
+    () =>
+      buildListItems(
+        detail,
+        albumsPage.totalCount,
+        songsPage.totalCount,
+        appearancesPage.totalCount
+      ),
+    [albumsPage.totalCount, appearancesPage.totalCount, detail, songsPage.totalCount]
   );
 
   const playTrackListFrom = (
@@ -331,11 +337,13 @@ export default function ArtistScreen() {
         title={name}
         heroMeta={
           <View style={styles.stats}>
-            {(allPage.summary?.album_count ?? detail.albums.length) > 0 ? (
-              <StatChip
-                icon="albums-outline"
-                label={formatCount(allPage.summary?.album_count ?? detail.albums.length, 'album')}
-              />
+            {/*
+              The album page's own count, not summary.album_count: the stored
+              summary counts albums the artist only appears on, and only settles
+              on the next rescan.
+            */}
+            {albumsPage.totalCount > 0 ? (
+              <StatChip icon="albums-outline" label={formatCount(albumsPage.totalCount, 'album')} />
             ) : null}
             <StatChip icon="musical-notes-outline" label={formatCount(allPage.totalCount, 'track')} />
             {detail.totalDuration > 0 ? (
@@ -376,6 +384,7 @@ export default function ArtistScreen() {
 
 function buildListItems(
   detail: ArtistDetail,
+  albumCount: number,
   songCount: number,
   appearanceCount: number
 ): ArtistPageItem[] {
@@ -391,22 +400,26 @@ function buildListItems(
       key: 'section-albums',
       type: 'section',
       title: 'Albums',
-      trailing: formatCount(detail.albums.length, 'album'),
+      trailing: formatCount(albumCount, 'album'),
       target: 'albums',
     });
     items.push({ key: 'albums', type: 'albums' });
   }
 
-  items.push({
-    key: 'section-songs',
-    type: 'section',
-    title: 'Songs',
-    trailing: formatCount(songCount, 'track'),
-    target: 'songs',
-  });
-  detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
-    items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
-  });
+  // An artist who only guests on other people's albums has no songs of their
+  // own, and a bare "Songs · 0 tracks" header reads as a loading failure.
+  if (songCount > 0) {
+    items.push({
+      key: 'section-songs',
+      type: 'section',
+      title: 'Songs',
+      trailing: formatCount(songCount, 'track'),
+      target: 'songs',
+    });
+    detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
+      items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
+    });
+  }
 
   if (detail.showAppearances) {
     items.push({

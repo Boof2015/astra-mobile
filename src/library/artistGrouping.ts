@@ -209,8 +209,13 @@ export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: Artist
         byKey.set(key, aggregate);
       }
       aggregate.track_count += 1;
-      if (key === primaryArtistKey) aggregate.primary_track_count += 1;
-      aggregate.albumKeys.add(track.album_identity_key);
+      if (key === primaryArtistKey) {
+        aggregate.primary_track_count += 1;
+        // Albums the artist only guests on are not their albums; counting them
+        // here credited a Various Artists compilation to every featured
+        // performer. albumArtwork below stays ungated so they keep a mosaic.
+        aggregate.albumKeys.add(track.album_identity_key);
+      }
 
       if (!track.artwork_hash) continue;
       if (!aggregate.albumArtwork.has(track.album_identity_key)) {

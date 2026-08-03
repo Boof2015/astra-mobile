@@ -906,6 +906,10 @@ interface CatalogDao {
     groupingMode: String,
   ): List<ArtistSummaryEntity>
 
+  // 'song' only: an album the artist merely guests on (a Various Artists
+  // compilation carrying one of their tracks) is not one of their albums. Those
+  // tracks are already reachable through the detail page's "Appears On" section,
+  // which reads the 'appearance' half of the same index.
   @Query(
     """
       SELECT DISTINCT a.*
@@ -916,6 +920,7 @@ interface CatalogDao {
         AND i.revision = :revision
         AND i.grouping_mode = :groupingMode
         AND i.artist_key = :artistKey
+        AND i.relationship = 'song'
       ORDER BY a.latest_added_at DESC, a.name_sort_key, a.identity_key
       LIMIT :limit OFFSET :offset
     """,
@@ -936,6 +941,7 @@ interface CatalogDao {
       WHERE i.revision = :revision
         AND i.grouping_mode = :groupingMode
         AND i.artist_key = :artistKey
+        AND i.relationship = 'song'
     """,
   )
   suspend fun countArtistAlbums(
