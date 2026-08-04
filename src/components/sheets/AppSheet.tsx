@@ -1,10 +1,10 @@
 import { useCallback, type ReactNode } from 'react';
 import {
-  Pressable,
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -132,8 +132,15 @@ export function AppSheetItem({
 
   return (
     <View style={styles.itemRow}>
-      <Pressable
-        android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      {/*
+        This must participate in Gesture Handler's native arbitration. A core
+        Pressable works in a fresh sheet, but after the Library dock has owned
+        several horizontal pans BottomSheetScrollView can keep winning every
+        later contact, leaving the row visibly tapped but never pressed.
+      */}
+      <GesturePressable
+        android_ripple={ripple.bounded}
+        unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.item}
         onPress={handlePress}
         accessibilityRole={selectable ? 'radio' : 'button'}
@@ -153,7 +160,7 @@ export function AppSheetItem({
           ) : null}
         </View>
         {selected ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
-      </Pressable>
+      </GesturePressable>
       {trailing}
     </View>
   );
