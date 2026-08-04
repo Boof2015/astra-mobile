@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   View,
   type NativeScrollEvent,
@@ -44,6 +44,7 @@ export function PlaylistsView({
   listHeader,
   addMenuOpen = false,
   onCloseAddMenu,
+  onSheetOpenChange,
   listRef,
 }: {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -57,6 +58,8 @@ export function PlaylistsView({
   /** Controlled by Library's contextual add action on phones. */
   addMenuOpen?: boolean;
   onCloseAddMenu?: () => void;
+  /** Lets Library replace its dock while a playlist action sheet is present. */
+  onSheetOpenChange?: (open: boolean) => void;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
 }) {
@@ -74,6 +77,14 @@ export function PlaylistsView({
 
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [menuFor, setMenuFor] = useState<Playlist | 'favorites' | null>(null);
+
+  const sheetOpen = menuFor !== null || addMenuOpen;
+  useEffect(() => {
+    onSheetOpenChange?.(sheetOpen);
+    return () => {
+      if (sheetOpen) onSheetOpenChange?.(false);
+    };
+  }, [onSheetOpenChange, sheetOpen]);
 
   const handleExport = async (target: number | 'favorites') => {
     try {

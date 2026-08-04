@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { Screen } from '@/components/Screen';
 import {
   ScreenHeader,
@@ -54,6 +55,7 @@ import {
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
 import { spacing } from '@/theme';
+import { motion } from '@/theme/motion';
 import { useColors } from '@/theme/themed';
 import { useRipple } from '@/theme/ripple';
 import { useShellLayout } from '@/navigation/useShellLayout';
@@ -63,12 +65,13 @@ import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 import { needsWindowRewind } from '@/library/libraryWindowTop';
 import {
   flashListInitialAnchor,
+  flashListMaintainsVisiblePosition,
   libraryContextBottomClearance,
   libraryContextOverlayHeight,
   libraryContextScrimHeight,
 } from '@/library/libraryViewPresentation';
 import {
-  LIBRARY_VIEW_MODES,
+  libraryViewModeLabel,
   type LibraryViewMode,
 } from '@/library/libraryViewMode';
 import { useMiniPlayerVisible } from '@/playback/useMiniPlayerVisible';
@@ -109,6 +112,9 @@ import type {
 const TRACK_SORT_OPTIONS: TrackSort[] = ['artist', 'title', 'recently_added', 'duration'];
 const ALBUM_SORT_OPTIONS: AlbumSort[] = ['artist', 'name', 'recently_added', 'year'];
 const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
+const CONTEXT_SCRIM_ENTERING = FadeIn
+  .duration(motion.quick.duration)
+  .reduceMotion(ReduceMotion.System);
 /** How long the finger has to settle on a rail letter before the list jumps. */
 const JUMP_DEBOUNCE_MS = 100;
 /**
@@ -117,14 +123,6 @@ const JUMP_DEBOUNCE_MS = 100;
  */
 const END_REACHED_THRESHOLD = 2;
 const START_REACHED_THRESHOLD = 0.5;
-const MODE_SHEET_ICONS: Record<LibraryViewMode, keyof typeof Ionicons.glyphMap> = {
-  albums: 'albums-outline',
-  artists: 'people-outline',
-  tracks: 'musical-notes-outline',
-  playlists: 'list-outline',
-  folders: 'folder-outline',
-};
-
 /**
  * The pinned chrome deck, in declared slots.
  *
@@ -204,10 +202,11 @@ export default function LibraryScreen() {
   const miniPlayerVisible = useMiniPlayerVisible();
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
-  const [modeSheetOpen, setModeSheetOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
+  const [viewOptionsSheetOpen, setViewOptionsSheetOpen] = useState(false);
   const [playlistAddMenuOpen, setPlaylistAddMenuOpen] = useState(false);
+  const [childSheetOpen, setChildSheetOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
@@ -273,6 +272,9 @@ export default function LibraryScreen() {
   const initialAnchorProps = initialScrollIndex === undefined
     ? {}
     : { initialScrollIndex };
+  const maintainVisibleContentPosition = {
+    disabled: !flashListMaintainsVisiblePosition(jumpAnchorIndex),
+  };
   const contextBottomClearance = libraryContextBottomClearance(
     sceneBottomInset,
     miniPlayerVisible
@@ -435,10 +437,11 @@ export default function LibraryScreen() {
   };
 
   const changeViewMode = (mode: LibraryViewMode) => {
-    setModeSheetOpen(false);
     setSortSheetOpen(false);
     setLayoutSheetOpen(false);
+    setViewOptionsSheetOpen(false);
     setPlaylistAddMenuOpen(false);
+    setChildSheetOpen(false);
     if (selectMode) exitSelection();
     if (mode === viewMode) return;
     // setViewMode clears the shared A-Z anchor. The post-commit effect below
@@ -532,9 +535,18 @@ export default function LibraryScreen() {
           : viewMode;
   const listMountIdentity = `${surfaceHeadIdentity}:${sectionJumpRevision}`;
   const activeListMountIdentity = useRef(listMountIdentity);
+  const settledHeadListIdentity = useRef<string | null>(null);
   useLayoutEffect(() => {
     activeListMountIdentity.current = listMountIdentity;
-  }, [listMountIdentity]);
+    // FlashList can report its item-0 correction before `onLoad`. Keep that
+    // native bookkeeping event away from the header until the list is moved to
+    // its true scroll origin below. Positive A-Z anchors and the two child-list
+    // surfaces are already deliberately positioned and need no such gate.
+    settledHeadListIdentity.current =
+      jumpAnchorIndex > 0 || viewMode === 'playlists' || viewMode === 'folders'
+        ? listMountIdentity
+        : null;
+  }, [jumpAnchorIndex, listMountIdentity, viewMode]);
 
   useEffect(() => {
     if (jumpAnchorIndex > 0) return;
@@ -553,12 +565,35 @@ export default function LibraryScreen() {
     if (viewMode === 'artists') setArtistLayout(layout);
   };
 
+  const settleActiveFlashListAtHead = useCallback(() => {
+    const state = useLibraryStore.getState();
+    if (
+      activeListMountIdentity.current !== listMountIdentity ||
+      state.jumpAnchorIndex > 0 ||
+      (state.viewMode !== 'albums' &&
+        state.viewMode !== 'artists' &&
+        state.viewMode !== 'tracks')
+    ) {
+      return;
+    }
+    const list = state.viewMode === 'albums'
+      ? albumListRef.current
+      : state.viewMode === 'artists'
+        ? artistListRef.current
+        : trackListRef.current;
+    list?.scrollToOffset({ offset: 0, animated: false });
+    settledHeadListIdentity.current = listMountIdentity;
+    setScrollAtTop(true);
+    resetHeader();
+  }, [listMountIdentity, resetHeader, setScrollAtTop]);
+
   // Two independent consumers of the same scroll: the pull-to-search gate and
   // the collapsing header. Neither owns the list, so the screen fans out.
   const onListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     // Native scroll delivery can trail an unmount. A section, sort, layout, or
     // A-Z remount must not inherit one last offset from the surface it replaced.
     if (activeListMountIdentity.current !== listMountIdentity) return;
+    if (settledHeadListIdentity.current !== listMountIdentity) return;
     scrollTop.onScroll(event);
     header.onScroll(event);
   };
@@ -696,6 +731,7 @@ export default function LibraryScreen() {
                   keyExtractor={(album) => album.identity_key}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  maintainVisibleContentPosition={maintainVisibleContentPosition}
                   contentContainerStyle={{
                     paddingTop: header.contentPaddingTop,
                     paddingHorizontal: spacing.lg,
@@ -706,6 +742,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
+                  onLoad={settleActiveFlashListAtHead}
                   onEndReached={() => void loadNextAlbums()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousAlbums()}
@@ -748,6 +785,7 @@ export default function LibraryScreen() {
                   keyExtractor={(artist) => artist.artist}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  maintainVisibleContentPosition={maintainVisibleContentPosition}
                   contentContainerStyle={{
                     paddingTop: header.contentPaddingTop,
                     paddingHorizontal: spacing.lg,
@@ -758,6 +796,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
+                  onLoad={settleActiveFlashListAtHead}
                   onEndReached={() => void loadNextArtists()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousArtists()}
@@ -799,6 +838,7 @@ export default function LibraryScreen() {
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  maintainVisibleContentPosition={maintainVisibleContentPosition}
                   contentContainerStyle={{
                     paddingTop: header.contentPaddingTop,
                     paddingHorizontal: spacing.lg,
@@ -809,6 +849,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
+                  onLoad={settleActiveFlashListAtHead}
                   onEndReached={() => void loadNextTracks()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousTracks()}
@@ -840,6 +881,7 @@ export default function LibraryScreen() {
                   listHeader={inlineStatus}
                   addMenuOpen={playlistAddMenuOpen}
                   onCloseAddMenu={() => setPlaylistAddMenuOpen(false)}
+                  onSheetOpenChange={setChildSheetOpen}
                 />
               ) : null}
 
@@ -851,6 +893,7 @@ export default function LibraryScreen() {
                   contentPaddingTop={header.contentPaddingTop}
                   contentPaddingBottom={listBottomPadding}
                   listHeader={inlineStatus}
+                  onSheetOpenChange={setChildSheetOpen}
                 />
               ) : null}
 
@@ -888,20 +931,48 @@ export default function LibraryScreen() {
         />
       </PullSearchGesture>
 
-      {phoneContextBar && !showLibraryStatus ? (
+      {phoneContextBar && !showLibraryStatus && !(
+        actionTrack ||
+        playlistPickerOpen ||
+        sortSheetOpen ||
+        layoutSheetOpen ||
+        viewOptionsSheetOpen ||
+        playlistAddMenuOpen ||
+        childSheetOpen
+      ) ? (
         <>
-          <MiniPlayerScrim height={libraryContextScrimHeight(contextBottomClearance)} />
+          <Animated.View
+            pointerEvents="none"
+            entering={CONTEXT_SCRIM_ENTERING}
+            style={StyleSheet.absoluteFill}
+          >
+            <MiniPlayerScrim height={libraryContextScrimHeight(contextBottomClearance)} />
+          </Animated.View>
           <LibraryContextBar
             mode={viewMode}
             bottomClearance={contextBottomClearance}
-            onOpenModePicker={() => setModeSheetOpen(true)}
+            onChangeMode={changeViewMode}
             onSearch={() => openQuickSearch()}
-            onSort={sortable ? () => setSortSheetOpen(true) : undefined}
-            sortLabel={sortable ? sortLabel : undefined}
-            onLayout={activeLayout ? () => setLayoutSheetOpen(true) : undefined}
-            layoutLabel={activeLayoutLabel ?? undefined}
-            onAddPlaylist={
-              viewMode === 'playlists' ? () => setPlaylistAddMenuOpen(true) : undefined
+            contextAction={
+              viewMode === 'albums' || viewMode === 'artists'
+                ? {
+                    icon: 'options-outline',
+                    label: `${libraryViewModeLabel(viewMode)} sort and layout options`,
+                    onPress: () => setViewOptionsSheetOpen(true),
+                  }
+                : viewMode === 'tracks'
+                  ? {
+                      icon: 'swap-vertical',
+                      label: `Sort Tracks, currently ${sortLabel}`,
+                      onPress: () => setSortSheetOpen(true),
+                    }
+                  : viewMode === 'playlists'
+                    ? {
+                        icon: 'add',
+                        label: 'Add or import playlist',
+                        onPress: () => setPlaylistAddMenuOpen(true),
+                      }
+                    : undefined
             }
             selection={
               selectMode && viewMode === 'tracks'
@@ -937,20 +1008,6 @@ export default function LibraryScreen() {
           }}
         />
       ) : null}
-      {modeSheetOpen ? (
-        <AppSheet onClose={() => setModeSheetOpen(false)}>
-          <AppSheetTitle title="Browse Library" />
-          {LIBRARY_VIEW_MODES.map((mode) => (
-            <AppSheetItem
-              key={mode.key}
-              label={mode.label}
-              icon={MODE_SHEET_ICONS[mode.key]}
-              selected={mode.key === viewMode}
-              onPress={() => changeViewMode(mode.key)}
-            />
-          ))}
-        </AppSheet>
-      ) : null}
       {sortSheetOpen ? (
         <AppSheet onClose={() => setSortSheetOpen(false)}>
           <AppSheetSection label={sortSheetLabel} />
@@ -981,6 +1038,31 @@ export default function LibraryScreen() {
                 setActiveLayout(option.value);
                 setLayoutSheetOpen(false);
               }}
+            />
+          ))}
+        </AppSheet>
+      ) : null}
+      {viewOptionsSheetOpen && activeLayout ? (
+        <AppSheet scrollable onClose={() => setViewOptionsSheetOpen(false)}>
+          <AppSheetTitle title={`${libraryViewModeLabel(viewMode)} options`} />
+          <AppSheetSection label={sortSheetLabel} />
+          {sortItems.map(({ key, label, selected, onSelect }) => (
+            <AppSheetItem
+              key={`sort:${key}`}
+              label={label}
+              selected={selected}
+              onPress={onSelect}
+            />
+          ))}
+          <AppSheetSection label={layoutSheetLabel} />
+          {LIBRARY_LAYOUT_OPTIONS.map((option) => (
+            <AppSheetItem
+              key={`layout:${option.value}`}
+              label={option.label}
+              subtitle={option.subtitle}
+              icon={option.icon}
+              selected={option.value === activeLayout}
+              onPress={() => setActiveLayout(option.value)}
             />
           ))}
         </AppSheet>

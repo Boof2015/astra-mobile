@@ -47,6 +47,8 @@ interface FoldersViewProps {
   listHeader?: ReactNode;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
+  /** Lets Library replace its dock while a folder/track action sheet is present. */
+  onSheetOpenChange?: (open: boolean) => void;
 }
 
 interface LoadedNode {
@@ -219,6 +221,7 @@ export function FoldersView({
   contentPaddingBottom,
   listHeader,
   listRef,
+  onSheetOpenChange,
 }: FoldersViewProps) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
@@ -229,6 +232,14 @@ export function FoldersView({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const [actionFolder, setActionFolder] = useState<NativeFolderNode | null>(null);
+
+  const sheetOpen = actionTrack !== null || actionFolder !== null;
+  useEffect(() => {
+    onSheetOpenChange?.(sheetOpen);
+    return () => {
+      if (sheetOpen) onSheetOpenChange?.(false);
+    };
+  }, [onSheetOpenChange, sheetOpen]);
 
   const replaceRoots = async () => {
     const roots = await AstraLibraryData.getFolderNodes(null);

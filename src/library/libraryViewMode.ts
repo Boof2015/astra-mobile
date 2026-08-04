@@ -14,3 +14,11 @@ export const LIBRARY_VIEW_MODES: readonly {
 export function libraryViewModeLabel(mode: LibraryViewMode): string {
   return LIBRARY_VIEW_MODES.find((entry) => entry.key === mode)?.label ?? mode;
 }
+
+export function adjacentLibraryViewMode(
+  mode: LibraryViewMode,
+  direction: -1 | 1
+): LibraryViewMode | undefined {
+  const index = LIBRARY_VIEW_MODES.findIndex((entry) => entry.key === mode);
+  return LIBRARY_VIEW_MODES[index + direction]?.key;
+}

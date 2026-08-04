@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   flashListInitialAnchor,
-  libraryContextActionCount,
+  flashListMaintainsVisiblePosition,
   libraryContextBottomClearance,
   libraryContextOverlayHeight,
   libraryContextScrimHeight,
-  libraryContextSectionWidth,
+  libraryDockSectionWidth,
+  libraryDockShowsActiveLabel,
+  libraryDockSwipeDistance,
+  libraryDockTargetWidths,
+  resolveLibraryDockSwipe,
 } from './libraryViewPresentation.ts';
+import { adjacentLibraryViewMode } from './libraryViewMode.ts';
 import { effectiveMiniPlayerVisible } from '../playback/playbackTargetPresentation.ts';
 
 test('the catalog head omits FlashList initialScrollIndex entirely', () => {
@@ -27,16 +32,65 @@ test('a real A-Z anchor remains an explicit initial index', () => {
   assert.equal(flashListInitialAnchor(137), 137);
 });
 
-test('every phone command-bar action set leaves a useful section target', () => {
+test('only a positive A-Z window maintains its visible item while prepending', () => {
+  assert.equal(flashListMaintainsVisiblePosition(0), false);
+  assert.equal(flashListMaintainsVisiblePosition(-1), false);
+  assert.equal(flashListMaintainsVisiblePosition(1), true);
+  assert.equal(flashListMaintainsVisiblePosition(137), true);
+});
+
+test('the direct dock keeps all five section targets usable on phone widths', () => {
   for (const width of [320, 360, 411]) {
-    for (const mode of ['albums', 'artists', 'tracks', 'playlists', 'folders'] as const) {
-      const sectionWidth = libraryContextSectionWidth(
-        width,
-        libraryContextActionCount(mode)
+    for (const fontScale of [1, 1.2, 2]) {
+      const sectionWidth = libraryDockSectionWidth(width);
+      const labelled = libraryDockShowsActiveLabel(width, fontScale);
+      const targets = libraryDockTargetWidths(sectionWidth, labelled);
+      assert.ok(
+        targets.inactive >= 40,
+        `${width}dp/${fontScale}x: ${targets.inactive}dp target`
       );
-      assert.ok(sectionWidth >= 140, `${width}dp ${mode}: only ${sectionWidth}dp for section`);
+      assert.ok(targets.active >= targets.inactive);
     }
   }
+});
+
+test('folders reserves the same trailing action geometry as every other section', () => {
+  for (const width of [320, 360, 411]) {
+    assert.equal(libraryDockSectionWidth(width), width - 24 - 88);
+  }
+});
+
+test('active labels only appear when width and text scale leave enough room', () => {
+  assert.equal(libraryDockShowsActiveLabel(320, 1), false);
+  assert.equal(libraryDockShowsActiveLabel(360, 1), true);
+  assert.equal(libraryDockShowsActiveLabel(411, 1), true);
+  assert.equal(libraryDockShowsActiveLabel(360, 1.2), false);
+  assert.equal(libraryDockShowsActiveLabel(411, 2), false);
+});
+
+test('swipe priming uses the same distance as swipe commitment', () => {
+  assert.equal(libraryDockSwipeDistance(208), 33.28);
+  assert.equal(libraryDockSwipeDistance(248), 39.68);
+  assert.equal(libraryDockSwipeDistance(500), 56);
+  assert.equal(libraryDockSwipeDistance(0), 32);
+});
+
+test('dock swipes require deliberate distance or velocity and follow reading order', () => {
+  assert.equal(resolveLibraryDockSwipe({ translationX: -40, velocityX: 0, width: 208 }), 1);
+  assert.equal(resolveLibraryDockSwipe({ translationX: 40, velocityX: 0, width: 208 }), -1);
+  assert.equal(resolveLibraryDockSwipe({ translationX: -15, velocityX: -600, width: 208 }), 1);
+  assert.equal(resolveLibraryDockSwipe({ translationX: 15, velocityX: 600, width: 208 }), -1);
+  assert.equal(resolveLibraryDockSwipe({ translationX: 11, velocityX: 900, width: 208 }), null);
+  assert.equal(resolveLibraryDockSwipe({ translationX: 20, velocityX: 200, width: 208 }), null);
+});
+
+test('dock swipes stop at catalog edges', () => {
+  assert.equal(adjacentLibraryViewMode('albums', -1), undefined);
+  assert.equal(adjacentLibraryViewMode('albums', 1), 'artists');
+  assert.equal(adjacentLibraryViewMode('tracks', -1), 'artists');
+  assert.equal(adjacentLibraryViewMode('tracks', 1), 'playlists');
+  assert.equal(adjacentLibraryViewMode('folders', -1), 'playlists');
+  assert.equal(adjacentLibraryViewMode('folders', 1), undefined);
 });
 
 test('phone chrome only reserves the player footprint while it is visible', () => {
