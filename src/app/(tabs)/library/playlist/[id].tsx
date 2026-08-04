@@ -10,10 +10,10 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet, type TrackActionSheetItem } from '@/components/library/TrackActionsSheet';
@@ -281,7 +281,7 @@ export default function PlaylistScreen() {
 
   return (
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={entries}
         keyExtractor={(entry) => String(entry.id)}
         showsVerticalScrollIndicator={false}

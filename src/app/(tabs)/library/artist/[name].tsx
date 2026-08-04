@@ -12,10 +12,10 @@ import {
 import { Image } from 'expo-image';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -309,7 +309,7 @@ export default function ArtistScreen() {
 
   return (
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={listItems}
         keyExtractor={(item) => item.key}
         showsVerticalScrollIndicator={false}

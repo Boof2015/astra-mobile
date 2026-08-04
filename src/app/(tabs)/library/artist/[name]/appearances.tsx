@@ -4,8 +4,8 @@ import {
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Screen } from '@/components/Screen';
 import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
@@ -56,7 +56,7 @@ export default function ArtistAppearancesScreen() {
     // The header is an overlay the list scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the list itself.
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={tracks}
         keyExtractor={(track) => String(track.id)}
         showsVerticalScrollIndicator={false}

@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -34,14 +34,14 @@ export function SettingsSectionScreen({
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
     <Screen padded={false} style={styles.screen}>
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
         contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
       >
         {children}
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ScreenHeader
         header={header}

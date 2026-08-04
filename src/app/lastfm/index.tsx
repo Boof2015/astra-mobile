@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -208,7 +208,7 @@ export default function LastFmScreen() {
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
     <Screen padded={false} style={styles.screen}>
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
@@ -281,7 +281,7 @@ export default function LastFmScreen() {
           A scrobble is sent once a track plays past half its length (or 4 minutes). Tracks under 30
           seconds are skipped. Failed scrobbles queue offline and retry automatically.
         </Text>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ScreenHeader
         header={header}

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -112,7 +112,7 @@ export default function SourcesScreen() {
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
     <Screen padded={false} style={styles.screen}>
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
@@ -174,7 +174,7 @@ export default function SourcesScreen() {
             );
           })
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ScreenHeader
         header={header}

@@ -109,16 +109,28 @@ export function useScrollTopGate(initialAtTop = true) {
     setAtTop(next);
   }, []);
 
-  const onScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { y } = event.nativeEvent.contentOffset;
+  const onScrollOffset = useCallback(
+    (y: number) => {
       offsetRef.current = y;
       setScrollAtTop(y <= 2);
     },
     [setScrollAtTop]
   );
+  const onScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      onScrollOffset(event.nativeEvent.contentOffset.y);
+    },
+    [onScrollOffset]
+  );
 
-  return { atTop, offsetRef, onScroll, scrollEventThrottle: 16 as const, setScrollAtTop };
+  return {
+    atTop,
+    offsetRef,
+    onScroll,
+    onScrollOffset,
+    scrollEventThrottle: 16 as const,
+    setScrollAtTop,
+  };
 }
 
 export function PullSearchGesture({

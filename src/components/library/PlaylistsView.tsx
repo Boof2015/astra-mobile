@@ -1,12 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent
-} from 'react-native';
+import { View } from 'react-native';
+import type { ScrollHandlerProcessed } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import {
   AppSheet,
@@ -47,7 +44,7 @@ export function PlaylistsView({
   onSheetOpenChange,
   listRef,
 }: {
-  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScroll?: ScrollHandlerProcessed;
   scrollEventThrottle?: number;
   /** What the list owes so it clears Library's collapsing header. */
   contentPaddingTop?: number;
@@ -199,7 +196,7 @@ export function PlaylistsView({
 
   return (
     <View style={styles.container}>
-      <FlashList
+      <ReanimatedFlashList
         ref={listRef}
         data={playlists}
         keyExtractor={(playlist) => String(playlist.id)}

@@ -6,12 +6,12 @@ import {
   StyleSheet,
   View,
   useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import Animated, {
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  type ScrollHandlerProcessed,
   type SharedValue,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,12 +50,12 @@ import {
  *   booleans only to hand pointer events between big and small buttons that swap
  *   places; here the chevron and the actions are pinned in the bar row from the
  *   start and never move, so there is nothing to hand over. That also keeps the
- *   subtree from re-rendering while a JS-thread scroll handler drives it.
+ *   subtree from re-rendering while the UI-thread scroll handler drives it.
  */
 
 export interface ScreenHeaderController {
   scrollY: SharedValue<number>;
-  onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScroll: ScrollHandlerProcessed;
   scrollEventThrottle: 16;
   /** What the scroll surface owes as `contentContainerStyle.paddingTop`. */
   contentPaddingTop: number;
@@ -109,9 +109,11 @@ export function useScreenHeader({
     hasTitle,
     chromeHeight,
   });
-  const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    scrollY.value = event.nativeEvent.contentOffset.y;
-  }, [scrollY]);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
   const resetScroll = useCallback(() => {
     scrollY.value = 0;
   }, [scrollY]);
@@ -160,8 +162,15 @@ export function ScreenHeader({
   // render, and Reanimated compares what the worklet captured.
   const { dist, settle, travelX, travelY, titleScale, maxHeight, minHeight } = layout;
 
-  const containerStyle = useAnimatedStyle(() => ({
-    height: headerHeightAt(scrollY.value, dist, maxHeight, minHeight),
+  const collapseClipStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: headerHeightAt(scrollY.value, dist, maxHeight, minHeight) - maxHeight },
+    ],
+  }));
+  const fixedContentStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: maxHeight - headerHeightAt(scrollY.value, dist, maxHeight, minHeight) },
+    ],
   }));
   const titleStyle = useAnimatedStyle(() => ({
     transform: [
@@ -244,7 +253,10 @@ export function ScreenHeader({
   // chrome). Neither animates, so neither has to degrade gracefully at dist 0.
   if (!layout.collapsible) {
     return (
-      <View style={[styles.container, { height: minHeight }]} pointerEvents="box-none">
+      <View
+        style={[styles.container, styles.clipped, { height: minHeight }]}
+        pointerEvents="box-none"
+      >
         <View style={[styles.backdrop, styles.bar, { height: minHeight }]} pointerEvents="none" />
         {layout.hasTitle ? (
           <>
@@ -274,73 +286,90 @@ export function ScreenHeader({
   }
 
   return (
-    <Animated.View style={[styles.container, containerStyle]} pointerEvents="box-none">
-      {/* Fixed-height opaque field, clipped by the shrinking container. Without
-          it, rows scroll up *through* the large title. It is `bgPrimary`, the
-          same colour `Screen` paints, so the container's bottom edge is
-          invisible against the page — and because that edge and row 1's top are
-          the same number, rows emerge exactly at it with no seam. */}
-      <View style={[styles.backdrop, { height: maxHeight }]} pointerEvents="none" />
+    <View style={[styles.container, { height: maxHeight }]} pointerEvents="box-none">
+      {/* The fixed-size clip translates upward so its bottom edge follows the
+          collapsed height. Its ordinary header contents counter-translate and
+          therefore remain visually fixed while being revealed by that edge.
+          This preserves the old geometry without per-frame layout commits. */}
       <Animated.View
-        style={[styles.backdrop, styles.bar, { height: minHeight }, barStyle]}
-        pointerEvents="none"
-      />
-
-      <Animated.View
-        style={[
-          styles.titleWrap,
-          {
-            top: insets.top + layout.titleTop,
-            left: layout.titleLeft,
-            right: layout.titleLeft,
-            height: layout.titleLine,
-          },
-          titleStyle,
-        ]}
-        pointerEvents="none"
+        style={[styles.collapseClip, collapseClipStyle]}
+        pointerEvents="box-none"
       >
-        <Text variant="title" numberOfLines={1} allowFontScaling={false} style={titleFont}>
-          {title}
-        </Text>
-      </Animated.View>
-
-      {subtitle ? (
         <Animated.View
-          style={[
-            styles.subtitle,
-            { top: insets.top + layout.subtitleTop, left: layout.titleLeft, right: layout.titleLeft },
-            subtitleStyle,
-          ]}
-          pointerEvents="none"
+          style={[styles.fixedContent, fixedContentStyle]}
+          pointerEvents="box-none"
         >
-          <Text variant="label" numberOfLines={1} allowFontScaling={false}>
-            {subtitle}
-          </Text>
+          {/* Rows emerge at the translated clip's bottom edge with no seam. */}
+          <View style={[styles.backdrop, { height: maxHeight }]} pointerEvents="none" />
+          <Animated.View
+            style={[styles.backdrop, styles.bar, { height: minHeight }, barStyle]}
+            pointerEvents="none"
+          />
+
+          <Animated.View
+            style={[
+              styles.titleWrap,
+              {
+                top: insets.top + layout.titleTop,
+                left: layout.titleLeft,
+                right: layout.titleLeft,
+                height: layout.titleLine,
+              },
+              titleStyle,
+            ]}
+            pointerEvents="none"
+          >
+            <Text variant="title" numberOfLines={1} allowFontScaling={false} style={titleFont}>
+              {title}
+            </Text>
+          </Animated.View>
+
+          {subtitle ? (
+            <Animated.View
+              style={[
+                styles.subtitle,
+                {
+                  top: insets.top + layout.subtitleTop,
+                  left: layout.titleLeft,
+                  right: layout.titleLeft,
+                },
+                subtitleStyle,
+              ]}
+              pointerEvents="none"
+            >
+              <Text variant="label" numberOfLines={1} allowFontScaling={false}>
+                {subtitle}
+              </Text>
+            </Animated.View>
+          ) : null}
+
+          {backLabel ? (
+            <Animated.Text
+              numberOfLines={1}
+              style={[
+                styles.label,
+                {
+                  top: layout.barCenterY - variantLineHeight.label / 2,
+                  left: layout.barTextLeft,
+                  right: layout.labelRight,
+                },
+                labelStyle,
+              ]}
+              pointerEvents="none"
+            >
+              {backLabel}
+            </Animated.Text>
+          ) : null}
+
+          {chevron}
+          {actionCluster}
         </Animated.View>
-      ) : null}
 
-      {backLabel ? (
-        <Animated.Text
-          numberOfLines={1}
-          style={[
-            styles.label,
-            {
-              top: layout.barCenterY - variantLineHeight.label / 2,
-              left: layout.barTextLeft,
-              right: layout.labelRight,
-            },
-            labelStyle,
-          ]}
-          pointerEvents="none"
-        >
-          {backLabel}
-        </Animated.Text>
-      ) : null}
-
-      {chevron}
-      {actionCluster}
-      {chromeBlock}
-    </Animated.View>
+        {/* Chrome stays attached to the moving bottom edge and settles directly
+            below the app bar, so it intentionally is not counter-translated. */}
+        {chromeBlock}
+      </Animated.View>
+    </View>
   );
 }
 
@@ -383,7 +412,24 @@ const useStyles = createThemedStyles((colors) => ({
     top: 0,
     left: 0,
     right: 0,
+  },
+  clipped: {
     overflow: 'hidden',
+  },
+  collapseClip: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
+  fixedContent: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   backdrop: {
     position: 'absolute',

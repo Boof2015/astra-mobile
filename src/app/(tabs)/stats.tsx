@@ -3,7 +3,6 @@ import {
   AppState,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -307,7 +306,7 @@ export default function ListeningStatsScreen() {
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
     <Screen padded={false} style={styles.screen}>
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
@@ -441,7 +440,7 @@ export default function ListeningStatsScreen() {
             )}
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ScreenHeader
         header={header}

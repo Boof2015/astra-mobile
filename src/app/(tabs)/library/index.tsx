@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability -- Reanimated shared values gate the active UI-thread list. */
 import {
   useCallback,
   useEffect,
@@ -12,15 +13,20 @@ import {
   View,
   Pressable,
   StyleSheet,
-  useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  ReduceMotion,
+  runOnJS,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import {
   ScreenHeader,
   ScreenHeaderAction,
@@ -219,7 +225,11 @@ export default function LibraryScreen() {
   // The gate object is rebuilt whenever `atTop` flips; these two members are
   // stable, so depending on them keeps the re-tap subscription from churning on
   // every scroll.
-  const { offsetRef: scrollOffsetRef, setScrollAtTop } = scrollTop;
+  const {
+    offsetRef: scrollOffsetRef,
+    onScrollOffset: syncScrollOffset,
+    setScrollAtTop,
+  } = scrollTop;
   const { height: windowHeight } = useWindowDimensions();
 
   // One ref per view mode so a tab re-tap can send whichever list is on screen
@@ -536,8 +546,11 @@ export default function LibraryScreen() {
   const listMountIdentity = `${surfaceHeadIdentity}:${sectionJumpRevision}`;
   const activeListMountIdentity = useRef(listMountIdentity);
   const settledHeadListIdentity = useRef<string | null>(null);
+  const activeListMountIdentityUi = useSharedValue(listMountIdentity);
+  const settledHeadListIdentityUi = useSharedValue<string | null>(null);
   useLayoutEffect(() => {
     activeListMountIdentity.current = listMountIdentity;
+    activeListMountIdentityUi.value = listMountIdentity;
     // FlashList can report its item-0 correction before `onLoad`. Keep that
     // native bookkeeping event away from the header until the list is moved to
     // its true scroll origin below. Positive A-Z anchors and the two child-list
@@ -546,7 +559,14 @@ export default function LibraryScreen() {
       jumpAnchorIndex > 0 || viewMode === 'playlists' || viewMode === 'folders'
         ? listMountIdentity
         : null;
-  }, [jumpAnchorIndex, listMountIdentity, viewMode]);
+    settledHeadListIdentityUi.value = settledHeadListIdentity.current;
+  }, [
+    activeListMountIdentityUi,
+    jumpAnchorIndex,
+    listMountIdentity,
+    settledHeadListIdentityUi,
+    viewMode,
+  ]);
 
   useEffect(() => {
     if (jumpAnchorIndex > 0) return;
@@ -583,20 +603,51 @@ export default function LibraryScreen() {
         : trackListRef.current;
     list?.scrollToOffset({ offset: 0, animated: false });
     settledHeadListIdentity.current = listMountIdentity;
+    settledHeadListIdentityUi.value = listMountIdentity;
     setScrollAtTop(true);
     resetHeader();
-  }, [listMountIdentity, resetHeader, setScrollAtTop]);
+  }, [
+    listMountIdentity,
+    resetHeader,
+    setScrollAtTop,
+    settledHeadListIdentityUi,
+  ]);
 
-  // Two independent consumers of the same scroll: the pull-to-search gate and
-  // the collapsing header. Neither owns the list, so the screen fans out.
-  const onListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // Native scroll delivery can trail an unmount. A section, sort, layout, or
-    // A-Z remount must not inherit one last offset from the surface it replaced.
+  const syncScrollTopGate = useCallback((y: number) => {
+    // A queued runOnJS call can also trail an unmount, so retain the JS-side
+    // identity guard even though the animation is independently gated below.
     if (activeListMountIdentity.current !== listMountIdentity) return;
     if (settledHeadListIdentity.current !== listMountIdentity) return;
-    scrollTop.onScroll(event);
-    header.onScroll(event);
-  };
+    syncScrollOffset(y);
+  }, [listMountIdentity, syncScrollOffset]);
+
+  // The header follows the list entirely on the UI thread. JS only hears when
+  // the pull-to-search top gate changes and when a drag/momentum run settles,
+  // keeping the imperative tab-reselect offset current without a bridge call on
+  // every frame.
+  const headerScrollY = header.scrollY;
+  const onListScroll = useAnimatedScrollHandler<{ atTop?: boolean }>({
+    onScroll: (event, context) => {
+      // Native scroll delivery can trail an unmount. A section, sort, layout,
+      // or A-Z remount must not inherit an offset from the surface it replaced.
+      if (activeListMountIdentityUi.value !== listMountIdentity) return;
+      if (settledHeadListIdentityUi.value !== listMountIdentity) return;
+
+      const y = event.contentOffset.y;
+      headerScrollY.value = y;
+      const atTop = y <= 2;
+      if (context.atTop !== atTop) {
+        context.atTop = atTop;
+        runOnJS(syncScrollTopGate)(y);
+      }
+    },
+    onEndDrag: (event) => {
+      runOnJS(syncScrollTopGate)(event.contentOffset.y);
+    },
+    onMomentumEnd: (event) => {
+      runOnJS(syncScrollTopGate)(event.contentOffset.y);
+    },
+  });
 
   const inlineStatus = phoneContextBar && (isScanning || scanError) ? (
     <View style={styles.inlineStatus}>
@@ -723,7 +774,7 @@ export default function LibraryScreen() {
               }
             >
               {viewMode === 'albums' ? (
-                <FlashList
+                <ReanimatedFlashList
                   ref={albumListRef}
                   key={`albums-${albumSort}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
                   data={sortedAlbums}
@@ -777,7 +828,7 @@ export default function LibraryScreen() {
               ) : null}
 
               {viewMode === 'artists' ? (
-                <FlashList
+                <ReanimatedFlashList
                   ref={artistListRef}
                   key={`artists-${artistSort}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
                   data={sortedArtists}
@@ -831,7 +882,7 @@ export default function LibraryScreen() {
               ) : null}
 
               {viewMode === 'tracks' ? (
-                <FlashList
+                <ReanimatedFlashList
                   ref={trackListRef}
                   key={`tracks-${trackSort}-${sectionJumpRevision}`}
                   data={sortedTracks}

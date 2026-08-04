@@ -1,4 +1,6 @@
+/* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's UI-thread scroll state. */
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -10,8 +12,6 @@ import {
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Extrapolation,
   interpolate,
+  runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue
@@ -43,10 +45,10 @@ import {
   getDetailHeroLayout,
 } from '@/components/library/detailHeroLayout';
 
-// Collapsing detail header. An absolute container whose height shrinks with the
-// scroll and clips its faded content, so the track list (padded to the expanded
-// height) rises to meet it — no mid-scroll dead space. The artwork is a single
-// element that shrinks/tucks into the top-left corner as the header collapses.
+// Collapsing detail header. A fixed-size clipping layer translates upward with
+// the scroll while its contents counter-translate, producing a rising bottom
+// edge without animating layout. The artwork is a single element that
+// shrinks/tucks into the top-left corner as the header collapses.
 //
 // Hero geometry — artwork size/position, where the title block goes, and the
 // ceiling that keeps the list reachable — lives in ./detailHeroLayout so it can
@@ -81,11 +83,25 @@ export function useDetailCollapse() {
   );
   const ref = useRef({ heroFaded: false, collapsed: false });
   const [state, setState] = useState({ heroFaded: false, collapsed: false });
+  const collapseDistance = useSharedValue(expandedHeight - BAR_H);
+  const collapseFlags = useSharedValue(0);
 
-  const expandedRef = useRef(expandedHeight);
+  const updateCollapseState = useCallback((heroFaded: boolean, collapsed: boolean) => {
+    if (heroFaded === ref.current.heroFaded && collapsed === ref.current.collapsed) return;
+    ref.current = { heroFaded, collapsed };
+    setState({ heroFaded, collapsed });
+  }, []);
+
+  // Measurements and rotations are rare JS-side events. Keep the worklet's
+  // threshold current without routing any per-frame scroll values through JS.
   useEffect(() => {
-    expandedRef.current = expandedHeight;
-  }, [expandedHeight]);
+    const dist = expandedHeight - BAR_H;
+    collapseDistance.value = dist;
+    const y = scrollY.value;
+    const flags = (y >= 60 ? 1 : 0) | (y >= dist - 40 ? 2 : 0);
+    collapseFlags.value = flags;
+    updateCollapseState((flags & 1) !== 0, (flags & 2) !== 0);
+  }, [collapseDistance, collapseFlags, expandedHeight, scrollY, updateCollapseState]);
 
   const onHeroBlockLayout = (e: LayoutChangeEvent) => {
     const next = getDetailExpandedHeight(hero, e.nativeEvent.layout.height);
@@ -96,17 +112,21 @@ export function useDetailCollapse() {
     );
   };
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    scrollY.value = y;
-    const dist = expandedRef.current - BAR_H;
-    const heroFaded = y >= 60;
-    const collapsed = y >= dist - 40;
-    if (heroFaded !== ref.current.heroFaded || collapsed !== ref.current.collapsed) {
-      ref.current = { heroFaded, collapsed };
-      setState({ heroFaded, collapsed });
-    }
-  };
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const y = event.contentOffset.y;
+      const dist = collapseDistance.value;
+      const flags = (y >= 60 ? 1 : 0) | (y >= dist - 40 ? 2 : 0);
+
+      // This is the animation's source of truth and now stays on the UI thread.
+      // React only hears about the two pointer-event handoff thresholds.
+      scrollY.value = y;
+      if (flags !== collapseFlags.value) {
+        collapseFlags.value = flags;
+        runOnJS(updateCollapseState)((flags & 1) !== 0, (flags & 2) !== 0);
+      }
+    },
+  });
 
   return {
     scrollY,
@@ -201,8 +221,47 @@ export function CollapsingHeader({
   const tyTarget = barCenterY - (artExpandedTop + hero.artSize / 2);
   const scaleTarget = ART_COLLAPSED / hero.artSize;
 
-  const containerStyle = useAnimatedStyle(() => ({
-    height: interpolate(scrollY.value, [0, dist], [maxH, minH], Extrapolation.CLAMP),
+  // Moving a fixed-size clipping layer produces the same visible bottom edge as
+  // shrinking `height`, while keeping every per-frame update to transform and
+  // opacity. Its contents counter-translate so the header stays anchored as the
+  // clip edge rises with the list.
+  const collapseClipStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: -interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
+  }));
+  // Reanimated animated-style objects are view-specific; keep separate inverse
+  // styles for the wash and foreground even though they share the same math.
+  const washFixedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
+  }));
+  const headerFixedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
   }));
   const artStyle = useAnimatedStyle(() => ({
     transform: [
@@ -243,18 +302,29 @@ export function CollapsingHeader({
   }));
 
   return (
-    <Animated.View style={[styles.container, containerStyle]} pointerEvents="box-none">
-      {/* Blurred wash (fixed tall, clipped by the shrinking container) + fade at the bottom edge. */}
-      <View style={[styles.wash, { height: maxH }]} pointerEvents="none">
+    <View style={[styles.container, { height: maxH }]} pointerEvents="box-none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.collapseClip, collapseClipStyle]}
+        pointerEvents="box-none"
+      >
+      {/* The wash counter-translates to stay fixed while the clip's bottom edge rises. */}
+      <Animated.View
+        style={[styles.wash, { height: maxH }, washFixedStyle]}
+        pointerEvents="none"
+      >
         {backdropUri ? (
           <Image source={{ uri: backdropUri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} transition={null} />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.washFallback]} />
         )}
         <View style={styles.scrim} />
-      </View>
+      </Animated.View>
       <BottomFade />
 
+      <Animated.View
+        style={[StyleSheet.absoluteFill, headerFixedStyle]}
+        pointerEvents="box-none"
+      >
       <Animated.View style={[styles.barBg, { height: minH }, barBgStyle]} pointerEvents="none">
         {backdropUri ? (
           <>
@@ -390,7 +460,9 @@ export function CollapsingHeader({
       >
         {artwork}
       </Animated.View>
-    </Animated.View>
+      </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -400,6 +472,8 @@ const useStyles = createThemedStyles((colors) => ({
     top: 0,
     left: 0,
     right: 0,
+  },
+  collapseClip: {
     overflow: 'hidden',
   },
   wash: {
