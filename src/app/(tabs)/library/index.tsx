@@ -41,6 +41,7 @@ import { ArtistRow } from '@/components/library/ArtistRow';
 import { TrackRow } from '@/components/library/TrackRow';
 import { FoldersView } from '@/components/library/FoldersView';
 import { LibraryContextBar } from '@/components/library/LibraryContextBar';
+import { LibrarySurfaceTransition } from '@/components/library/LibrarySurfaceTransition';
 import { MiniPlayerScrim } from '@/components/MiniPlayerScrim';
 import { PlaylistsView } from '@/components/library/PlaylistsView';
 import { ScanProgress } from '@/components/library/ScanProgress';
@@ -773,7 +774,8 @@ export default function LibraryScreen() {
                 setGridWidth(Math.max(0, e.nativeEvent.layout.width - spacing.lg * 2))
               }
             >
-              {viewMode === 'albums' ? (
+              <LibrarySurfaceTransition mode={viewMode}>
+                {viewMode === 'albums' ? (
                 <ReanimatedFlashList
                   ref={albumListRef}
                   key={`albums-${albumSort}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
@@ -825,9 +827,9 @@ export default function LibraryScreen() {
                     )
                   )}
                 />
-              ) : null}
+                ) : null}
 
-              {viewMode === 'artists' ? (
+                {viewMode === 'artists' ? (
                 <ReanimatedFlashList
                   ref={artistListRef}
                   key={`artists-${artistSort}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
@@ -879,9 +881,9 @@ export default function LibraryScreen() {
                     )
                   )}
                 />
-              ) : null}
+                ) : null}
 
-              {viewMode === 'tracks' ? (
+                {viewMode === 'tracks' ? (
                 <ReanimatedFlashList
                   ref={trackListRef}
                   key={`tracks-${trackSort}-${sectionJumpRevision}`}
@@ -920,9 +922,9 @@ export default function LibraryScreen() {
                     />
                   )}
                 />
-              ) : null}
+                ) : null}
 
-              {viewMode === 'playlists' ? (
+                {viewMode === 'playlists' ? (
                 <PlaylistsView
                   listRef={setPlaylistList}
                   onScroll={onListScroll}
@@ -934,9 +936,9 @@ export default function LibraryScreen() {
                   onCloseAddMenu={() => setPlaylistAddMenuOpen(false)}
                   onSheetOpenChange={setChildSheetOpen}
                 />
-              ) : null}
+                ) : null}
 
-              {viewMode === 'folders' ? (
+                {viewMode === 'folders' ? (
                 <FoldersView
                   listRef={setFolderList}
                   onScroll={onListScroll}
@@ -946,9 +948,9 @@ export default function LibraryScreen() {
                   listHeader={inlineStatus}
                   onSheetOpenChange={setChildSheetOpen}
                 />
-              ) : null}
+                ) : null}
 
-              {railVisible ? (
+                {railVisible ? (
                 // The list area now runs the full height of the screen, behind
                 // the header. The rail centres itself in its parent and hangs
                 // off its right edge, so it needs a box that matches the part of
@@ -963,7 +965,8 @@ export default function LibraryScreen() {
                     onScrubEnd={flushJump}
                   />
                 </View>
-              ) : null}
+                ) : null}
+              </LibrarySurfaceTransition>
             </View>
           </>
         )}

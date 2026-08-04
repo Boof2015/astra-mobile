@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Tabs } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { useShellLayout } from '@/navigation/useShellLayout';
 import { ShellRailContext } from '@/navigation/shellRailContext';
 import {
   TAB_PRESS_SWALLOW_MS,
-  TAB_SCENE_ANIMATION,
+  TAB_ROUTE_ORDER,
   TAB_STACK_RESET_DELAY_MS,
-  TAB_TRANSITION_SPEC,
+  resolveTabSceneMotion,
 } from '@/navigation/tabTransition';
 import { popToTop } from '@/navigation/stackActions';
 import {
@@ -21,6 +22,7 @@ import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 
 export default function TabsLayout() {
   const colors = useColors();
+  const reducedMotion = useReducedMotion();
   const lastSwitchAt = useRef(0);
   const pendingStackReset = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,18 +47,16 @@ export default function TabsLayout() {
   // animation effect and can strand the incoming scene at opacity 0. The
   // position belongs in here, but it only changes on rotation — never during a
   // tab switch — so it is safe as a dependency.
-  const screenOptions = useMemo(
-    () => ({
-      headerShown: false,
-      freezeOnBlur: false,
-      sceneStyle: { backgroundColor: colors.bgPrimary },
-      // Retained scenes cross-fade without translating two full pages.
-      animation: TAB_SCENE_ANIMATION,
-      transitionSpec: TAB_TRANSITION_SPEC,
-      tabBarPosition,
-    }),
-    [colors.bgPrimary, tabBarPosition]
-  );
+  const screenOptions = useMemo(() => ({
+    headerShown: false,
+    freezeOnBlur: false,
+    sceneStyle: { backgroundColor: colors.bgPrimary },
+    tabBarPosition,
+    // Bottom tabs use legacy Animated, so Reanimated's ReduceMotion setting
+    // cannot shorten this transition for us. Resolve to `animation: none` and
+    // omit the custom spec entirely when the system preference is enabled.
+    ...resolveTabSceneMotion(reducedMotion),
+  }), [colors.bgPrimary, reducedMotion, tabBarPosition]);
   return (
     // Tells every scene below that the rail is already standing in the leading
     // cutout's way, so `Screen` pays only the trailing inset. Screens outside
@@ -134,11 +134,13 @@ export default function TabsLayout() {
           return <TabBar items={items} onPress={handlePress} shell={shell} />;
         }}
       >
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="library" />
-        <Tabs.Screen name="eq" />
-        <Tabs.Screen name="settings" />
-        <Tabs.Screen name="stats" options={{ href: null }} />
+        {TAB_ROUTE_ORDER.map((name) => (
+          <Tabs.Screen
+            key={name}
+            name={name}
+            options={name === 'stats' ? { href: null } : undefined}
+          />
+        ))}
       </Tabs>
     </ShellRailContext.Provider>
   );

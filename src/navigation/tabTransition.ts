@@ -1,11 +1,68 @@
+import type {
+  BottomTabNavigationOptions,
+  BottomTabSceneStyleInterpolator,
+} from 'expo-router/build/react-navigation/bottom-tabs/types';
+
 /**
  * Bottom tabs use React Native's legacy native Animated driver. On Android,
  * timing animations are pre-sampled at 60 fps. A short, critically damped
- * native spring avoids translating two retained full-page scenes and leaves
- * only an intentional cross-fade at the tab boundary.
+ * native spring keeps the retained full-page scenes moving smoothly while a
+ * very short shared-axis drift gives their order a spatial relationship.
  */
 export const TAB_TRANSITION_SETTLE_MS = 160;
 export const TAB_SCENE_ANIMATION = 'fade' as const;
+export const TAB_SCENE_TRANSLATION_DP = 20;
+
+/**
+ * Navigator order is motion order. Stats is a hidden, Home-owned destination,
+ * so it lives immediately after Home: leaving Stats for Library must still
+ * read as a forward trip from the visibly selected Home item.
+ */
+export const TAB_ROUTE_ORDER = ['index', 'stats', 'library', 'eq', 'settings'] as const;
+
+export const TAB_SCENE_PROGRESS_RANGE = [-1, 0, 1] as const;
+export const TAB_SCENE_OPACITY_RANGE = [0, 1, 0] as const;
+export const TAB_SCENE_TRANSLATION_RANGE = [
+  -TAB_SCENE_TRANSLATION_DP,
+  0,
+  TAB_SCENE_TRANSLATION_DP,
+] as const;
+
+/**
+ * React Navigation assigns negative progress to routes before the focused
+ * destination and positive progress to routes after it. Mapping that value
+ * directly to translation makes forward and reverse trips mirror one another.
+ */
+export const TAB_SCENE_STYLE_INTERPOLATOR: BottomTabSceneStyleInterpolator = ({ current }) => ({
+  sceneStyle: {
+    opacity: current.progress.interpolate({
+      inputRange: [...TAB_SCENE_PROGRESS_RANGE],
+      outputRange: [...TAB_SCENE_OPACITY_RANGE],
+    }),
+    transform: [
+      {
+        translateX: current.progress.interpolate({
+          inputRange: [...TAB_SCENE_PROGRESS_RANGE],
+          outputRange: [...TAB_SCENE_TRANSLATION_RANGE],
+        }),
+      },
+    ],
+  },
+});
+
+export type TabSceneMotionOptions = Pick<
+  BottomTabNavigationOptions,
+  'animation' | 'sceneStyleInterpolator' | 'transitionSpec'
+>;
+
+export function resolveTabSceneMotion(reducedMotion: boolean): TabSceneMotionOptions {
+  if (reducedMotion) return { animation: 'none' };
+  return {
+    animation: TAB_SCENE_ANIMATION,
+    sceneStyleInterpolator: TAB_SCENE_STYLE_INTERPOLATOR,
+    transitionSpec: TAB_TRANSITION_SPEC,
+  };
+}
 
 /**
  * Presses inside this window are swallowed so the native-driver fade is never
