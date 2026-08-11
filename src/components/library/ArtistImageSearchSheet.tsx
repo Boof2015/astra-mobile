@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
@@ -126,57 +125,56 @@ export function ArtistImageSearchSheet({
 
       <View style={styles.results}>
         {candidates.map((candidate) => (
-          <AppPressable
-            key={candidate.id}
-
-            style={styles.candidate}
-            onPress={() => void choose(candidate)}
-            accessibilityRole="button"
-            accessibilityLabel={`Use Deezer image for ${candidate.name}`}
-          >
-            <Image
-              source={{ uri: candidate.imageUrl }}
-              style={styles.thumbnail}
-              contentFit="cover"
-              transition={100}
-            />
-            <View style={styles.candidateText}>
-              <Text variant="body" numberOfLines={1}>{candidate.name}</Text>
-              <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-                {formatFans(candidate.fanCount)}
-              </Text>
-            </View>
+          <View key={candidate.id} style={styles.candidate}>
+            <AppPressable
+              style={styles.candidateChoice}
+              onPress={() => void choose(candidate)}
+              accessibilityRole="button"
+              accessibilityLabel={`Use Deezer image for ${candidate.name}`}
+            >
+              <Image
+                source={{ uri: candidate.imageUrl }}
+                style={styles.thumbnail}
+                contentFit="cover"
+                transition={100}
+              />
+              <View style={styles.candidateText}>
+                <Text variant="body" numberOfLines={1}>{candidate.name}</Text>
+                <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
+                  {formatFans(candidate.fanCount)}
+                </Text>
+              </View>
+              {selectedId === candidate.id ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+              )}
+            </AppPressable>
             {candidate.linkUrl ? (
-              <Pressable
+              <AppPressable
+                feedback="none"
                 style={styles.providerLink}
                 hitSlop={8}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void openDeezerLink(candidate.linkUrl!);
-                }}
+                onPress={() => void openDeezerLink(candidate.linkUrl!)}
                 accessibilityRole="link"
                 accessibilityLabel={`Open ${candidate.name} on Deezer`}
               >
                 <Ionicons name="open-outline" size={17} color={colors.textSecondary} />
-              </Pressable>
+              </AppPressable>
             ) : null}
-            {selectedId === candidate.id ? (
-              <ActivityIndicator size="small" color={colors.accent} />
-            ) : (
-              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-            )}
-          </AppPressable>
+          </View>
         ))}
       </View>
 
-      <Pressable
+      <AppPressable
+        feedback="none"
         style={styles.attribution}
         onPress={() => void openDeezerLink('https://www.deezer.com/')}
         accessibilityRole="link"
       >
         <Text variant="caption" color={colors.textSecondary}>Images and artist data from Deezer</Text>
         <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
-      </Pressable>
+      </AppPressable>
     </AppSheet>
   );
 }
@@ -234,6 +232,13 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.glassBorder,
+  },
+  candidateChoice: {
+    flex: 1,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   thumbnail: {
     width: 58,

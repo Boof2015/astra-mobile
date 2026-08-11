@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { View } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import { SLEEP_TIMER_PRESETS, formatSleepTimerStatus, normalizeSleepTimerMinutes } from '@/audio/sleepTimerState';
 import { supportsNativePauseAtEndOfItem } from '@/audio/trackPlayerExtensions';
@@ -90,7 +91,7 @@ export function SleepTimerControls() {
       </View>
 
       <View style={styles.customRow}>
-        <TextInput
+        <BottomSheetTextInput
           value={customMinutes}
           onChangeText={setCustomMinutes}
           editable={available}

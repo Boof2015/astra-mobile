@@ -19,7 +19,11 @@ import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import {
+  AppPressable,
+  AppPressableGestureScope,
+  SCROLL_PRESS_DELAY,
+} from '@/components/AppPressable';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
@@ -164,7 +168,7 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
       handleComponent={renderSheetHandle}
       handleIndicatorStyle={styles.handle}
     >
-      {content}
+      <AppPressableGestureScope>{content}</AppPressableGestureScope>
     </BottomSheet>
   );
 }

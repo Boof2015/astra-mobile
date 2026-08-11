@@ -4,7 +4,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -17,7 +16,11 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import {
+  AppPressable,
+  AppPressableGestureScope,
+  SCROLL_PRESS_DELAY,
+} from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
@@ -61,13 +64,13 @@ export function AppSheet({
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, sceneBottomInset) + spacing.md }]}
           showsVerticalScrollIndicator={false}
         >
-          {children}
+          <AppPressableGestureScope>{children}</AppPressableGestureScope>
         </BottomSheetScrollView>
       ) : (
         <BottomSheetView
           style={[styles.content, { paddingBottom: Math.max(insets.bottom, sceneBottomInset) + spacing.md }]}
         >
-          {children}
+          <AppPressableGestureScope>{children}</AppPressableGestureScope>
         </BottomSheetView>
       )}
     </BottomSheet>
@@ -131,15 +134,9 @@ export function AppSheetItem({
 
   return (
     <View style={styles.itemRow}>
-      {/*
-        This must participate in Gesture Handler's native arbitration. A core
-        Pressable works in a fresh sheet, but after the Library dock has owned
-        several horizontal pans BottomSheetScrollView can keep winning every
-        later contact, leaving the row visibly tapped but never pressed.
-      */}
-      <GesturePressable
+      <AppPressable
         unstable_pressDelay={SCROLL_PRESS_DELAY}
-        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+        style={styles.item}
         onPress={handlePress}
         accessibilityRole={selectable ? 'radio' : 'button'}
         accessibilityState={selectable ? { selected } : undefined}
@@ -158,7 +155,7 @@ export function AppSheetItem({
           ) : null}
         </View>
         {selected ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
-      </GesturePressable>
+      </AppPressable>
       {trailing}
     </View>
   );
@@ -202,9 +199,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
-  },
-  itemPressed: {
-    backgroundColor: colors.glassHighlight,
   },
   itemLabel: {
     flexShrink: 1,
