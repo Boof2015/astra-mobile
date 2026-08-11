@@ -18,6 +18,7 @@ const TEST_SCRIPTS = [
   'test:lyrics',
   'test:sleep',
   'test:troubleshooting',
+  'test:fuzzy-search',
   'test:settings-search',
   'test:now-playing-layout',
   'test:memory-lifecycle',

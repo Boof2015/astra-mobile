@@ -89,6 +89,7 @@
     "test:lyrics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lyrics/parsing.test.mts src/lyrics/presentation.test.mts src/lyrics/displaySettings.test.mts src/lyrics/embedded.test.mts src/lyrics/resolver.test.mts",
     "test:sleep": "node --experimental-strip-types --test src/audio/sleepTimerState.test.mts",
     "test:troubleshooting": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/cacheInvalidation.test.mts",
+    "test:fuzzy-search": "node --experimental-strip-types --test src/lib/fuzzySearch.test.mts",
     "test:settings-search": "node --experimental-strip-types --test src/components/search/settingsSearchRoutes.test.mts",
     "test:now-playing-layout": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/player/nowPlayingLayout.test.mts src/components/player/nowPlayingPreferences.test.mts src/components/player/nowPlayingDismiss.test.mts src/components/player/artistCreditVisibility.test.mts src/playback/playbackTargetPresentation.test.mts",
     "test:memory-lifecycle": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/delayedPresence.test.mts scripts/android-memory-profile.test.mjs",

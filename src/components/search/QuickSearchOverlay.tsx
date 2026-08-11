@@ -36,7 +36,7 @@ import {
   artworkUri,
   trackArtworkThumbSource
 } from '@/library/artwork';
-import { multiFieldScore, MIN_SCORE_THRESHOLD } from '@/lib/fuzzySearch';
+import { findFuzzyMatch, multiFieldScore } from '@/lib/fuzzySearch';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -332,7 +332,7 @@ function plural(count: number, noun: string): string {
 }
 
 function scoreOrNull(score: number | null): score is number {
-  return score !== null && score >= MIN_SCORE_THRESHOLD;
+  return score !== null;
 }
 
 function playlistFromRow(playlist: Playlist): SearchPlaylist {
@@ -413,42 +413,45 @@ function resultIcon(result: SearchResult): IconName {
 
 function HighlightedLabel({ text, query }: { text: string; query: string }) {
   const styles = useStyles();
-  const normalizedText = text.toLocaleLowerCase();
-  const normalizedQuery = query.toLocaleLowerCase().trim();
+  const match = findFuzzyMatch(query, text);
+  if (!match || match.indices.length === 0) return <>{text}</>;
 
-  if (!normalizedQuery) {
-    return <>{text}</>;
-  }
-
-  const substringIndex = normalizedText.indexOf(normalizedQuery);
-  if (substringIndex >= 0) {
-    return (
-      <>
-        {text.slice(0, substringIndex)}
-        <Text variant="body" style={styles.highlight}>
-          {text.slice(substringIndex, substringIndex + normalizedQuery.length)}
-        </Text>
-        {text.slice(substringIndex + normalizedQuery.length)}
-      </>
-    );
-  }
-
+  const matchedIndices = [...new Set(match.indices)].sort((left, right) => left - right);
   const parts: { text: string; highlighted: boolean; key: string }[] = [];
-  let queryIndex = 0;
-  let lastPushed = 0;
+  let cursor = 0;
+  let groupStart = matchedIndices[0];
+  let groupEnd = groupStart + 1;
 
-  for (let i = 0; i < text.length && queryIndex < normalizedQuery.length; i += 1) {
-    if (text[i].toLocaleLowerCase() !== normalizedQuery[queryIndex]) continue;
-    if (i > lastPushed) {
-      parts.push({ text: text.slice(lastPushed, i), highlighted: false, key: `plain-${i}` });
+  const pushGroup = () => {
+    if (groupStart > cursor) {
+      parts.push({
+        text: text.slice(cursor, groupStart),
+        highlighted: false,
+        key: `plain-${cursor}`,
+      });
     }
-    parts.push({ text: text[i], highlighted: true, key: `mark-${i}` });
-    queryIndex += 1;
-    lastPushed = i + 1;
+    parts.push({
+      text: text.slice(groupStart, groupEnd),
+      highlighted: true,
+      key: `mark-${groupStart}`,
+    });
+    cursor = groupEnd;
+  };
+
+  for (let index = 1; index < matchedIndices.length; index += 1) {
+    const textIndex = matchedIndices[index];
+    if (textIndex === groupEnd) {
+      groupEnd += 1;
+      continue;
+    }
+    pushGroup();
+    groupStart = textIndex;
+    groupEnd = textIndex + 1;
   }
 
-  if (lastPushed < text.length) {
-    parts.push({ text: text.slice(lastPushed), highlighted: false, key: 'tail' });
+  pushGroup();
+  if (cursor < text.length) {
+    parts.push({ text: text.slice(cursor), highlighted: false, key: 'tail' });
   }
 
   return (
