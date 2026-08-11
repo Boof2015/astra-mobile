@@ -1,7 +1,7 @@
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 
@@ -9,7 +9,6 @@ import { useLibraryStore } from '@/stores/libraryStore';
 export function ScanProgress() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const isScanning = useLibraryStore((s) => s.isScanning);
   const isCancelling = useLibraryStore((s) => s.isCancelling);
   const progress = useLibraryStore((s) => s.scanProgress);
@@ -42,8 +41,8 @@ export function ScanProgress() {
         >
           {label}
         </Text>
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
+
           disabled={isCancelling}
           onPress={cancelScan}
           accessibilityRole="button"
@@ -58,7 +57,7 @@ export function ScanProgress() {
           >
             {isCancelling ? 'Cancelling…' : 'Cancel'}
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
       <View style={styles.track}>
         <View

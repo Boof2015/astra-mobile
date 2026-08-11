@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   View,
-  Pressable,
   StyleSheet,
   type GestureResponderEvent
 } from 'react-native';
@@ -17,7 +16,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { trackArtworkThumbSource } from '@/library/artwork';
@@ -68,7 +67,6 @@ export function TrackRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   // Key the artwork by hash (local) or identity path (remote) so the error fallback
   // and FlashList recycling work for both.
   const artKey = track.source_type !== 'local' ? track.path : track.artwork_hash;
@@ -94,8 +92,8 @@ export function TrackRow({
   };
 
   const row = (
-    <Pressable
-      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+    <AppPressable
+       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.row, selectionMode && selected && styles.rowSelected]}
       onPress={selectionMode ? onToggleSelect : onPress}
       onLongPress={handleLongPress}
@@ -168,8 +166,8 @@ export function TrackRow({
       </Text>
 
       {onOpenActions && !selectionMode ? (
-        <Pressable
-          android_ripple={ripple.icon(ACTIONS_BUTTON / 2 + 4)} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable
+          feedback="control" unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.actionsButton}
           onPress={openActions}
           hitSlop={8}
@@ -177,9 +175,9 @@ export function TrackRow({
           accessibilityLabel={`More actions for ${track.title}`}
         >
           <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
-        </Pressable>
+        </AppPressable>
       ) : null}
-    </Pressable>
+    </AppPressable>
   );
 
   if (!swipeToQueue || selectionMode) return row;

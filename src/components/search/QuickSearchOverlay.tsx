@@ -7,7 +7,6 @@ import {
 import {
   Keyboard,
   Modal,
-  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -28,7 +27,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { enqueueTop, playLibraryQuery } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
@@ -514,7 +513,6 @@ function ResultRow({
   onQueueTrack: (track: DbTrack) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const isTrack = result.kind === 'track';
   const isShowMode = result.kind === 'show-all' || result.kind === 'show-top';
@@ -526,7 +524,7 @@ function ResultRow({
   };
 
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+    <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.resultRow, active && styles.resultRowActive, isShowMode && styles.showModeRow]}
       onPress={onPress}
       accessibilityRole="button"
@@ -541,7 +539,7 @@ function ResultRow({
         </Text>
       </View>
       {isTrack ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.queueButton}
           onPress={queueTrack}
           hitSlop={8}
@@ -549,13 +547,13 @@ function ResultRow({
           accessibilityLabel={`Play ${result.track.title} next`}
         >
           <Ionicons name={queued ? 'checkmark' : 'add'} size={18} color={colors.accentTextStrong} />
-        </Pressable>
+        </AppPressable>
       ) : result.kind === 'playlist' && result.playlist.remote ? (
         <Ionicons name="cloud" size={14} color={colors.accent} />
       ) : (
         <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
       )}
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -567,7 +565,6 @@ function QuickSearchPanel({
   onClose: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const returnToTabs = useReturnToTabs();
   const insets = useSafeAreaInsets();
@@ -1084,18 +1081,18 @@ function QuickSearchPanel({
           style={styles.input}
         />
         {query.length > 0 ? (
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             onPress={() => updateQuery('')}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
             <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
-          </Pressable>
+          </AppPressable>
         ) : null}
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
           <Ionicons name="close" size={20} color={colors.textSecondary} />
-        </Pressable>
+        </AppPressable>
       </View>
 
       {showAllLibrary ? (
@@ -1145,7 +1142,6 @@ function QuickSearchPanel({
 
 export function QuickSearchOverlay() {
   const styles = useStyles();
-  const ripple = useRipple();
   const isOpen = useSearchStore((s) => s.isQuickSearchOpen);
   const initialQuery = useSearchStore((s) => s.initialQuery);
   const openVersion = useSearchStore((s) => s.openVersion);
@@ -1165,7 +1161,7 @@ export function QuickSearchOverlay() {
       onRequestClose={close}
     >
       <View style={styles.modalRoot}>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
+        <AppPressable feedback="none"  unstable_pressDelay={SCROLL_PRESS_DELAY} style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
         {isOpen ? (
           <QuickSearchPanel key={openVersion} initialQuery={initialQuery} onClose={close} />
         ) : null}

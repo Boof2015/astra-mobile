@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
   InteractionManager,
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions
@@ -43,7 +42,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { hapticForToggle } from '@/lib/hapticCatalog';
 import { playHaptic } from '@/lib/haptics';
 import { useAppForeground } from '@/lib/useAppForeground';
@@ -99,7 +98,6 @@ const BAND_TYPES: EQBandType[] = ['lowshelf', 'peaking', 'highshelf', 'highpass'
 
 export default function EQScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
@@ -309,7 +307,7 @@ export default function EQScreen() {
   };
 
   const presetRowEl = (
-    <Pressable android_ripple={ripple.bounded}
+    <AppPressable
       style={[styles.presetRow, isWide && styles.sideItem]}
       onPress={() => setSheet('preset')}
     >
@@ -317,7 +315,7 @@ export default function EQScreen() {
         {presetName}
       </Text>
       <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const modeSwitcherEl = (
@@ -436,7 +434,7 @@ export default function EQScreen() {
           onValuePress={() => setEditingValue('preamp')}
         />
       </View>
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
         style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
         onPress={() => {
           playHaptic(hapticForToggle(!eq.enabled));
@@ -451,7 +449,7 @@ export default function EQScreen() {
         <Text variant="label" color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}>
           {eq.enabled ? 'EQ on' : 'EQ off'}
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 
@@ -470,12 +468,12 @@ export default function EQScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
+          <AppPressable feedback="control"  style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
             <Ionicons name="save-outline" size={20} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
+          </AppPressable>
+          <AppPressable feedback="control"  style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
             <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-          </Pressable>
+          </AppPressable>
         </View>
       </View>
 

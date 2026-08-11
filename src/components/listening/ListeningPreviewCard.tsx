@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Text } from '@/components/Text';
 import { listeningArtworkSource } from '@/library/artwork';
 import { formatListeningTime } from '@/listeningStats/format';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { ListeningStatsDashboard } from '@/types/listeningStats';
 
 /**
@@ -30,7 +30,6 @@ export function ListeningPreviewCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   if (!hasListeningPreview(dashboard) || !dashboard) return null;
 
   const topTrack = dashboard.topTracks[0] ?? null;
@@ -38,9 +37,9 @@ export function ListeningPreviewCard({
   const paused = !dashboard.status.enabled;
 
   return (
-    <Pressable
+    <AppPressable
       style={[styles.card, style]}
-      android_ripple={ripple.tile}
+      feedback="tile"
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="Open Listening Stats"
@@ -103,7 +102,7 @@ export function ListeningPreviewCard({
           No qualified plays in the last 7 days.
         </Text>
       )}
-    </Pressable>
+    </AppPressable>
   );
 }
 

@@ -1,8 +1,8 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { NowPlayingScopeStyle } from '@/stores/settingsStore';
 import { playHaptic } from '@/lib/haptics';
 
@@ -58,7 +58,6 @@ function StyleCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
 
   const handlePress = () => {
     if (selected) return;
@@ -67,8 +66,8 @@ function StyleCard({
   };
 
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       style={[styles.card, selected && styles.cardSelected]}
       onPress={handlePress}
       accessibilityRole="radio"
@@ -86,7 +85,7 @@ function StyleCard({
       <Text variant="caption" color={colors.textSecondary} style={styles.cardDescription}>
         {description}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 

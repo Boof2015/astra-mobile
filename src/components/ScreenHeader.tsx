@@ -2,7 +2,6 @@
 import { useCallback, type ReactNode } from 'react';
 import {
   PixelRatio,
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -21,7 +20,7 @@ import { useShellRailPresent } from '@/navigation/shellRailContext';
 import { useShellLayout } from '@/navigation/useShellLayout';
 import { MAX_FONT_SCALE, fontSize, variantLineHeight } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
   SCREEN_HEADER_ACTION_SIZE,
   barOpacityAt,
@@ -153,7 +152,6 @@ export function ScreenHeader({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const insets = useSafeAreaInsets();
   const { scrollY, layout } = header;
 
@@ -203,8 +201,8 @@ export function ScreenHeader({
 
   const chevron =
     onBack != null ? (
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
+
         unstable_pressDelay={SCROLL_PRESS_DELAY}
         onPress={onBack}
         hitSlop={12}
@@ -221,7 +219,7 @@ export function ScreenHeader({
         accessibilityLabel="Back"
       >
         <Ionicons name="chevron-back" size={layout.chevronSize} color={colors.textPrimary} />
-      </Pressable>
+      </AppPressable>
     ) : null;
 
   const actionCluster =
@@ -391,10 +389,9 @@ export function ScreenHeaderAction({
   children: ReactNode;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.icon(SCREEN_HEADER_ACTION_SIZE / 2)}
+    <AppPressable
+      feedback="control"
       style={styles.action}
       onPress={onPress}
       hitSlop={6}
@@ -402,7 +399,7 @@ export function ScreenHeaderAction({
       accessibilityLabel={accessibilityLabel}
     >
       {children}
-    </Pressable>
+    </AppPressable>
   );
 }
 

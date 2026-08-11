@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -23,12 +22,11 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { EQPreset } from '@/types/audio';
 
 export default function EQPresetScanScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
@@ -53,12 +51,12 @@ export default function EQPresetScanScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Equalizer
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <Text variant="title" style={styles.heading}>
@@ -71,11 +69,11 @@ export default function EQPresetScanScreen() {
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan EQ preset QR codes.</Text>
-          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void requestPermission()}>
+          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
             <Text variant="body" color={colors.accentTextStrong}>
               Allow camera
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       ) : (
         <View style={styles.scannerFrame}>
@@ -94,11 +92,11 @@ export default function EQPresetScanScreen() {
                   {error}
                 </Text>
               </View>
-              <Pressable android_ripple={ripple.bounded} style={styles.retryButton} onPress={() => setError(null)}>
+              <AppPressable feedback="control"  style={styles.retryButton} onPress={() => setError(null)}>
                 <Text variant="label" color={colors.accentTextStrong}>
                   Scan again
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
           ) : null}
         </View>

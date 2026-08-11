@@ -1,6 +1,5 @@
 import {
-  View,
-  Pressable
+  View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -10,12 +9,11 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 
 export function EmptyLibrary() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const recoveryNotice = useLibraryStore((state) => state.recoveryNotice);
@@ -50,8 +48,8 @@ export function EmptyLibrary() {
               : recoveryNotice ??
                 'Pick a folder on this device and Astra will scan it into your library.'}
       </Text>
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="accent"
+
         style={styles.cta}
         onPress={() => router.push(fatal ? '/settings/troubleshooting' : '/settings')}
         accessibilityRole="button"
@@ -60,7 +58,7 @@ export function EmptyLibrary() {
         <Text variant="body" style={styles.ctaLabel}>
           {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }

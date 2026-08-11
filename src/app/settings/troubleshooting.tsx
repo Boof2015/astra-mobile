@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
@@ -21,7 +21,7 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 
 type ActionKey = 'scan' | 'rebuild' | 'lyrics' | 'waveform' | 'onboarding';
 
@@ -255,11 +255,10 @@ function MaintenanceRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
+    <AppPressable
       disabled={disabled}
-      android_ripple={ripple.bounded}
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onPress}
       accessibilityRole="button"
@@ -274,7 +273,7 @@ function MaintenanceRow({
         <Text variant="caption" color={colors.textSecondary} style={styles.description}>{description}</Text>
       </View>
       {running ? <ActivityIndicator size="small" color={colors.accent} /> : <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />}
-    </Pressable>
+    </AppPressable>
   );
 }
 

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -19,7 +18,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import type { LastFmScrobbleProtocol } from '@/types/lastFm';
 
@@ -104,7 +103,6 @@ function Field({
 
 export default function LastFmEditScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -202,12 +200,12 @@ export default function LastFmEditScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goBack} hitSlop={8}>
+          <AppPressable feedback="control"  style={styles.back} onPress={goBack} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               {backLabel}
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
 
         {step === 'type' ? (
@@ -221,7 +219,7 @@ export default function LastFmEditScreen() {
 
             <View style={styles.typeCards}>
               {PROTOCOL_OPTIONS.map((option) => (
-                <Pressable android_ripple={ripple.bounded}
+                <AppPressable
                   key={option.protocol}
                   style={styles.typeCard}
                   onPress={() => chooseProtocol(option.protocol)}
@@ -241,7 +239,7 @@ export default function LastFmEditScreen() {
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-                </Pressable>
+                </AppPressable>
               ))}
             </View>
           </ScrollView>
@@ -295,7 +293,7 @@ export default function LastFmEditScreen() {
               </Text>
             ) : null}
 
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               style={[styles.saveButton, !canSubmit || busy ? styles.buttonDisabled : null]}
               onPress={() => void onSave()}
               disabled={!canSubmit || busy}
@@ -307,15 +305,15 @@ export default function LastFmEditScreen() {
                   {editing ? 'Save' : 'Add destination'}
                 </Text>
               )}
-            </Pressable>
+            </AppPressable>
 
             {editing ? (
-              <Pressable android_ripple={ripple.bounded} style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
+              <AppPressable feedback="control"  style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
                 <Ionicons name="trash-outline" size={18} color={colors.warning} />
                 <Text variant="body" color={colors.warning}>
                   Remove destination
                 </Text>
-              </Pressable>
+              </AppPressable>
             ) : null}
           </ScrollView>
         )}

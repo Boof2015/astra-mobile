@@ -7,12 +7,12 @@
 // static scroll; loading/not-found/error states get a centered message.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
@@ -84,7 +84,6 @@ export function LyricsBand({
 }: LyricsBandProps) {
   const { fixedSize, maxSize, hPadding } = SURFACE[surface];
   const colors = useColors();
-  const ripple = useRipple();
   const entry = useLyricsStore((s) => s.byPath[track.path]);
   const loadForTrack = useLyricsStore((s) => s.loadForTrack);
   const wordTimingEnabled = useLyricsSettingsStore((s) => s.wordTimingEnabled);
@@ -201,8 +200,8 @@ export function LyricsBand({
           {emptyState.message}
         </Text>
         {emptyState.retryable ? (
-          <Pressable
-            android_ripple={ripple.bounded}
+          <AppPressable feedback="none"
+
             disabled={isLoading}
             onPress={() => void loadForTrack(track, { force: true })}
             accessibilityRole="button"
@@ -232,7 +231,7 @@ export function LyricsBand({
             <Text variant="label" color={colors.accentTextStrong}>
               {isLoading ? 'Retrying…' : 'Retry'}
             </Text>
-          </Pressable>
+          </AppPressable>
         ) : null}
       </View>
     );
@@ -310,7 +309,7 @@ export function LyricsBand({
       </ScrollView>
 
       {followPaused ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={recenter}
           hitSlop={10}
           style={{
@@ -328,7 +327,7 @@ export function LyricsBand({
           <Text variant="mono" color={colors.accentText} style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' }}>
             Recenter
           </Text>
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );

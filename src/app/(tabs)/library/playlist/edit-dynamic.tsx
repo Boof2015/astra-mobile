@@ -6,7 +6,6 @@ import {
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -27,7 +26,7 @@ import {
 } from '@/components/sheets/AppSheet';
 import { fonts, fontSize, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import {
   DYNAMIC_PLAYLIST_PRESETS,
@@ -329,16 +328,15 @@ function DraftActions({
   onApply: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.sheetActions}>
-      <Pressable android_ripple={ripple.bounded} style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
+      <AppPressable feedback="control"  style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
         <Text variant="label" color={colors.textSecondary}>
           Cancel
         </Text>
-      </Pressable>
-      <Pressable android_ripple={ripple.bounded}
+      </AppPressable>
+      <AppPressable feedback="accent"
         style={[styles.sheetButton, styles.applyButton, disabled && styles.applyDisabled]}
         disabled={disabled}
         onPress={onApply}
@@ -347,7 +345,7 @@ function DraftActions({
         <Text variant="label" color={colors.accentTextStrong}>
           Apply
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }
@@ -532,7 +530,6 @@ function ConditionEditorSheet({
   onApply: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const draft = target.draft;
   const error = validateCondition(draft);
@@ -540,7 +537,7 @@ function ConditionEditorSheet({
   return (
     <AppSheet onClose={onCancel} scrollable>
       <AppSheetTitle title={target.mode === 'new' ? 'Add filter' : 'Edit filter'} />
-      <Pressable android_ripple={ripple.bounded} style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
+      <AppPressable style={styles.sheetSelectRow} onPress={onChangeField} accessibilityRole="button">
         <View style={styles.sheetSelectText}>
           <Text variant="caption" color={colors.textTertiary}>
             FIELD
@@ -548,7 +545,7 @@ function ConditionEditorSheet({
           <Text variant="body">{fieldLabel(draft)}</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-      </Pressable>
+      </AppPressable>
 
       <View style={styles.sheetBlock}>
         <Text variant="caption" color={colors.textTertiary}>
@@ -572,12 +569,12 @@ function ConditionEditorSheet({
 
       <View style={styles.conditionSheetFooter}>
         {target.mode === 'edit' ? (
-          <Pressable android_ripple={ripple.bounded} style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
+          <AppPressable feedback="control"  style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
             <Ionicons name="trash-outline" size={17} color={colors.warning} />
             <Text variant="label" color={colors.warning}>
               Remove
             </Text>
-          </Pressable>
+          </AppPressable>
         ) : (
           <View />
         )}
@@ -717,12 +714,11 @@ function FilterCard({
   onRemove: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const option = fieldOptionForKey(getConditionFieldKey(condition));
 
   return (
-    <Pressable android_ripple={ripple.bounded} style={styles.ruleCard} onPress={onPress} accessibilityRole="button">
+    <AppPressable style={styles.ruleCard} onPress={onPress} accessibilityRole="button">
       <View style={styles.cardIcon}>
         <Ionicons name={option?.icon ?? 'options-outline'} size={18} color={colors.accent} />
       </View>
@@ -734,7 +730,7 @@ function FilterCard({
           {fieldGroupLabel(condition)}
         </Text>
       </View>
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
         style={styles.cardRemove}
         onPress={onRemove}
         hitSlop={8}
@@ -742,15 +738,14 @@ function FilterCard({
         accessibilityLabel="Remove filter"
       >
         <Ionicons name="close" size={18} color={colors.textTertiary} />
-      </Pressable>
-    </Pressable>
+      </AppPressable>
+    </AppPressable>
   );
 }
 
 export default function DynamicPlaylistEditorScreen() {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -1053,7 +1048,7 @@ export default function DynamicPlaylistEditorScreen() {
     >
       <Screen padded={false}>
         <View style={styles.header}>
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="control"
             onPress={() => router.back()}
             hitSlop={8}
             style={styles.headerButton}
@@ -1061,7 +1056,7 @@ export default function DynamicPlaylistEditorScreen() {
             accessibilityLabel="Back"
           >
             <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-          </Pressable>
+          </AppPressable>
           <Text variant="heading" numberOfLines={1} style={styles.headerTitle}>
             {isEditing ? 'Edit dynamic playlist' : 'New dynamic playlist'}
           </Text>
@@ -1097,7 +1092,7 @@ export default function DynamicPlaylistEditorScreen() {
               contentContainerStyle={styles.presetRow}
             >
               {DYNAMIC_PLAYLIST_PRESETS.map((preset) => (
-                <Pressable android_ripple={ripple.bounded}
+                <AppPressable
                   key={preset.id}
                   style={styles.presetChip}
                   onPress={() => applyPreset(preset.rules)}
@@ -1107,7 +1102,7 @@ export default function DynamicPlaylistEditorScreen() {
                   <Text variant="label" color={colors.accentText}>
                     {preset.label}
                   </Text>
-                </Pressable>
+                </AppPressable>
               ))}
             </ScrollView>
           </View>
@@ -1117,12 +1112,12 @@ export default function DynamicPlaylistEditorScreen() {
               <Text variant="caption" style={styles.sectionLabel}>
                 FILTERS
               </Text>
-              <Pressable android_ripple={ripple.bounded} style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
+              <AppPressable feedback="control"  style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
                 <Ionicons name="add" size={16} color={colors.accent} />
                 <Text variant="label" color={colors.accent}>
                   Add filter
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
 
             {rules.conditions.length === 0 ? (
@@ -1150,7 +1145,7 @@ export default function DynamicPlaylistEditorScreen() {
             <Text variant="caption" style={styles.sectionLabel}>
               ORDER
             </Text>
-            <Pressable android_ripple={ripple.bounded} style={styles.sortCard} onPress={openSortSheet} accessibilityRole="button">
+            <AppPressable style={styles.sortCard} onPress={openSortSheet} accessibilityRole="button">
               <View style={styles.cardIcon}>
                 <Ionicons name="swap-vertical" size={18} color={colors.accent} />
               </View>
@@ -1161,7 +1156,7 @@ export default function DynamicPlaylistEditorScreen() {
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-            </Pressable>
+            </AppPressable>
           </View>
         </ScrollView>
 
@@ -1180,7 +1175,7 @@ export default function DynamicPlaylistEditorScreen() {
               {status.label}
             </Text>
           </View>
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="control"
             style={[styles.previewButton, normalizedRulesError !== null && styles.disabled]}
             disabled={normalizedRulesError !== null}
             onPress={() => setSheet({ kind: 'preview' })}
@@ -1190,8 +1185,8 @@ export default function DynamicPlaylistEditorScreen() {
             <Text variant="label" color={colors.textSecondary}>
               Preview
             </Text>
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded}
+          </AppPressable>
+          <AppPressable feedback="accent"
             style={[styles.saveButton, saveDisabled && styles.disabled]}
             disabled={saveDisabled}
             onPress={save}
@@ -1200,7 +1195,7 @@ export default function DynamicPlaylistEditorScreen() {
             <Text variant="label" color={colors.accentTextStrong}>
               {isSaving ? 'Saving' : 'Save'}
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
 
         {renderSheet()}

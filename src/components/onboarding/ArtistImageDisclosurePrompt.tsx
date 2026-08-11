@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ArtistImageAutoPolicy } from '@/types/artistImages';
 
@@ -24,7 +24,6 @@ function ArtistImageDisclosureContent({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [policy, setPolicy] = useState<ArtistImageAutoPolicy>(initialPolicy);
   const [saving, setSaving] = useState(false);
 
@@ -72,8 +71,8 @@ function ArtistImageDisclosureContent({
             Ethernet is included in Wi-Fi mode. You can change this later in Settings › Library,
             and manual searches work while automatic downloads are off.
           </Text>
-          <Pressable
-            android_ripple={ripple.bounded}
+          <AppPressable feedback="accent"
+
             style={styles.button}
             onPress={() => void continueSetup()}
             disabled={saving}
@@ -84,7 +83,7 @@ function ArtistImageDisclosureContent({
             ) : (
               <Text variant="label" color={colors.bgPrimary}>Continue</Text>
             )}
-          </Pressable>
+          </AppPressable>
         </View>
       </View>
     </Modal>

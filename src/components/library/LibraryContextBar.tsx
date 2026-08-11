@@ -1,7 +1,6 @@
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are mutable gesture state. */
 import { useEffect, useMemo } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -20,7 +19,7 @@ import { useSelectionSlide } from '@/components/selectionSlide';
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import {
   LIBRARY_CONTEXT_BAR_HEIGHT,
@@ -79,7 +78,6 @@ export function LibraryContextBar({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const { width, fontScale } = useWindowDimensions();
   const showActiveLabel = libraryDockShowsActiveLabel(width, fontScale);
   const modeIndex = LIBRARY_VIEW_MODES.findIndex((entry) => entry.key === mode);
@@ -256,9 +254,9 @@ export function LibraryContextBar({
                 {LIBRARY_VIEW_MODES.map((entry) => {
                   const selected = entry.key === mode;
                   return (
-                    <Pressable
+                    <AppPressable feedback="control"
                       key={entry.key}
-                      android_ripple={ripple.bounded}
+
                       unstable_pressDelay={SCROLL_PRESS_DELAY}
                       onLayout={slide.measure(entry.key)}
                       style={[
@@ -292,7 +290,7 @@ export function LibraryContextBar({
                           {entry.label}
                         </Text>
                       ) : null}
-                    </Pressable>
+                    </AppPressable>
                   );
                 })}
               </View>
@@ -329,10 +327,9 @@ function ContextAction({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.icon(LIBRARY_CONTEXT_ACTION_SIZE / 2)}
+    <AppPressable
+      feedback="control"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.action, disabled && styles.disabled]}
       disabled={disabled}
@@ -342,7 +339,7 @@ function ContextAction({
       accessibilityState={{ disabled }}
     >
       <Ionicons name={icon} size={20} color={colors.textSecondary} />
-    </Pressable>
+    </AppPressable>
   );
 }
 

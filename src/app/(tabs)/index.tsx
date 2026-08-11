@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AppState,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -33,7 +32,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -144,7 +143,6 @@ function HomeMasthead({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [clockNow, setClockNow] = useState(() => new Date());
   const [greeting, setGreeting] = useState(() => chooseHomeGreeting(null, new Date()));
 
@@ -190,9 +188,9 @@ function HomeMasthead({
   }, [mode]);
 
   const searchButton = (
-    <Pressable
+    <AppPressable
       style={styles.mastheadSearch}
-      android_ripple={ripple.icon(22)}
+      feedback="control"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onSearch}
       accessibilityRole="button"
@@ -200,13 +198,13 @@ function HomeMasthead({
       hitSlop={4}
     >
       <Ionicons name="search" size={22} color={colors.textPrimary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const scanButton = (
-    <Pressable
+    <AppPressable
       style={styles.mastheadSearch}
-      android_ripple={ripple.icon(22)}
+      feedback="control"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onScan}
       accessibilityRole="button"
@@ -214,7 +212,7 @@ function HomeMasthead({
       hitSlop={4}
     >
       <Ionicons name="scan-outline" size={22} color={colors.textPrimary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const utilityButtons = (
@@ -265,7 +263,6 @@ function SectionHeader({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleGroup}>
@@ -279,12 +276,12 @@ function SectionHeader({
         ) : null}
       </View>
       {onActionPress && actionLabel ? (
-        <Pressable style={styles.seeAllButton} android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
+        <AppPressable feedback="control" style={styles.seeAllButton}  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             {actionLabel}
           </Text>
           <Ionicons name="chevron-forward" size={14} color={colors.accentText} />
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );
@@ -355,9 +352,8 @@ function RecentlyAddedAlbum({
   onPress: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   return (
-    <Pressable style={[styles.recentAlbum, { width: size }]} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
+    <AppPressable style={[styles.recentAlbum, { width: size }]} feedback="tile" unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
       <AlbumCover album={album} size={size} />
       <Text variant="body" numberOfLines={1} style={styles.recentAlbumTitle}>
         {album.album}
@@ -365,7 +361,7 @@ function RecentlyAddedAlbum({
       <Text variant="label" numberOfLines={1}>
         {album.artist}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -390,7 +386,6 @@ function RandomSpotlightCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const disabled = !hasTracks;
   const title = spotlight.kind === 'album' ? spotlight.album.album : spotlight.artist.artist;
   const label = spotlight.kind === 'album' ? 'RANDOM ALBUM' : 'RANDOM ARTIST';
@@ -403,9 +398,9 @@ function RandomSpotlightCard({
   };
 
   return (
-    <Pressable
+    <AppPressable
       style={[styles.randomCard, style]}
-      android_ripple={ripple.tile}
+      feedback="tile"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onOpen}
       accessibilityRole="button"
@@ -428,8 +423,8 @@ function RandomSpotlightCard({
             {meta}
           </Text>
           <View style={styles.randomActions}>
-            <Pressable
-              android_ripple={ripple.onAccent()}
+            <AppPressable
+              feedback="accent"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={[styles.randomPrimaryAction, disabled && styles.buttonDisabled]}
               disabled={disabled}
@@ -439,9 +434,9 @@ function RandomSpotlightCard({
               accessibilityLabel={`Play ${title}`}
             >
               <Ionicons name="play" size={16} color={colors.bgPrimary} />
-            </Pressable>
-            <Pressable
-              android_ripple={ripple.icon(18)}
+            </AppPressable>
+            <AppPressable
+              feedback="control"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={[styles.randomAction, disabled && styles.buttonDisabled]}
               disabled={disabled}
@@ -451,9 +446,9 @@ function RandomSpotlightCard({
               accessibilityLabel={`Shuffle ${title}`}
             >
               <Ionicons name="shuffle" size={17} color={colors.accent} />
-            </Pressable>
-            <Pressable
-              android_ripple={ripple.icon(18)}
+            </AppPressable>
+            <AppPressable
+              feedback="control"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.randomAction}
               onPress={(event) => runAction(event, onReroll)}
@@ -462,11 +457,11 @@ function RandomSpotlightCard({
               accessibilityLabel="Pick another random album or artist"
             >
               <Ionicons name="refresh" size={17} color={colors.textSecondary} />
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -481,7 +476,6 @@ function EmptyHomeCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const fatal = status === 'fatalUserData';
   const rebuilding = status === 'rebuilding';
   const degraded = status === 'degraded';
@@ -517,8 +511,8 @@ function EmptyHomeCard({
           </Text>
         ) : null}
       </View>
-      <Pressable
-        android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable
+        feedback="accent" unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.primaryButton}
         onPress={onManageFolders}
         accessibilityRole="button"
@@ -527,7 +521,7 @@ function EmptyHomeCard({
         <Text variant="body" style={styles.primaryButtonText}>
           {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }

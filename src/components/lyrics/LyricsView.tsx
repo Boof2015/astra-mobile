@@ -6,7 +6,7 @@
 // art view; swipe-down still closes the player.
 
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { MarqueeText } from '@/components/MarqueeText';
@@ -20,7 +20,7 @@ import {
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { getLyricsPayloadSourceLabel } from '@/lyrics/presentation';
@@ -57,7 +57,6 @@ export function LyricsView({
   onDismiss,
 }: LyricsViewProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   // Lyrics mode is phone-target only, so progress comes straight from the
   // player store — the 2Hz tick re-renders this takeover, not the whole screen.
@@ -71,9 +70,9 @@ export function LyricsView({
   return (
     <View style={styles.root}>
       <View style={styles.strip}>
-        <Pressable android_ripple={ripple.bounded} onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
+        <AppPressable feedback="control"  onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
           <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-        </Pressable>
+        </AppPressable>
 
         <View style={styles.stripTrackFrame}>
           <NowPlayingTrackFadeThrough
@@ -125,7 +124,7 @@ export function LyricsView({
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
-          <TactilePressable android_ripple={ripple.bounded}
+          <TactilePressable
             onPress={onToggleFavorite}
             haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
             confirmationScale={1.08}
@@ -140,20 +139,20 @@ export function LyricsView({
               color={isFavorite ? colors.accent : colors.textTertiary}
             />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
+          <TactilePressable  onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+          <TactilePressable  onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={28}
               color={colors.bgPrimary}
             />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
+          <TactilePressable  onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded}
+          <TactilePressable
             onPress={onExitLyrics}
             haptic="selection"
             hitSlop={10}

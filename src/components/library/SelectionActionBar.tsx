@@ -1,5 +1,4 @@
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -7,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 interface SelectionActionBarProps {
@@ -72,10 +71,9 @@ function BarButton({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable feedback="control"
+
       style={[styles.button, disabled && styles.buttonDisabled]}
       onPress={onPress}
       disabled={disabled}
@@ -86,7 +84,7 @@ function BarButton({
       <Text variant="label" style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 

@@ -4,7 +4,6 @@ import {
   type ComponentProps
 } from 'react';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   View
@@ -30,7 +29,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import type { Palette } from '@/theme/palettes';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -486,7 +485,6 @@ function SectionHeader({
   onPress?: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
@@ -499,12 +497,12 @@ function SectionHeader({
         </Text>
       </View>
       {onPress ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             See all
           </Text>
           <Ionicons name="chevron-forward" size={14} color={colors.accentText} />
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );
@@ -518,7 +516,6 @@ function AlbumRail({
   onAlbumPress: (album: ArtistAlbum) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   return (
     <ScrollView
       horizontal
@@ -526,7 +523,7 @@ function AlbumRail({
       contentContainerStyle={styles.albumRail}
     >
       {albums.map((album) => (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
           key={album.identity_key}
           style={styles.albumCard}
           onPress={() => onAlbumPress(album)}
@@ -552,7 +549,7 @@ function AlbumRail({
               .filter(Boolean)
               .join(' - ')}
           </Text>
-        </Pressable>
+        </AppPressable>
       ))}
     </ScrollView>
   );

@@ -1,5 +1,5 @@
 import { SleepTimerControls } from '@/components/player/SleepTimerControls';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 import {
@@ -17,13 +17,12 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { notifyListeningHistoryChanged } from '@/listeningStats/events';
 
 export default function PlaybackSettingsScreen() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const historyEnabled = useSettingsStore((s) => s.listeningHistoryEnabled);
   const setHistoryEnabled = useSettingsStore((s) => s.setListeningHistoryEnabled);
 
@@ -83,8 +82,8 @@ export default function PlaybackSettingsScreen() {
           }}
         />
         <View style={styles.divider} />
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
+
           style={styles.clearRow}
           onPress={confirmClear}
           accessibilityRole="button"
@@ -98,7 +97,7 @@ export default function PlaybackSettingsScreen() {
               Keeps play counts, recents, favorites, and playlists.
             </Text>
           </View>
-        </Pressable>
+        </AppPressable>
       </SettingsCard>
     </SettingsSectionScreen>
   );

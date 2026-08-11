@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   View,
   type StyleProp,
@@ -10,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useScanNotificationPermission } from '@/library/useScanNotificationPermission';
 
 /**
@@ -31,7 +30,6 @@ export function ScanNotificationPermissionCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const { state, granted, denied, working, resolve } = useScanNotificationPermission();
 
   // Also hidden while the first check is in flight, so the row never appears
@@ -53,8 +51,8 @@ export function ScanNotificationPermissionCard({
         </View>
       </View>
 
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="accent"
+
         style={styles.button}
         disabled={working}
         onPress={resolve}
@@ -72,7 +70,7 @@ export function ScanNotificationPermissionCard({
         <Text variant="label" color={colors.accentTextStrong}>
           {denied ? 'Open Settings' : 'Allow scan notifications'}
         </Text>
-      </Pressable>
+      </AppPressable>
 
       {denied ? (
         <Text variant="caption" color={colors.textTertiary}>

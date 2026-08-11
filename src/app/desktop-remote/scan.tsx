@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -19,12 +18,11 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 
 export default function DesktopRemoteScanScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const pairFromInput = useDesktopRemoteStore((s) => s.pairFromInput);
@@ -44,12 +42,12 @@ export default function DesktopRemoteScanScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Desktop Remote
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <Text variant="title" style={styles.heading}>
@@ -64,11 +62,11 @@ export default function DesktopRemoteScanScreen() {
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan the desktop pairing QR.</Text>
-          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void requestPermission()}>
+          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
             <Text variant="body" color={colors.accentTextStrong}>
               Allow camera
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       ) : (
         <View style={styles.scannerFrame}>

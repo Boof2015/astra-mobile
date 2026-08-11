@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   BackHandler,
   View,
-  Pressable,
   StyleSheet,
   useWindowDimensions
 } from 'react-native';
@@ -64,7 +63,7 @@ import {
 import { spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useShellLayout } from '@/navigation/useShellLayout';
 import { useTabReselect } from '@/navigation/useTabReselect';
 import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
@@ -166,7 +165,6 @@ function libraryChromeHeight(options: {
 
 export default function LibraryScreen() {
   const colors = useColors();
-  const ripple = useRipple();
   const router = useRouter();
   const viewMode = useLibraryStore((s) => s.viewMode);
   const setViewMode = useLibraryStore((s) => s.setViewMode);
@@ -684,7 +682,7 @@ export default function LibraryScreen() {
         {/* The rail already names this destination, so in landscape there is no
             title row to carry search and it moves in beside the switcher. */}
         {!showScreenTitle ? (
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="control"
             hitSlop={8}
             style={styles.switcherSearch}
             onPress={() => openQuickSearch()}
@@ -692,7 +690,7 @@ export default function LibraryScreen() {
             accessibilityLabel="Search library"
           >
             <Ionicons name="search" size={22} color={colors.textSecondary} />
-          </Pressable>
+          </AppPressable>
         ) : null}
       </View>
 
@@ -717,15 +715,15 @@ export default function LibraryScreen() {
           <Text variant="label">
             {selectedIds.size} selected
           </Text>
-          <Pressable android_ripple={ripple.bounded} onPress={exitSelection} hitSlop={8} accessibilityRole="button">
+          <AppPressable feedback="control"  onPress={exitSelection} hitSlop={8} accessibilityRole="button">
             <Text variant="label" color={colors.accentText}>
               Cancel
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       ) : sortable ? (
         <View style={[styles.controlsRow, { height: CHROME_CONTROLS_H }]}>
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="control"
             style={styles.sortTrigger}
             onPress={() => setSortSheetOpen(true)}
             accessibilityRole="button"
@@ -733,10 +731,10 @@ export default function LibraryScreen() {
           >
             <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
             <Text variant="label">{sortLabel}</Text>
-          </Pressable>
+          </AppPressable>
           {activeLayout && activeLayoutLabel ? (
-            <Pressable
-              android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
+
               style={styles.layoutTrigger}
               hitSlop={8}
               onPress={() => setLayoutSheetOpen(true)}
@@ -748,7 +746,7 @@ export default function LibraryScreen() {
                 size={18}
                 color={colors.textSecondary}
               />
-            </Pressable>
+            </AppPressable>
           ) : null}
         </View>
       ) : null}

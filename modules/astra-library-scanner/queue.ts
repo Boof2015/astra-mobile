@@ -13,7 +13,7 @@ export interface NativeQueuePalette {
   selectedSurface: number;
   nowPlayingSurface: number;
   divider: number;
-  ripple: number;
+  pressOverlay: number;
   text: number;
   textSecondary: number;
   textTertiary: number;
@@ -93,7 +93,7 @@ export function toNativeQueuePalette(colors: Palette): NativeQueuePalette {
     selectedSurface: nativeColor(colors.glassHighlight),
     nowPlayingSurface: nativeColor(colors.glassBg),
     divider: nativeColor(colors.glassBorder),
-    ripple: nativeColor(colors.ripple),
+    pressOverlay: nativeColor(colors.glassHighlight),
     text: nativeColor(colors.textPrimary),
     textSecondary: nativeColor(colors.textSecondary),
     textTertiary: nativeColor(colors.textTertiary),

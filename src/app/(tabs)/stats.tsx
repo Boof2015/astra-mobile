@@ -22,7 +22,7 @@ import { useListeningStatsStore } from '@/stores/listeningStatsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
 import { fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type {
   ListeningStatsCategory,
   ListeningStatsDashboard,
@@ -136,13 +136,12 @@ function RankingRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const copy = rankingCopy(item, category);
   const art = listeningArtworkSource(item, true);
   return (
-    <Pressable
+    <AppPressable
       style={[styles.rankingRow, !item.available && styles.unavailable]}
-      android_ripple={item.available ? ripple.bounded : undefined}
+
       disabled={!item.available}
       onPress={onPress}
       accessibilityRole="button"
@@ -187,7 +186,7 @@ function RankingRow({
           {formatListeningTime(item.listenedSeconds, true)}
         </Text>
       </View>
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -206,16 +205,15 @@ function EmptyState({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
     <View style={styles.empty}>
       <Ionicons name={icon} size={34} color={colors.textTertiary} />
       <Text variant="heading">{title}</Text>
       <Text variant="body" color={colors.textSecondary} style={styles.emptyBody}>{body}</Text>
       {action && onAction ? (
-        <Pressable style={styles.primaryButton} android_ripple={ripple.onAccent()} onPress={onAction}>
+        <AppPressable style={styles.primaryButton} feedback="accent" onPress={onAction}>
           <Text variant="body" style={styles.primaryButtonText}>{action}</Text>
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );

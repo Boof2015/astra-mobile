@@ -7,7 +7,7 @@
 // queue-tray-sheet gotcha).
 
 import { useCallback, useEffect, useMemo } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -19,7 +19,7 @@ import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
@@ -33,7 +33,6 @@ interface RemoteQueueSheetProps {
 export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheetProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const queue = useDesktopRemoteStore((s) => s.queue);
   const snapPoints = useMemo(() => ['58%', '100%'], []);
   const renderFlashListScrollComponent = useBottomSheetScrollableCreator();
@@ -71,8 +70,8 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<DesktopRemoteQueueItem>) => (
-      <Pressable
-        android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable
+         unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.row}
         onPress={() => playItem(item)}
         disabled={item.isCurrent}
@@ -100,9 +99,9 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
             {formatDuration(item.durationSeconds)}
           </Text>
         ) : null}
-      </Pressable>
+      </AppPressable>
     ),
-    [playItem, colors, styles, ripple]
+    [playItem, colors, styles]
   );
 
   const topSection = useMemo(

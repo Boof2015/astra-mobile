@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -30,7 +29,7 @@ import { formatFolderCount, formatTrackCount } from '@/components/settings/Setti
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import type { BaseThemeId } from '@/theme/resolve';
 import { useScanNotificationPermission } from '@/library/useScanNotificationPermission';
@@ -77,7 +76,6 @@ const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
  */
 export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -173,7 +171,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           </View>
           <View style={styles.navRow}>
             {canGoBack ? (
-              <Pressable android_ripple={ripple.bounded}
+              <AppPressable feedback="control"
                 onPress={goBack}
                 style={styles.secondaryButton}
                 accessibilityRole="button"
@@ -182,9 +180,9 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
                 <Text variant="label" color={colors.textSecondary}>
                   Back
                 </Text>
-              </Pressable>
+              </AppPressable>
             ) : null}
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               onPress={goNext}
               style={styles.primaryButton}
               accessibilityRole="button"
@@ -193,7 +191,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
               <Text variant="label" color={colors.bgPrimary} style={styles.primaryButtonText}>
                 {primaryLabel}
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
@@ -223,7 +221,6 @@ function WelcomeStep() {
 
 function LibraryStep() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
@@ -238,7 +235,7 @@ function LibraryStep() {
         subtitle="Point Astra at the folders where your music lives. It scans them into your library — files on disk are never modified."
       />
 
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable
         style={[styles.choiceButton, isScanning && styles.disabled]}
         disabled={isScanning}
         onPress={() => void addFolder()}
@@ -248,7 +245,7 @@ function LibraryStep() {
         <Text variant="body" color={colors.textPrimary}>
           {folders.length > 0 ? 'Add another folder' : 'Choose music folder'}
         </Text>
-      </Pressable>
+      </AppPressable>
 
       <ScanProgress />
 
@@ -275,7 +272,6 @@ function LibraryStep() {
 
 function ThemeStep() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
@@ -298,7 +294,7 @@ function ThemeStep() {
         {options.map((option) => {
           const selected = option.id === baseTheme;
           return (
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable
               key={option.id}
               onPress={() => {
                 if (selected) return;
@@ -315,7 +311,7 @@ function ThemeStep() {
               >
                 {option.title}
               </Text>
-            </Pressable>
+            </AppPressable>
           );
         })}
       </View>
@@ -375,7 +371,6 @@ function DoneStep() {
 function ScanBanner() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const isScanning = useLibraryStore((s) => s.isScanning);
   const isCancelling = useLibraryStore((s) => s.isCancelling);
   const progress = useLibraryStore((s) => s.scanProgress);
@@ -402,8 +397,8 @@ function ScanBanner() {
           ? 'Cancelling library scan…'
           : `Scanning your library${detail ? ` · ${detail}` : '…'}`}
       </Text>
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
+
         disabled={isCancelling}
         onPress={cancelScan}
         accessibilityRole="button"
@@ -418,7 +413,7 @@ function ScanBanner() {
         >
           {isCancelling ? 'Cancelling…' : 'Cancel'}
         </Text>
-      </Pressable>
+      </AppPressable>
     </Animated.View>
   );
 }

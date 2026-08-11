@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -13,7 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {
@@ -31,7 +30,6 @@ export function SavePresetSheet({
   onClose,
 }: SavePresetSheetProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [name, setName] = useState(defaultName);
   const [assignToCurrentDevice, setAssignToCurrentDevice] = useState(false);
@@ -76,12 +74,12 @@ export function SavePresetSheet({
         </View>
       ) : null}
       <View style={styles.actions}>
-        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded}
+        </AppPressable>
+        <AppPressable feedback="accent"
           style={[styles.btn, styles.save, !trimmed && styles.saveDisabled]}
           disabled={!trimmed}
           onPress={() => {
@@ -92,7 +90,7 @@ export function SavePresetSheet({
           <Text variant="label" color={colors.accentTextStrong}>
             Save
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </EqSheet>
   );

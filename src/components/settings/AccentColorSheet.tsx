@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -23,7 +22,7 @@ import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
 import { Text } from '@/components/Text';
 import { fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import {
   hexToHsv,
   hsvToHex,
@@ -59,7 +58,6 @@ export function AccentColorSheet({
 }: AccentColorSheetProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const normalizedInitial = normalizeHexColor(initialHex) ?? '#5b8aff';
   const [hsv, setHsv] = useState<HsvColor>(() => hexToHsv(normalizedInitial));
   const hsvRef = useRef(hsv);
@@ -245,21 +243,21 @@ export function AccentColorSheet({
       </Text>
 
       <View style={styles.actions}>
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
+
           style={[styles.button, styles.cancel]}
           onPress={onClose}
         >
           <Text variant="label" color={colors.textSecondary}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          android_ripple={ripple.onAccent()}
+        </AppPressable>
+        <AppPressable
+          feedback="accent"
           style={[styles.button, styles.apply, !validInput && styles.disabled]}
           disabled={!validInput}
           onPress={apply}
         >
           <Text variant="label" color={colors.bgPrimary}>Apply</Text>
-        </Pressable>
+        </AppPressable>
       </View>
       </AppSheet>
       </GestureHandlerRootView>

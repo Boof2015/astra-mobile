@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent
@@ -19,7 +18,7 @@ import {
   variantLineHeight,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
 import { useSelectionSlide } from './selectionSlide.ts';
@@ -94,7 +93,6 @@ function SegmentButton({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   // 0 = inactive, 1 = active; drives the label colour cross-fade.
   const progress = useSharedValue(focused ? 1 : 0);
 
@@ -117,8 +115,8 @@ function SegmentButton({
   };
 
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       style={styles.segment}
       onPress={handlePress}
       onLayout={onLayout}
@@ -135,7 +133,7 @@ function SegmentButton({
       >
         {label}
       </Animated.Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 

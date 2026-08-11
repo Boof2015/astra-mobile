@@ -28,7 +28,7 @@ import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
@@ -81,15 +81,14 @@ function FolderNodeRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const { node } = state;
   const stop = (callback: () => void) => (event: GestureResponderEvent) => {
     event.stopPropagation();
     callback();
   };
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.folderRow}
       onPress={onToggle}
@@ -118,8 +117,8 @@ function FolderNodeRow({
         ) : null}
       </View>
       <Text variant="mono" style={styles.count}>{node.totalTrackCount}</Text>
-      <Pressable
-        android_ripple={ripple.icon(20)}
+      <AppPressable
+        feedback="control"
         unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.folderButton}
         onPress={stop(onPlay)}
@@ -128,9 +127,9 @@ function FolderNodeRow({
         accessibilityLabel={`Play ${node.name}`}
       >
         <Ionicons name="play" size={16} color={colors.accent} />
-      </Pressable>
-      <Pressable
-        android_ripple={ripple.icon(20)}
+      </AppPressable>
+      <AppPressable
+        feedback="control"
         unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.folderButton}
         onPress={stop(onShuffle)}
@@ -139,8 +138,8 @@ function FolderNodeRow({
         accessibilityLabel={`Shuffle ${node.name}`}
       >
         <Ionicons name="shuffle" size={16} color={colors.textSecondary} />
-      </Pressable>
-    </Pressable>
+      </AppPressable>
+    </AppPressable>
   );
 }
 
@@ -157,10 +156,9 @@ function FolderTrackRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.trackRow, active && styles.trackRowActive]}
       onPress={() => {
@@ -195,8 +193,8 @@ function FolderTrackRow({
         <Text variant="label" numberOfLines={1}>{track.artist}</Text>
       </View>
       <Text variant="mono" style={styles.duration}>{formatDuration(track.duration)}</Text>
-      <Pressable
-        android_ripple={ripple.icon(21)}
+      <AppPressable
+        feedback="control"
         unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.actionsButton}
         onPress={(event) => {
@@ -208,8 +206,8 @@ function FolderTrackRow({
         accessibilityLabel={`More actions for ${track.title}`}
       >
         <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
-      </Pressable>
-    </Pressable>
+      </AppPressable>
+    </AppPressable>
   );
 }
 

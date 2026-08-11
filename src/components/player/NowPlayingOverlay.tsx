@@ -68,7 +68,7 @@ import {
   ScopedPaletteProvider,
   useColors,
 } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { paletteWithAccent } from '@/theme/scopedAccent';
 import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
@@ -193,7 +193,6 @@ export function NowPlayingOverlay({
 }: NowPlayingOverlayProps = {}) {
   const dock = presentation === 'dock';
   const appColors = useColors();
-  const ripple = useRipple();
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
   const rawInsets = useSafeAreaInsets();
@@ -1094,9 +1093,9 @@ export function NowPlayingOverlay({
                       downward, the pane collapses sideways back to the bar
                       card. Adding a second control alongside this one just
                       gave the dock two chevrons that did different things. */}
-                  <Pressable
+                  <AppPressable
                     style={styles.headerBtn}
-                    android_ripple={ripple.icon(22)}
+                    feedback="control"
                     onPress={() =>
                       dock
                         ? void useSettingsStore.getState().setPlayerDockOpen(false)
@@ -1111,7 +1110,7 @@ export function NowPlayingOverlay({
                       size={26}
                       color={colors.textSecondary}
                     />
-                  </Pressable>
+                  </AppPressable>
                 </View>
                 <View style={styles.headerMid}>
                   <Text variant="caption" style={styles.eyebrow}>
@@ -1126,25 +1125,25 @@ export function NowPlayingOverlay({
                       dock used to draw its own expand button on top of this
                       one, which is what made it read as tacked on. */}
                   {dock ? (
-                    <Pressable
+                    <AppPressable
                       style={styles.headerBtn}
-                      android_ripple={ripple.icon(22)}
+                      feedback="control"
                       onPress={() => usePlayerUiStore.getState().openPlayer()}
                       hitSlop={12}
                       accessibilityRole="button"
                       accessibilityLabel="Open full screen player"
                     >
                       <Ionicons name="expand-outline" size={20} color={colors.textSecondary} />
-                    </Pressable>
+                    </AppPressable>
                   ) : null}
-                  <Pressable
-                    style={styles.headerBtn} android_ripple={ripple.icon(22)}
+                  <AppPressable
+                    style={styles.headerBtn} feedback="control"
                     onPress={openMenu}
                     hitSlop={12}
                     accessibilityLabel="More options"
                   >
                     <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-                  </Pressable>
+                  </AppPressable>
                 </View>
               </View>
             )}
@@ -1234,7 +1233,7 @@ export function NowPlayingOverlay({
                       </View>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
+                        style={styles.inlineActionBtn}
                         haptic={activeTrack.isFavorite ? 'toggleOff' : 'toggleOn'}
                         confirmationScale={1.08}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
@@ -1272,7 +1271,7 @@ export function NowPlayingOverlay({
                     <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
-                        android_ripple={ripple.icon(24)}
+
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
@@ -1301,7 +1300,7 @@ export function NowPlayingOverlay({
                         }}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Previous"
                       >
                         <Ionicons
@@ -1316,7 +1315,7 @@ export function NowPlayingOverlay({
                         pressedScale={0.97}
                         hitSlop={12}
                         style={[styles.playButton, playButtonSizing]}
-                        android_ripple={ripple.onAccent()}
+
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
                       >
                         <Ionicons
@@ -1332,7 +1331,7 @@ export function NowPlayingOverlay({
                         }}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Next"
                       >
                         <Ionicons
@@ -1343,7 +1342,7 @@ export function NowPlayingOverlay({
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        android_ripple={ripple.icon(24)}
+
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.repeat === undefined && styles.controlDisabled,
@@ -1400,7 +1399,7 @@ export function NowPlayingOverlay({
                       <View style={styles.subActions}>
                         <TactilePressable
                           hitSlop={10}
-                          style={styles.subBtn} android_ripple={ripple.icon(20)}
+                          style={styles.subBtn}
                           onPress={() => void reconnectDesktop()}
                           accessibilityLabel="Reconnect to desktop"
                         >
@@ -1409,7 +1408,7 @@ export function NowPlayingOverlay({
                         {desktopQueue ? (
                           <TactilePressable
                             hitSlop={10}
-                            style={styles.subBtn} android_ripple={ripple.icon(20)}
+                            style={styles.subBtn}
                             haptic="selection"
                             onPress={showQueue}
                             accessibilityLabel="Desktop queue"
@@ -1432,8 +1431,8 @@ export function NowPlayingOverlay({
                       ? desktopConnectionLabel(desktopConnectionState)
                       : 'Pair with Astra Desktop to control it here.'}
                   </Text>
-                  <Pressable
-                    style={styles.emptyAction} android_ripple={ripple.bounded}
+                  <AppPressable feedback="control"
+                    style={styles.emptyAction}
                     onPress={() => {
                       if (desktopConnection) {
                         void reconnectDesktop();
@@ -1447,7 +1446,7 @@ export function NowPlayingOverlay({
                     <Text variant="label" color={colors.accentTextStrong}>
                       {desktopConnection ? 'Reconnect' : 'Pair desktop'}
                     </Text>
-                  </Pressable>
+                  </AppPressable>
                 </View>
               )
             ) : track ? (
@@ -1658,7 +1657,7 @@ export function NowPlayingOverlay({
                             hitSlop={10}
                             haptic="selection"
                             style={[styles.creditChip, { height: deck.artistLineHeight }]}
-                            android_ripple={ripple.bounded}
+
                             onPress={() => setArtistPickerOpen(true)}
                             accessibilityRole="button"
                             accessibilityLabel={`All ${artistCreditTokens.length} artists`}
@@ -1673,7 +1672,7 @@ export function NowPlayingOverlay({
                     <TactilePressable
                       hitSlop={10}
                       style={[styles.inlineActionBtn, subButtonSizing]}
-                      android_ripple={ripple.icon(22)}
+
                       haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
                       confirmationScale={1.08}
                       onPress={() => void toggleFavorite(track)}
@@ -1716,7 +1715,7 @@ export function NowPlayingOverlay({
                     <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        style={styles.transportSideBtn}
                         haptic={shuffle ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void toggleShuffle()}
                         accessibilityLabel="Shuffle"
@@ -1737,7 +1736,7 @@ export function NowPlayingOverlay({
                         onPress={skipToPrevious}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Previous"
                       >
                         <Ionicons
@@ -1752,7 +1751,7 @@ export function NowPlayingOverlay({
                         pressedScale={0.97}
                         hitSlop={12}
                         style={[styles.playButton, playButtonSizing]}
-                        android_ripple={ripple.onAccent()}
+
                         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                       >
                         <Ionicons
@@ -1765,7 +1764,7 @@ export function NowPlayingOverlay({
                         onPress={skipToNext}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Next"
                       >
                         <Ionicons
@@ -1776,7 +1775,7 @@ export function NowPlayingOverlay({
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        style={styles.transportSideBtn}
                         haptic="modeCycle"
                         onPress={() => void cycleRepeat()}
                         accessibilityLabel="Repeat"
@@ -1811,7 +1810,7 @@ export function NowPlayingOverlay({
                       <TactilePressable
                         hitSlop={10}
                         style={[styles.subBtn, subButtonSizing]}
-                        android_ripple={ripple.icon(20)}
+
                         haptic={scopeStageVisible ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
@@ -1839,7 +1838,7 @@ export function NowPlayingOverlay({
                       <TactilePressable
                         hitSlop={10}
                         style={[styles.subBtn, subButtonSizing]}
-                        android_ripple={ripple.icon(20)}
+
                         haptic="selection"
                         onPress={showQueue}
                         accessibilityLabel="Queue"
@@ -1853,7 +1852,7 @@ export function NowPlayingOverlay({
                       <TactilePressable
                         hitSlop={10}
                         style={[styles.subBtn, subButtonSizing]}
-                        android_ripple={ripple.icon(20)}
+
                         haptic="selection"
                         onPress={showLyrics}
                         accessibilityLabel={
@@ -1941,9 +1940,9 @@ export function NowPlayingOverlay({
             style={[styles.menuCard, { top: menuTop, right: shellRight }, menuCardStyle]}
           >
             {menuItems.map((item) => (
-              <Pressable
+              <AppPressable
                 key={item.key}
-                android_ripple={ripple.bounded}
+
                 style={styles.menuItem}
                 onPress={item.onPress}
                 accessibilityRole="button"
@@ -1952,7 +1951,7 @@ export function NowPlayingOverlay({
                 <Text variant="body" numberOfLines={1} style={styles.menuItemLabel}>
                   {item.label}
                 </Text>
-              </Pressable>
+              </AppPressable>
             ))}
           </Animated.View>
         </Animated.View>

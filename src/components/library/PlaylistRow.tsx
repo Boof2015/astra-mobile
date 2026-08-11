@@ -1,6 +1,5 @@
 import {
   View,
-  Pressable,
   StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -11,7 +10,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { artworkUri } from '@/library/artwork';
 import { playHaptic } from '@/lib/haptics';
 
@@ -41,10 +40,9 @@ export function PlaylistRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+    <AppPressable
+       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.row}
       onPress={onPress}
       onLongPress={
@@ -93,7 +91,7 @@ export function PlaylistRow({
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-    </Pressable>
+    </AppPressable>
   );
 }
 

@@ -1,5 +1,4 @@
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -10,7 +9,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQPresetQrSheetProps {
@@ -21,7 +20,6 @@ interface EQPresetQrSheetProps {
 
 export function EQPresetQrSheet({ presetName, value, onClose }: EQPresetQrSheetProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
 
   return (
@@ -35,11 +33,11 @@ export function EQPresetQrSheet({ presetName, value, onClose }: EQPresetQrSheetP
       <Text variant="label" numberOfLines={1} color={colors.textSecondary} style={styles.name}>
         {presetName}
       </Text>
-      <Pressable android_ripple={ripple.bounded} style={styles.done} onPress={onClose}>
+      <AppPressable feedback="accent"  style={styles.done} onPress={onClose}>
         <Text variant="label" color={colors.accentTextStrong}>
           Done
         </Text>
-      </Pressable>
+      </AppPressable>
     </EqSheet>
   );
 }

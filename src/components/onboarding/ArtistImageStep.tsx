@@ -1,5 +1,5 @@
 import { useEffect, type ComponentProps, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,7 +11,7 @@ import { StepHeader } from '@/components/onboarding/StepHeader';
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ArtistImageAutoPolicy } from '@/types/artistImages';
@@ -175,10 +175,9 @@ function PolicyCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       style={[styles.card, selected && styles.cardSelected]}
       onPress={onPress}
       accessibilityRole="radio"
@@ -210,7 +209,7 @@ function PolicyCard({
           <View style={styles.cardCheckEmpty} />
         )}
       </View>
-    </Pressable>
+    </AppPressable>
   );
 }
 

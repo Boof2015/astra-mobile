@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -21,7 +20,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceRow, RemoteSyncProgress } from '@/types/remote';
 
@@ -45,7 +44,6 @@ function statusLine(
 
 export default function SourcesScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const sources = useRemoteSourcesStore((s) => s.sources);
@@ -125,18 +123,18 @@ export default function SourcesScreen() {
               No servers yet. Add a Subsonic or Jellyfin server to stream and browse your
               self-hosted library.
             </Text>
-            <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/sources/edit')}>
+            <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/sources/edit')}>
               <Ionicons name="add" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Add server
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         ) : (
           sources.map((source) => {
             const status = statusLine(source, progressById[source.id] ?? null);
             return (
-              <Pressable android_ripple={ripple.bounded}
+              <AppPressable
                 key={source.id}
                 style={styles.row}
                 onPress={() => setActionFor(source)}
@@ -170,7 +168,7 @@ export default function SourcesScreen() {
                   </Text>
                 </View>
                 <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
-              </Pressable>
+              </AppPressable>
             );
           })
         )}

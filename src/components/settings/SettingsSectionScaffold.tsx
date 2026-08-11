@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   type StyleProp,
@@ -14,7 +13,7 @@ import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { HapticSwitch } from '@/components/HapticSwitch';
 
 export type SettingsIconName = keyof typeof Ionicons.glyphMap;
@@ -101,9 +100,8 @@ export function SettingsNavRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
+    <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.rowIcon}>
         <Ionicons name={icon} size={20} color={colors.accent} />
       </View>
@@ -119,7 +117,7 @@ export function SettingsNavRow({
         </Text>
       </View>
       <Ionicons name={rightIcon} size={18} color={colors.textTertiary} />
-    </Pressable>
+    </AppPressable>
   );
 }
 

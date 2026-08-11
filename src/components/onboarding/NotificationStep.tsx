@@ -1,10 +1,10 @@
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { StepHeader } from '@/components/onboarding/StepHeader';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 import type { ScanNotificationPermission } from '@/library/useScanNotificationPermission';
 
@@ -22,7 +22,6 @@ export function NotificationStep({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const isScanning = useLibraryStore((s) => s.isScanning);
   const { state, granted, denied, working, resolve } = permission;
 
@@ -52,8 +51,8 @@ export function NotificationStep({
           </Text>
         </View>
       ) : (
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="accent"
+
           style={styles.button}
           disabled={working}
           onPress={resolve}
@@ -72,7 +71,7 @@ export function NotificationStep({
           <Text variant="label" color={colors.accentTextStrong}>
             {denied ? 'Open Android settings' : 'Allow notifications'}
           </Text>
-        </Pressable>
+        </AppPressable>
       )}
 
       <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>

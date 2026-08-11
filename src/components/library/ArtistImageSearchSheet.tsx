@@ -13,7 +13,7 @@ import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { searchArtistImageCandidates } from '@/library/artistImageLookup';
 import type { DeezerArtistCandidate } from '@/types/artistImages';
 
@@ -28,7 +28,6 @@ export function ArtistImageSearchSheet({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [query, setQuery] = useState(artistName);
   const [candidates, setCandidates] = useState<DeezerArtistCandidate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,8 +100,8 @@ export function ArtistImageSearchSheet({
           style={styles.input}
           accessibilityLabel="Deezer artist search"
         />
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="accent"
+
           style={styles.searchButton}
           onPress={() => void search()}
           accessibilityRole="button"
@@ -113,7 +112,7 @@ export function ArtistImageSearchSheet({
           ) : (
             <Ionicons name="search" size={20} color={colors.accentTextStrong} />
           )}
-        </Pressable>
+        </AppPressable>
       </View>
 
       {error ? (
@@ -127,9 +126,9 @@ export function ArtistImageSearchSheet({
 
       <View style={styles.results}>
         {candidates.map((candidate) => (
-          <Pressable
+          <AppPressable
             key={candidate.id}
-            android_ripple={ripple.bounded}
+
             style={styles.candidate}
             onPress={() => void choose(candidate)}
             accessibilityRole="button"
@@ -166,7 +165,7 @@ export function ArtistImageSearchSheet({
             ) : (
               <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
             )}
-          </Pressable>
+          </AppPressable>
         ))}
       </View>
 

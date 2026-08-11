@@ -9,7 +9,8 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -1026,11 +1027,18 @@ class QueueContentView(
 
     fun setSurfaceColor(color: Int) {
       dividerColor = palette.divider
-      background = RippleDrawable(
-        ColorStateList.valueOf(palette.ripple),
-        ColorDrawable(color),
-        null,
-      )
+      background = StateListDrawable().apply {
+        addState(
+          intArrayOf(android.R.attr.state_pressed),
+          LayerDrawable(
+            arrayOf(
+              ColorDrawable(color),
+              ColorDrawable(palette.pressOverlay),
+            ),
+          ),
+        )
+        addState(intArrayOf(), ColorDrawable(color))
+      }
     }
 
     override fun dispatchDraw(canvas: Canvas) {

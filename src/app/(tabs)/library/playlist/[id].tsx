@@ -5,7 +5,6 @@ import {
 } from 'react';
 import {
   View,
-  Pressable,
   StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -27,7 +26,7 @@ import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
@@ -56,11 +55,10 @@ function basename(path: string): string {
 
 function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongPress: () => void }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.missingRow}
       onLongPress={() => {
@@ -78,7 +76,7 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
         </Text>
       </View>
       <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -87,7 +85,6 @@ type Prompt = { kind: 'rename'; playlist: Playlist } | null;
 export default function PlaylistScreen() {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -328,7 +325,7 @@ export default function PlaylistScreen() {
         heroMeta={<Text variant="label">{meta}</Text>}
         heroExtra={
           isDynamic && playlistId != null ? (
-            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+            <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.editRules}
               onPress={() =>
                 router.push({
@@ -343,7 +340,7 @@ export default function PlaylistScreen() {
               <Text variant="label" color={colors.accent}>
                 Rules
               </Text>
-            </Pressable>
+            </AppPressable>
           ) : null
         }
         disabled={playable.length === 0}

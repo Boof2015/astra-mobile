@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useArtistImageStore } from '@/stores/artistImageStore';
 import { requeueMissingArtistImages } from '@/library/artistImageLookup';
 
@@ -19,7 +19,6 @@ const n = (value: number) => value.toLocaleString();
 export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const running = useArtistImageStore((s) => s.running);
   const processed = useArtistImageStore((s) => s.processed);
   const total = useArtistImageStore((s) => s.total);
@@ -73,8 +72,8 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
       <Text variant="caption" color={colors.textSecondary}>
         {missing === 1 ? '1 artist has no image' : `${n(missing)} artists have no image`}
       </Text>
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="accent"
+
         style={styles.button}
         disabled={retrying}
         onPress={() => void retry()}
@@ -89,7 +88,7 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
         <Text variant="label" color={colors.accentTextStrong}>
           Look for missing images
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }

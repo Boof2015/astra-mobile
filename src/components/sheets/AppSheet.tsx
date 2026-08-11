@@ -17,7 +17,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
@@ -121,7 +121,6 @@ export function AppSheetItem({
 }: AppSheetItemProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const tint = destructive ? colors.warning : selected ? colors.accentTextStrong : colors.textPrimary;
   const selectable = selected !== undefined;
 
@@ -139,9 +138,8 @@ export function AppSheetItem({
         later contact, leaving the row visibly tapped but never pressed.
       */}
       <GesturePressable
-        android_ripple={ripple.bounded}
         unstable_pressDelay={SCROLL_PRESS_DELAY}
-        style={styles.item}
+        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
         onPress={handlePress}
         accessibilityRole={selectable ? 'radio' : 'button'}
         accessibilityState={selectable ? { selected } : undefined}
@@ -204,6 +202,9 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
+  },
+  itemPressed: {
+    backgroundColor: colors.glassHighlight,
   },
   itemLabel: {
     flexShrink: 1,

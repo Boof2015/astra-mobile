@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -21,7 +20,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { requestLastFmFlush } from '@/services/lastfm';
 import type { LastFmProfileStatus } from '@/types/lastFm';
@@ -51,7 +50,6 @@ function customStatusLine(profile: LastFmProfileStatus): { text: string; tone: '
 
 export default function LastFmScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const header = useScreenHeader({ actionCount: 1 });
@@ -137,16 +135,16 @@ export default function LastFmScreen() {
                 {profile.username}
               </Text>
             ) : null}
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
               onPress={() => confirmDisconnect(profile)}
               hitSlop={8}
               accessibilityLabel="Disconnect Last.fm"
             >
               <Ionicons name="close-circle" size={22} color={colors.textTertiary} />
-            </Pressable>
+            </AppPressable>
           </View>
         ) : (
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="accent"
             style={styles.connectButton}
             onPress={() => connectOfficial(profile)}
             accessibilityRole="button"
@@ -155,7 +153,7 @@ export default function LastFmScreen() {
             <Text variant="label" color={colors.accentTextStrong}>
               Connect
             </Text>
-          </Pressable>
+          </AppPressable>
         )}
       </View>
     );
@@ -164,7 +162,7 @@ export default function LastFmScreen() {
   const renderCustom = (profile: LastFmProfileStatus) => {
     const line = customStatusLine(profile);
     return (
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable
         key={profile.id}
         style={styles.row}
         onPress={() => router.push({ pathname: '/lastfm/edit', params: { id: profile.id } })}
@@ -200,7 +198,7 @@ export default function LastFmScreen() {
         ) : (
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
         )}
-      </Pressable>
+      </AppPressable>
     );
   };
 
@@ -248,12 +246,12 @@ export default function LastFmScreen() {
         ) : null}
 
         {status && status.pendingScrobbles > 0 ? (
-          <Pressable android_ripple={ripple.bounded} style={styles.retryButton} onPress={() => requestLastFmFlush()}>
+          <AppPressable feedback="control"  style={styles.retryButton} onPress={() => requestLastFmFlush()}>
             <Ionicons name="sync" size={16} color={colors.accentText} />
             <Text variant="label" color={colors.accentText}>
               Retry {status.pendingScrobbles} queued now
             </Text>
-          </Pressable>
+          </AppPressable>
         ) : null}
 
         <Text
@@ -270,12 +268,12 @@ export default function LastFmScreen() {
           )}
         </View>
 
-        <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
+        <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
           <Ionicons name="add" size={18} color={colors.accentTextStrong} />
           <Text variant="body" color={colors.accentTextStrong}>
             Add destination
           </Text>
-        </Pressable>
+        </AppPressable>
 
         <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
           A scrobble is sent once a track plays past half its length (or 4 minutes). Tracks under 30

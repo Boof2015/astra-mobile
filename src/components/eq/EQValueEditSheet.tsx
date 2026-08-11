@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   type KeyboardTypeOptions
@@ -13,7 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQValueEditSheetProps {
@@ -41,7 +40,6 @@ export function EQValueEditSheet({
   onClose,
 }: EQValueEditSheetProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [value, setValue] = useState(initialValue);
   const trimmed = value.trim();
@@ -82,12 +80,12 @@ export function EQValueEditSheet({
         {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
       </Text>
       <View style={styles.actions}>
-        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded}
+        </AppPressable>
+        <AppPressable feedback="accent"
           style={[styles.btn, styles.apply, !valid && styles.applyDisabled]}
           disabled={!valid}
           onPress={apply}
@@ -95,7 +93,7 @@ export function EQValueEditSheet({
           <Text variant="label" color={colors.accentTextStrong}>
             Apply
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </EqSheet>
   );

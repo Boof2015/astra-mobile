@@ -7,7 +7,6 @@ import {
   type ReactNode
 } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -37,7 +36,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
   DETAIL_ART_COLLAPSED,
   DETAIL_BAR_H,
@@ -202,7 +201,6 @@ export function CollapsingHeader({
   onHeroBlockLayout: (e: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
@@ -362,7 +360,7 @@ export function CollapsingHeader({
         {heroMeta}
         {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
             onPress={onPlay}
             disabled={disabled}
@@ -372,8 +370,8 @@ export function CollapsingHeader({
             <Text variant="body" style={styles.primaryActionText}>
               Play
             </Text>
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          </AppPressable>
+          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
             onPress={onShuffle}
             disabled={disabled}
@@ -383,11 +381,11 @@ export function CollapsingHeader({
             <Text variant="body" color={colors.accent} style={styles.secondaryActionText}>
               Shuffle
             </Text>
-          </Pressable>
+          </AppPressable>
         </Animated.View>
       </Animated.View>
 
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
         onPress={onBack}
         hitSlop={8}
         style={[styles.chevron, { top: barCenterY - 12, left: spacing.md }]}
@@ -395,7 +393,7 @@ export function CollapsingHeader({
         accessibilityLabel="Back"
       >
         <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-      </Pressable>
+      </AppPressable>
       <Animated.Text
         numberOfLines={1}
         style={[
@@ -424,16 +422,16 @@ export function CollapsingHeader({
         style={[styles.barIcons, { top: barCenterY - 16, right: onMore ? spacing.md + 40 : spacing.md }, barIconsStyle]}
         pointerEvents={collapsed ? 'auto' : 'none'}
       >
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="play" size={20} color={colors.accent} />
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        </AppPressable>
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="shuffle" size={20} color={colors.accent} />
-        </Pressable>
+        </AppPressable>
       </Animated.View>
 
       {onMore ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={onMore}
           hitSlop={8}
           style={[styles.moreButton, { top: barCenterY - 16, right: spacing.md }]}
@@ -441,7 +439,7 @@ export function CollapsingHeader({
           accessibilityLabel={moreAccessibilityLabel}
         >
           <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
-        </Pressable>
+        </AppPressable>
       ) : null}
 
       {/* Rendered last so the large art sits on top of the header text until it tucks away. */}

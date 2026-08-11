@@ -1,9 +1,9 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Pressable, View, type LayoutChangeEvent } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { getPreferredLyricsTranslation, resolveLyricsWordTiming } from '@/lyrics/presentation';
 import type { LyricsFurigana, LyricsLine as LyricsLineData, LyricsWord } from '@/lyrics/types';
 
@@ -183,7 +183,6 @@ function LyricsLineComponent({
   onLayout,
 }: LyricsLineProps) {
   const colors = useColors();
-  const ripple = useRipple();
   const target = TIER[tier];
   const size = baseSize;
   const lineHeight = Math.round(size * 1.2);
@@ -218,7 +217,7 @@ function LyricsLineComponent({
 
   return (
     <Animated.View onLayout={onLayout} style={[{ width: '100%', transformOrigin: 'left center' }, animatedStyle]}>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: 7 }}>
+      <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: 7 }}>
         <View style={{ alignItems: 'flex-start' }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
             {voiceLabelsEnabled && line.voice?.trim() ? (
@@ -268,7 +267,7 @@ function LyricsLineComponent({
             </Text>
           ) : null}
         </View>
-      </Pressable>
+      </AppPressable>
     </Animated.View>
   );
 }

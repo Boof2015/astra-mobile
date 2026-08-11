@@ -26,7 +26,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -343,7 +342,6 @@ function TabButton({
 }: TabButtonProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   // 0 = inactive, 1 = active. Drives the accent fill, label colour, and bloom.
   const progress = useSharedValue(focused ? 1 : 0);
   // 0 = at rest, 1 = finger down.
@@ -375,7 +373,7 @@ function TabButton({
       // Same transition as the card around it, so a resize is one movement
       // rather than a container gliding over children that jumped.
       layout={width ? NAV_TRANSITION : undefined}
-      android_ripple={ripple.icon(26)}
+
       style={[
         styles.tab,
         rail && styles.railTab,

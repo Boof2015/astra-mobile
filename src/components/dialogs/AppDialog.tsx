@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import {
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -9,7 +8,7 @@ import {
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import {
   dismissActiveDialog,
   EMPTY_DIALOG_QUEUE,
@@ -65,7 +64,6 @@ export function AppDialogHost() {
   const active = queue.active;
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
 
   if (!active) return null;
 
@@ -119,9 +117,9 @@ export function AppDialogHost() {
                   ? colors.textSecondary
                   : colors.accent;
               return (
-                <Pressable
+                <AppPressable feedback="none"
                   key={`${action.label}-${index}`}
-                  android_ripple={ripple.bounded}
+
                   style={({ pressed }) => [
                     styles.action,
                     pressed ? styles.actionPressed : null,
@@ -133,7 +131,7 @@ export function AppDialogHost() {
                   <Text variant="body" color={color}>
                     {action.label}
                   </Text>
-                </Pressable>
+                </AppPressable>
               );
             })}
           </View>

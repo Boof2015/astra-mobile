@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,7 +23,7 @@ import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { SignalPayload } from '@boof2015/astra-signal';
 import type { DbTrack } from '@/types/library';
 import { AstraLibraryData } from '../../../modules/astra-library-scanner';
@@ -33,7 +33,6 @@ const FAILURE_RETURN_MS = 480;
 
 export default function SignalScanScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const cameraRef = useRef<CameraView>(null);
@@ -200,12 +199,12 @@ export default function SignalScanScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Back
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <Text variant="title" style={styles.heading}>
@@ -227,16 +226,16 @@ export default function SignalScanScreen() {
             <View style={styles.permissionCard}>
               <Ionicons name="camera-outline" size={28} color={colors.accent} />
               <Text variant="body">Camera access is needed to scan a Signal.</Text>
-              <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void requestPermission()}>
+              <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
                 <Text variant="body" color={colors.accentTextStrong}>
                   Allow camera
                 </Text>
-              </Pressable>
-              <Pressable android_ripple={ripple.bounded} style={styles.linkButton} onPress={() => void pickImage()}>
+              </AppPressable>
+              <AppPressable feedback="control"  style={styles.linkButton} onPress={() => void pickImage()}>
                 <Text variant="body" color={colors.accent}>
                   Or pick a Signal image
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
           ) : (
             <View style={styles.scannerFrame}>
@@ -253,12 +252,12 @@ export default function SignalScanScreen() {
                 <View style={[styles.guideCorner, styles.guideBottomRight]} />
               </View>
               <View style={styles.controls}>
-                <Pressable android_ripple={ripple.icon(28)} style={styles.iconButton} onPress={() => void pickImage()} hitSlop={8}>
+                <AppPressable feedback="control" style={styles.iconButton} onPress={() => void pickImage()} hitSlop={8}>
                   <Ionicons name="image-outline" size={24} color={colors.textPrimary} />
-                </Pressable>
-                <Pressable android_ripple={ripple.bounded} style={styles.shutter} onPress={() => void capture()} hitSlop={8}>
+                </AppPressable>
+                <AppPressable feedback="accent"  style={styles.shutter} onPress={() => void capture()} hitSlop={8}>
                   <Ionicons name="pulse" size={26} color={colors.accentTextStrong} />
-                </Pressable>
+                </AppPressable>
                 <View style={styles.iconButton} />
               </View>
               <SignalScanTransition

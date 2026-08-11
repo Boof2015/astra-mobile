@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Pressable,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle
@@ -28,7 +27,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
@@ -190,7 +189,6 @@ export function MiniPlayer({
 }: MiniPlayerProps = {}) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const playerOpen = usePlayerOnScreen();
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -517,8 +515,8 @@ export function MiniPlayer({
             style={[styles.barBlock, { width: miniWidth, height }]}
             onLayout={onLayout}
           >
-            <Pressable
-              android_ripple={ripple.bounded}
+            <AppPressable
+
               style={styles.barTap}
               // Where a dock is available the pane is the next step up, not
               // fullscreen: tap the card → pane, expand the pane → fullscreen.
@@ -599,9 +597,9 @@ export function MiniPlayer({
                 </Animated.View>
               </View>
 
-              <Pressable
+              <AppPressable
                 hitSlop={8}
-                android_ripple={ripple.icon(22)}
+                feedback="control"
                 onPress={onTogglePlay}
                 style={[styles.control, { width: controlSize, height: controlSize }]}
                 accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
@@ -611,17 +609,17 @@ export function MiniPlayer({
                   size={24}
                   color={colors.accent}
                 />
-              </Pressable>
-              <Pressable
+              </AppPressable>
+              <AppPressable
                 hitSlop={8}
-                android_ripple={ripple.icon(22)}
+                feedback="control"
                 onPress={onSkipNext}
                 style={[styles.control, { width: controlSize, height: controlSize }]}
                 accessibilityLabel="Next"
               >
                 <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
-              </Pressable>
-            </Pressable>
+              </AppPressable>
+            </AppPressable>
             {presentation.hasTrack ? (
               isDesktop ? (
                 <MiniProgress
@@ -650,8 +648,8 @@ export function MiniPlayer({
     return (
       <>
         <View style={[styles.railBlock, { height: blockHeight - RAIL_MINI_TOP_MARGIN }]}>
-          <Pressable
-            android_ripple={ripple.bounded}
+          <AppPressable
+
             style={styles.railTap}
             onPress={() => usePlayerUiStore.getState().openPlayer()}
             accessibilityRole="button"
@@ -705,11 +703,11 @@ export function MiniPlayer({
                 {displayedMedia.title}
               </Text>
             ) : null}
-          </Pressable>
+          </AppPressable>
           <View style={[styles.railControls, { height: controlSize, marginTop: gap }]}>
-            <Pressable
+            <AppPressable
               hitSlop={8}
-              android_ripple={ripple.icon(20)}
+              feedback="control"
               onPress={onTogglePlay}
               style={[styles.control, { width: controlSize, height: controlSize }]}
               accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
@@ -719,16 +717,16 @@ export function MiniPlayer({
                 size={22}
                 color={colors.accent}
               />
-            </Pressable>
-            <Pressable
+            </AppPressable>
+            <AppPressable
               hitSlop={8}
-              android_ripple={ripple.icon(20)}
+              feedback="control"
               onPress={onSkipNext}
               style={[styles.control, { width: controlSize, height: controlSize }]}
               accessibilityLabel="Next"
             >
               <Ionicons name="play-skip-forward" size={20} color={colors.textSecondary} />
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
         <PlaybackTargetPicker
@@ -749,8 +747,8 @@ export function MiniPlayer({
       <MiniPlayerScrim />
       <GestureDetector gesture={swipeGesture}>
         <Animated.View style={styles.pill} onLayout={onLayout}>
-          <Pressable
-            android_ripple={ripple.bounded}
+          <AppPressable
+
             style={styles.pillPressable}
             onPress={() => usePlayerUiStore.getState().openPlayer()}
           >
@@ -814,30 +812,30 @@ export function MiniPlayer({
               </View>
 
               {isDesktop ? (
-                <Pressable
+                <AppPressable
                   hitSlop={10}
-                  android_ripple={ripple.icon(22)}
+                  feedback="control"
                   onPress={() => setTargetPickerOpen(true)}
                   style={styles.control}
                   accessibilityLabel="Choose output device"
                 >
                   <Ionicons name="desktop-outline" size={21} color={colors.textSecondary} />
-                </Pressable>
+                </AppPressable>
               ) : null}
-              <Pressable hitSlop={10} android_ripple={ripple.icon(22)} onPress={onTogglePlay} style={styles.control}>
+              <AppPressable hitSlop={10} feedback="control" onPress={onTogglePlay} style={styles.control}>
                 <Ionicons
                   name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
                   size={24}
                   color={colors.accent}
                 />
-              </Pressable>
+              </AppPressable>
               {/* Secondary, so play/pause stays the brightest thing in the
                   pill. A filled accent disc would read better on a flat
                   surface, but here it would punch a hole through the live
                   spectrum drawing behind all of this. */}
-              <Pressable hitSlop={10} android_ripple={ripple.icon(22)} onPress={onSkipNext} style={styles.control}>
+              <AppPressable hitSlop={10} feedback="control" onPress={onSkipNext} style={styles.control}>
                 <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
-              </Pressable>
+              </AppPressable>
             </View>
 
             {presentation.hasTrack ? (
@@ -853,7 +851,7 @@ export function MiniPlayer({
                 <PhoneMiniProgress isPlaying={isPlaying} active={!playerOpen} />
               )
             ) : null}
-          </Pressable>
+          </AppPressable>
         </Animated.View>
       </GestureDetector>
       <PlaybackTargetPicker

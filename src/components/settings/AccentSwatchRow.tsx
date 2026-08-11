@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { ACCENTS, ACCENT_IDS, accentPreferenceBase } from '@/theme/accents';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import { useThemeStore } from '@/stores/themeStore';
 import { AccentColorSheet } from '@/components/settings/AccentColorSheet';
@@ -17,7 +17,6 @@ const RAINBOW = ['#ff5c5c', '#ffb454', '#2dd4a0', '#00b3ff', '#9d7bff', '#ff6b9d
 /** Circular accent swatches; the selected one gets a ring + checkmark. */
 export function AccentSwatchRow() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [pickerOpen, setPickerOpen] = useState(false);
   const preference = useThemeStore((s) => s.accentPreference);
@@ -31,7 +30,7 @@ export function AccentSwatchRow() {
         {ACCENT_IDS.map((id) => {
           const selected = preference.kind === 'preset' && id === preference.id;
           return (
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
               key={id}
               onPress={() => {
                 if (selected) return;
@@ -51,11 +50,11 @@ export function AccentSwatchRow() {
               {selected ? (
                 <Ionicons name="checkmark" size={18} color={colors.bgPrimary} />
               ) : null}
-            </Pressable>
+            </AppPressable>
           );
         })}
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
+
           onPress={() => {
             playHaptic('selection');
             setPickerOpen(true);
@@ -86,7 +85,7 @@ export function AccentSwatchRow() {
           ) : (
             <Ionicons name="add" size={18} color="#ffffff" />
           )}
-        </Pressable>
+        </AppPressable>
       </View>
       <Text variant="caption" color={colors.textSecondary}>
         Accent · {preference.kind === 'preset'

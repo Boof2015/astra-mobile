@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import {
   SettingsCard,
   SettingsSectionLabel,
@@ -8,7 +8,7 @@ import {
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { playHaptic, type HapticEvent } from '@/lib/haptics';
 import {
   HAPTIC_RECIPE_SECTIONS,
@@ -60,7 +60,6 @@ function yesNo(value: boolean): string {
 export default function HapticsLabScreen() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [capabilities, setCapabilities] = useState<HapticCapabilities>(() =>
     AstraHaptics.getCapabilities()
   );
@@ -97,14 +96,14 @@ export default function HapticsLabScreen() {
           label="Touch feedback enabled"
           value={yesNo(capabilities.touchFeedbackEnabled)}
         />
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
+
           style={styles.refreshButton}
           onPress={refresh}
           accessibilityRole="button"
         >
           <Text variant="label" color={colors.accentTextStrong}>Refresh capabilities</Text>
-        </Pressable>
+        </AppPressable>
       </SettingsCard>
 
       <SettingsSectionLabel spaced>SEMANTIC VOCABULARY</SettingsSectionLabel>
@@ -259,10 +258,9 @@ function AuditionButton({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable feedback="control"
+
       disabled={disabled}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -274,7 +272,7 @@ function AuditionButton({
       <Text variant="label" color={disabled ? colors.textTertiary : colors.accentTextStrong}>
         {label}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 

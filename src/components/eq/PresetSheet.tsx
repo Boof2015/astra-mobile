@@ -1,9 +1,9 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import {
@@ -45,7 +45,6 @@ export function PresetSheet({
   onClose,
 }: PresetSheetProps) {
   const colors = useColors();
-  const ripple = useRipple();
   const builtIn = presets.filter((p) => !p.isCustom);
   const custom = presets.filter((p) => p.isCustom);
   const devicesByKey = new Map(knownDevices.map((device) => [device.key, device]));
@@ -72,8 +71,8 @@ export function PresetSheet({
         }}
         trailing={
           <View style={styles.trailingActions}>
-            <Pressable
-              android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
+
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               hitSlop={6}
               onPress={() => onAssign(preset)}
@@ -84,10 +83,10 @@ export function PresetSheet({
                 Assign
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            </Pressable>
+            </AppPressable>
             {preset.isCustom ? (
-              <Pressable
-                android_ripple={ripple.bounded}
+              <AppPressable feedback="control"
+
                 unstable_pressDelay={SCROLL_PRESS_DELAY}
                 hitSlop={8}
                 onPress={() => onDelete(preset)}
@@ -95,7 +94,7 @@ export function PresetSheet({
                 accessibilityLabel={`Delete preset ${preset.name}`}
               >
                 <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
-              </Pressable>
+              </AppPressable>
             ) : null}
           </View>
         }

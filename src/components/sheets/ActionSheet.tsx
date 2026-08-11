@@ -12,7 +12,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export interface ActionSheetItem {
@@ -41,7 +41,6 @@ export function ActionSheet({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const insets = useSafeAreaInsets();
   const sceneBottomInset = useSceneBottomInset();
 
@@ -62,9 +61,9 @@ export function ActionSheet({
             </Text>
           ) : null}
           {items.map((item) => (
-            <Pressable
+            <AppPressable
               key={item.key}
-              android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.item}
               onPress={item.onPress}
               accessibilityRole="button"
@@ -87,7 +86,7 @@ export function ActionSheet({
               {item.selected ? (
                 <Ionicons name="checkmark" size={18} color={colors.accent} />
               ) : null}
-            </Pressable>
+            </AppPressable>
           ))}
         </Pressable>
       </Pressable>

@@ -1,10 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
   EQ_MAX_GAIN_DB,
   isPassEQBandType,
@@ -68,7 +68,6 @@ export function BandConsole({
 }: BandConsoleProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
 
   return (
     <ScrollView
@@ -81,9 +80,9 @@ export function BandConsole({
         const isPass = isPassEQBandType(band.type);
         const isShelf = isShelfEQBandType(band.type);
         return (
-          <Pressable
+          <AppPressable
             key={band.id}
-            android_ripple={ripple.bounded}
+
             unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.strip, { width: stripWidth }, isActive && styles.stripActive]}
             // Selecting a band highlights its node on the curve. The strip is
@@ -104,8 +103,8 @@ export function BandConsole({
               />
             </View>
 
-            <Pressable
-              android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
+
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.typeButton}
               onPress={() => onEditType(band.id)}
@@ -116,7 +115,7 @@ export function BandConsole({
                 {BAND_TYPE_LABEL[band.type]}
               </Text>
               <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
-            </Pressable>
+            </AppPressable>
 
             {/*
               A pass filter has no gain to set. Keeping the rail in place rather
@@ -156,13 +155,13 @@ export function BandConsole({
               value={isShelf ? '—' : band.Q.toFixed(2)}
               onPress={isShelf ? undefined : () => onEditValue(band.id, 'Q')}
             />
-          </Pressable>
+          </AppPressable>
         );
       })}
 
       {canAdd ? (
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable
+
           unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={onAdd}
           style={[styles.strip, styles.addStrip, { width: CONSOLE_ADD_WIDTH }]}
@@ -170,7 +169,7 @@ export function BandConsole({
           accessibilityLabel="Add band"
         >
           <Ionicons name="add" size={22} color={colors.accentText} />
-        </Pressable>
+        </AppPressable>
       ) : null}
     </ScrollView>
   );
@@ -195,7 +194,6 @@ function Readout({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const body = (
     <>
       <Text
@@ -215,8 +213,8 @@ function Readout({
     return <View style={styles.readout}>{body}</View>;
   }
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable feedback="control"
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.readout}
       onPress={onPress}
@@ -224,7 +222,7 @@ function Readout({
       accessibilityLabel={`${value} ${label}`}
     >
       {body}
-    </Pressable>
+    </AppPressable>
   );
 }
 
