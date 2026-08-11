@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
   PixelRatio,
@@ -42,6 +42,7 @@ import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanion
 import type { NowPlayingCompanion } from '@/components/player/nowPlayingPreferences';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
+import { NowPlayingArtistCredits } from '@/components/player/NowPlayingArtistCredits';
 import {
   getNowPlayingTrackTransitionKey,
   NowPlayingTrackFadeThrough,
@@ -1607,66 +1608,16 @@ export function NowPlayingOverlay({
                       >
                         {track.title}
                       </MarqueeText>
-                      {/* One credit line, never two — a wrapping credit used to
-                          add a line box and shove every control below it.
-                          Nested pressable <Text> rather than a row of Pressables:
-                          a flex row shrinks *every* child to fit, so a seven-way
-                          collab truncated all seven names to nothing. As one text
-                          run the names keep their full width, the line ellipsizes
-                          once at the end, and each name is still its own link
-                          sized to exactly its own glyphs. */}
-                      <View
-                        style={[
-                          styles.creditLine,
-                          {
-                            height: deck.artistLineHeight,
-                            marginTop: deck.identityGap,
-                          },
-                        ]}
-                      >
-                        <Text
-                          variant="body"
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                          style={styles.trackMetaRow}
-                        >
-                          {artistCreditTokens.map(({ artist, separator }) => (
-                            <Fragment key={artist}>
-                              <Text
-                                variant="body"
-                                style={styles.artist}
-                                onPress={() => navigateToArtist(artist, true)}
-                                accessibilityRole="link"
-                                accessibilityLabel={`View artist ${artist}`}
-                              >
-                                {artist}
-                              </Text>
-                              {separator ? (
-                                <Text variant="body" style={styles.artistSeparator}>
-                                  {separator}
-                                </Text>
-                              ) : null}
-                            </Fragment>
-                          ))}
-                        </Text>
-                        {/* Credits past the ellipsis are otherwise unreachable
-                            from this screen. The chip sits inside the reserved
-                            line box, so it can't disturb the deck. */}
-                        {artistCreditTokens.length > 1 ? (
-                          <TactilePressable
-                            hitSlop={10}
-                            haptic="selection"
-                            style={[styles.creditChip, { height: deck.artistLineHeight }]}
-
-                            onPress={() => setArtistPickerOpen(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`All ${artistCreditTokens.length} artists`}
-                          >
-                            <Text variant="label" style={styles.creditChipLabel}>
-                              {artistCreditTokens.length}
-                            </Text>
-                          </TactilePressable>
-                        ) : null}
+                      {/* Keep every credit visible and directly actionable when
+                          it fits. Only replace a genuinely overflowing tail with
+                          the inline tray action. */}
+                      <View style={{ marginTop: deck.identityGap, alignSelf: 'stretch' }}>
+                        <NowPlayingArtistCredits
+                          tokens={artistCreditTokens}
+                          lineHeight={deck.artistLineHeight}
+                          onArtistPress={(artist) => navigateToArtist(artist, true)}
+                          onShowAll={() => setArtistPickerOpen(true)}
+                        />
                       </View>
                     </View>
                     <TactilePressable
@@ -2287,32 +2238,6 @@ const useStyles = createThemedStyles((colors) => ({
     height: SUB_BUTTON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  creditLine: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  trackMetaRow: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'left',
-  },
-  creditChip: {
-    flexShrink: 0,
-    minWidth: 22,
-    paddingHorizontal: spacing.xs + 1,
-    borderRadius: radius.pill,
-    backgroundColor: colors.glassBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  creditChipLabel: {
-    color: colors.textSecondary,
-  },
-  artistSeparator: {
-    color: colors.textTertiary,
   },
   centered: {
     textAlign: 'center',
