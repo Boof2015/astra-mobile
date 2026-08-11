@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { ScrollHandlerProcessed } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,15 +33,15 @@ function fileDisplayName(fileUri: string): string {
 
 type Prompt = { kind: 'create' } | { kind: 'rename'; playlist: Playlist } | null;
 
+export type PlaylistActionTarget = Playlist | 'favorites';
+
 export function PlaylistsView({
   onScroll,
   scrollEventThrottle,
   contentPaddingTop = 0,
   contentPaddingBottom,
   listHeader,
-  addMenuOpen = false,
-  onCloseAddMenu,
-  onSheetOpenChange,
+  onOpenActions,
   listRef,
 }: {
   onScroll?: ScrollHandlerProcessed;
@@ -52,11 +52,8 @@ export function PlaylistsView({
   contentPaddingBottom?: number;
   /** Phone-only scan/error content that scrolls away with the playlist rows. */
   listHeader?: ReactNode;
-  /** Controlled by Library's contextual add action on phones. */
-  addMenuOpen?: boolean;
-  onCloseAddMenu?: () => void;
-  /** Lets Library replace its dock while a playlist action sheet is present. */
-  onSheetOpenChange?: (open: boolean) => void;
+  /** Hoists action sheets above Library's persistent section bar. */
+  onOpenActions: (target: PlaylistActionTarget) => void;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
 }) {
@@ -66,22 +63,84 @@ export function PlaylistsView({
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteCount = usePlaylistStore((s) => s.favoriteTracks.length);
+
+  return (
+    <View style={styles.container}>
+      <ReanimatedFlashList
+        ref={listRef}
+        data={playlists}
+        keyExtractor={(playlist) => String(playlist.id)}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        renderScrollComponent={PullSearchScrollView}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={{
+          paddingTop: contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: contentPaddingBottom ?? sceneBottomInset,
+        }}
+        ListHeaderComponent={
+          <>
+            {listHeader}
+            <PlaylistRow
+              name="Favorites"
+              trackCount={favoriteCount}
+              coverHash={null}
+              pinned
+              onPress={() => router.push('/library/playlist/favorites')}
+              onLongPress={() => onOpenActions('favorites')}
+            />
+          </>
+        }
+        renderItem={({ item }) => (
+          <PlaylistRow
+            name={item.name}
+            trackCount={item.track_count}
+            missingCount={item.missing_track_count}
+            coverHash={item.auto_cover_hash}
+            remote={item.remote_source_id != null}
+            dynamic={item.kind === 'dynamic'}
+            onPress={() => router.push(`/library/playlist/${item.id}`)}
+            onLongPress={() => onOpenActions(item)}
+          />
+        )}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="musical-notes-outline" size={28} color={colors.textTertiary} />
+            <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
+              No playlists yet.
+            </Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+/**
+ * Playlist overlays live beside the other Library sheets, after the persistent
+ * section bar in tree order. Keeping this component mounted also lets rename
+ * and create prompts survive the action sheet closing before the prompt opens.
+ */
+export function PlaylistOverlays({
+  menuFor,
+  onCloseMenu,
+  addMenuOpen,
+  onCloseAddMenu,
+}: {
+  menuFor: PlaylistActionTarget | null;
+  onCloseMenu: () => void;
+  addMenuOpen: boolean;
+  onCloseAddMenu: () => void;
+}) {
+  const router = useRouter();
   const createPlaylist = usePlaylistStore((s) => s.createPlaylist);
   const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist);
   const deletePlaylist = usePlaylistStore((s) => s.deletePlaylist);
   const importM3u = usePlaylistStore((s) => s.importM3u);
   const exportM3u = usePlaylistStore((s) => s.exportM3u);
-
   const [prompt, setPrompt] = useState<Prompt>(null);
-  const [menuFor, setMenuFor] = useState<Playlist | 'favorites' | null>(null);
-
-  const sheetOpen = menuFor !== null || addMenuOpen;
-  useEffect(() => {
-    onSheetOpenChange?.(sheetOpen);
-    return () => {
-      if (sheetOpen) onSheetOpenChange?.(false);
-    };
-  }, [onSheetOpenChange, sheetOpen]);
 
   const handleExport = async (target: number | 'favorites') => {
     try {
@@ -137,7 +196,7 @@ export function PlaylistsView({
             label: 'Export M3U',
             icon: 'download-outline' as const,
             onPress: () => {
-              setMenuFor(null);
+              onCloseMenu();
               void handleExport('favorites');
             },
           },
@@ -152,7 +211,7 @@ export function PlaylistsView({
                     icon: 'options-outline' as const,
                     onPress: () => {
                       const id = menuFor.id;
-                      setMenuFor(null);
+                      onCloseMenu();
                       router.push({
                         pathname: '/library/playlist/edit-dynamic' as never,
                         params: { id: String(id) },
@@ -167,7 +226,7 @@ export function PlaylistsView({
               icon: 'pencil-outline' as const,
               onPress: () => {
                 setPrompt({ kind: 'rename', playlist: menuFor });
-                setMenuFor(null);
+                onCloseMenu();
               },
             },
             {
@@ -176,7 +235,7 @@ export function PlaylistsView({
               icon: 'download-outline' as const,
               onPress: () => {
                 const id = menuFor.id;
-                setMenuFor(null);
+                onCloseMenu();
                 void handleExport(id);
               },
             },
@@ -187,7 +246,7 @@ export function PlaylistsView({
               destructive: true,
               onPress: () => {
                 const playlist = menuFor;
-                setMenuFor(null);
+                onCloseMenu();
                 confirmDelete(playlist);
               },
             },
@@ -195,58 +254,9 @@ export function PlaylistsView({
         : [];
 
   return (
-    <View style={styles.container}>
-      <ReanimatedFlashList
-        ref={listRef}
-        data={playlists}
-        keyExtractor={(playlist) => String(playlist.id)}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
-        renderScrollComponent={PullSearchScrollView}
-        onScroll={onScroll}
-        scrollEventThrottle={scrollEventThrottle}
-        contentContainerStyle={{
-          paddingTop: contentPaddingTop,
-          paddingHorizontal: spacing.lg,
-          paddingBottom: contentPaddingBottom ?? sceneBottomInset,
-        }}
-        ListHeaderComponent={
-          <>
-            {listHeader}
-            <PlaylistRow
-              name="Favorites"
-              trackCount={favoriteCount}
-              coverHash={null}
-              pinned
-              onPress={() => router.push('/library/playlist/favorites')}
-              onLongPress={() => setMenuFor('favorites')}
-            />
-          </>
-        }
-        renderItem={({ item }) => (
-          <PlaylistRow
-            name={item.name}
-            trackCount={item.track_count}
-            missingCount={item.missing_track_count}
-            coverHash={item.auto_cover_hash}
-            remote={item.remote_source_id != null}
-            dynamic={item.kind === 'dynamic'}
-            onPress={() => router.push(`/library/playlist/${item.id}`)}
-            onLongPress={() => setMenuFor(item)}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="musical-notes-outline" size={28} color={colors.textTertiary} />
-            <Text variant="body" color={colors.textSecondary} style={styles.emptyText}>
-              No playlists yet.
-            </Text>
-          </View>
-        }
-      />
-
+    <>
       {menuFor !== null ? (
-        <AppSheet onClose={() => setMenuFor(null)}>
+        <AppSheet onClose={onCloseMenu}>
           <AppSheetTitle title={menuFor === 'favorites' ? 'Favorites' : menuFor.name} />
           {menuItems.map(({ key, ...item }) => (
             <AppSheetItem key={key} {...item} />
@@ -254,13 +264,13 @@ export function PlaylistsView({
         </AppSheet>
       ) : null}
       {addMenuOpen ? (
-        <AppSheet onClose={() => onCloseAddMenu?.()}>
+        <AppSheet onClose={onCloseAddMenu}>
           <AppSheetTitle title="Add playlist" />
           <AppSheetItem
             label="Standard playlist"
             icon="list-outline"
             onPress={() => {
-              onCloseAddMenu?.();
+              onCloseAddMenu();
               setPrompt({ kind: 'create' });
             }}
           />
@@ -268,7 +278,7 @@ export function PlaylistsView({
             label="Dynamic playlist"
             icon="sparkles-outline"
             onPress={() => {
-              onCloseAddMenu?.();
+              onCloseAddMenu();
               router.push('/library/playlist/edit-dynamic' as never);
             }}
           />
@@ -276,7 +286,7 @@ export function PlaylistsView({
             label="Import M3U"
             icon="document-text-outline"
             onPress={() => {
-              onCloseAddMenu?.();
+              onCloseAddMenu();
               void handleImport();
             }}
           />
@@ -298,7 +308,7 @@ export function PlaylistsView({
         }}
         onClose={() => setPrompt(null)}
       />
-    </View>
+    </>
   );
 }
 

@@ -87,11 +87,6 @@ export function LibraryContextBar({
   const swipePrimed = useSharedValue(false);
   const sectionWidth = useSharedValue(0);
   const pendingSwipeDirection = useSharedValue<LibraryDockSwipeDirection | 0>(0);
-  const entranceProgress = useSharedValue(0);
-  const accessoryEntranceStyle = useAnimatedStyle(() => ({
-    opacity: entranceProgress.value,
-    transform: [{ translateY: (1 - entranceProgress.value) * spacing.sm }],
-  }));
   const selectionStyle = useAnimatedStyle(() => ({
     opacity: slide.presence.value,
     width: slide.extent.value,
@@ -100,10 +95,6 @@ export function LibraryContextBar({
       { scaleX: 1 + primeProgress.value * 0.05 },
     ],
   }));
-
-  useEffect(() => {
-    entranceProgress.value = withTiming(1, motion.quick);
-  }, [entranceProgress]);
 
   useEffect(() => {
     // A committed swipe keeps its preview offset through the React state
@@ -207,12 +198,11 @@ export function LibraryContextBar({
   };
 
   return (
-    <Animated.View
+    <View
       pointerEvents="box-none"
       style={[
         styles.accessory,
         { paddingBottom: bottomClearance },
-        accessoryEntranceStyle,
       ]}
     >
       <View style={styles.bar}>
@@ -310,7 +300,7 @@ export function LibraryContextBar({
           </>
         )}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -349,7 +339,6 @@ const useStyles = createThemedStyles((colors) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 1,
     paddingTop: LIBRARY_CONTEXT_TOP_GAP,
     paddingHorizontal: spacing.md,
   },

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   flashListInitialAnchor,
   flashListMaintainsVisiblePosition,
+  libraryContextBarVisible,
   libraryContextBottomClearance,
   libraryContextOverlayHeight,
   libraryContextScrimHeight,
@@ -97,6 +98,13 @@ test('phone chrome only reserves the player footprint while it is visible', () =
   assert.equal(libraryContextBottomClearance(76, true), 76);
   assert.equal(libraryContextBottomClearance(76, false), 8);
   assert.equal(libraryContextBottomClearance(-10, true), 0);
+});
+
+test('only phone layout and an explicit library status can hide the section bar', () => {
+  assert.equal(libraryContextBarVisible(true, false), true);
+  assert.equal(libraryContextBarVisible(false, false), false);
+  assert.equal(libraryContextBarVisible(true, true), false);
+  assert.equal(libraryContextBarVisible(false, true), false);
 });
 
 test('the floating bar reserves its end-of-list runway while the fade starts above it', () => {

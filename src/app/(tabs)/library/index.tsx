@@ -17,9 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Animated, {
-  FadeIn,
-  ReduceMotion,
+import {
   runOnJS,
   useAnimatedScrollHandler,
   useSharedValue,
@@ -38,11 +36,19 @@ import { ArtistGridItem } from '@/components/library/ArtistGridItem';
 import { AlbumRow } from '@/components/library/AlbumRow';
 import { ArtistRow } from '@/components/library/ArtistRow';
 import { TrackRow } from '@/components/library/TrackRow';
-import { FoldersView } from '@/components/library/FoldersView';
+import {
+  FolderActionsSheet,
+  FoldersView,
+  type FolderActionTarget,
+} from '@/components/library/FoldersView';
 import { LibraryContextBar } from '@/components/library/LibraryContextBar';
 import { LibrarySurfaceTransition } from '@/components/library/LibrarySurfaceTransition';
 import { MiniPlayerScrim } from '@/components/MiniPlayerScrim';
-import { PlaylistsView } from '@/components/library/PlaylistsView';
+import {
+  PlaylistOverlays,
+  PlaylistsView,
+  type PlaylistActionTarget,
+} from '@/components/library/PlaylistsView';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { EmptyLibrary } from '@/components/library/EmptyLibrary';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
@@ -61,7 +67,6 @@ import {
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
 import { spacing } from '@/theme';
-import { motion } from '@/theme/motion';
 import { useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { useShellLayout } from '@/navigation/useShellLayout';
@@ -73,6 +78,7 @@ import {
   flashListInitialAnchor,
   flashListMaintainsVisiblePosition,
   libraryContextBottomClearance,
+  libraryContextBarVisible,
   libraryContextOverlayHeight,
   libraryContextScrimHeight,
 } from '@/library/libraryViewPresentation';
@@ -118,9 +124,6 @@ import type {
 const TRACK_SORT_OPTIONS: TrackSort[] = ['artist', 'title', 'recently_added', 'duration'];
 const ALBUM_SORT_OPTIONS: AlbumSort[] = ['artist', 'name', 'recently_added', 'year'];
 const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
-const CONTEXT_SCRIM_ENTERING = FadeIn
-  .duration(motion.quick.duration)
-  .reduceMotion(ReduceMotion.System);
 /** How long the finger has to settle on a rail letter before the list jumps. */
 const JUMP_DEBOUNCE_MS = 100;
 /**
@@ -207,11 +210,12 @@ export default function LibraryScreen() {
   const miniPlayerVisible = useMiniPlayerVisible();
 
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
+  const [actionFolder, setActionFolder] = useState<FolderActionTarget | null>(null);
+  const [playlistMenuFor, setPlaylistMenuFor] = useState<PlaylistActionTarget | null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
   const [viewOptionsSheetOpen, setViewOptionsSheetOpen] = useState(false);
   const [playlistAddMenuOpen, setPlaylistAddMenuOpen] = useState(false);
-  const [childSheetOpen, setChildSheetOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [playlistPickerOpen, setPlaylistPickerOpen] = useState(false);
@@ -446,11 +450,13 @@ export default function LibraryScreen() {
   };
 
   const changeViewMode = (mode: LibraryViewMode) => {
+    setActionTrack(null);
+    setActionFolder(null);
+    setPlaylistMenuFor(null);
     setSortSheetOpen(false);
     setLayoutSheetOpen(false);
     setViewOptionsSheetOpen(false);
     setPlaylistAddMenuOpen(false);
-    setChildSheetOpen(false);
     if (selectMode) exitSelection();
     if (mode === viewMode) return;
     // setViewMode clears the shared A-Z anchor. The post-commit effect below
@@ -930,9 +936,7 @@ export default function LibraryScreen() {
                   contentPaddingTop={header.contentPaddingTop}
                   contentPaddingBottom={listBottomPadding}
                   listHeader={inlineStatus}
-                  addMenuOpen={playlistAddMenuOpen}
-                  onCloseAddMenu={() => setPlaylistAddMenuOpen(false)}
-                  onSheetOpenChange={setChildSheetOpen}
+                  onOpenActions={setPlaylistMenuFor}
                 />
                 ) : null}
 
@@ -944,7 +948,8 @@ export default function LibraryScreen() {
                   contentPaddingTop={header.contentPaddingTop}
                   contentPaddingBottom={listBottomPadding}
                   listHeader={inlineStatus}
-                  onSheetOpenChange={setChildSheetOpen}
+                  onOpenTrackActions={setActionTrack}
+                  onOpenFolderActions={setActionFolder}
                 />
                 ) : null}
 
@@ -983,23 +988,11 @@ export default function LibraryScreen() {
         />
       </PullSearchGesture>
 
-      {phoneContextBar && !showLibraryStatus && !(
-        actionTrack ||
-        playlistPickerOpen ||
-        sortSheetOpen ||
-        layoutSheetOpen ||
-        viewOptionsSheetOpen ||
-        playlistAddMenuOpen ||
-        childSheetOpen
-      ) ? (
+      {libraryContextBarVisible(phoneContextBar, showLibraryStatus) ? (
         <>
-          <Animated.View
-            pointerEvents="none"
-            entering={CONTEXT_SCRIM_ENTERING}
-            style={StyleSheet.absoluteFill}
-          >
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <MiniPlayerScrim height={libraryContextScrimHeight(contextBottomClearance)} />
-          </Animated.View>
+          </View>
           <LibraryContextBar
             mode={viewMode}
             bottomClearance={contextBottomClearance}
@@ -1049,6 +1042,7 @@ export default function LibraryScreen() {
       ) : null}
 
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
+      <FolderActionsSheet folder={actionFolder} onClose={() => setActionFolder(null)} />
       {playlistPickerOpen ? (
         <PlaylistPickerSheet
           tracks={selectedDbTracks()}
@@ -1119,6 +1113,12 @@ export default function LibraryScreen() {
           ))}
         </AppSheet>
       ) : null}
+      <PlaylistOverlays
+        menuFor={playlistMenuFor}
+        onCloseMenu={() => setPlaylistMenuFor(null)}
+        addMenuOpen={playlistAddMenuOpen}
+        onCloseAddMenu={() => setPlaylistAddMenuOpen(false)}
+      />
     </Screen>
   );
 }

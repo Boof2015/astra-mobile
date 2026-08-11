@@ -100,6 +100,17 @@ export function libraryContextBottomClearance(
   return miniPlayerVisible ? Math.max(0, sceneBottomInset) : restingGap;
 }
 
+/**
+ * The phone Library bar is navigation, so transient overlays never participate
+ * in its lifetime. Sheets paint above it instead of asking it to unmount.
+ */
+export function libraryContextBarVisible(
+  phoneContextBar: boolean,
+  showLibraryStatus: boolean
+): boolean {
+  return phoneContextBar && !showLibraryStatus;
+}
+
 /** The complete bottom stack covered by the floating Library command bar. */
 export function libraryContextOverlayHeight(bottomClearance: number): number {
   return Math.max(0, bottomClearance) +

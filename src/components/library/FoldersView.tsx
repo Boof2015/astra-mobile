@@ -13,7 +13,6 @@ import {
 } from '../../../modules/astra-library-scanner';
 import { Text } from '@/components/Text';
 import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
-import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import {
   AppSheet,
   AppSheetItem,
@@ -36,6 +35,8 @@ import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
 
 const PAGE_SIZE = 100;
 
+export type FolderActionTarget = NativeFolderNode;
+
 interface FoldersViewProps {
   onScroll?: ScrollHandlerProcessed;
   scrollEventThrottle?: number;
@@ -46,8 +47,9 @@ interface FoldersViewProps {
   listHeader?: ReactNode;
   /** Lets the Library screen send this list back to the top on a tab re-tap. */
   listRef?: (list: ScrollToTopHandle | null) => void;
-  /** Lets Library replace its dock while a folder/track action sheet is present. */
-  onSheetOpenChange?: (open: boolean) => void;
+  /** Hoists sheets above Library's persistent section bar. */
+  onOpenTrackActions: (track: DbTrack) => void;
+  onOpenFolderActions: (folder: NativeFolderNode) => void;
 }
 
 interface LoadedNode {
@@ -218,7 +220,8 @@ export function FoldersView({
   contentPaddingBottom,
   listHeader,
   listRef,
-  onSheetOpenChange,
+  onOpenTrackActions,
+  onOpenFolderActions,
 }: FoldersViewProps) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
@@ -227,16 +230,6 @@ export function FoldersView({
   const [nodes, setNodes] = useState<Map<string, LoadedNode>>(() => new Map());
   const [rootIds, setRootIds] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
-  const [actionFolder, setActionFolder] = useState<NativeFolderNode | null>(null);
-
-  const sheetOpen = actionTrack !== null || actionFolder !== null;
-  useEffect(() => {
-    onSheetOpenChange?.(sheetOpen);
-    return () => {
-      if (sheetOpen) onSheetOpenChange?.(false);
-    };
-  }, [onSheetOpenChange, sheetOpen]);
 
   const replaceRoots = async () => {
     const roots = await AstraLibraryData.getFolderNodes(null);
@@ -386,7 +379,7 @@ export function FoldersView({
                 onToggle={() => toggleNode(item.id)}
                 onPlay={() => playFolder(item.state.node)}
                 onShuffle={() => playFolder(item.state.node, true)}
-                onOpenActions={() => setActionFolder(item.state.node)}
+                onOpenActions={() => onOpenFolderActions(item.state.node)}
               />
             );
           }
@@ -405,59 +398,57 @@ export function FoldersView({
               track={item.track}
               node={item.node}
               active={item.track.path === currentPath}
-              onOpenActions={() => setActionTrack(item.track)}
+              onOpenActions={() => onOpenTrackActions(item.track)}
             />
           );
         }}
       />
-      <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
-      {actionFolder ? (
-        <AppSheet onClose={() => setActionFolder(null)}>
-          <AppSheetTitle
-            title={actionFolder.name}
-            subtitle={`${actionFolder.totalTrackCount} ${actionFolder.totalTrackCount === 1 ? 'track' : 'tracks'}`}
-          />
-          <AppSheetItem
-            label="Play"
-            icon="play"
-            onPress={() => {
-              playFolder(actionFolder);
-              setActionFolder(null);
-            }}
-          />
-          <AppSheetItem
-            label="Shuffle"
-            icon="shuffle"
-            onPress={() => {
-              playFolder(actionFolder, true);
-              setActionFolder(null);
-            }}
-          />
-          <AppSheetItem
-            label="Play next"
-            icon="play-skip-forward"
-            onPress={() => {
-              void enqueueLibraryQuery(
-                { kind: 'folder', folderNodeId: actionFolder.id },
-                'next',
-              );
-              setActionFolder(null);
-            }}
-          />
-          <AppSheetItem
-            label="Add to queue"
-            icon="list-outline"
-            onPress={() => {
-              void enqueueLibraryQuery(
-                { kind: 'folder', folderNodeId: actionFolder.id },
-                'end',
-              );
-              setActionFolder(null);
-            }}
-          />
-        </AppSheet>
-      ) : null}
     </>
+  );
+}
+
+/** Screen-level overlay so the sheet paints above the persistent Library bar. */
+export function FolderActionsSheet({
+  folder,
+  onClose,
+}: {
+  folder: NativeFolderNode | null;
+  onClose: () => void;
+}) {
+  if (!folder) return null;
+
+  const play = (shuffle = false) => {
+    if (folder.totalTrackCount > 0) {
+      void playLibraryQuery(
+        { kind: 'folder', folderNodeId: folder.id },
+        {
+          shuffle,
+          source: { kind: 'folder', label: folder.name },
+        }
+      );
+    }
+    onClose();
+  };
+
+  const enqueue = (position: 'next' | 'end') => {
+    void enqueueLibraryQuery(
+      { kind: 'folder', folderNodeId: folder.id },
+      position,
+    );
+    onClose();
+  };
+
+  return (
+    <AppSheet onClose={onClose}>
+      <AppSheetTitle
+        title={folder.name}
+        subtitle={`${folder.totalTrackCount} ${folder.totalTrackCount === 1 ? 'track' : 'tracks'}`}
+      />
+      <AppSheetItem label="Play" icon="play" onPress={() => play()} />
+      <AppSheetItem label="Shuffle" icon="shuffle" onPress={() => play(true)} />
+      <AppSheetItem label="Play next" icon="play-skip-forward" onPress={() => enqueue('next')} />
+      <AppSheetItem label="Add to queue" icon="list-outline" onPress={() => enqueue('end')} />
+    </AppSheet>
   );
 }
 
