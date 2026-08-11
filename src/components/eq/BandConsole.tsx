@@ -8,7 +8,6 @@ import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
   EQ_MAX_GAIN_DB,
   isPassEQBandType,
-  isShelfEQBandType,
 } from '@/audio/eq';
 import type { EQBand } from '@/types/audio';
 import { VerticalEQSlider } from './VerticalEQSlider';
@@ -78,7 +77,6 @@ export function BandConsole({
       {bands.map((band, index) => {
         const isActive = band.id === activeBandId;
         const isPass = isPassEQBandType(band.type);
-        const isShelf = isShelfEQBandType(band.type);
         return (
           <AppPressable
             key={band.id}
@@ -152,8 +150,8 @@ export function BandConsole({
             />
             <Readout
               label="Q"
-              value={isShelf ? '—' : band.Q.toFixed(2)}
-              onPress={isShelf ? undefined : () => onEditValue(band.id, 'Q')}
+              value={band.Q.toFixed(2)}
+              onPress={() => onEditValue(band.id, 'Q')}
             />
           </AppPressable>
         );

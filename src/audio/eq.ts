@@ -1,7 +1,6 @@
-// Parametric EQ math + helpers — ported from desktop `src/renderer/utils/eq.ts`.
-// Web Audio BiquadFilterNode-compatible math drives the response curve in the EQ
-// screen. Native playback computes matching coefficients in Kotlin at the real
-// stream sample rate — here we also flatten band params for the native bridge.
+// Parametric EQ math + helpers. Audio EQ Cookbook biquad math drives the response
+// curve in the EQ screen. Native playback computes matching coefficients in Kotlin
+// at the real stream sample rate — here we also flatten band params for the bridge.
 
 import type { EQBand, EQBandType, EQMode, EQPreset } from '../types/audio';
 
@@ -86,10 +85,6 @@ export function normalizeEQBandType(value: unknown): EQBandType {
 
 export function isPassEQBandType(type: EQBandType): boolean {
   return type === 'highpass' || type === 'lowpass';
-}
-
-export function isShelfEQBandType(type: EQBandType): boolean {
-  return type === 'lowshelf' || type === 'highshelf';
 }
 
 /** Pass filters carry no gain — force it to 0. */
@@ -185,7 +180,7 @@ export function serializeEQPresetData(
 }
 
 // ---------------------------------------------------------------------------
-// Response curve magnitude (Web Audio BiquadFilterNode) — for the Skia response curve.
+// Response curve magnitude (Audio EQ Cookbook) — for the Skia response curve.
 // ---------------------------------------------------------------------------
 
 export interface EQFilterCoefficients {
@@ -227,7 +222,6 @@ export function computeEQFilterCoefficients(band: EQBand, sampleRate: number): E
   const cosW0 = Math.cos(w0);
   const alphaQ = sinW0 / (2 * Math.max(band.Q, MIN_FILTER_Q));
   const alphaQDb = sinW0 / (2 * Math.pow(10, band.Q / 20));
-  const alphaShelf = (sinW0 / 2) * Math.SQRT2;
 
   let b0 = 1;
   let b1 = 0;
@@ -247,22 +241,22 @@ export function computeEQFilterCoefficients(band: EQBand, sampleRate: number): E
       break;
     case 'lowshelf': {
       const sqrtA = Math.sqrt(A);
-      b0 = A * (A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaShelf);
+      b0 = A * (A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaQ);
       b1 = 2 * A * (A - 1 - (A + 1) * cosW0);
-      b2 = A * (A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaShelf);
-      a0 = A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaShelf;
+      b2 = A * (A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaQ);
+      a0 = A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaQ;
       a1 = -2 * (A - 1 + (A + 1) * cosW0);
-      a2 = A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaShelf;
+      a2 = A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaQ;
       break;
     }
     case 'highshelf': {
       const sqrtA = Math.sqrt(A);
-      b0 = A * (A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaShelf);
+      b0 = A * (A + 1 + (A - 1) * cosW0 + 2 * sqrtA * alphaQ);
       b1 = -2 * A * (A - 1 + (A + 1) * cosW0);
-      b2 = A * (A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaShelf);
-      a0 = A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaShelf;
+      b2 = A * (A + 1 + (A - 1) * cosW0 - 2 * sqrtA * alphaQ);
+      a0 = A + 1 - (A - 1) * cosW0 + 2 * sqrtA * alphaQ;
       a1 = 2 * (A - 1 - (A + 1) * cosW0);
-      a2 = A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaShelf;
+      a2 = A + 1 - (A - 1) * cosW0 - 2 * sqrtA * alphaQ;
       break;
     }
     case 'lowpass':

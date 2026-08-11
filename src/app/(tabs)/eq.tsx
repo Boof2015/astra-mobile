@@ -58,8 +58,7 @@ import {
   EQ_MIN_FREQUENCY,
   EQ_MIN_PREAMP_DB,
   EQ_MIN_Q,
-  isPassEQBandType,
-  isShelfEQBandType
+  isPassEQBandType
 } from '@/audio/eq';
 import { parseAutoEQ } from '@/audio/autoEQParser';
 import { buildGraphicBands } from '@/audio/graphicEq';
@@ -728,7 +727,6 @@ function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
         parseValue: parseDb,
       };
     case 'Q':
-      if (isShelfEQBandType(band.type)) return null;
       return {
         title: 'Edit Q',
         initialValue: band.Q.toFixed(2),

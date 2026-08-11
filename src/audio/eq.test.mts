@@ -44,27 +44,46 @@ test('peaking filter reaches requested gain at center frequency', () => {
   assertClose(computeEQFilterMagnitude(boost, 1200, 48000), 5.5, 1e-6);
 });
 
-test('shelf filters ignore Q like Web Audio BiquadFilterNode', () => {
-  const lowLoose = band({ type: 'lowshelf', frequency: 100, gain: 6, Q: 0.1 });
-  const lowTight = band({ type: 'lowshelf', frequency: 100, gain: 6, Q: 18 });
-  const highLoose = band({ type: 'highshelf', frequency: 8000, gain: -4, Q: 0.1 });
-  const highTight = band({ type: 'highshelf', frequency: 8000, gain: -4, Q: 18 });
+test('shelf filters use Q in their coefficients and response', () => {
+  const lowWide = band({ type: 'lowshelf', frequency: 100, gain: 6, Q: 0.5 });
+  const lowNarrow = band({ type: 'lowshelf', frequency: 100, gain: 6, Q: 2 });
+  const highWide = band({ type: 'highshelf', frequency: 8000, gain: -4, Q: 0.5 });
+  const highNarrow = band({ type: 'highshelf', frequency: 8000, gain: -4, Q: 2 });
 
-  assertCoefficientsClose(
-    computeEQFilterCoefficients(lowLoose, 48000),
-    computeEQFilterCoefficients(lowTight, 48000)
+  assertCoefficientsClose(computeEQFilterCoefficients(lowWide, 48000), {
+    b0: 1.004523905875,
+    b1: -1.978032948597,
+    b2: 0.973748440145,
+    a1: -1.978092655842,
+    a2: 0.978212638774,
+  });
+  assertCoefficientsClose(computeEQFilterCoefficients(highWide, 48000), {
+    b0: 0.746848511923,
+    b1: -0.319264680328,
+    b2: 0.034120017138,
+    a1: -0.641024137473,
+    a2: 0.102727986206,
+  });
+
+  assert.notDeepEqual(
+    computeEQFilterCoefficients(lowWide, 48000),
+    computeEQFilterCoefficients(lowNarrow, 48000)
   );
-  assertCoefficientsClose(
-    computeEQFilterCoefficients(highLoose, 48000),
-    computeEQFilterCoefficients(highTight, 48000)
+  assert.notDeepEqual(
+    computeEQFilterCoefficients(highWide, 48000),
+    computeEQFilterCoefficients(highNarrow, 48000)
   );
-  assertClose(
-    computeEQFilterMagnitude(lowLoose, 40, 48000),
-    computeEQFilterMagnitude(lowTight, 40, 48000)
+  assert.ok(
+    Math.abs(
+      computeEQFilterMagnitude(lowWide, 200, 48000) -
+        computeEQFilterMagnitude(lowNarrow, 200, 48000)
+    ) > 0.1
   );
-  assertClose(
-    computeEQFilterMagnitude(highLoose, 12000, 48000),
-    computeEQFilterMagnitude(highTight, 12000, 48000)
+  assert.ok(
+    Math.abs(
+      computeEQFilterMagnitude(highWide, 4000, 48000) -
+        computeEQFilterMagnitude(highNarrow, 4000, 48000)
+    ) > 0.1
   );
 });
 
