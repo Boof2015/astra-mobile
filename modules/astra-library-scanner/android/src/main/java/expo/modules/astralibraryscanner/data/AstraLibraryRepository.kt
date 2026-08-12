@@ -1,10 +1,13 @@
 package expo.modules.astralibraryscanner.data
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import android.os.Build
+import android.os.SystemClock
 import android.os.Trace
+import android.util.Log
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import expo.modules.astralibraryscanner.queue.QueueReorder
@@ -44,6 +47,51 @@ internal const val PLAYBACK_WINDOW_SIZE =
   PLAYBACK_HISTORY_WINDOW + 1 + PLAYBACK_UPCOMING_WINDOW
 private val traceCookie = AtomicInteger()
 
+private const val SCAN_LOG_TAG = "AstraLibraryScan"
+
+private class LocalScanTiming(
+  private val folderId: Long,
+) {
+  private val totalStartedNanos = SystemClock.elapsedRealtimeNanos()
+  private var lockStartedNanos = totalStartedNanos
+
+  var lockWaitMs: Long = 0
+  var discoveryMs: Long = 0
+  var comparisonMs: Long = 0
+  var extractionAndStagingMs: Long = 0
+  var readModelMs: Long = 0
+  var publishMs: Long = 0
+  var files: Int = 0
+  var outcome: String = "failed"
+
+  fun beginLockWait() {
+    lockStartedNanos = SystemClock.elapsedRealtimeNanos()
+  }
+
+  fun acquiredLock() {
+    lockWaitMs = elapsedMs(lockStartedNanos)
+  }
+
+  fun now(): Long = SystemClock.elapsedRealtimeNanos()
+
+  fun elapsedMs(startedNanos: Long): Long =
+    (SystemClock.elapsedRealtimeNanos() - startedNanos) / 1_000_000L
+
+  fun logIfDebuggable(context: Context) {
+    val debuggable =
+      context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    if (!debuggable) return
+    Log.d(
+      SCAN_LOG_TAG,
+      "folderId=$folderId outcome=$outcome files=$files" +
+        " lockWaitMs=$lockWaitMs discoveryMs=$discoveryMs" +
+        " comparisonMs=$comparisonMs extractionAndStagingMs=$extractionAndStagingMs" +
+        " readModelMs=$readModelMs publishMs=$publishMs" +
+        " totalMs=${elapsedMs(totalStartedNanos)}",
+    )
+  }
+}
+
 private suspend fun <T> traceAsyncSection(
   name: String,
   block: suspend () -> T,
@@ -69,6 +117,35 @@ internal fun boundedPlaybackWindowStart(start: Long, total: Long): Long? {
 private fun throwIfScanCancelled(isCancelled: () -> Boolean) {
   if (isCancelled()) throw ScanCancelledException()
 }
+
+internal fun canReuseActiveLocalGeneration(
+  full: Boolean,
+  previousSource: CatalogSourceEntity?,
+  files: List<LocalAudioFile>,
+  existingByPath: Map<String, TrackEntity>,
+): Boolean {
+  if (
+    full ||
+    previousSource?.activeGenerationId == null ||
+    previousSource.artistCreditVersion < CURRENT_ARTIST_CREDIT_VERSION ||
+    files.size != existingByPath.size
+  ) {
+    return false
+  }
+
+  val seen = HashSet<String>(files.size)
+  return files.all { file ->
+    if (!seen.add(file.uri)) return@all false
+    val existing = existingByPath[file.uri] ?: return@all false
+    existing.mtime == file.lastModified && existing.size == file.size
+  }
+}
+
+private data class StagedLocalTrack(
+  val row: TrackEntity?,
+  val failed: Boolean,
+  val metadataChanged: Boolean,
+)
 
 private data class RemoteSyncHandle(
   val syncId: String,
@@ -395,8 +472,11 @@ class AstraLibraryRepository private constructor(
     onProgress: (phase: String, processed: Int, total: Int, folderName: String) -> Unit,
     isCancelled: () -> Boolean = { false },
   ): NativeScanResult {
+    val timing = LocalScanTiming(folderId)
     initialize()
+    timing.beginLockWait()
     return catalogWriterMutex.withLock {
+      timing.acquiredLock()
       val userDao = requireUser().userDao()
       val folder = userDao.getFolder(folderId) ?: error("Folder $folderId does not exist")
       val database = requireCatalog()
@@ -417,28 +497,58 @@ class AstraLibraryRepository private constructor(
           updatedAt = startedAt,
         ),
       )
-      dao.insertGeneration(
-        ScanGenerationEntity(
-          id = generationId,
-          sourceKey = sourceKey,
-          state = "staging",
-          startedAt = startedAt,
-        ),
-      )
       userDao.updateFolderScanState(folderId, folder.lastScannedAt, "scanning", null)
       updateOperationalStatus(LibraryStatus.SCANNING)
 
       try {
         throwIfScanCancelled(isCancelled)
         onProgress("discovering", 0, 0, folder.displayName)
+        val discoveryStarted = timing.now()
         val files = discover(folder.treeUri)
+        timing.discoveryMs = timing.elapsedMs(discoveryStarted)
+        timing.files = files.size
         throwIfScanCancelled(isCancelled)
         onProgress("discovering", files.size, files.size, folder.displayName)
 
+        val comparisonStarted = timing.now()
         val existing = dao.getActiveTrackEntitiesForSource(sourceKey)
         val existingByPath = existing.associateBy(TrackEntity::path)
         val seenPaths = files.mapTo(hashSetOf(), LocalAudioFile::uri)
         val removed = existing.count { it.path !in seenPaths }
+        val canReuse = canReuseActiveLocalGeneration(
+          full = full,
+          previousSource = previousSource,
+          files = files,
+          existingByPath = existingByPath,
+        )
+        timing.comparisonMs = timing.elapsedMs(comparisonStarted)
+        throwIfScanCancelled(isCancelled)
+
+        if (canReuse) {
+          val revision = dao.getRevision()
+          userDao.updateFolderScanState(folderId, System.currentTimeMillis(), "ready", null)
+          scheduleSnapshot()
+          refreshReadyStatus()
+          timing.outcome = "unchanged"
+          return@withLock NativeScanResult(
+            added = 0,
+            updated = 0,
+            removed = 0,
+            errors = 0,
+            total = files.size,
+            revision = revision,
+          )
+        }
+
+        val extractionAndStagingStarted = timing.now()
+        dao.insertGeneration(
+          ScanGenerationEntity(
+            id = generationId,
+            sourceKey = sourceKey,
+            state = "staging",
+            startedAt = startedAt,
+          ),
+        )
         var added = 0
         var updated = 0
         var errors = 0
@@ -456,34 +566,42 @@ class AstraLibraryRepository private constructor(
                   old.mtime == file.lastModified &&
                   old.size == file.size
                 if (unchanged) {
-                  old!!.copy(
-                    id = 0,
-                    generationId = generationId,
-                    sourceKey = sourceKey,
-                    titleSortKey = SortKeys.forText(old.title),
-                    artistSortKey = SortKeys.forText(old.artist),
-                    albumSortKey = SortKeys.forText(old.album),
-                    fileNameSortKey = SortKeys.forText(old.fileName),
-                    sectionLabel = SortKeys.sectionLabel(old.title),
-                  ) to false
+                  StagedLocalTrack(
+                    row = old!!.copy(
+                      id = 0,
+                      generationId = generationId,
+                      sourceKey = sourceKey,
+                      titleSortKey = SortKeys.forText(old.title),
+                      artistSortKey = SortKeys.forText(old.artist),
+                      albumSortKey = SortKeys.forText(old.album),
+                      fileNameSortKey = SortKeys.forText(old.fileName),
+                      sectionLabel = SortKeys.sectionLabel(old.title),
+                    ),
+                    failed = false,
+                    metadataChanged = false,
+                  )
                 } else {
                   val metadata = extract(file)
                   throwIfScanCancelled(isCancelled)
                   if (!metadata.ok) {
-                    if (old != null) {
-                      old.copy(id = 0, generationId = generationId, sourceKey = sourceKey) to true
-                    } else {
-                      null to true
-                    }
+                    StagedLocalTrack(
+                      row = old?.copy(id = 0, generationId = generationId, sourceKey = sourceKey),
+                      failed = true,
+                      metadataChanged = false,
+                    )
                   } else {
-                    trackFromMetadata(
-                      generationId = generationId,
-                      sourceKey = sourceKey,
-                      folderId = folderId,
-                      file = file,
-                      metadata = metadata,
-                      addedAt = old?.addedAt ?: startedAt,
-                    ) to false
+                    StagedLocalTrack(
+                      row = trackFromMetadata(
+                        generationId = generationId,
+                        sourceKey = sourceKey,
+                        folderId = folderId,
+                        file = file,
+                        metadata = metadata,
+                        addedAt = old?.addedAt ?: startedAt,
+                      ),
+                      failed = false,
+                      metadataChanged = true,
+                    )
                   }
                 }
               }
@@ -491,21 +609,25 @@ class AstraLibraryRepository private constructor(
           }
           throwIfScanCancelled(isCancelled)
           val insertRows = ArrayList<TrackEntity>(rows.size)
-          for ((row, failed) in rows) {
-            if (failed) errors += 1
-            if (row == null) continue
+          for (staged in rows) {
+            if (staged.failed) errors += 1
+            val row = staged.row ?: continue
             insertRows += row
-            if (existingByPath.containsKey(row.path)) updated += if (failed) 0 else 1 else added += 1
+            if (staged.metadataChanged) {
+              if (existingByPath.containsKey(row.path)) updated += 1 else added += 1
+            }
           }
           if (insertRows.isNotEmpty()) dao.putTracks(insertRows)
           processed += batch.size
           onProgress("extracting", processed, files.size, folder.displayName)
         }
+        timing.extractionAndStagingMs = timing.elapsedMs(extractionAndStagingStarted)
 
         throwIfScanCancelled(isCancelled)
         val prospective = dao.getProspectiveTracks(sourceKey, generationId)
         val nextRevision = dao.getRevision() + 1
         onProgress("indexing", prospective.size, prospective.size, folder.displayName)
+        val readModelStarted = timing.now()
         val readModels = withContext(Dispatchers.Default) {
           CatalogReadModelBuilder.build(
             prospective,
@@ -513,9 +635,11 @@ class AstraLibraryRepository private constructor(
             userDao.getFolders().associateBy(FolderEntity::id),
           )
         }
+        timing.readModelMs = timing.elapsedMs(readModelStarted)
         // Publishing is one Room transaction. Honour cancellation immediately before
         // it starts; once inside, let it finish so the active catalog stays coherent.
         throwIfScanCancelled(isCancelled)
+        val publishStarted = timing.now()
         val revision = dao.publishGeneration(
           sourceKey = sourceKey,
           generationId = generationId,
@@ -533,6 +657,8 @@ class AstraLibraryRepository private constructor(
         scheduleSnapshot()
         refreshReadyStatus()
         for (listener in catalogListeners) listener(revision)
+        timing.publishMs = timing.elapsedMs(publishStarted)
+        timing.outcome = "published"
         NativeScanResult(
           added = added,
           updated = updated,
@@ -542,6 +668,7 @@ class AstraLibraryRepository private constructor(
           revision = revision,
         )
       } catch (_: ScanCancelledException) {
+        timing.outcome = "cancelled"
         dao.deleteGenerationTracks(generationId)
         dao.deleteGeneration(generationId)
         userDao.updateFolderScanState(
@@ -562,6 +689,7 @@ class AstraLibraryRepository private constructor(
           cancelled = true,
         )
       } catch (error: Throwable) {
+        timing.outcome = "failed"
         runCatching {
           dao.deleteGenerationTracks(generationId)
           dao.setGenerationState(
@@ -586,8 +714,11 @@ class AstraLibraryRepository private constructor(
           recoveryNotice = currentStatus.recoveryNotice,
         )
         scheduleSnapshot()
+        timing.logIfDebuggable(applicationContext)
         throw error
       }
+    }.also {
+      timing.logIfDebuggable(applicationContext)
     }
   }
 
