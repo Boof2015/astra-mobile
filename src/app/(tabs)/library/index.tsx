@@ -17,7 +17,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
+import Animated, {
+  FadeIn,
+  ReduceMotion,
   runOnJS,
   useAnimatedScrollHandler,
   useSharedValue,
@@ -27,6 +29,7 @@ import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import {
   ScreenHeader,
   ScreenHeaderAction,
+  ScreenHeaderExpandedAction,
   useScreenHeader,
 } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
@@ -43,7 +46,11 @@ import {
   type FolderActionTarget,
 } from '@/components/library/FoldersView';
 import { LibraryContextBar } from '@/components/library/LibraryContextBar';
-import { LibrarySurfaceTransition } from '@/components/library/LibrarySurfaceTransition';
+import {
+  LIBRARY_SURFACE_ENTER_MS,
+  LIBRARY_SURFACE_EXIT_MS,
+  LibrarySurfaceTransition,
+} from '@/components/library/LibrarySurfaceTransition';
 import { MiniPlayerScrim } from '@/components/MiniPlayerScrim';
 import {
   PlaylistOverlays,
@@ -159,6 +166,11 @@ const CHROME_CONTROLS_H = 32;
 const CHROME_SCAN_H = 34;
 const CHROME_ERROR_H = 34;
 const CHROME_GAP = spacing.sm;
+const TRACK_ACTIONS_ENTER_LAG_MS = 40;
+const TRACK_ACTIONS_ENTERING = FadeIn
+  .delay(LIBRARY_SURFACE_EXIT_MS + TRACK_ACTIONS_ENTER_LAG_MS)
+  .duration(LIBRARY_SURFACE_ENTER_MS)
+  .reduceMotion(ReduceMotion.System);
 
 function libraryChromeHeight(options: {
   scanning: boolean;
@@ -276,12 +288,19 @@ export default function LibraryScreen() {
 
   const sortable =
     viewMode === 'tracks' || viewMode === 'albums' || viewMode === 'artists';
+  const showTrackPlaybackActions =
+    viewMode === 'tracks' && totalTrackCount > 0 && !selectMode;
+  const showHeaderSearch =
+    !phoneContextBar && showScreenTitle && !showLibraryStatus;
   const header = useScreenHeader({
     // In rail mode the rail names the destination, so the header contributes no
     // title and no bar — only the chrome the lists still have to clear.
     hasTitle: showScreenTitle,
     hasBack: false,
-    actionCount: !phoneContextBar && showScreenTitle && !showLibraryStatus ? 1 : 0,
+    actionCount:
+      (showScreenTitle && showTrackPlaybackActions ? 2 : 0) +
+      (showHeaderSearch ? 1 : 0),
+    hasExpandedActions: showScreenTitle && showTrackPlaybackActions,
     chromeHeight: showLibraryStatus || phoneContextBar
       ? 0
       : libraryChromeHeight({
@@ -321,6 +340,16 @@ export default function LibraryScreen() {
       direction: trackSortDirection,
     }, {
       anchorPath: sortedTracks[index]?.path,
+      source: { kind: 'library', label: 'Library' },
+    });
+  };
+  const playAllTracks = (shuffle: boolean) => {
+    void playLibraryQuery({
+      kind: 'library',
+      sort: trackSort,
+      direction: trackSortDirection,
+    }, {
+      shuffle,
       source: { kind: 'library', label: 'Library' },
     });
   };
@@ -761,7 +790,36 @@ export default function LibraryScreen() {
           </AppPressable>
         </View>
       ) : sortable ? (
-        <View style={[styles.controlsRow, { height: CHROME_CONTROLS_H }]}>
+        <View
+          style={[
+            styles.controlsRow,
+            !showScreenTitle && showTrackPlaybackActions && styles.controlsRowSplit,
+            { height: CHROME_CONTROLS_H },
+          ]}
+        >
+          {!showScreenTitle && showTrackPlaybackActions ? (
+            <Animated.View
+              entering={TRACK_ACTIONS_ENTERING}
+              style={styles.trackPlaybackActions}
+            >
+              <AppPressable feedback="control"
+                style={styles.trackPlaybackAction}
+                onPress={() => playAllTracks(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Play all tracks"
+              >
+                <Ionicons name="play" size={20} color={colors.accent} />
+              </AppPressable>
+              <AppPressable feedback="control"
+                style={styles.trackPlaybackAction}
+                onPress={() => playAllTracks(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Shuffle all tracks"
+              >
+                <Ionicons name="shuffle" size={20} color={colors.accent} />
+              </AppPressable>
+            </Animated.View>
+          ) : null}
           <AppPressable feedback="control"
             style={styles.sortTrigger}
             onPress={() => setSortSheetOpen(true)}
@@ -1024,8 +1082,49 @@ export default function LibraryScreen() {
           header={header}
           title="Library"
           chrome={chrome}
+          expandedActions={
+            showScreenTitle && showTrackPlaybackActions ? (
+              <Animated.View
+                entering={TRACK_ACTIONS_ENTERING}
+                style={[styles.trackPlaybackActions, styles.expandedTrackPlaybackActions]}
+              >
+                <ScreenHeaderExpandedAction
+                  variant="primary"
+                  icon="play"
+                  onPress={() => playAllTracks(false)}
+                  accessibilityLabel="Play all tracks"
+                />
+                <ScreenHeaderExpandedAction
+                  icon="shuffle"
+                  onPress={() => playAllTracks(true)}
+                  accessibilityLabel="Shuffle all tracks"
+                />
+              </Animated.View>
+            ) : undefined
+          }
+          collapsedActions={
+            showScreenTitle && showTrackPlaybackActions ? (
+              <Animated.View
+                entering={TRACK_ACTIONS_ENTERING}
+                style={styles.trackPlaybackActions}
+              >
+                <ScreenHeaderAction
+                  onPress={() => playAllTracks(false)}
+                  accessibilityLabel="Play all tracks"
+                >
+                  <Ionicons name="play" size={22} color={colors.accent} />
+                </ScreenHeaderAction>
+                <ScreenHeaderAction
+                  onPress={() => playAllTracks(true)}
+                  accessibilityLabel="Shuffle all tracks"
+                >
+                  <Ionicons name="shuffle" size={22} color={colors.accent} />
+                </ScreenHeaderAction>
+              </Animated.View>
+            ) : undefined
+          }
           actions={
-            !phoneContextBar && showScreenTitle && !showLibraryStatus ? (
+            showHeaderSearch ? (
               <ScreenHeaderAction onPress={() => openQuickSearch()} accessibilityLabel="Search library">
                 <Ionicons name="search" size={22} color={colors.textSecondary} />
               </ScreenHeaderAction>
@@ -1232,6 +1331,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.md,
+  },
+  controlsRowSplit: {
+    justifyContent: 'space-between',
+  },
+  trackPlaybackActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  expandedTrackPlaybackActions: {
+    width: '100%',
+    height: '100%',
+  },
+  trackPlaybackAction: {
+    width: CHROME_CONTROLS_H,
+    height: CHROME_CONTROLS_H,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sortTrigger: {
     flexDirection: 'row',

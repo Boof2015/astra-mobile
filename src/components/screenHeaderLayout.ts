@@ -50,6 +50,10 @@ export const SCREEN_HEADER_ACTION_SIZE = 40;
 const ACTION_SIZE = SCREEN_HEADER_ACTION_SIZE;
 const ACTION_GAP = spacing.xs;
 const ACTION_RIGHT = spacing.md;
+/** Compact controls seated beside the expanded title before moving into the
+ * bar. Kept fixed so layout and rendering share one declaration. */
+export const SCREEN_HEADER_EXPANDED_ACTION_SIZE = 40;
+const EXPANDED_ACTIONS_GAP = spacing.xs;
 
 /**
  * Floor on how far the header travels.
@@ -102,6 +106,10 @@ const LABEL_FADE_SHARE = 0.4;
 const LABEL_FADE_MAX = 45;
 const SUBTITLE_FADE_SHARE = 0.5;
 const SUBTITLE_LIFT = -12;
+const EXPANDED_ACTIONS_FADE_SHARE = 0.48;
+const EXPANDED_ACTIONS_LIFT = -14;
+const COMPACT_ACTIONS_FADE_START_SHARE = 0.72;
+const COMPACT_ACTIONS_FADE_END_SHARE = 0.94;
 
 export interface ScreenHeaderInput {
   /** Width inside `Screen`'s insets — not the window width. */
@@ -112,6 +120,8 @@ export interface ScreenHeaderInput {
   hasSubtitle: boolean;
   hasBack: boolean;
   actionCount: number;
+  /** Seats a standard pair of compact actions beside the expanded title. */
+  hasExpandedActions?: boolean;
   /**
    * False on a screen whose destination is already named elsewhere — Library in
    * rail mode, where the rail carries the word. The header then contributes no
@@ -161,6 +171,12 @@ export interface ScreenHeaderLayout {
   /** Top of the large title, below the inset. */
   titleTop: number;
   titleLeft: number;
+  /** Trailing inset that keeps the travelling title clear of pinned actions. */
+  titleRight: number;
+  /** Expanded-only action pair beside the title. */
+  expandedActionsTop: number;
+  expandedActionsHeight: number;
+  expandedActionsWidth: number;
   /** Top of the subtitle line, below the inset. */
   subtitleTop: number;
   /** Collapsed size as a share of the expanded size. Font-scale independent, so
@@ -203,6 +219,7 @@ export function getScreenHeaderLayout({
   hasSubtitle,
   hasBack,
   actionCount,
+  hasExpandedActions = false,
   hasTitle = true,
   chromeHeight = 0,
 }: ScreenHeaderInput): ScreenHeaderLayout {
@@ -210,11 +227,16 @@ export function getScreenHeaderLayout({
   const titleLine = Math.round(variantLineHeight.title * scale);
   const subLine = Math.round(variantLineHeight.label * scale);
 
-  const contentBlock =
-    TITLE_TOP +
-    titleLine +
-    (hasSubtitle ? TITLE_TO_SUB + subLine : 0) +
-    BLOCK_BOTTOM_PAD;
+  const titleBlockBottom =
+    TITLE_TOP + titleLine + (hasSubtitle ? TITLE_TO_SUB + subLine : 0);
+  const expandedActionsHeight = hasExpandedActions
+    ? SCREEN_HEADER_EXPANDED_ACTION_SIZE
+    : 0;
+  const expandedActionsTop = TITLE_TOP + (titleLine - expandedActionsHeight) / 2;
+  const expandedActionsWidth = hasExpandedActions
+    ? SCREEN_HEADER_EXPANDED_ACTION_SIZE * 2 + EXPANDED_ACTIONS_GAP
+    : 0;
+  const contentBlock = titleBlockBottom + BLOCK_BOTTOM_PAD;
   const natural = Math.max(contentBlock, SCREEN_BAR_H + MIN_COLLAPSE_DISTANCE);
 
   // The chrome is part of what the list must clear, so it counts against the
@@ -236,7 +258,27 @@ export function getScreenHeaderLayout({
   const titleLeft = SCREEN_HEADER_GUTTER;
   const travelX = hasBack ? BAR_TEXT_LEFT - titleLeft : 0;
   const titleScale = BAR_TITLE_SIZE / fontSize.xxl;
-  const titleWidth = Math.max(0, availableWidth - titleLeft * 2);
+  const naturalTitleWidth = Math.max(0, availableWidth - titleLeft * 2);
+  // The same title box is scaled and translated into the bar. With three
+  // pinned actions, a narrow window can no longer give that box the full
+  // expanded width without its collapsed edge entering the action cluster.
+  // Bound the expanded box from the collapsed geometry so the rendered width
+  // and the invariant below stay the same number.
+  const collapsedTitleWidth = actionsWidth > 0
+    ? Math.max(
+        0,
+        (availableWidth - actionsWidth - titleLeft - travelX) / titleScale,
+      )
+    : naturalTitleWidth;
+  const titleWidth = Math.min(naturalTitleWidth, collapsedTitleWidth);
+  const expandedTitleRight = hasExpandedActions
+    ? ACTION_RIGHT + expandedActionsWidth + spacing.md
+    : titleLeft;
+  const titleRight = Math.max(
+    titleLeft,
+    availableWidth - titleLeft - titleWidth,
+    expandedTitleRight,
+  );
 
   return {
     collapsible,
@@ -253,6 +295,10 @@ export function getScreenHeaderLayout({
     subLine,
     titleTop: TITLE_TOP,
     titleLeft,
+    titleRight,
+    expandedActionsTop,
+    expandedActionsHeight,
+    expandedActionsWidth,
     subtitleTop: TITLE_TOP + titleLine + TITLE_TO_SUB,
     titleScale,
     travelX,
@@ -339,6 +385,46 @@ export function subtitleOpacityAt(y: number, settle: number): number {
 export function subtitleLiftAt(y: number, settle: number): number {
   'worklet';
   return lerpClamped(y, 0, settle * SUBTITLE_FADE_SHARE, 0, SUBTITLE_LIFT);
+}
+
+/** The deliberate expanded action row leaves early, before content reaches it. */
+export function expandedActionsOpacityAt(y: number, settle: number): number {
+  'worklet';
+  return lerpClamped(y, 0, settle * EXPANDED_ACTIONS_FADE_SHARE, 1, 0);
+}
+
+export function expandedActionsLiftAt(y: number, settle: number): number {
+  'worklet';
+  return lerpClamped(
+    y,
+    0,
+    settle * EXPANDED_ACTIONS_FADE_SHARE,
+    0,
+    EXPANDED_ACTIONS_LIFT,
+  );
+}
+
+/** Compact bar icons arrive only after the expanded row has fully left. */
+export function compactActionsOpacityAt(y: number, settle: number): number {
+  'worklet';
+  return lerpClamped(
+    y,
+    settle * COMPACT_ACTIONS_FADE_START_SHARE,
+    settle * COMPACT_ACTIONS_FADE_END_SHARE,
+    0,
+    1,
+  );
+}
+
+export function compactActionsScaleAt(y: number, settle: number): number {
+  'worklet';
+  return lerpClamped(
+    y,
+    settle * COMPACT_ACTIONS_FADE_START_SHARE,
+    settle * COMPACT_ACTIONS_FADE_END_SHARE,
+    0.78,
+    1,
+  );
 }
 
 /** Arrives last: the surface only earns its tint once content is behind it. */

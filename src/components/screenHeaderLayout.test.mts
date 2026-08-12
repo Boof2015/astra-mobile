@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   SCREEN_BAR_H,
+  SCREEN_HEADER_EXPANDED_ACTION_SIZE,
   SCREEN_HEADER_GUTTER,
+  compactActionsOpacityAt,
+  expandedActionsOpacityAt,
   getScreenHeaderLayout,
   headerHeightAt,
   labelOpacityAt,
@@ -21,7 +24,7 @@ const WINDOWS = [
 ] as const;
 
 const FONT_SCALES = [0.85, 1, 1.15, 1.2, 1.3, 2] as const;
-const ACTION_COUNTS = [0, 1, 2] as const;
+const ACTION_COUNTS = [0, 1, 2, 3] as const;
 /** How much of the width `Screen` can take away: nothing, a cutout, a docked player. */
 const WIDTH_LOSSES = [0, 24, 48] as const;
 /** No pinned chrome, and Library's switcher + sort row. */
@@ -43,19 +46,22 @@ function cases(): Case[] {
             for (const actionCount of ACTION_COUNTS) {
               for (const loss of WIDTH_LOSSES) {
                 for (const chromeHeight of CHROME_HEIGHTS) {
-                  out.push({
-                    label: `${entry.name} ${orientation} ${width}x${height} fs${fontScale} sub:${hasSubtitle} back:${hasBack} actions:${actionCount} -${loss}w chrome:${chromeHeight}`,
-                    input: {
-                      availableWidth: width - loss,
-                      windowHeight: height,
-                      topInset,
-                      fontScale,
-                      hasSubtitle,
-                      hasBack,
-                      actionCount,
-                      chromeHeight,
-                    },
-                  });
+                  for (const hasExpandedActions of [false, true]) {
+                    out.push({
+                      label: `${entry.name} ${orientation} ${width}x${height} fs${fontScale} sub:${hasSubtitle} back:${hasBack} actions:${actionCount} expanded:${hasExpandedActions} -${loss}w chrome:${chromeHeight}`,
+                      input: {
+                        availableWidth: width - loss,
+                        windowHeight: height,
+                        topInset,
+                        fontScale,
+                        hasSubtitle,
+                        hasBack,
+                        actionCount,
+                        hasExpandedActions,
+                        chromeHeight,
+                      },
+                    });
+                  }
                 }
               }
             }
@@ -178,6 +184,36 @@ test('the collapse has room to read as motion', () => {
     assert.ok(0 < layout.settle * 0.3, `${label}: scale stage is empty`);
     assert.ok(layout.settle * 0.3 < layout.settle * 0.45, `${label}: stagger out of order`);
     assert.ok(layout.settle * 0.45 < layout.settle, `${label}: slide stage is empty`);
+  }
+});
+
+test('expanded actions sit beside the title without adding height and hand off cleanly', () => {
+  const input = {
+    availableWidth: 360,
+    windowHeight: 780,
+    topInset: 40,
+    fontScale: 1,
+    hasSubtitle: false,
+    hasBack: false,
+    actionCount: 2,
+  };
+  const bare = getScreenHeaderLayout(input);
+  const layout = getScreenHeaderLayout({ ...input, hasExpandedActions: true });
+  assert.equal(layout.expandedHeight, bare.expandedHeight);
+  assert.equal(layout.expandedActionsHeight, SCREEN_HEADER_EXPANDED_ACTION_SIZE);
+  assert.ok(layout.expandedActionsTop >= layout.titleTop);
+  assert.ok(layout.expandedActionsTop + layout.expandedActionsHeight <= layout.titleTop + layout.titleLine);
+  assert.ok(layout.titleRight > bare.titleRight);
+  assert.equal(expandedActionsOpacityAt(0, layout.settle), 1);
+  assert.equal(compactActionsOpacityAt(0, layout.settle), 0);
+  assert.equal(expandedActionsOpacityAt(layout.settle, layout.settle), 0);
+  assert.equal(compactActionsOpacityAt(layout.settle, layout.settle), 1);
+  for (let y = 0; y <= layout.settle; y += 1) {
+    assert.ok(
+      expandedActionsOpacityAt(y, layout.settle) === 0 ||
+      compactActionsOpacityAt(y, layout.settle) === 0,
+      `expanded and compact actions overlap at ${y}`,
+    );
   }
 });
 

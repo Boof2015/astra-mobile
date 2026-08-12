@@ -1,5 +1,11 @@
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's scroll state. */
-import { useCallback, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   PixelRatio,
   StyleSheet,
@@ -8,7 +14,9 @@ import {
 } from 'react-native';
 import Animated, {
   useAnimatedScrollHandler,
+  useAnimatedReaction,
   useAnimatedStyle,
+  runOnJS,
   useSharedValue,
   type ScrollHandlerProcessed,
   type SharedValue,
@@ -18,11 +26,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { useShellRailPresent } from '@/navigation/shellRailContext';
 import { useShellLayout } from '@/navigation/useShellLayout';
-import { MAX_FONT_SCALE, fontSize, variantLineHeight } from '@/theme';
+import { MAX_FONT_SCALE, fontSize, radius, variantLineHeight } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
   SCREEN_HEADER_ACTION_SIZE,
+  SCREEN_HEADER_EXPANDED_ACTION_SIZE,
+  compactActionsOpacityAt,
+  compactActionsScaleAt,
+  expandedActionsLiftAt,
+  expandedActionsOpacityAt,
   barOpacityAt,
   getScreenHeaderLayout,
   headerHeightAt,
@@ -45,11 +58,9 @@ import {
  *
  * - **The list's top padding comes from `contentPaddingTop`, and nowhere else.**
  *   No consumer re-derives it, and nothing here measures it back.
- * - **There is no React state and no effect.** `CollapsingDetail` needs latched
- *   booleans only to hand pointer events between big and small buttons that swap
- *   places; here the chevron and the actions are pinned in the bar row from the
- *   start and never move, so there is nothing to hand over. That also keeps the
- *   subtree from re-rendering while the UI-thread scroll handler drives it.
+ * - **React only hears about action handoff thresholds.** Motion stays on the
+ *   UI thread; two latched booleans move pointer events from an optional large
+ *   expanded action row to its compact bar icons.
  */
 
 export interface ScreenHeaderController {
@@ -73,12 +84,15 @@ export function useScreenHeader({
   hasSubtitle = false,
   hasBack = true,
   actionCount = 0,
+  hasExpandedActions = false,
   hasTitle = true,
   chromeHeight = 0,
 }: {
   hasSubtitle?: boolean;
   hasBack?: boolean;
   actionCount?: number;
+  /** Whether the expanded title reserves a standard labelled-action row. */
+  hasExpandedActions?: boolean;
   /** False where the destination is already named elsewhere (Library + rail). */
   hasTitle?: boolean;
   /** Declared height of the pinned controls passed as `chrome`. */
@@ -105,6 +119,7 @@ export function useScreenHeader({
     hasSubtitle,
     hasBack,
     actionCount,
+    hasExpandedActions,
     hasTitle,
     chromeHeight,
   });
@@ -134,6 +149,8 @@ export function ScreenHeader({
   backLabel,
   onBack,
   actions,
+  collapsedActions,
+  expandedActions,
   chrome,
 }: {
   header: ScreenHeaderController;
@@ -142,7 +159,12 @@ export function ScreenHeader({
   /** Where back goes, shown beside the chevron until the title claims the row. */
   backLabel?: string;
   onBack?: () => void;
+  /** Actions that stay in the bar in both expanded and collapsed states. */
   actions?: ReactNode;
+  /** Compact counterparts to `expandedActions`, visible only after collapse. */
+  collapsedActions?: ReactNode;
+  /** Large labelled actions shown below the title while fully expanded. */
+  expandedActions?: ReactNode;
   /**
    * Pinned controls below the title. Anchored to the container's bottom edge, so
    * they ride up as the title collapses and then stay put. Must be exactly
@@ -159,6 +181,42 @@ export function ScreenHeader({
   // `getScreenHeaderLayout` is pure, so `layout` is a fresh identity every
   // render, and Reanimated compares what the worklet captured.
   const { dist, settle, travelX, travelY, titleScale, maxHeight, minHeight } = layout;
+  const handoffEnabled =
+    layout.collapsible && expandedActions != null && collapsedActions != null;
+  const interactionRef = useRef({ expanded: true, compact: false });
+  const [interaction, setInteraction] = useState({ expanded: true, compact: false });
+  const updateInteraction = useCallback((expanded: boolean, compact: boolean) => {
+    if (
+      interactionRef.current.expanded === expanded &&
+      interactionRef.current.compact === compact
+    ) return;
+    interactionRef.current = { expanded, compact };
+    setInteraction(interactionRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!handoffEnabled) return;
+    const y = scrollY.value;
+    updateInteraction(
+      expandedActionsOpacityAt(y, settle) > 0,
+      compactActionsOpacityAt(y, settle) >= 0.5,
+    );
+  }, [handoffEnabled, scrollY, settle, updateInteraction]);
+
+  useAnimatedReaction(
+    () => {
+      if (!handoffEnabled) return 0;
+      const y = scrollY.value;
+      return (
+        (expandedActionsOpacityAt(y, settle) > 0 ? 1 : 0) |
+        (compactActionsOpacityAt(y, settle) >= 0.5 ? 2 : 0)
+      );
+    },
+    (flags, previous) => {
+      if (flags === previous) return;
+      runOnJS(updateInteraction)((flags & 1) !== 0, (flags & 2) !== 0);
+    },
+  );
 
   const collapseClipStyle = useAnimatedStyle(() => ({
     transform: [
@@ -186,6 +244,26 @@ export function ScreenHeader({
   }));
   const barStyle = useAnimatedStyle(() => ({
     opacity: barOpacityAt(scrollY.value, settle),
+  }));
+  const expandedActionsStyle = useAnimatedStyle(() => ({
+    opacity: layout.collapsible
+      ? expandedActionsOpacityAt(scrollY.value, settle)
+      : 0,
+    transform: [{
+      translateY: layout.collapsible
+        ? expandedActionsLiftAt(scrollY.value, settle)
+        : 0,
+    }],
+  }));
+  const compactActionsStyle = useAnimatedStyle(() => ({
+    opacity: layout.collapsible
+      ? compactActionsOpacityAt(scrollY.value, settle)
+      : 1,
+    transform: [{
+      scale: layout.collapsible
+        ? compactActionsScaleAt(scrollY.value, settle)
+        : 1,
+    }],
   }));
 
   // The title sizes itself rather than leaning on `Text`'s automatic scaling:
@@ -223,7 +301,7 @@ export function ScreenHeader({
     ) : null;
 
   const actionCluster =
-    actions != null ? (
+    actions != null || collapsedActions != null ? (
       <View
         style={[
           styles.actions,
@@ -234,8 +312,40 @@ export function ScreenHeader({
           },
         ]}
       >
+        {collapsedActions != null ? (
+          <Animated.View
+            style={[styles.collapsedActions, { gap: layout.actionGap }, compactActionsStyle]}
+            pointerEvents={
+              handoffEnabled
+                ? interaction.compact ? 'auto' : 'none'
+                : 'auto'
+            }
+          >
+            {collapsedActions}
+          </Animated.View>
+        ) : null}
         {actions}
       </View>
+    ) : null;
+
+  const expandedActionBlock =
+    expandedActions != null && layout.collapsible ? (
+      <Animated.View
+        style={[
+          styles.expandedActions,
+          {
+            top: insets.top + layout.expandedActionsTop,
+            right: layout.actionsRight,
+            width: layout.expandedActionsWidth,
+            height: layout.expandedActionsHeight,
+            gap: layout.actionGap,
+          },
+          expandedActionsStyle,
+        ]}
+        pointerEvents={interaction.expanded ? 'auto' : 'none'}
+      >
+        {expandedActions}
+      </Animated.View>
     ) : null;
 
   // Anchored to the container's bottom edge, so the collapse carries it up and
@@ -310,7 +420,7 @@ export function ScreenHeader({
               {
                 top: insets.top + layout.titleTop,
                 left: layout.titleLeft,
-                right: layout.titleLeft,
+                right: layout.titleRight,
                 height: layout.titleLine,
               },
               titleStyle,
@@ -359,6 +469,8 @@ export function ScreenHeader({
             </Animated.Text>
           ) : null}
 
+          {expandedActionBlock}
+
           {chevron}
           {actionCluster}
         </Animated.View>
@@ -372,7 +484,7 @@ export function ScreenHeader({
 }
 
 /**
- * A button in the collapsed bar's action row.
+ * A compact button in the collapsed bar's action row.
  *
  * Sized from the same constant the layout proves the title cannot collide with,
  * so a screen can add actions without re-declaring the number that keeps them
@@ -399,6 +511,41 @@ export function ScreenHeaderAction({
       accessibilityLabel={accessibilityLabel}
     >
       {children}
+    </AppPressable>
+  );
+}
+
+export function ScreenHeaderExpandedAction({
+  onPress,
+  accessibilityLabel,
+  icon,
+  variant = 'secondary',
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  variant?: 'primary' | 'secondary';
+}) {
+  const styles = useStyles();
+  const colors = useColors();
+  const primary = variant === 'primary';
+  return (
+    <AppPressable
+      feedback={primary ? 'accent' : 'control'}
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={[
+        styles.expandedAction,
+        primary ? styles.expandedActionPrimary : styles.expandedActionSecondary,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Ionicons
+        name={icon}
+        size={18}
+        color={primary ? colors.bgPrimary : colors.accent}
+      />
     </AppPressable>
   );
 }
@@ -469,6 +616,29 @@ const useStyles = createThemedStyles((colors) => ({
     position: 'absolute',
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  collapsedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  expandedActions: {
+    position: 'absolute',
+    flexDirection: 'row',
+  },
+  expandedAction: {
+    width: SCREEN_HEADER_EXPANDED_ACTION_SIZE,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  expandedActionPrimary: {
+    backgroundColor: colors.accent,
+  },
+  expandedActionSecondary: {
+    backgroundColor: colors.glassBg,
+    borderColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   chrome: {
     position: 'absolute',
