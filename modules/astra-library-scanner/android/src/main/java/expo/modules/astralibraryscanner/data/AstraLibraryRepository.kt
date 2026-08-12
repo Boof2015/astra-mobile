@@ -20,9 +20,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +59,8 @@ private class LocalScanTiming(
   var readModelMs: Long = 0
   var publishMs: Long = 0
   var files: Int = 0
+  var workers: Int = 0
+  var windowSize: Int = 0
   var outcome: String = "failed"
 
   fun beginLockWait() {
@@ -84,6 +83,7 @@ private class LocalScanTiming(
     Log.d(
       SCAN_LOG_TAG,
       "folderId=$folderId outcome=$outcome files=$files" +
+        " workers=$workers windowSize=$windowSize" +
         " lockWaitMs=$lockWaitMs discoveryMs=$discoveryMs" +
         " comparisonMs=$comparisonMs extractionAndStagingMs=$extractionAndStagingMs" +
         " readModelMs=$readModelMs publishMs=$publishMs" +
@@ -552,75 +552,80 @@ class AstraLibraryRepository private constructor(
         var added = 0
         var updated = 0
         var errors = 0
-        var processed = 0
+        val workerCount = localScanWorkerCount(
+          availableProcessors = Runtime.getRuntime().availableProcessors(),
+          itemCount = files.size,
+        )
+        timing.workers = workerCount
+        timing.windowSize = LOCAL_SCAN_WINDOW_SIZE
 
-        for (batch in files.chunked(24)) {
-          throwIfScanCancelled(isCancelled)
-          val rows = coroutineScope {
-            batch.map { file ->
-              async(Dispatchers.IO) {
-                throwIfScanCancelled(isCancelled)
-                val old = existingByPath[file.uri]
-                val unchanged = !effectiveFull &&
-                  old != null &&
-                  old.mtime == file.lastModified &&
-                  old.size == file.size
-                if (unchanged) {
-                  StagedLocalTrack(
-                    row = old!!.copy(
-                      id = 0,
-                      generationId = generationId,
-                      sourceKey = sourceKey,
-                      titleSortKey = SortKeys.forText(old.title),
-                      artistSortKey = SortKeys.forText(old.artist),
-                      albumSortKey = SortKeys.forText(old.album),
-                      fileNameSortKey = SortKeys.forText(old.fileName),
-                      sectionLabel = SortKeys.sectionLabel(old.title),
-                    ),
-                    failed = false,
-                    metadataChanged = false,
-                  )
-                } else {
-                  val metadata = extract(file)
-                  throwIfScanCancelled(isCancelled)
-                  if (!metadata.ok) {
-                    StagedLocalTrack(
-                      row = old?.copy(id = 0, generationId = generationId, sourceKey = sourceKey),
-                      failed = true,
-                      metadataChanged = false,
-                    )
-                  } else {
-                    StagedLocalTrack(
-                      row = trackFromMetadata(
-                        generationId = generationId,
-                        sourceKey = sourceKey,
-                        folderId = folderId,
-                        file = file,
-                        metadata = metadata,
-                        addedAt = old?.addedAt ?: startedAt,
-                      ),
-                      failed = false,
-                      metadataChanged = true,
-                    )
-                  }
-                }
+        runBoundedLocalScanPipeline(
+          items = files,
+          workerCount = workerCount,
+          process = { file ->
+            throwIfScanCancelled(isCancelled)
+            val old = existingByPath[file.uri]
+            val unchanged = !effectiveFull &&
+              old != null &&
+              old.mtime == file.lastModified &&
+              old.size == file.size
+            if (unchanged) {
+              StagedLocalTrack(
+                row = old!!.copy(
+                  id = 0,
+                  generationId = generationId,
+                  sourceKey = sourceKey,
+                  titleSortKey = SortKeys.forText(old.title),
+                  artistSortKey = SortKeys.forText(old.artist),
+                  albumSortKey = SortKeys.forText(old.album),
+                  fileNameSortKey = SortKeys.forText(old.fileName),
+                  sectionLabel = SortKeys.sectionLabel(old.title),
+                ),
+                failed = false,
+                metadataChanged = false,
+              )
+            } else {
+              val metadata = extract(file)
+              throwIfScanCancelled(isCancelled)
+              if (!metadata.ok) {
+                StagedLocalTrack(
+                  row = old?.copy(id = 0, generationId = generationId, sourceKey = sourceKey),
+                  failed = true,
+                  metadataChanged = false,
+                )
+              } else {
+                StagedLocalTrack(
+                  row = trackFromMetadata(
+                    generationId = generationId,
+                    sourceKey = sourceKey,
+                    folderId = folderId,
+                    file = file,
+                    metadata = metadata,
+                    addedAt = old?.addedAt ?: startedAt,
+                  ),
+                  failed = false,
+                  metadataChanged = true,
+                )
               }
-            }.awaitAll()
-          }
-          throwIfScanCancelled(isCancelled)
-          val insertRows = ArrayList<TrackEntity>(rows.size)
-          for (staged in rows) {
-            if (staged.failed) errors += 1
-            val row = staged.row ?: continue
-            insertRows += row
-            if (staged.metadataChanged) {
-              if (existingByPath.containsKey(row.path)) updated += 1 else added += 1
             }
-          }
-          if (insertRows.isNotEmpty()) dao.putTracks(insertRows)
-          processed += batch.size
-          onProgress("extracting", processed, files.size, folder.displayName)
-        }
+          },
+          writeWindow = { rows ->
+            throwIfScanCancelled(isCancelled)
+            val insertRows = ArrayList<TrackEntity>(rows.size)
+            for (staged in rows) {
+              if (staged.failed) errors += 1
+              val row = staged.row ?: continue
+              insertRows += row
+              if (staged.metadataChanged) {
+                if (existingByPath.containsKey(row.path)) updated += 1 else added += 1
+              }
+            }
+            if (insertRows.isNotEmpty()) dao.putTracks(insertRows)
+          },
+          onWindowCommitted = { processed, total ->
+            onProgress("extracting", processed, total, folder.displayName)
+          },
+        )
         timing.extractionAndStagingMs = timing.elapsedMs(extractionAndStagingStarted)
 
         throwIfScanCancelled(isCancelled)

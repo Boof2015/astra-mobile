@@ -2,6 +2,7 @@ package expo.modules.astralibraryscanner
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioFormat
@@ -15,7 +16,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.util.Log
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.MetadataRetriever
 import com.google.android.exoplayer2.metadata.id3.BinaryFrame
@@ -58,6 +61,86 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
+
+private const val LIBRARY_SCAN_LOG_TAG = "AstraLibraryScan"
+
+private data class MetadataStageTiming(
+  val androidMetadataNanos: Long,
+  val multiArtistNanos: Long,
+  val technicalFormatNanos: Long,
+  val artworkNanos: Long,
+  val totalNanos: Long,
+)
+
+private data class MetadataTimingSnapshot(
+  val count: Int,
+  val androidMetadataNanos: Long,
+  val multiArtistNanos: Long,
+  val technicalFormatNanos: Long,
+  val artworkNanos: Long,
+  val totalNanos: Long,
+  val maximumTotalNanos: Long,
+)
+
+private class MetadataTimingAccumulator {
+  private var count = 0
+  private var androidMetadataNanos = 0L
+  private var multiArtistNanos = 0L
+  private var technicalFormatNanos = 0L
+  private var artworkNanos = 0L
+  private var totalNanos = 0L
+  private var maximumTotalNanos = 0L
+
+  @Synchronized
+  fun record(timing: MetadataStageTiming) {
+    count += 1
+    androidMetadataNanos += timing.androidMetadataNanos
+    multiArtistNanos += timing.multiArtistNanos
+    technicalFormatNanos += timing.technicalFormatNanos
+    artworkNanos += timing.artworkNanos
+    totalNanos += timing.totalNanos
+    maximumTotalNanos = maxOf(maximumTotalNanos, timing.totalNanos)
+  }
+
+  @Synchronized
+  private fun snapshot(): MetadataTimingSnapshot = MetadataTimingSnapshot(
+    count = count,
+    androidMetadataNanos = androidMetadataNanos,
+    multiArtistNanos = multiArtistNanos,
+    technicalFormatNanos = technicalFormatNanos,
+    artworkNanos = artworkNanos,
+    totalNanos = totalNanos,
+    maximumTotalNanos = maximumTotalNanos,
+  )
+
+  fun logIfDebuggable(context: Context, folderId: Long) {
+    val debuggable =
+      context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    if (!debuggable) return
+    val timing = snapshot()
+    Log.d(
+      LIBRARY_SCAN_LOG_TAG,
+      "folderId=$folderId metadataFiles=${timing.count}" +
+        " androidMetadataTotalMs=${nanosToMs(timing.androidMetadataNanos)}" +
+        " androidMetadataAvgMs=${averageMs(timing.androidMetadataNanos, timing.count)}" +
+        " multiArtistTotalMs=${nanosToMs(timing.multiArtistNanos)}" +
+        " multiArtistAvgMs=${averageMs(timing.multiArtistNanos, timing.count)}" +
+        " technicalFormatTotalMs=${nanosToMs(timing.technicalFormatNanos)}" +
+        " technicalFormatAvgMs=${averageMs(timing.technicalFormatNanos, timing.count)}" +
+        " artworkTotalMs=${nanosToMs(timing.artworkNanos)}" +
+        " artworkAvgMs=${averageMs(timing.artworkNanos, timing.count)}" +
+        " trackExtractionTotalMs=${nanosToMs(timing.totalNanos)}" +
+        " trackExtractionAvgMs=${averageMs(timing.totalNanos, timing.count)}" +
+        " trackExtractionMaxMs=${nanosToMs(timing.maximumTotalNanos)}",
+    )
+  }
+
+  private fun averageMs(totalNanos: Long, count: Int): Double =
+    if (count == 0) 0.0 else nanosToMs(totalNanos / count)
+
+  private fun nanosToMs(nanos: Long): Double =
+    (nanos / 10_000.0).roundToInt() / 100.0
+}
 
 class FileRequest : Record {
   @Field val uri: String = ""
@@ -143,11 +226,13 @@ class AstraLibraryScannerModule : Module() {
         mode: String,
         extensions: List<String>,
       ->
+      val context = requireContext().applicationContext
       val cancelFlag = AtomicBoolean(false)
+      val metadataTimings = MetadataTimingAccumulator()
       activeScans.add(cancelFlag)
       try {
         withContext(Dispatchers.IO) {
-          val repository = AstraLibraryRepository.get(requireContext())
+          val repository = AstraLibraryRepository.get(context)
           repository.withUserRecovery { scanLocalFolder(
             folderId = folderId.toLong(),
             full = mode == "full",
@@ -172,7 +257,7 @@ class AstraLibraryScannerModule : Module() {
               }
             },
             extract = { file ->
-              extractOne(file.uri, file.coverUri).toLocalAudioMetadata()
+              extractOne(file.uri, file.coverUri, metadataTimings::record).toLocalAudioMetadata()
             },
             onProgress = { phase, processed, total, folderName ->
               sendEvent(
@@ -189,6 +274,7 @@ class AstraLibraryScannerModule : Module() {
           ).toMap() }
         }
       } finally {
+        runCatching { metadataTimings.logIfDebuggable(context, folderId.toLong()) }
         activeScans.remove(cancelFlag)
       }
     }
@@ -625,104 +711,145 @@ class AstraLibraryScannerModule : Module() {
     return extractOne(request.uri, request.coverUri)
   }
 
-  private fun extractOne(uriString: String, coverUri: String?): Map<String, Any?> {
+  private fun extractOne(
+    uriString: String,
+    coverUri: String?,
+    timingRecorder: ((MetadataStageTiming) -> Unit)? = null,
+  ): Map<String, Any?> {
+    val totalStartedNanos = SystemClock.elapsedRealtimeNanos()
+    var androidMetadataNanos = 0L
+    var multiArtistNanos = 0L
+    var technicalFormatNanos = 0L
+    var artworkNanos = 0L
     val context = requireContext()
     val uri = Uri.parse(uriString)
     val result = mutableMapOf<String, Any?>("uri" to uriString, "ok" to true)
 
-    var embeddedPicture: ByteArray? = null
-    val retriever = MediaMetadataRetriever()
     try {
-      retriever.setDataSource(context, uri)
-
-      result["title"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-      result["artist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-      result["album"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
-      result["albumArtist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
-      result["genre"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
-      result["mimeType"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-      result["durationMs"] =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-      result["bitrate"] =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
-      result["trackNumber"] = parseTagNumber(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
-      )
-      result["discNumber"] = parseTagNumber(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)
-      )
-      result["year"] = parseYear(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR),
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
-      )
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        result["sampleRate"] =
-          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull()
-      }
-      embeddedPicture = retriever.embeddedPicture
-    } catch (t: Throwable) {
-      return mapOf(
-        "uri" to uriString,
-        "ok" to false,
-        "error" to (t.message ?: t.javaClass.simpleName)
-      )
-    } finally {
+      var embeddedPicture: ByteArray? = null
+      var androidMetadataError: Throwable? = null
+      val androidMetadataStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val retriever = MediaMetadataRetriever()
       try {
-        retriever.release()
-      } catch (_: Throwable) {}
-    }
+        retriever.setDataSource(context, uri)
 
-    val credits = ArtistCreditMetadataReader.read(context, uri, metadataTimeoutMs)
-    val artistNames = credits.artists.takeIf { it.size > 1 }.orEmpty()
-    val albumArtistNames = credits.albumArtists.takeIf { it.size > 1 }.orEmpty()
-    result["artistNames"] = artistNames
-    result["albumArtistNames"] = albumArtistNames
-    if (artistNames.isNotEmpty()) {
-      result["artist"] = formatArtistNames(artistNames)
-    } else if (result["artist"] == null && credits.artists.size == 1) {
-      result["artist"] = credits.artists[0]
-    }
-    if (albumArtistNames.isNotEmpty()) {
-      result["albumArtist"] = formatArtistNames(albumArtistNames)
-    } else if (result["albumArtist"] == null && credits.albumArtists.size == 1) {
-      result["albumArtist"] = credits.albumArtists[0]
-    }
-
-    // Header-level facts MMR can't provide (channels, bit depth) or only on
-    // API 31+ (sample rate). Failure here is non-fatal — keep the tag data.
-    val extractor = MediaExtractor()
-    try {
-      extractor.setDataSource(context, uri, null)
-      for (i in 0 until extractor.trackCount) {
-        val format = extractor.getTrackFormat(i)
-        val trackMime = format.getString(MediaFormat.KEY_MIME) ?: continue
-        if (!trackMime.startsWith("audio/")) continue
-
-        result["codecMime"] = trackMime
-        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
-          result["channels"] = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        result["title"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+        result["artist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+        result["album"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+        result["albumArtist"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+        result["genre"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
+        result["mimeType"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+        result["durationMs"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        result["bitrate"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
+        result["trackNumber"] = parseTagNumber(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
+        )
+        result["discNumber"] = parseTagNumber(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)
+        )
+        result["year"] = parseYear(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR),
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          result["sampleRate"] =
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull()
         }
-        if (result["sampleRate"] == null && format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
-          result["sampleRate"] = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        }
-        result["bitsPerSample"] = readBitsPerSample(format)
-        break
+        embeddedPicture = retriever.embeddedPicture
+      } catch (error: Throwable) {
+        androidMetadataError = error
+      } finally {
+        try {
+          retriever.release()
+        } catch (_: Throwable) {}
+        androidMetadataNanos = SystemClock.elapsedRealtimeNanos() - androidMetadataStartedNanos
       }
-    } catch (_: Throwable) {
-      // Container not supported by MediaExtractor — tag data already collected.
-    } finally {
+      androidMetadataError?.let { error ->
+        return mapOf(
+          "uri" to uriString,
+          "ok" to false,
+          "error" to (error.message ?: error.javaClass.simpleName),
+        )
+      }
+
+      val multiArtistStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val credits = try {
+        ArtistCreditMetadataReader.read(context, uri, metadataTimeoutMs)
+      } finally {
+        multiArtistNanos = SystemClock.elapsedRealtimeNanos() - multiArtistStartedNanos
+      }
+      val artistNames = credits.artists.takeIf { it.size > 1 }.orEmpty()
+      val albumArtistNames = credits.albumArtists.takeIf { it.size > 1 }.orEmpty()
+      result["artistNames"] = artistNames
+      result["albumArtistNames"] = albumArtistNames
+      if (artistNames.isNotEmpty()) {
+        result["artist"] = formatArtistNames(artistNames)
+      } else if (result["artist"] == null && credits.artists.size == 1) {
+        result["artist"] = credits.artists[0]
+      }
+      if (albumArtistNames.isNotEmpty()) {
+        result["albumArtist"] = formatArtistNames(albumArtistNames)
+      } else if (result["albumArtist"] == null && credits.albumArtists.size == 1) {
+        result["albumArtist"] = credits.albumArtists[0]
+      }
+
+      // Header-level facts MMR can't provide (channels, bit depth) or only on
+      // API 31+ (sample rate). Failure here is non-fatal — keep the tag data.
+      val technicalFormatStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val extractor = MediaExtractor()
       try {
-        extractor.release()
-      } catch (_: Throwable) {}
-    }
+        extractor.setDataSource(context, uri, null)
+        for (i in 0 until extractor.trackCount) {
+          val format = extractor.getTrackFormat(i)
+          val trackMime = format.getString(MediaFormat.KEY_MIME) ?: continue
+          if (!trackMime.startsWith("audio/")) continue
 
-    try {
-      result["artworkHash"] = resolveArtwork(embeddedPicture, coverUri)
-    } catch (_: Throwable) {
-      // Artwork failure never fails the track.
-    }
+          result["codecMime"] = trackMime
+          if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+            result["channels"] = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+          }
+          if (result["sampleRate"] == null && format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+            result["sampleRate"] = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+          }
+          result["bitsPerSample"] = readBitsPerSample(format)
+          break
+        }
+      } catch (_: Throwable) {
+        // Container not supported by MediaExtractor — tag data already collected.
+      } finally {
+        try {
+          extractor.release()
+        } catch (_: Throwable) {}
+        technicalFormatNanos =
+          SystemClock.elapsedRealtimeNanos() - technicalFormatStartedNanos
+      }
 
-    return result
+      val artworkStartedNanos = SystemClock.elapsedRealtimeNanos()
+      try {
+        result["artworkHash"] = resolveArtwork(embeddedPicture, coverUri)
+      } catch (_: Throwable) {
+        // Artwork failure never fails the track.
+      } finally {
+        artworkNanos = SystemClock.elapsedRealtimeNanos() - artworkStartedNanos
+      }
+
+      return result
+    } finally {
+      runCatching {
+        timingRecorder?.invoke(
+          MetadataStageTiming(
+            androidMetadataNanos = androidMetadataNanos,
+            multiArtistNanos = multiArtistNanos,
+            technicalFormatNanos = technicalFormatNanos,
+            artworkNanos = artworkNanos,
+            totalNanos = SystemClock.elapsedRealtimeNanos() - totalStartedNanos,
+          ),
+        )
+      }
+    }
   }
 
   private fun Map<String, Any?>.toLocalAudioMetadata(): LocalAudioMetadata =
