@@ -18,9 +18,22 @@ import {
 } from '@/library/scanner';
 import { endScanService, reportScanProgress } from '@/library/scanService';
 import { requeueMissingArtistImages } from '@/library/artistImageLookup';
-import { ALBUM_SORT_LABELS, type AlbumSort } from '@/lib/albumSort';
-import { ARTIST_SORT_LABELS, type ArtistSort } from '@/lib/artistSort';
-import { TRACK_SORT_LABELS, type TrackSort } from '@/lib/trackSort';
+import {
+  ALBUM_SORT_LABELS,
+  ALBUM_SORT_LEGACY_DIRECTIONS,
+  type AlbumSort,
+} from '@/lib/albumSort';
+import {
+  ARTIST_SORT_LABELS,
+  ARTIST_SORT_LEGACY_DIRECTIONS,
+  type ArtistSort,
+} from '@/lib/artistSort';
+import {
+  TRACK_SORT_LABELS,
+  TRACK_SORT_LEGACY_DIRECTIONS,
+  type TrackSort,
+} from '@/lib/trackSort';
+import { parseSortDirection, type SortDirection } from '@/lib/sortDirection';
 import {
   DEFAULT_LIBRARY_LAYOUT,
   parseLibraryLayout,
@@ -35,6 +48,9 @@ const VIEW_MODE_KEY = 'library_view_mode';
 const TRACK_SORT_KEY = 'library_track_sort';
 const ALBUM_SORT_KEY = 'library_album_sort';
 const ARTIST_SORT_KEY = 'library_artist_sort';
+const TRACK_SORT_DIRECTION_KEY = 'library_track_sort_direction';
+const ALBUM_SORT_DIRECTION_KEY = 'library_album_sort_direction';
+const ARTIST_SORT_DIRECTION_KEY = 'library_artist_sort_direction';
 const ALBUM_LAYOUT_KEY = 'library_album_layout';
 const ARTIST_LAYOUT_KEY = 'library_artist_layout';
 const INCLUDE_COLLAB_ARTISTS_KEY = 'library_include_collab_artists';
@@ -92,6 +108,9 @@ interface LibraryStore {
   trackSort: TrackSort;
   albumSort: AlbumSort;
   artistSort: ArtistSort;
+  trackSortDirection: SortDirection;
+  albumSortDirection: SortDirection;
+  artistSortDirection: SortDirection;
   albumLayout: LibraryLayout;
   artistLayout: LibraryLayout;
   includeCollabArtists: boolean;
@@ -133,6 +152,9 @@ interface LibraryStore {
   setTrackSort: (sort: TrackSort) => void;
   setAlbumSort: (sort: AlbumSort) => void;
   setArtistSort: (sort: ArtistSort) => void;
+  setTrackSortDirection: (direction: SortDirection) => void;
+  setAlbumSortDirection: (direction: SortDirection) => void;
+  setArtistSortDirection: (direction: SortDirection) => void;
   setAlbumLayout: (layout: LibraryLayout) => void;
   setArtistLayout: (layout: LibraryLayout) => void;
   setIncludeCollabArtists: (include: boolean) => void;
@@ -214,15 +236,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   const readTrackPage = (
     cursor: string | null,
     sort = get().trackSort,
-  ) => AstraLibraryData.getTrackPage<DbTrack>(sort, cursor, PAGE_SIZE);
+    direction = get().trackSortDirection,
+  ) => AstraLibraryData.getTrackPage<DbTrack>(sort, direction, cursor, PAGE_SIZE);
 
   const readAlbumPage = (
     cursor: string | null,
     sort = get().albumSort,
+    direction = get().albumSortDirection,
     includeSingles = useSettingsStore.getState().includeSingles,
   ) =>
     AstraLibraryData.getAlbumPage<Album>(
       sort,
+      direction,
       includeSingles,
       cursor,
       PAGE_SIZE
@@ -231,11 +256,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   const readArtistPage = (
     cursor: string | null,
     sort = get().artistSort,
+    direction = get().artistSortDirection,
     groupingMode = useSettingsStore.getState().artistGroupingMode,
     includeCollaborations = get().includeCollabArtists,
   ) =>
     AstraLibraryData.getArtistPage<Artist>(
       sort,
+      direction,
       groupingMode,
       includeCollaborations,
       cursor,
@@ -247,21 +274,25 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   const readTrackPageBefore = (
     cursor: string,
     sort: 'artist' | 'title',
-  ) => AstraLibraryData.getTrackPageBefore<DbTrack>(sort, cursor, PAGE_SIZE);
+    direction = get().trackSortDirection,
+  ) => AstraLibraryData.getTrackPageBefore<DbTrack>(sort, direction, cursor, PAGE_SIZE);
 
   const readAlbumPageBefore = (
     cursor: string,
     sort: 'artist' | 'name',
+    direction = get().albumSortDirection,
     includeSingles = useSettingsStore.getState().includeSingles,
-  ) => AstraLibraryData.getAlbumPageBefore<Album>(sort, includeSingles, cursor, PAGE_SIZE);
+  ) => AstraLibraryData.getAlbumPageBefore<Album>(sort, direction, includeSingles, cursor, PAGE_SIZE);
 
   const readArtistPageBefore = (
     cursor: string,
+    direction = get().artistSortDirection,
     groupingMode = useSettingsStore.getState().artistGroupingMode,
     includeCollaborations = get().includeCollabArtists,
   ) =>
     AstraLibraryData.getArtistPageBefore<Artist>(
       'name',
+      direction,
       groupingMode,
       includeCollaborations,
       cursor,
@@ -280,9 +311,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   // PAGE_SIZE change would break it silently, leaving the list parked mid-catalog.
   const resetTracks = async (forceRemount = false) => {
     const sort = get().trackSort;
+    const direction = get().trackSortDirection;
     const generation = ++pageGenerations.tracks;
-    const page = await readTrackPage(null, sort);
-    if (generation !== pageGenerations.tracks || get().trackSort !== sort) return false;
+    const page = await readTrackPage(null, sort, direction);
+    if (
+      generation !== pageGenerations.tracks ||
+      get().trackSort !== sort ||
+      get().trackSortDirection !== direction
+    ) return false;
     const items = page.items ?? [];
     set((current) => ({
       tracks: items,
@@ -297,12 +333,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
   const resetAlbums = async (forceRemount = false) => {
     const sort = get().albumSort;
+    const direction = get().albumSortDirection;
     const includeSingles = useSettingsStore.getState().includeSingles;
     const generation = ++pageGenerations.albums;
-    const page = await readAlbumPage(null, sort, includeSingles);
+    const page = await readAlbumPage(null, sort, direction, includeSingles);
     if (
       generation !== pageGenerations.albums ||
       get().albumSort !== sort ||
+      get().albumSortDirection !== direction ||
       useSettingsStore.getState().includeSingles !== includeSingles
     ) return false;
     const items = page.items ?? [];
@@ -318,13 +356,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
 
   const resetArtists = async (forceRemount = false) => {
     const sort = get().artistSort;
+    const direction = get().artistSortDirection;
     const groupingMode = useSettingsStore.getState().artistGroupingMode;
     const includeCollaborations = get().includeCollabArtists;
     const generation = ++pageGenerations.artists;
-    const page = await readArtistPage(null, sort, groupingMode, includeCollaborations);
+    const page = await readArtistPage(
+      null,
+      sort,
+      direction,
+      groupingMode,
+      includeCollaborations,
+    );
     if (
       generation !== pageGenerations.artists ||
       get().artistSort !== sort ||
+      get().artistSortDirection !== direction ||
       useSettingsStore.getState().artistGroupingMode !== groupingMode ||
       get().includeCollabArtists !== includeCollaborations
     ) return false;
@@ -356,11 +402,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         : state.viewMode === 'albums'
           ? state.albumSort as 'artist' | 'name'
           : 'name';
+    const direction =
+      state.viewMode === 'tracks'
+        ? state.trackSortDirection
+        : state.viewMode === 'albums'
+          ? state.albumSortDirection
+          : state.artistSortDirection;
     const includeSingles = useSettingsStore.getState().includeSingles;
     const groupingMode = useSettingsStore.getState().artistGroupingMode;
     const anchors = await AstraLibraryData.getSectionAnchors(
       state.viewMode as 'tracks' | 'albums' | 'artists',
       sort,
+      direction,
       includeSingles,
       groupingMode,
       state.includeCollabArtists
@@ -372,10 +425,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         : current.viewMode === 'albums'
           ? current.albumSort
           : current.artistSort;
+    const currentDirection =
+      current.viewMode === 'tracks'
+        ? current.trackSortDirection
+        : current.viewMode === 'albums'
+          ? current.albumSortDirection
+          : current.artistSortDirection;
     if (
       generation !== anchorGeneration ||
       current.viewMode !== state.viewMode ||
       currentSort !== sort ||
+      currentDirection !== direction ||
       useSettingsStore.getState().includeSingles !== includeSingles ||
       useSettingsStore.getState().artistGroupingMode !== groupingMode ||
       current.includeCollabArtists !== state.includeCollabArtists
@@ -432,6 +492,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     trackSort: 'title',
     albumSort: 'name',
     artistSort: 'name',
+    trackSortDirection: 'asc',
+    albumSortDirection: 'asc',
+    artistSortDirection: 'asc',
     albumLayout: DEFAULT_LIBRARY_LAYOUT,
     artistLayout: DEFAULT_LIBRARY_LAYOUT,
     includeCollabArtists: false,
@@ -468,6 +531,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
             TRACK_SORT_KEY,
             ALBUM_SORT_KEY,
             ARTIST_SORT_KEY,
+            TRACK_SORT_DIRECTION_KEY,
+            ALBUM_SORT_DIRECTION_KEY,
+            ARTIST_SORT_DIRECTION_KEY,
             ALBUM_LAYOUT_KEY,
             ARTIST_LAYOUT_KEY,
             INCLUDE_COLLAB_ARTISTS_KEY,
@@ -476,15 +542,42 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           const trackSort = parseTrackSort(values[TRACK_SORT_KEY] ?? null);
           const albumSort = parseAlbumSort(values[ALBUM_SORT_KEY] ?? null);
           const artistSort = parseArtistSort(values[ARTIST_SORT_KEY] ?? null);
+          const restoredTrackSort = trackSort ?? get().trackSort;
+          const restoredAlbumSort = albumSort ?? get().albumSort;
+          const restoredArtistSort = artistSort ?? get().artistSort;
+          const trackSortDirection =
+            parseSortDirection(values[TRACK_SORT_DIRECTION_KEY] ?? null) ??
+            TRACK_SORT_LEGACY_DIRECTIONS[restoredTrackSort];
+          const albumSortDirection =
+            parseSortDirection(values[ALBUM_SORT_DIRECTION_KEY] ?? null) ??
+            ALBUM_SORT_LEGACY_DIRECTIONS[restoredAlbumSort];
+          const artistSortDirection =
+            parseSortDirection(values[ARTIST_SORT_DIRECTION_KEY] ?? null) ??
+            ARTIST_SORT_LEGACY_DIRECTIONS[restoredArtistSort];
           set({
             ...(viewMode ? { viewMode } : {}),
             ...(trackSort ? { trackSort } : {}),
             ...(albumSort ? { albumSort } : {}),
             ...(artistSort ? { artistSort } : {}),
+            trackSortDirection,
+            albumSortDirection,
+            artistSortDirection,
             albumLayout: parseLibraryLayout(values[ALBUM_LAYOUT_KEY] ?? null),
             artistLayout: parseLibraryLayout(values[ARTIST_LAYOUT_KEY] ?? null),
             includeCollabArtists: values[INCLUDE_COLLAB_ARTISTS_KEY] === 'true',
           });
+          // Direction keys were introduced after sort-field persistence. Write
+          // the derived legacy direction once so subsequent field changes keep
+          // the per-view preference instead of re-deriving it.
+          if (!parseSortDirection(values[TRACK_SORT_DIRECTION_KEY] ?? null)) {
+            persistSetting(TRACK_SORT_DIRECTION_KEY, trackSortDirection);
+          }
+          if (!parseSortDirection(values[ALBUM_SORT_DIRECTION_KEY] ?? null)) {
+            persistSetting(ALBUM_SORT_DIRECTION_KEY, albumSortDirection);
+          }
+          if (!parseSortDirection(values[ARTIST_SORT_DIRECTION_KEY] ?? null)) {
+            persistSetting(ARTIST_SORT_DIRECTION_KEY, artistSortDirection);
+          }
 
           if (!nativeSubscriptionsInstalled) {
             nativeSubscriptionsInstalled = true;
@@ -548,6 +641,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const trackSort = stateAtStart.trackSort;
       const albumSort = stateAtStart.albumSort;
       const artistSort = stateAtStart.artistSort;
+      const trackSortDirection = stateAtStart.trackSortDirection;
+      const albumSortDirection = stateAtStart.albumSortDirection;
+      const artistSortDirection = stateAtStart.artistSortDirection;
       const includeSingles = useSettingsStore.getState().includeSingles;
       const groupingMode = useSettingsStore.getState().artistGroupingMode;
       const includeCollaborations = stateAtStart.includeCollabArtists;
@@ -568,21 +664,31 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         folders,
         recentlyPlayedTracks,
       ] = await Promise.all([
-        viewMode === 'tracks' ? readTrackPage(null, trackSort) : Promise.resolve(null),
+        viewMode === 'tracks'
+          ? readTrackPage(null, trackSort, trackSortDirection)
+          : Promise.resolve(null),
         viewMode === 'albums'
-          ? readAlbumPage(null, albumSort, includeSingles)
+          ? readAlbumPage(null, albumSort, albumSortDirection, includeSingles)
           : Promise.resolve(null),
         viewMode === 'artists'
-          ? readArtistPage(null, artistSort, groupingMode, includeCollaborations)
+          ? readArtistPage(
+              null,
+              artistSort,
+              artistSortDirection,
+              groupingMode,
+              includeCollaborations,
+            )
           : Promise.resolve(null),
         AstraLibraryData.getAlbumPage<Album>(
           'recently_added',
+          'desc',
           includeSingles,
           null,
           20
         ),
         AstraLibraryData.getArtistPage<Artist>(
           'name',
+          'asc',
           groupingMode,
           includeCollaborations,
           null,
@@ -596,17 +702,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         viewMode === 'tracks' &&
         current.viewMode === 'tracks' &&
         current.trackSort === trackSort &&
+        current.trackSortDirection === trackSortDirection &&
         activeGeneration === pageGenerations.tracks;
       const canApplyAlbumPage =
         viewMode === 'albums' &&
         current.viewMode === 'albums' &&
         current.albumSort === albumSort &&
+        current.albumSortDirection === albumSortDirection &&
         useSettingsStore.getState().includeSingles === includeSingles &&
         activeGeneration === pageGenerations.albums;
       const canApplyArtistPage =
         viewMode === 'artists' &&
         current.viewMode === 'artists' &&
         current.artistSort === artistSort &&
+        current.artistSortDirection === artistSortDirection &&
         useSettingsStore.getState().artistGroupingMode === groupingMode &&
         current.includeCollabArtists === includeCollaborations &&
         activeGeneration === pageGenerations.artists;
@@ -647,13 +756,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const cursor = state.trackNextCursor;
       if (!cursor || forwardBusy.tracks) return;
       const sort = state.trackSort;
+      const direction = state.trackSortDirection;
       const pageGeneration = pageGenerations.tracks;
       forwardBusy.tracks = true;
       try {
-        const page = await readTrackPage(cursor, sort);
+        const page = await readTrackPage(cursor, sort, direction);
         if (
           pageGeneration !== pageGenerations.tracks ||
           get().trackSort !== sort ||
+          get().trackSortDirection !== direction ||
           get().trackNextCursor !== cursor
         ) return;
         if (page.error === 'STALE_REVISION') {
@@ -674,14 +785,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const cursor = state.albumNextCursor;
       if (!cursor || forwardBusy.albums) return;
       const sort = state.albumSort;
+      const direction = state.albumSortDirection;
       const includeSingles = useSettingsStore.getState().includeSingles;
       const pageGeneration = pageGenerations.albums;
       forwardBusy.albums = true;
       try {
-        const page = await readAlbumPage(cursor, sort, includeSingles);
+        const page = await readAlbumPage(cursor, sort, direction, includeSingles);
         if (
           pageGeneration !== pageGenerations.albums ||
           get().albumSort !== sort ||
+          get().albumSortDirection !== direction ||
           useSettingsStore.getState().includeSingles !== includeSingles ||
           get().albumNextCursor !== cursor
         ) return;
@@ -703,15 +816,23 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const cursor = state.artistNextCursor;
       if (!cursor || forwardBusy.artists) return;
       const sort = state.artistSort;
+      const direction = state.artistSortDirection;
       const groupingMode = useSettingsStore.getState().artistGroupingMode;
       const includeCollaborations = state.includeCollabArtists;
       const pageGeneration = pageGenerations.artists;
       forwardBusy.artists = true;
       try {
-        const page = await readArtistPage(cursor, sort, groupingMode, includeCollaborations);
+        const page = await readArtistPage(
+          cursor,
+          sort,
+          direction,
+          groupingMode,
+          includeCollaborations,
+        );
         if (
           pageGeneration !== pageGenerations.artists ||
           get().artistSort !== sort ||
+          get().artistSortDirection !== direction ||
           useSettingsStore.getState().artistGroupingMode !== groupingMode ||
           get().includeCollabArtists !== includeCollaborations ||
           get().artistNextCursor !== cursor
@@ -733,14 +854,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const state = get();
       const cursor = state.trackPrevCursor;
       const sort = backwardTrackSort(state.trackSort);
+      const direction = state.trackSortDirection;
       if (!cursor || !sort || backwardBusy.tracks) return;
       const pageGeneration = pageGenerations.tracks;
       backwardBusy.tracks = true;
       try {
-        const page = await readTrackPageBefore(cursor, sort);
+        const page = await readTrackPageBefore(cursor, sort, direction);
         if (
           pageGeneration !== pageGenerations.tracks ||
           get().trackSort !== sort ||
+          get().trackSortDirection !== direction ||
           get().trackPrevCursor !== cursor
         ) return;
         if (page.error === 'STALE_REVISION') {
@@ -760,15 +883,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const state = get();
       const cursor = state.albumPrevCursor;
       const sort = backwardAlbumSort(state.albumSort);
+      const direction = state.albumSortDirection;
       if (!cursor || !sort || backwardBusy.albums) return;
       const includeSingles = useSettingsStore.getState().includeSingles;
       const pageGeneration = pageGenerations.albums;
       backwardBusy.albums = true;
       try {
-        const page = await readAlbumPageBefore(cursor, sort, includeSingles);
+        const page = await readAlbumPageBefore(cursor, sort, direction, includeSingles);
         if (
           pageGeneration !== pageGenerations.albums ||
           get().albumSort !== sort ||
+          get().albumSortDirection !== direction ||
           useSettingsStore.getState().includeSingles !== includeSingles ||
           get().albumPrevCursor !== cursor
         ) return;
@@ -789,15 +914,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const state = get();
       const cursor = state.artistPrevCursor;
       if (!cursor || state.artistSort !== 'name' || backwardBusy.artists) return;
+      const direction = state.artistSortDirection;
       const groupingMode = useSettingsStore.getState().artistGroupingMode;
       const includeCollaborations = state.includeCollabArtists;
       const pageGeneration = pageGenerations.artists;
       backwardBusy.artists = true;
       try {
-        const page = await readArtistPageBefore(cursor, groupingMode, includeCollaborations);
+        const page = await readArtistPageBefore(
+          cursor,
+          direction,
+          groupingMode,
+          includeCollaborations,
+        );
         if (
           pageGeneration !== pageGenerations.artists ||
           get().artistSort !== 'name' ||
+          get().artistSortDirection !== direction ||
           useSettingsStore.getState().artistGroupingMode !== groupingMode ||
           get().includeCollabArtists !== includeCollaborations ||
           get().artistPrevCursor !== cursor
@@ -827,15 +959,19 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       const generation = ++pageGenerations[viewMode];
       if (viewMode === 'tracks') {
         const sort = state.trackSort;
+        const direction = state.trackSortDirection;
         const backwardSort = backwardTrackSort(sort);
         const [page, before] = await Promise.all([
-          readTrackPage(cursor, sort),
-          backwardSort ? readTrackPageBefore(cursor, backwardSort) : Promise.resolve(null),
+          readTrackPage(cursor, sort, direction),
+          backwardSort
+            ? readTrackPageBefore(cursor, backwardSort, direction)
+            : Promise.resolve(null),
         ]);
         if (
           generation !== pageGenerations.tracks ||
           get().viewMode !== viewMode ||
-          get().trackSort !== sort
+          get().trackSort !== sort ||
+          get().trackSortDirection !== direction
         ) return false;
         if (page.error === 'STALE_REVISION') {
           await resetTracks();
@@ -856,18 +992,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         }));
       } else if (viewMode === 'albums') {
         const sort = state.albumSort;
+        const direction = state.albumSortDirection;
         const includeSingles = useSettingsStore.getState().includeSingles;
         const backwardSort = backwardAlbumSort(sort);
         const [page, before] = await Promise.all([
-          readAlbumPage(cursor, sort, includeSingles),
+          readAlbumPage(cursor, sort, direction, includeSingles),
           backwardSort
-            ? readAlbumPageBefore(cursor, backwardSort, includeSingles)
+            ? readAlbumPageBefore(cursor, backwardSort, direction, includeSingles)
             : Promise.resolve(null),
         ]);
         if (
           generation !== pageGenerations.albums ||
           get().viewMode !== viewMode ||
           get().albumSort !== sort ||
+          get().albumSortDirection !== direction ||
           useSettingsStore.getState().includeSingles !== includeSingles
         ) return false;
         if (page.error === 'STALE_REVISION') {
@@ -888,18 +1026,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         }));
       } else {
         const sort = state.artistSort;
+        const direction = state.artistSortDirection;
         const groupingMode = useSettingsStore.getState().artistGroupingMode;
         const includeCollaborations = state.includeCollabArtists;
         const [page, before] = await Promise.all([
-          readArtistPage(cursor, sort, groupingMode, includeCollaborations),
+          readArtistPage(cursor, sort, direction, groupingMode, includeCollaborations),
           sort === 'name'
-            ? readArtistPageBefore(cursor, groupingMode, includeCollaborations)
+            ? readArtistPageBefore(cursor, direction, groupingMode, includeCollaborations)
             : Promise.resolve(null),
         ]);
         if (
           generation !== pageGenerations.artists ||
           get().viewMode !== viewMode ||
           get().artistSort !== sort ||
+          get().artistSortDirection !== direction ||
           useSettingsStore.getState().artistGroupingMode !== groupingMode ||
           get().includeCollabArtists !== includeCollaborations
         ) return false;
@@ -1045,6 +1185,54 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
       });
       persistSetting(ARTIST_SORT_KEY, artistSort);
       void resetArtists();
+      void resetSectionAnchors();
+    },
+
+    setTrackSortDirection: (trackSortDirection) => {
+      if (get().trackSortDirection === trackSortDirection) return;
+      anchorGeneration += 1;
+      set({
+        trackSortDirection,
+        tracks: [],
+        trackNextCursor: null,
+        trackPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
+      persistSetting(TRACK_SORT_DIRECTION_KEY, trackSortDirection);
+      void resetTracks(true);
+      void resetSectionAnchors();
+    },
+
+    setAlbumSortDirection: (albumSortDirection) => {
+      if (get().albumSortDirection === albumSortDirection) return;
+      anchorGeneration += 1;
+      set({
+        albumSortDirection,
+        albums: [],
+        albumNextCursor: null,
+        albumPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
+      persistSetting(ALBUM_SORT_DIRECTION_KEY, albumSortDirection);
+      void resetAlbums(true);
+      void resetSectionAnchors();
+    },
+
+    setArtistSortDirection: (artistSortDirection) => {
+      if (get().artistSortDirection === artistSortDirection) return;
+      anchorGeneration += 1;
+      set({
+        artistSortDirection,
+        artists: [],
+        artistNextCursor: null,
+        artistPrevCursor: null,
+        jumpAnchorIndex: 0,
+        sectionAnchors: [],
+      });
+      persistSetting(ARTIST_SORT_DIRECTION_KEY, artistSortDirection);
+      void resetArtists(true);
       void resetSectionAnchors();
     },
 

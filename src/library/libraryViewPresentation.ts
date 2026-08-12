@@ -118,6 +118,14 @@ export function libraryContextOverlayHeight(bottomClearance: number): number {
     LIBRARY_CONTEXT_BAR_HEIGHT;
 }
 
+/** Keep the A-Z gesture surface above phone-only floating Library chrome. */
+export function libraryRailBottomClearance(
+  phoneContextBar: boolean,
+  contextOverlayHeight: number,
+): number {
+  return phoneContextBar ? Math.max(0, contextOverlayHeight) : 0;
+}
+
 /**
  * Starts the shared bottom fade above the command bar instead of at its edge,
  * so rows disappear gradually behind both pieces of floating chrome.

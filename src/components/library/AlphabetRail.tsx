@@ -9,7 +9,8 @@ import { createThemedStyles } from '@/theme/themed';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { playHaptic } from '@/lib/haptics';
 import { usePullSearchGestureRef } from '@/components/search/PullSearchGesture';
-import { RAIL_LETTERS } from '@/lib/letterIndex';
+import { RAIL_LETTERS, railLettersForDirection } from '@/lib/letterIndex';
+import type { SortDirection } from '@/lib/sortDirection';
 
 const CELL_HEIGHT = 17;
 const RAIL_PAD = spacing.xs;
@@ -19,6 +20,7 @@ const BUBBLE_SIZE = 52;
 interface AlphabetRailProps {
   /** Letters present in the current list — the rest render dimmed. */
   activeLetters: ReadonlySet<string>;
+  direction: SortDirection;
   onJumpToLetter: (letter: string) => void;
   /**
    * Fired when the finger lifts. The screen debounces `onJumpToLetter` so a fast
@@ -36,10 +38,16 @@ interface AlphabetRailProps {
  * changes on a letter-cross). Blocks the pull-to-search gesture so a scrub at
  * scroll-top never arms the search indicator.
  */
-export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: AlphabetRailProps) {
+export function AlphabetRail({
+  activeLetters,
+  direction,
+  onJumpToLetter,
+  onScrubEnd,
+}: AlphabetRailProps) {
   const styles = useStyles();
   const pullSearchRef = usePullSearchGestureRef();
   const [scrubLetter, setScrubLetter] = useState<string | null>(null);
+  const railLetters = railLettersForDirection(direction);
   const lastLetter = useSharedValue('');
   // Rail's top offset inside the (vertically-centered) wrap + the finger's Y
   // within the rail, so the bubble can be placed in wrap-space.
@@ -72,7 +80,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: Alph
           0,
           Math.min(RAIL_LETTERS.length - 1, Math.floor((y - RAIL_PAD) / CELL_HEIGHT))
         );
-        const letter = RAIL_LETTERS[index];
+        const letter = railLetters[index];
         lastLetter.value = letter;
         runOnJS(scrubTo)(letter);
       })
@@ -86,7 +94,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: Alph
           0,
           Math.min(RAIL_LETTERS.length - 1, Math.floor((y - RAIL_PAD) / CELL_HEIGHT))
         );
-        const letter = RAIL_LETTERS[index];
+        const letter = railLetters[index];
         if (letter === lastLetter.value) return;
         lastLetter.value = letter;
         runOnJS(scrubTo)(letter);
@@ -98,7 +106,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: Alph
       });
     return pullSearchRef ? gesture.blocksExternalGesture(pullSearchRef) : gesture;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest props via render closure
-  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, onJumpToLetter, onScrubEnd]);
+  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, railLetters, onJumpToLetter, onScrubEnd]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: bubbleY.value - BUBBLE_SIZE / 2 }],
@@ -119,7 +127,7 @@ export function AlphabetRail({ activeLetters, onJumpToLetter, onScrubEnd }: Alph
       ) : null}
       <GestureDetector gesture={pan}>
         <View style={styles.rail} hitSlop={{ left: 12, right: 8 }} onLayout={onRailLayout}>
-          {RAIL_LETTERS.map((letter) => {
+          {railLetters.map((letter) => {
             const present = activeLetters.has(letter);
             const scrubbing = letter === scrubLetter;
             return (

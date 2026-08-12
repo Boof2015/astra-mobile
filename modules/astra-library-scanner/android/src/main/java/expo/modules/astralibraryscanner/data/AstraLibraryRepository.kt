@@ -635,41 +635,43 @@ class AstraLibraryRepository private constructor(
 
   suspend fun getTrackPage(
     sort: String,
+    directionRaw: String,
     cursorRaw: String?,
     requestedLimit: Int,
   ): Map<String, Any?> = withCatalogRecovery { database ->
     initialize()
     val dao = database.catalogDao()
     val revision = dao.getRevision()
-    val cursor = validateCursor(cursorRaw, revision, "tracks:$sort")
+    val direction = normalizeSortDirection(directionRaw)
+    val cursor = validateCursor(cursorRaw, revision, "tracks:$sort:$direction")
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val rows = when (sort) {
-      "artist" -> dao.getArtistOrderPage(
-        afterArtistKey = cursor?.text1,
-        afterAlbumKey = cursor?.text2.orEmpty(),
-        afterDisc = cursor?.number1?.toInt() ?: 0,
-        afterTrack = cursor?.number2?.toInt() ?: 0,
-        afterTitleKey = cursor?.let(::cursorTitleKey).orEmpty(),
-        afterPath = cursor?.let { cursorPath(it) }.orEmpty(),
-        limit = limit,
+      "artist" -> (if (direction == "desc") dao::getArtistOrderPageDescending else dao::getArtistOrderPage)(
+        cursor?.text1,
+        cursor?.text2.orEmpty(),
+        cursor?.number1?.toInt() ?: 0,
+        cursor?.number2?.toInt() ?: 0,
+        cursor?.let(::cursorTitleKey).orEmpty(),
+        cursor?.let { cursorPath(it) }.orEmpty(),
+        limit,
       )
-      "recently_added" -> dao.getRecentlyAddedPage(
-        afterAddedAt = cursor?.number1,
-        afterPath = cursor?.text1.orEmpty(),
-        limit = limit,
+      "recently_added" -> (if (direction == "asc") dao::getRecentlyAddedPageAscending else dao::getRecentlyAddedPage)(
+        cursor?.number1,
+        cursor?.text1.orEmpty(),
+        limit,
       )
-      "duration" -> dao.getDurationPage(
-        afterDuration = cursor?.decimal1,
-        afterPath = cursor?.text1.orEmpty(),
-        limit = limit,
+      "duration" -> (if (direction == "asc") dao::getDurationPageAscending else dao::getDurationPage)(
+        cursor?.decimal1,
+        cursor?.text1.orEmpty(),
+        limit,
       )
-      else -> dao.getTitlePage(
-        afterTitleKey = cursor?.text1,
-        afterPath = cursor?.text2.orEmpty(),
-        limit = limit,
+      else -> (if (direction == "desc") dao::getTitlePageDescending else dao::getTitlePage)(
+        cursor?.text1,
+        cursor?.text2.orEmpty(),
+        limit,
       )
     }
-    val next = rows.lastOrNull()?.let { row -> trackCursor(revision, sort, row).encode() }
+    val next = rows.lastOrNull()?.let { row -> trackCursor(revision, sort, direction, row).encode() }
     mapOf(
       "items" to rows.map(ActiveTrackView::toBridgeMap),
       "nextCursor" to next,
@@ -693,36 +695,46 @@ class AstraLibraryRepository private constructor(
    */
   suspend fun getTrackPageBefore(
     sort: String,
+    directionRaw: String,
     cursorRaw: String?,
     requestedLimit: Int,
   ): Map<String, Any?> = withCatalogRecovery { database ->
     initialize()
     val dao = database.catalogDao()
     val revision = dao.getRevision()
-    val cursor = validateCursor(cursorRaw, revision, "tracks:$sort")
+    val direction = normalizeSortDirection(directionRaw)
+    val cursor = validateCursor(cursorRaw, revision, "tracks:$sort:$direction")
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val descending = when {
       cursor == null -> emptyList()
-      sort == "artist" -> dao.getArtistOrderPageBefore(
-        beforeArtistKey = cursor.text1.orEmpty(),
-        beforeAlbumKey = cursor.text2.orEmpty(),
-        beforeDisc = cursor.number1?.toInt() ?: 0,
-        beforeTrack = cursor.number2?.toInt() ?: 0,
-        beforeTitleKey = cursorTitleKey(cursor),
-        beforePath = cursorPath(cursor),
-        limit = limit,
+      sort == "artist" -> (if (direction == "desc") {
+        dao::getArtistOrderPageBeforeDescending
+      } else {
+        dao::getArtistOrderPageBefore
+      })(
+        cursor.text1.orEmpty(),
+        cursor.text2.orEmpty(),
+        cursor.number1?.toInt() ?: 0,
+        cursor.number2?.toInt() ?: 0,
+        cursorTitleKey(cursor),
+        cursorPath(cursor),
+        limit,
       )
-      sort == "title" -> dao.getTitlePageBefore(
-        beforeTitleKey = cursor.text1.orEmpty(),
-        beforePath = cursor.text2.orEmpty(),
-        limit = limit,
+      sort == "title" -> (if (direction == "desc") {
+        dao::getTitlePageBeforeDescending
+      } else {
+        dao::getTitlePageBefore
+      })(
+        cursor.text1.orEmpty(),
+        cursor.text2.orEmpty(),
+        limit,
       )
       else -> emptyList()
     }
     // The DESC result's last row is the topmost one — the cursor for the page above this one.
     val previous = descending.takeIf { it.size == limit }
       ?.lastOrNull()
-      ?.let { row -> trackCursor(revision, sort, row).encode() }
+      ?.let { row -> trackCursor(revision, sort, direction, row).encode() }
     mapOf(
       "items" to descending.reversed().map(ActiveTrackView::toBridgeMap),
       "nextCursor" to null,
@@ -733,11 +745,16 @@ class AstraLibraryRepository private constructor(
   }
 
   /** Shared by the forward and backward track pages so the two can never disagree. */
-  private fun trackCursor(revision: Long, sort: String, row: ActiveTrackView): TrackPageCursor =
+  private fun trackCursor(
+    revision: Long,
+    sort: String,
+    direction: String,
+    row: ActiveTrackView,
+  ): TrackPageCursor =
     when (sort) {
       "artist" -> TrackPageCursor(
         revision = revision,
-        kind = "tracks:$sort",
+        kind = "tracks:$sort:$direction",
         text1 = row.artistSortKey,
         text2 = row.albumSortKey,
         text3 = "${row.titleSortKey}\u0000${row.path}",
@@ -748,19 +765,19 @@ class AstraLibraryRepository private constructor(
       )
       "recently_added" -> TrackPageCursor(
         revision = revision,
-        kind = "tracks:$sort",
+        kind = "tracks:$sort:$direction",
         text1 = row.path,
         number1 = row.addedAt,
       )
       "duration" -> TrackPageCursor(
         revision = revision,
-        kind = "tracks:$sort",
+        kind = "tracks:$sort:$direction",
         text1 = row.path,
         decimal1 = row.duration,
       )
       else -> TrackPageCursor(
         revision = revision,
-        kind = "tracks:$sort",
+        kind = "tracks:$sort:$direction",
         text1 = row.titleSortKey,
         text2 = row.path,
       )
@@ -1882,17 +1899,19 @@ class AstraLibraryRepository private constructor(
 
   suspend fun getAlbumPage(
     sort: String,
+    directionRaw: String,
     includeSingles: Boolean,
     cursorRaw: String?,
     requestedLimit: Int,
   ): Map<String, Any?> = withCatalogRecovery { database ->
     val dao = database.catalogDao()
     val revision = dao.getRevision()
-    val kind = "albums:$sort:${if (includeSingles) 1 else 0}"
+    val direction = normalizeSortDirection(directionRaw)
+    val kind = "albums:$sort:$direction:${if (includeSingles) 1 else 0}"
     val cursor = validateCursor(cursorRaw, revision, kind)
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val rows = when (sort) {
-      "artist" -> dao.getAlbumArtistPage(
+      "artist" -> (if (direction == "desc") dao::getAlbumArtistPageDescending else dao::getAlbumArtistPage)(
         revision,
         includeSingles,
         cursor?.text1,
@@ -1900,22 +1919,23 @@ class AstraLibraryRepository private constructor(
         cursor?.text3.orEmpty(),
         limit,
       )
-      "recently_added" -> dao.getAlbumRecentPage(
+      "recently_added" -> (if (direction == "asc") dao::getAlbumRecentPageAscending else dao::getAlbumRecentPage)(
         revision,
         includeSingles,
         cursor?.number1,
         cursor?.text1.orEmpty(),
         limit,
       )
-      "year" -> dao.getAlbumYearPage(
+      "year" -> (if (direction == "asc") dao::getAlbumYearPageAscending else dao::getAlbumYearPage)(
         revision,
         includeSingles,
-        cursor?.number1?.toInt(),
+        cursor?.number1?.toInt() ?: 0,
+        cursor?.number2?.toInt(),
         cursor?.text1.orEmpty(),
         cursor?.text2.orEmpty(),
         limit,
       )
-      else -> dao.getAlbumNamePage(
+      else -> (if (direction == "desc") dao::getAlbumNamePageDescending else dao::getAlbumNamePage)(
         revision,
         includeSingles,
         cursor?.text1,
@@ -1936,18 +1956,24 @@ class AstraLibraryRepository private constructor(
   /** Backward twin of [getAlbumPage]; see [getTrackPageBefore] for the contract. */
   suspend fun getAlbumPageBefore(
     sort: String,
+    directionRaw: String,
     includeSingles: Boolean,
     cursorRaw: String?,
     requestedLimit: Int,
   ): Map<String, Any?> = withCatalogRecovery { database ->
     val dao = database.catalogDao()
     val revision = dao.getRevision()
-    val kind = "albums:$sort:${if (includeSingles) 1 else 0}"
+    val direction = normalizeSortDirection(directionRaw)
+    val kind = "albums:$sort:$direction:${if (includeSingles) 1 else 0}"
     val cursor = validateCursor(cursorRaw, revision, kind)
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val descending = when {
       cursor == null -> emptyList()
-      sort == "artist" -> dao.getAlbumArtistPageBefore(
+      sort == "artist" -> (if (direction == "desc") {
+        dao::getAlbumArtistPageBeforeDescending
+      } else {
+        dao::getAlbumArtistPageBefore
+      })(
         revision,
         includeSingles,
         cursor.text1.orEmpty(),
@@ -1955,7 +1981,11 @@ class AstraLibraryRepository private constructor(
         cursor.text3.orEmpty(),
         limit,
       )
-      sort == "name" -> dao.getAlbumNamePageBefore(
+      sort == "name" -> (if (direction == "desc") {
+        dao::getAlbumNamePageBeforeDescending
+      } else {
+        dao::getAlbumNamePageBefore
+      })(
         revision,
         includeSingles,
         cursor.text1.orEmpty(),
@@ -2003,6 +2033,7 @@ class AstraLibraryRepository private constructor(
         text1 = row.nameSortKey,
         text2 = row.identityKey,
         number1 = (row.year ?: 0).toLong(),
+        number2 = if (row.year == null) 1 else 0,
       )
       else -> TrackPageCursor(
         revision,
@@ -2014,6 +2045,7 @@ class AstraLibraryRepository private constructor(
 
   suspend fun getArtistPage(
     sort: String,
+    directionRaw: String,
     groupingMode: String,
     includeCollaborations: Boolean,
     cursorRaw: String?,
@@ -2022,11 +2054,12 @@ class AstraLibraryRepository private constructor(
     val dao = database.catalogDao()
     val revision = dao.getRevision()
     val mode = if (groupingMode == "fileTags") "fileTags" else "astra"
-    val kind = "artists:$sort:$mode:${if (includeCollaborations) 1 else 0}"
+    val direction = normalizeSortDirection(directionRaw)
+    val kind = "artists:$sort:$direction:$mode:${if (includeCollaborations) 1 else 0}"
     val cursor = validateCursor(cursorRaw, revision, kind)
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val rows = if (sort == "track_count") {
-      dao.getArtistCountPage(
+      (if (direction == "asc") dao::getArtistCountPageAscending else dao::getArtistCountPage)(
         revision,
         mode,
         includeCollaborations,
@@ -2036,7 +2069,7 @@ class AstraLibraryRepository private constructor(
         limit,
       )
     } else {
-      dao.getArtistNamePage(
+      (if (direction == "desc") dao::getArtistNamePageDescending else dao::getArtistNamePage)(
         revision,
         mode,
         includeCollaborations,
@@ -2058,6 +2091,7 @@ class AstraLibraryRepository private constructor(
   /** Backward twin of [getArtistPage]; see [getTrackPageBefore] for the contract. */
   suspend fun getArtistPageBefore(
     sort: String,
+    directionRaw: String,
     groupingMode: String,
     includeCollaborations: Boolean,
     cursorRaw: String?,
@@ -2066,13 +2100,18 @@ class AstraLibraryRepository private constructor(
     val dao = database.catalogDao()
     val revision = dao.getRevision()
     val mode = if (groupingMode == "fileTags") "fileTags" else "astra"
-    val kind = "artists:$sort:$mode:${if (includeCollaborations) 1 else 0}"
+    val direction = normalizeSortDirection(directionRaw)
+    val kind = "artists:$sort:$direction:$mode:${if (includeCollaborations) 1 else 0}"
     val cursor = validateCursor(cursorRaw, revision, kind)
     val limit = requestedLimit.coerceIn(1, MAX_PAGE_SIZE)
     val descending = if (cursor == null || sort == "track_count") {
       emptyList()
     } else {
-      dao.getArtistNamePageBefore(
+      (if (direction == "desc") {
+        dao::getArtistNamePageBeforeDescending
+      } else {
+        dao::getArtistNamePageBefore
+      })(
         revision,
         mode,
         includeCollaborations,
@@ -2689,6 +2728,7 @@ class AstraLibraryRepository private constructor(
   suspend fun getSectionAnchors(
     kind: String,
     sort: String,
+    directionRaw: String,
     includeSingles: Boolean,
     groupingMode: String,
     includeCollaborations: Boolean,
@@ -2696,6 +2736,7 @@ class AstraLibraryRepository private constructor(
     withCatalogRecovery { database ->
       val dao = database.catalogDao()
       val revision = dao.getRevision()
+      val direction = normalizeSortDirection(directionRaw)
       val anchors: List<Pair<String, TrackPageCursor>> = when (kind) {
         "albums" -> {
           val rows = dao.getAllAlbumSummaries(revision).filter { includeSingles || !it.isSingle }
@@ -2703,17 +2744,32 @@ class AstraLibraryRepository private constructor(
             if (sort == "artist") SortKeys.sectionLabel(row.artist) else SortKeys.sectionLabel(row.album)
           }.map { (label, section) ->
             if (sort == "artist") {
-              val first = section.minWith(compareBy<AlbumSummaryEntity>({ it.artistSortKey }, { it.nameSortKey }, { it.identityKey }))
+              val first = section.sortedWith(
+                if (direction == "desc") {
+                  compareByDescending<AlbumSummaryEntity> { it.artistSortKey }
+                    .thenBy { it.nameSortKey }
+                    .thenBy { it.identityKey }
+                } else {
+                  compareBy<AlbumSummaryEntity>({ it.artistSortKey }, { it.nameSortKey }, { it.identityKey })
+                },
+              ).first()
               label to TrackPageCursor(
                 revision,
-                "albums:artist:${if (includeSingles) 1 else 0}",
+                "albums:artist:$direction:${if (includeSingles) 1 else 0}",
                 text1 = first.artistSortKey,
               )
             } else {
-              val first = section.minWith(compareBy<AlbumSummaryEntity>({ it.nameSortKey }, { it.identityKey }))
+              val first = section.sortedWith(
+                if (direction == "desc") {
+                  compareByDescending<AlbumSummaryEntity> { it.nameSortKey }
+                    .thenBy { it.identityKey }
+                } else {
+                  compareBy<AlbumSummaryEntity>({ it.nameSortKey }, { it.identityKey })
+                },
+              ).first()
               label to TrackPageCursor(
                 revision,
-                "albums:name:${if (includeSingles) 1 else 0}",
+                "albums:name:$direction:${if (includeSingles) 1 else 0}",
                 text1 = first.nameSortKey,
               )
             }
@@ -2725,10 +2781,17 @@ class AstraLibraryRepository private constructor(
             .filter { includeCollaborations || !it.isCollaboration }
             .groupBy { row -> SortKeys.sectionLabel(row.artist) }
             .map { (label, section) ->
-              val first = section.minWith(compareBy<ArtistSummaryEntity>({ it.nameSortKey }, { it.artistKey }))
+              val first = section.sortedWith(
+                if (direction == "desc") {
+                  compareByDescending<ArtistSummaryEntity> { it.nameSortKey }
+                    .thenBy { it.artistKey }
+                } else {
+                  compareBy<ArtistSummaryEntity>({ it.nameSortKey }, { it.artistKey })
+                },
+              ).first()
               label to TrackPageCursor(
                 revision,
-                "artists:name:$mode:${if (includeCollaborations) 1 else 0}",
+                "artists:name:$direction:$mode:${if (includeCollaborations) 1 else 0}",
                 text1 = first.nameSortKey,
               )
             }
@@ -2740,22 +2803,38 @@ class AstraLibraryRepository private constructor(
               .map { (label, section) ->
                 label to TrackPageCursor(
                   revision,
-                  "tracks:artist",
-                  text1 = section.minOf(ArtistSectionAnchorCandidate::sortKey),
+                  "tracks:artist:$direction",
+                  text1 = if (direction == "desc") {
+                    section.maxOf(ArtistSectionAnchorCandidate::sortKey)
+                  } else {
+                    section.minOf(ArtistSectionAnchorCandidate::sortKey)
+                  },
                 )
               }
           } else {
-            dao.getTitleSectionAnchors().map { row ->
+            val rows = if (direction == "desc") {
+              dao.getTitleSectionAnchorsDescending()
+            } else {
+              dao.getTitleSectionAnchors()
+            }
+            rows.map { row ->
               row.sectionLabel to TrackPageCursor(
                 revision,
-                "tracks:title",
+                "tracks:title:$direction",
                 text1 = row.sortKey,
               )
             }
           }
         }
       }
-      anchors.sortedWith(compareBy<Pair<String, TrackPageCursor>> { it.second.text1 }.thenBy { it.first })
+      val anchorComparator = compareBy<Pair<String, TrackPageCursor>> { it.second.text1 }
+        .thenBy { it.first }
+      val orderedAnchors = if (direction == "desc") {
+        anchors.sortedWith(anchorComparator.reversed())
+      } else {
+        anchors.sortedWith(anchorComparator)
+      }
+      orderedAnchors
         .map { (label, cursor) ->
         mapOf(
           "label" to label,
@@ -2842,11 +2921,33 @@ class AstraLibraryRepository private constructor(
     "manual" -> (context["paths"] as? List<*>)
       ?.mapNotNull { it as? String }
       .orEmpty()
-    else -> when (context["sort"] as? String) {
-      "artist" -> catalogDao.getAllPathsByArtist()
-      "recently_added" -> catalogDao.getAllPathsByRecentlyAdded()
-      "duration" -> catalogDao.getAllPathsByDuration()
-      else -> catalogDao.getAllPathsByTitle()
+    else -> {
+      val sort = context["sort"] as? String ?: "title"
+      val direction = (context["direction"] as? String)
+        ?.takeIf { it == "asc" || it == "desc" }
+        ?: legacyTrackSortDirection(sort)
+      when (sort) {
+        "artist" -> if (direction == "desc") {
+          catalogDao.getAllPathsByArtistDescending()
+        } else {
+          catalogDao.getAllPathsByArtist()
+        }
+        "recently_added" -> if (direction == "asc") {
+          catalogDao.getAllPathsByRecentlyAddedAscending()
+        } else {
+          catalogDao.getAllPathsByRecentlyAdded()
+        }
+        "duration" -> if (direction == "asc") {
+          catalogDao.getAllPathsByDurationAscending()
+        } else {
+          catalogDao.getAllPathsByDuration()
+        }
+        else -> if (direction == "desc") {
+          catalogDao.getAllPathsByTitleDescending()
+        } else {
+          catalogDao.getAllPathsByTitle()
+        }
+      }
     }
   }
 
@@ -2953,6 +3054,12 @@ class AstraLibraryRepository private constructor(
     if (cursor.revision != revision || cursor.kind != kind) throw StaleRevisionException()
     return cursor
   }
+
+  private fun normalizeSortDirection(value: String): String =
+    if (value == "desc") "desc" else "asc"
+
+  private fun legacyTrackSortDirection(sort: String): String =
+    if (sort == "recently_added" || sort == "duration") "desc" else "asc"
 
   private fun cursorPath(cursor: TrackPageCursor): String =
     cursor.text3?.substringAfter('\u0000', "") ?: ""

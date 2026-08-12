@@ -30,6 +30,7 @@ import {
   useScreenHeader,
 } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { ViewModeSwitcher } from '@/components/library/ViewModeSwitcher';
 import { AlbumGridItem } from '@/components/library/AlbumGridItem';
 import { ArtistGridItem } from '@/components/library/ArtistGridItem';
@@ -80,6 +81,7 @@ import {
   libraryContextBottomClearance,
   libraryContextBarVisible,
   libraryContextOverlayHeight,
+  libraryRailBottomClearance,
   libraryContextScrimHeight,
 } from '@/library/libraryViewPresentation';
 import {
@@ -109,6 +111,10 @@ import {
   ARTIST_SORT_LABELS,
   type ArtistSort
 } from '@/lib/artistSort';
+import {
+  SORT_DIRECTION_LABELS,
+  type SortDirection,
+} from '@/lib/sortDirection';
 import {
   LIBRARY_LAYOUT_OPTIONS,
   libraryGridColumns,
@@ -176,10 +182,16 @@ export default function LibraryScreen() {
   const tracks = useLibraryStore((s) => s.tracks);
   const trackSort = useLibraryStore((s) => s.trackSort);
   const setTrackSort = useLibraryStore((s) => s.setTrackSort);
+  const trackSortDirection = useLibraryStore((s) => s.trackSortDirection);
+  const setTrackSortDirection = useLibraryStore((s) => s.setTrackSortDirection);
   const albumSort = useLibraryStore((s) => s.albumSort);
   const setAlbumSort = useLibraryStore((s) => s.setAlbumSort);
+  const albumSortDirection = useLibraryStore((s) => s.albumSortDirection);
+  const setAlbumSortDirection = useLibraryStore((s) => s.setAlbumSortDirection);
   const artistSort = useLibraryStore((s) => s.artistSort);
   const setArtistSort = useLibraryStore((s) => s.setArtistSort);
+  const artistSortDirection = useLibraryStore((s) => s.artistSortDirection);
+  const setArtistSortDirection = useLibraryStore((s) => s.setArtistSortDirection);
   const albumLayout = useLibraryStore((s) => s.albumLayout);
   const setAlbumLayout = useLibraryStore((s) => s.setAlbumLayout);
   const artistLayout = useLibraryStore((s) => s.artistLayout);
@@ -303,7 +315,11 @@ export default function LibraryScreen() {
 
   // Tap index is within sortedTracks so the tapped row is the track that plays.
   const playAllFrom = (index: number) => {
-    void playLibraryQuery({ kind: 'library', sort: trackSort }, {
+    void playLibraryQuery({
+      kind: 'library',
+      sort: trackSort,
+      direction: trackSortDirection,
+    }, {
       anchorPath: sortedTracks[index]?.path,
       source: { kind: 'library', label: 'Library' },
     });
@@ -502,6 +518,18 @@ export default function LibraryScreen() {
       : viewMode === 'albums'
         ? ALBUM_SORT_LABELS[albumSort]
         : ARTIST_SORT_LABELS[artistSort];
+  const sortDirection: SortDirection =
+    viewMode === 'tracks'
+      ? trackSortDirection
+      : viewMode === 'albums'
+        ? albumSortDirection
+        : artistSortDirection;
+  const sortDirectionLabel = SORT_DIRECTION_LABELS[sortDirection];
+  const setSortDirection = (direction: SortDirection) => {
+    if (viewMode === 'tracks') setTrackSortDirection(direction);
+    if (viewMode === 'albums') setAlbumSortDirection(direction);
+    if (viewMode === 'artists') setArtistSortDirection(direction);
+  };
   const sortSheetLabel =
     viewMode === 'tracks' ? 'SORT TRACKS BY' : viewMode === 'albums' ? 'SORT ALBUMS BY' : 'SORT ARTISTS BY';
   const sortItems =
@@ -542,11 +570,11 @@ export default function LibraryScreen() {
 
   const surfaceHeadIdentity =
     viewMode === 'albums'
-      ? `albums:${albumSort}:${albumLayout}:${albumColumns}`
+      ? `albums:${albumSort}:${albumSortDirection}:${albumLayout}:${albumColumns}`
       : viewMode === 'artists'
-        ? `artists:${artistSort}:${artistLayout}:${artistColumns}`
+        ? `artists:${artistSort}:${artistSortDirection}:${artistLayout}:${artistColumns}`
         : viewMode === 'tracks'
-          ? `tracks:${trackSort}`
+          ? `tracks:${trackSort}:${trackSortDirection}`
           : viewMode;
   const listMountIdentity = `${surfaceHeadIdentity}:${sectionJumpRevision}`;
   const activeListMountIdentity = useRef(listMountIdentity);
@@ -738,10 +766,14 @@ export default function LibraryScreen() {
             style={styles.sortTrigger}
             onPress={() => setSortSheetOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel={`Sort by ${sortLabel}`}
+            accessibilityLabel={`Sort by ${sortLabel}, ${sortDirectionLabel}`}
           >
-            <Ionicons name="swap-vertical" size={14} color={colors.textSecondary} />
-            <Text variant="label">{sortLabel}</Text>
+            <Ionicons
+              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
+              size={14}
+              color={colors.textSecondary}
+            />
+            <Text variant="label">{sortLabel} · {sortDirectionLabel}</Text>
           </AppPressable>
           {activeLayout && activeLayoutLabel ? (
             <AppPressable feedback="control"
@@ -787,7 +819,7 @@ export default function LibraryScreen() {
                 {viewMode === 'albums' ? (
                 <ReanimatedFlashList
                   ref={albumListRef}
-                  key={`albums-${albumSort}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
+                  key={`albums-${albumSort}-${albumSortDirection}-${albumLayout}-${albumColumns}-${sectionJumpRevision}`}
                   data={sortedAlbums}
                   numColumns={albumColumns}
                   keyExtractor={(album) => album.identity_key}
@@ -841,7 +873,7 @@ export default function LibraryScreen() {
                 {viewMode === 'artists' ? (
                 <ReanimatedFlashList
                   ref={artistListRef}
-                  key={`artists-${artistSort}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
+                  key={`artists-${artistSort}-${artistSortDirection}-${artistLayout}-${artistColumns}-${sectionJumpRevision}`}
                   data={sortedArtists}
                   numColumns={artistColumns}
                   keyExtractor={(artist) => artist.artist}
@@ -895,7 +927,7 @@ export default function LibraryScreen() {
                 {viewMode === 'tracks' ? (
                 <ReanimatedFlashList
                   ref={trackListRef}
-                  key={`tracks-${trackSort}-${sectionJumpRevision}`}
+                  key={`tracks-${trackSort}-${trackSortDirection}-${sectionJumpRevision}`}
                   data={sortedTracks}
                   keyExtractor={(track) => String(track.id)}
                   showsVerticalScrollIndicator={false}
@@ -966,11 +998,18 @@ export default function LibraryScreen() {
                 // off its right edge, so it needs a box that matches the part of
                 // the list a finger can actually reach.
                 <View
-                  style={[styles.railArea, { top: header.contentPaddingTop }]}
+                  style={[
+                    styles.railArea,
+                    {
+                      top: header.contentPaddingTop,
+                      bottom: libraryRailBottomClearance(phoneContextBar, contextOverlayHeight),
+                    },
+                  ]}
                   pointerEvents="box-none"
                 >
                   <AlphabetRail
                     activeLetters={railLetters}
+                    direction={sortDirection}
                     onJumpToLetter={jumpToLetter}
                     onScrubEnd={flushJump}
                   />
@@ -1015,7 +1054,7 @@ export default function LibraryScreen() {
                 : viewMode === 'tracks'
                   ? {
                       icon: 'swap-vertical',
-                      label: `Sort Tracks, currently ${sortLabel}`,
+                      label: `Sort Tracks, currently ${sortLabel}, ${sortDirectionLabel}`,
                       onPress: () => setSortSheetOpen(true),
                     }
                   : viewMode === 'playlists'
@@ -1069,12 +1108,18 @@ export default function LibraryScreen() {
               key={key}
               label={label}
               selected={selected}
-              onPress={() => {
-                onSelect();
-                setSortSheetOpen(false);
-              }}
+              onPress={onSelect}
             />
           ))}
+          <AppSheetSection label="DIRECTION" />
+          <SegmentedControl
+            value={sortDirection}
+            segments={[
+              { key: 'asc', label: 'Ascending' },
+              { key: 'desc', label: 'Descending' },
+            ]}
+            onChange={(direction) => setSortDirection(direction === 'desc' ? 'desc' : 'asc')}
+          />
         </AppSheet>
       ) : null}
       {layoutSheetOpen && activeLayout ? (
@@ -1107,6 +1152,15 @@ export default function LibraryScreen() {
               onPress={onSelect}
             />
           ))}
+          <AppSheetSection label="DIRECTION" />
+          <SegmentedControl
+            value={sortDirection}
+            segments={[
+              { key: 'asc', label: 'Ascending' },
+              { key: 'desc', label: 'Descending' },
+            ]}
+            onChange={(direction) => setSortDirection(direction === 'desc' ? 'desc' : 'asc')}
+          />
           <AppSheetSection label={layoutSheetLabel} />
           {LIBRARY_LAYOUT_OPTIONS.map((option) => (
             <AppSheetItem

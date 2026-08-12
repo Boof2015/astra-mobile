@@ -213,6 +213,9 @@ interface CatalogDao {
   @Query("SELECT path FROM active_tracks ORDER BY title_sort_key, path")
   suspend fun getAllPathsByTitle(): List<String>
 
+  @Query("SELECT path FROM active_tracks ORDER BY title_sort_key DESC, path")
+  suspend fun getAllPathsByTitleDescending(): List<String>
+
   @Query(
     """
       SELECT path FROM active_tracks
@@ -221,11 +224,25 @@ interface CatalogDao {
   )
   suspend fun getAllPathsByArtist(): List<String>
 
+  @Query(
+    """
+      SELECT path FROM active_tracks
+      ORDER BY artist_sort_key DESC, album_sort_key, disc_sort, track_sort, title_sort_key, path
+    """,
+  )
+  suspend fun getAllPathsByArtistDescending(): List<String>
+
   @Query("SELECT path FROM active_tracks ORDER BY added_at DESC, path")
   suspend fun getAllPathsByRecentlyAdded(): List<String>
 
+  @Query("SELECT path FROM active_tracks ORDER BY added_at, path")
+  suspend fun getAllPathsByRecentlyAddedAscending(): List<String>
+
   @Query("SELECT path FROM active_tracks ORDER BY duration DESC, path")
   suspend fun getAllPathsByDuration(): List<String>
+
+  @Query("SELECT path FROM active_tracks ORDER BY duration, path")
+  suspend fun getAllPathsByDurationAscending(): List<String>
 
   @Query(
     """
@@ -364,6 +381,22 @@ interface CatalogDao {
     limit: Int,
   ): List<ActiveTrackView>
 
+  @Query(
+    """
+      SELECT * FROM active_tracks
+      WHERE (:afterTitleKey IS NULL
+        OR title_sort_key < :afterTitleKey
+        OR (title_sort_key = :afterTitleKey AND path > :afterPath))
+      ORDER BY title_sort_key DESC, path
+      LIMIT :limit
+    """,
+  )
+  suspend fun getTitlePageDescending(
+    afterTitleKey: String?,
+    afterPath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
   /**
    * Mirror of [getTitlePage] walking backwards. Rows come out DESC — the caller
    * reverses them so `items` is ascending like every other page. Backward paging
@@ -387,6 +420,21 @@ interface CatalogDao {
   @Query(
     """
       SELECT * FROM active_tracks
+      WHERE title_sort_key > :beforeTitleKey
+        OR (title_sort_key = :beforeTitleKey AND path < :beforePath)
+      ORDER BY title_sort_key, path DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getTitlePageBeforeDescending(
+    beforeTitleKey: String,
+    beforePath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  @Query(
+    """
+      SELECT * FROM active_tracks
       WHERE (:afterArtistKey IS NULL
         OR artist_sort_key > :afterArtistKey
         OR (artist_sort_key = :afterArtistKey AND album_sort_key > :afterAlbumKey)
@@ -402,6 +450,33 @@ interface CatalogDao {
     """,
   )
   suspend fun getArtistOrderPage(
+    afterArtistKey: String?,
+    afterAlbumKey: String,
+    afterDisc: Int,
+    afterTrack: Int,
+    afterTitleKey: String,
+    afterPath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  @Query(
+    """
+      SELECT * FROM active_tracks
+      WHERE (:afterArtistKey IS NULL
+        OR artist_sort_key < :afterArtistKey
+        OR (artist_sort_key = :afterArtistKey AND album_sort_key > :afterAlbumKey)
+        OR (artist_sort_key = :afterArtistKey AND album_sort_key = :afterAlbumKey AND disc_sort > :afterDisc)
+        OR (artist_sort_key = :afterArtistKey AND album_sort_key = :afterAlbumKey AND disc_sort = :afterDisc
+            AND track_sort > :afterTrack)
+        OR (artist_sort_key = :afterArtistKey AND album_sort_key = :afterAlbumKey AND disc_sort = :afterDisc
+            AND track_sort = :afterTrack AND title_sort_key > :afterTitleKey)
+        OR (artist_sort_key = :afterArtistKey AND album_sort_key = :afterAlbumKey AND disc_sort = :afterDisc
+            AND track_sort = :afterTrack AND title_sort_key = :afterTitleKey AND path > :afterPath))
+      ORDER BY artist_sort_key DESC, album_sort_key, disc_sort, track_sort, title_sort_key, path
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistOrderPageDescending(
     afterArtistKey: String?,
     afterAlbumKey: String,
     afterDisc: Int,
@@ -442,6 +517,33 @@ interface CatalogDao {
   @Query(
     """
       SELECT * FROM active_tracks
+      WHERE artist_sort_key > :beforeArtistKey
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key < :beforeAlbumKey)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort < :beforeDisc)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort < :beforeTrack)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort = :beforeTrack AND title_sort_key < :beforeTitleKey)
+        OR (artist_sort_key = :beforeArtistKey AND album_sort_key = :beforeAlbumKey AND disc_sort = :beforeDisc
+            AND track_sort = :beforeTrack AND title_sort_key = :beforeTitleKey AND path < :beforePath)
+      ORDER BY artist_sort_key, album_sort_key DESC, disc_sort DESC, track_sort DESC,
+        title_sort_key DESC, path DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistOrderPageBeforeDescending(
+    beforeArtistKey: String,
+    beforeAlbumKey: String,
+    beforeDisc: Int,
+    beforeTrack: Int,
+    beforeTitleKey: String,
+    beforePath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  @Query(
+    """
+      SELECT * FROM active_tracks
       WHERE (:afterAddedAt IS NULL
         OR added_at < :afterAddedAt
         OR (added_at = :afterAddedAt AND path > :afterPath))
@@ -458,6 +560,22 @@ interface CatalogDao {
   @Query(
     """
       SELECT * FROM active_tracks
+      WHERE (:afterAddedAt IS NULL
+        OR added_at > :afterAddedAt
+        OR (added_at = :afterAddedAt AND path > :afterPath))
+      ORDER BY added_at, path
+      LIMIT :limit
+    """,
+  )
+  suspend fun getRecentlyAddedPageAscending(
+    afterAddedAt: Long?,
+    afterPath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  @Query(
+    """
+      SELECT * FROM active_tracks
       WHERE (:afterDuration IS NULL
         OR duration < :afterDuration
         OR (duration = :afterDuration AND path > :afterPath))
@@ -466,6 +584,22 @@ interface CatalogDao {
     """,
   )
   suspend fun getDurationPage(
+    afterDuration: Double?,
+    afterPath: String,
+    limit: Int,
+  ): List<ActiveTrackView>
+
+  @Query(
+    """
+      SELECT * FROM active_tracks
+      WHERE (:afterDuration IS NULL
+        OR duration > :afterDuration
+        OR (duration = :afterDuration AND path > :afterPath))
+      ORDER BY duration, path
+      LIMIT :limit
+    """,
+  )
+  suspend fun getDurationPageAscending(
     afterDuration: Double?,
     afterPath: String,
     limit: Int,
@@ -544,6 +678,16 @@ interface CatalogDao {
 
   @Query(
     """
+      SELECT section_label, MAX(title_sort_key) AS sort_key
+      FROM active_tracks
+      GROUP BY section_label
+      ORDER BY sort_key DESC
+    """,
+  )
+  suspend fun getTitleSectionAnchorsDescending(): List<SectionAnchorRow>
+
+  @Query(
+    """
       SELECT artist, MIN(artist_sort_key) AS sort_key
       FROM active_tracks
       GROUP BY artist
@@ -595,6 +739,26 @@ interface CatalogDao {
     limit: Int,
   ): List<AlbumSummaryEntity>
 
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (:afterKey IS NULL
+          OR name_sort_key < :afterKey
+          OR (name_sort_key = :afterKey AND identity_key > :afterId))
+      ORDER BY name_sort_key DESC, identity_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumNamePageDescending(
+    revision: Long,
+    includeSingles: Boolean,
+    afterKey: String?,
+    afterId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
   /** Mirror of [getAlbumNamePage] walking backwards; rows come out DESC. */
   @Query(
     """
@@ -620,6 +784,25 @@ interface CatalogDao {
       SELECT * FROM album_summaries
       WHERE revision = :revision
         AND (:includeSingles OR is_single = 0)
+        AND (name_sort_key > :beforeKey
+          OR (name_sort_key = :beforeKey AND identity_key < :beforeId))
+      ORDER BY name_sort_key, identity_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumNamePageBeforeDescending(
+    revision: Long,
+    includeSingles: Boolean,
+    beforeKey: String,
+    beforeId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
         AND (:afterArtistKey IS NULL
           OR artist_sort_key > :afterArtistKey
           OR (artist_sort_key = :afterArtistKey AND name_sort_key > :afterNameKey)
@@ -630,6 +813,29 @@ interface CatalogDao {
     """,
   )
   suspend fun getAlbumArtistPage(
+    revision: Long,
+    includeSingles: Boolean,
+    afterArtistKey: String?,
+    afterNameKey: String,
+    afterId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (:afterArtistKey IS NULL
+          OR artist_sort_key < :afterArtistKey
+          OR (artist_sort_key = :afterArtistKey AND name_sort_key > :afterNameKey)
+          OR (artist_sort_key = :afterArtistKey AND name_sort_key = :afterNameKey
+              AND identity_key > :afterId))
+      ORDER BY artist_sort_key DESC, name_sort_key, identity_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumArtistPageDescending(
     revision: Long,
     includeSingles: Boolean,
     afterArtistKey: String?,
@@ -666,6 +872,28 @@ interface CatalogDao {
       SELECT * FROM album_summaries
       WHERE revision = :revision
         AND (:includeSingles OR is_single = 0)
+        AND (artist_sort_key > :beforeArtistKey
+          OR (artist_sort_key = :beforeArtistKey AND name_sort_key < :beforeNameKey)
+          OR (artist_sort_key = :beforeArtistKey AND name_sort_key = :beforeNameKey
+              AND identity_key < :beforeId))
+      ORDER BY artist_sort_key, name_sort_key DESC, identity_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumArtistPageBeforeDescending(
+    revision: Long,
+    includeSingles: Boolean,
+    beforeArtistKey: String,
+    beforeNameKey: String,
+    beforeId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
         AND (:afterAddedAt IS NULL
           OR latest_added_at < :afterAddedAt
           OR (latest_added_at = :afterAddedAt AND identity_key > :afterId))
@@ -686,12 +914,36 @@ interface CatalogDao {
       SELECT * FROM album_summaries
       WHERE revision = :revision
         AND (:includeSingles OR is_single = 0)
-        AND (:afterYear IS NULL
-          OR COALESCE(year, 0) < :afterYear
-          OR (COALESCE(year, 0) = :afterYear AND name_sort_key > :afterNameKey)
-          OR (COALESCE(year, 0) = :afterYear AND name_sort_key = :afterNameKey
+        AND (:afterAddedAt IS NULL
+          OR latest_added_at > :afterAddedAt
+          OR (latest_added_at = :afterAddedAt AND identity_key > :afterId))
+      ORDER BY latest_added_at, identity_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumRecentPageAscending(
+    revision: Long,
+    includeSingles: Boolean,
+    afterAddedAt: Long?,
+    afterId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (:afterUnknown IS NULL
+          OR CASE WHEN year IS NULL THEN 1 ELSE 0 END > :afterUnknown
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) < :afterYear)
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) = :afterYear AND name_sort_key > :afterNameKey)
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) = :afterYear AND name_sort_key = :afterNameKey
               AND identity_key > :afterId))
-      ORDER BY COALESCE(year, 0) DESC, name_sort_key, identity_key
+      ORDER BY CASE WHEN year IS NULL THEN 1 ELSE 0 END, year DESC, name_sort_key, identity_key
       LIMIT :limit
     """,
   )
@@ -699,6 +951,35 @@ interface CatalogDao {
     revision: Long,
     includeSingles: Boolean,
     afterYear: Int?,
+    afterUnknown: Int?,
+    afterNameKey: String,
+    afterId: String,
+    limit: Int,
+  ): List<AlbumSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM album_summaries
+      WHERE revision = :revision
+        AND (:includeSingles OR is_single = 0)
+        AND (:afterUnknown IS NULL
+          OR CASE WHEN year IS NULL THEN 1 ELSE 0 END > :afterUnknown
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) > :afterYear)
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) = :afterYear AND name_sort_key > :afterNameKey)
+          OR (CASE WHEN year IS NULL THEN 1 ELSE 0 END = :afterUnknown
+              AND COALESCE(year, 0) = :afterYear AND name_sort_key = :afterNameKey
+              AND identity_key > :afterId))
+      ORDER BY CASE WHEN year IS NULL THEN 1 ELSE 0 END, year, name_sort_key, identity_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getAlbumYearPageAscending(
+    revision: Long,
+    includeSingles: Boolean,
+    afterYear: Int?,
+    afterUnknown: Int?,
     afterNameKey: String,
     afterId: String,
     limit: Int,
@@ -747,6 +1028,28 @@ interface CatalogDao {
     limit: Int,
   ): List<ArtistSummaryEntity>
 
+  @Query(
+    """
+      SELECT * FROM artist_summaries
+      WHERE revision = :revision
+        AND grouping_mode = :groupingMode
+        AND (:includeCollaborations OR is_collaboration = 0)
+        AND (:afterKey IS NULL
+          OR name_sort_key < :afterKey
+          OR (name_sort_key = :afterKey AND artist_key > :afterId))
+      ORDER BY name_sort_key DESC, artist_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistNamePageDescending(
+    revision: Long,
+    groupingMode: String,
+    includeCollaborations: Boolean,
+    afterKey: String?,
+    afterId: String,
+    limit: Int,
+  ): List<ArtistSummaryEntity>
+
   /** Mirror of [getArtistNamePage] walking backwards; rows come out DESC. */
   @Query(
     """
@@ -775,6 +1078,27 @@ interface CatalogDao {
       WHERE revision = :revision
         AND grouping_mode = :groupingMode
         AND (:includeCollaborations OR is_collaboration = 0)
+        AND (name_sort_key > :beforeKey
+          OR (name_sort_key = :beforeKey AND artist_key < :beforeId))
+      ORDER BY name_sort_key, artist_key DESC
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistNamePageBeforeDescending(
+    revision: Long,
+    groupingMode: String,
+    includeCollaborations: Boolean,
+    beforeKey: String,
+    beforeId: String,
+    limit: Int,
+  ): List<ArtistSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM artist_summaries
+      WHERE revision = :revision
+        AND grouping_mode = :groupingMode
+        AND (:includeCollaborations OR is_collaboration = 0)
         AND (:afterCount IS NULL
           OR track_count < :afterCount
           OR (track_count = :afterCount AND name_sort_key > :afterNameKey)
@@ -784,6 +1108,30 @@ interface CatalogDao {
     """,
   )
   suspend fun getArtistCountPage(
+    revision: Long,
+    groupingMode: String,
+    includeCollaborations: Boolean,
+    afterCount: Long?,
+    afterNameKey: String,
+    afterId: String,
+    limit: Int,
+  ): List<ArtistSummaryEntity>
+
+  @Query(
+    """
+      SELECT * FROM artist_summaries
+      WHERE revision = :revision
+        AND grouping_mode = :groupingMode
+        AND (:includeCollaborations OR is_collaboration = 0)
+        AND (:afterCount IS NULL
+          OR track_count > :afterCount
+          OR (track_count = :afterCount AND name_sort_key > :afterNameKey)
+          OR (track_count = :afterCount AND name_sort_key = :afterNameKey AND artist_key > :afterId))
+      ORDER BY track_count, name_sort_key, artist_key
+      LIMIT :limit
+    """,
+  )
+  suspend fun getArtistCountPageAscending(
     revision: Long,
     groupingMode: String,
     includeCollaborations: Boolean,

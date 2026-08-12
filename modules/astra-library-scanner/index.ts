@@ -240,7 +240,11 @@ export interface NativePage<T> {
 }
 
 export type LibraryQuery =
-  | { kind: 'library'; sort: 'artist' | 'title' | 'recently_added' | 'duration' }
+  | {
+      kind: 'library';
+      sort: 'artist' | 'title' | 'recently_added' | 'duration';
+      direction: 'asc' | 'desc';
+    }
   | { kind: 'album'; albumKey: string }
   | {
       kind: 'artist';
@@ -362,6 +366,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   removeFolder(folderId: number): Promise<void>;
   getTrackPage<T>(
     sort: 'artist' | 'title' | 'recently_added' | 'duration',
+    direction: 'asc' | 'desc',
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T>>;
@@ -372,6 +377,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
    */
   getTrackPageBefore<T>(
     sort: 'artist' | 'title',
+    direction: 'asc' | 'desc',
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T>>;
@@ -489,6 +495,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   clearDesktopSyncBaselines(): Promise<void>;
   getAlbumPage<T>(
     sort: 'artist' | 'name' | 'recently_added' | 'year',
+    direction: 'asc' | 'desc',
     includeSingles: boolean,
     cursor: string | null,
     limit: number
@@ -496,12 +503,14 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   /** Backward twin of `getAlbumPage`; see `getTrackPageBefore`. */
   getAlbumPageBefore<T>(
     sort: 'artist' | 'name',
+    direction: 'asc' | 'desc',
     includeSingles: boolean,
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T>>;
   getArtistPage<T>(
     sort: 'name' | 'track_count',
+    direction: 'asc' | 'desc',
     groupingMode: 'astra' | 'fileTags',
     includeCollaborations: boolean,
     cursor: string | null,
@@ -510,6 +519,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   /** Backward twin of `getArtistPage`; see `getTrackPageBefore`. */
   getArtistPageBefore<T>(
     sort: 'name',
+    direction: 'asc' | 'desc',
     groupingMode: 'astra' | 'fileTags',
     includeCollaborations: boolean,
     cursor: string | null,
@@ -604,6 +614,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   getSectionAnchors(
     kind: 'tracks' | 'albums' | 'artists',
     sort: 'artist' | 'title' | 'name',
+    direction: 'asc' | 'desc',
     includeSingles: boolean,
     groupingMode: 'astra' | 'fileTags',
     includeCollaborations: boolean

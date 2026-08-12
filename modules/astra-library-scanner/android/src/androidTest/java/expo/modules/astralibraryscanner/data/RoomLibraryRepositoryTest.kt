@@ -646,6 +646,212 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun descendingTitlePagesAndAnchorsRemainGapFree() = runBlocking {
+    publish("g1", seedAlphabet())
+    val dao = catalog.catalogDao()
+    val expected = dao.getTitlePage(null, "", ALPHABET_SEED_SIZE)
+      .sortedWith(compareByDescending<ActiveTrackView> { it.titleSortKey }.thenBy { it.path })
+
+    val paged = mutableListOf<ActiveTrackView>()
+    var afterKey: String? = null
+    var afterPath = ""
+    while (true) {
+      val page = dao.getTitlePageDescending(afterKey, afterPath, 37)
+      if (page.isEmpty()) break
+      paged += page
+      afterKey = page.last().titleSortKey
+      afterPath = page.last().path
+    }
+    assertEquals(expected.map { it.path }, paged.map { it.path })
+
+    val anchor = dao.getTitleSectionAnchorsDescending().first { it.sectionLabel == "F" }
+    val at = dao.getTitlePageDescending(anchor.sortKey, "", 40)
+    val above = dao.getTitlePageBeforeDescending(anchor.sortKey, "", 40)
+    assertEquals("F", SortKeys.sectionLabel(at.first().title))
+    assertTrue(above.all { SortKeys.sectionLabel(it.title) != "F" })
+    val anchorIndex = expected.indexOfFirst { it.path == at.first().path }
+    assertEquals(
+      expected.subList(anchorIndex - above.size, anchorIndex).map { it.path },
+      above.reversed().map { it.path },
+    )
+    assertTrue(
+      dao.getTitlePageBeforeDescending(expected.first().titleSortKey, expected.first().path, 40)
+        .isEmpty(),
+    )
+  }
+
+  @Test
+  fun trackDirectionsReverseOnlyThePrimaryField() = runBlocking {
+    val rows = listOf(
+      track("g1", 1, "Zulu Beta").copy(
+        artist = "Zulu",
+        artistSortKey = SortKeys.forText("Zulu"),
+        album = "Beta",
+        albumSortKey = SortKeys.forText("Beta"),
+        addedAt = 30,
+        duration = 300.0,
+      ),
+      track("g1", 2, "Zulu Alpha").copy(
+        artist = "Zulu",
+        artistSortKey = SortKeys.forText("Zulu"),
+        album = "Alpha",
+        albumSortKey = SortKeys.forText("Alpha"),
+        addedAt = 10,
+        duration = 100.0,
+      ),
+      track("g1", 3, "Alpha Gamma").copy(
+        artist = "Alpha",
+        artistSortKey = SortKeys.forText("Alpha"),
+        album = "Gamma",
+        albumSortKey = SortKeys.forText("Gamma"),
+        addedAt = 20,
+        duration = 200.0,
+      ),
+    )
+    publish("g1", rows)
+    val dao = catalog.catalogDao()
+    assertEquals(
+      listOf(rows[1].path, rows[0].path, rows[2].path),
+      dao.getArtistOrderPageDescending(null, "", 0, 0, "", "", 10).map { it.path },
+    )
+    assertEquals(
+      listOf(rows[1].path, rows[2].path, rows[0].path),
+      dao.getRecentlyAddedPageAscending(null, "", 10).map { it.path },
+    )
+    assertEquals(
+      listOf(rows[1].path, rows[2].path, rows[0].path),
+      dao.getDurationPageAscending(null, "", 10).map { it.path },
+    )
+    assertEquals(
+      dao.getArtistOrderPageDescending(null, "", 0, 0, "", "", 10).map { it.path },
+      dao.getAllPathsByArtistDescending(),
+    )
+    assertEquals(
+      dao.getTitlePageDescending(null, "", 10).map { it.path },
+      dao.getAllPathsByTitleDescending(),
+    )
+    assertEquals(
+      dao.getRecentlyAddedPageAscending(null, "", 10).map { it.path },
+      dao.getAllPathsByRecentlyAddedAscending(),
+    )
+    assertEquals(
+      dao.getDurationPageAscending(null, "", 10).map { it.path },
+      dao.getAllPathsByDurationAscending(),
+    )
+  }
+
+  @Test
+  fun albumAndArtistSummaryQueriesSupportBothDirections() = runBlocking {
+    val dao = catalog.catalogDao()
+    val revision = 7L
+    dao.putAlbumSummaries(
+      listOf(
+        AlbumSummaryEntity(
+          revision = revision,
+          identityKey = "z-beta",
+          album = "Beta",
+          artist = "Zulu",
+          year = 2020,
+          trackCount = 1,
+          totalDuration = 1.0,
+          latestAddedAt = 30,
+          nameSortKey = SortKeys.forText("Beta"),
+          artistSortKey = SortKeys.forText("Zulu"),
+          sectionLabel = "B",
+          isSingle = false,
+        ),
+        AlbumSummaryEntity(
+          revision = revision,
+          identityKey = "z-alpha",
+          album = "Alpha",
+          artist = "Zulu",
+          year = null,
+          trackCount = 1,
+          totalDuration = 1.0,
+          latestAddedAt = 10,
+          nameSortKey = SortKeys.forText("Alpha"),
+          artistSortKey = SortKeys.forText("Zulu"),
+          sectionLabel = "A",
+          isSingle = false,
+        ),
+        AlbumSummaryEntity(
+          revision = revision,
+          identityKey = "a-gamma",
+          album = "Gamma",
+          artist = "Alpha",
+          year = 1990,
+          trackCount = 1,
+          totalDuration = 1.0,
+          latestAddedAt = 20,
+          nameSortKey = SortKeys.forText("Gamma"),
+          artistSortKey = SortKeys.forText("Alpha"),
+          sectionLabel = "G",
+          isSingle = false,
+        ),
+      ),
+    )
+    assertEquals(
+      listOf("z-alpha", "z-beta", "a-gamma"),
+      dao.getAlbumArtistPageDescending(revision, true, null, "", "", 10)
+        .map { it.identityKey },
+    )
+    assertEquals(
+      listOf("a-gamma", "z-beta", "z-alpha"),
+      dao.getAlbumNamePageDescending(revision, true, null, "", 10)
+        .map { it.identityKey },
+    )
+    assertEquals(
+      listOf("a-gamma"),
+      dao.getAlbumNamePageBeforeDescending(
+        revision,
+        true,
+        SortKeys.forText("Beta"),
+        "z-beta",
+        10,
+      ).map { it.identityKey },
+    )
+    assertEquals(
+      listOf("a-gamma", "z-beta", "z-alpha"),
+      dao.getAlbumYearPageAscending(revision, true, 0, null, "", "", 10)
+        .map { it.identityKey },
+    )
+    assertEquals(
+      listOf("z-alpha", "a-gamma", "z-beta"),
+      dao.getAlbumRecentPageAscending(revision, true, null, "", 10)
+        .map { it.identityKey },
+    )
+
+    dao.putArtistSummaries(
+      listOf(
+        artistSummary(revision, "zulu", "Zulu", 2),
+        artistSummary(revision, "alpha", "Alpha", 2),
+        artistSummary(revision, "beta", "Beta", 1),
+      ),
+    )
+    assertEquals(
+      listOf("Zulu", "Beta", "Alpha"),
+      dao.getArtistNamePageDescending(revision, "astra", true, null, "", 10)
+        .map { it.artist },
+    )
+    assertEquals(
+      listOf("Zulu"),
+      dao.getArtistNamePageBeforeDescending(
+        revision,
+        "astra",
+        true,
+        SortKeys.forText("Beta"),
+        "beta",
+        10,
+      ).map { it.artist },
+    )
+    assertEquals(
+      listOf("Beta", "Alpha", "Zulu"),
+      dao.getArtistCountPageAscending(revision, "astra", true, null, "", "", 10)
+        .map { it.artist },
+    )
+  }
+
+  @Test
   fun structuredArtistCreditsPreserveNamesContainingPunctuation() = runBlocking {
     val artistNames = listOf("Earth, Wind & Fire", "The Emotions")
     val display = formatArtistNames(artistNames)
@@ -963,6 +1169,25 @@ class RoomLibraryRepositoryTest {
     discSort = 0,
     trackSort = index,
     sectionLabel = SortKeys.sectionLabel(title),
+  )
+
+  private fun artistSummary(
+    revision: Long,
+    key: String,
+    name: String,
+    count: Long,
+  ): ArtistSummaryEntity = ArtistSummaryEntity(
+    revision = revision,
+    artistKey = key,
+    artist = name,
+    groupingMode = "astra",
+    trackCount = count,
+    primaryTrackCount = count,
+    albumCount = 1,
+    nameSortKey = SortKeys.forText(name),
+    sectionLabel = SortKeys.sectionLabel(name),
+    isCollaboration = false,
+    artworkHashesJson = "[]",
   )
 
   private companion object {
