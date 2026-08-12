@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,9 +11,8 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeOutUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+  LinearTransition,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia';
 import { Ionicons } from '@expo/vector-icons';
@@ -68,6 +67,10 @@ const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
   { id: 'light', title: 'Light' },
   { id: 'materialYou', title: 'Material You' },
 ];
+
+const DOT_TRANSITION = LinearTransition.duration(motion.snap.duration).reduceMotion(
+  ReduceMotion.System
+);
 
 /**
  * First-run wizard. Rendered by the root layout instead of the app tree while
@@ -421,15 +424,12 @@ function ScanBanner() {
 /** Page indicator dot — widens + brightens when active. Animated View, not an icon. */
 function Dot({ active }: { active: boolean }) {
   const styles = useStyles();
-  const progress = useSharedValue(active ? 1 : 0);
-  useEffect(() => {
-    progress.value = withTiming(active ? 1 : 0, motion.snap);
-  }, [active, progress]);
-  const animatedStyle = useAnimatedStyle(() => ({
-    width: 8 + progress.value * 14,
-    opacity: 0.3 + progress.value * 0.7,
-  }));
-  return <Animated.View style={[styles.dot, animatedStyle]} />;
+  return (
+    <Animated.View
+      layout={DOT_TRANSITION}
+      style={[styles.dot, active ? styles.dotActive : styles.dotInactive]}
+    />
+  );
 }
 
 const useStyles = createThemedStyles((colors) => ({
@@ -567,6 +567,14 @@ const useStyles = createThemedStyles((colors) => ({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.accent,
+  },
+  dotActive: {
+    width: 22,
+    opacity: 1,
+  },
+  dotInactive: {
+    width: 8,
+    opacity: 0.3,
   },
   navRow: {
     flexDirection: 'row',
