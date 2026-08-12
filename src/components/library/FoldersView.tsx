@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ActivityIndicator,
+  BackHandler,
   Pressable,
   StyleSheet,
   View,
@@ -7,6 +9,7 @@ import {
 } from 'react-native';
 import type { ScrollHandlerProcessed } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import {
   AstraLibraryData,
   type NativeFolderNode,
@@ -32,12 +35,20 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import type { ScrollToTopHandle } from '@/navigation/scrollToTopHandle';
+import { TrackRow } from '@/components/library/TrackRow';
+import {
+  currentFolderId,
+  enterFolder,
+  folderBrowserRows,
+  leaveFolder,
+} from '@/library/folderBrowser';
 
 const PAGE_SIZE = 100;
 
 export type FolderActionTarget = NativeFolderNode;
 
 interface FoldersViewProps {
+  presentation: 'browser' | 'tree';
   onScroll?: ScrollHandlerProcessed;
   scrollEventThrottle?: number;
   /** What the list owes so it clears Library's collapsing header. */
@@ -50,6 +61,8 @@ interface FoldersViewProps {
   /** Hoists sheets above Library's persistent section bar. */
   onOpenTrackActions: (track: DbTrack) => void;
   onOpenFolderActions: (folder: NativeFolderNode) => void;
+  /** Keeps Library's collapsing header and pull-search gate at the new directory's top. */
+  onBrowserLocationChange?: () => void;
 }
 
 interface LoadedNode {
@@ -61,7 +74,7 @@ interface LoadedNode {
   loading: boolean;
 }
 
-type FolderRow =
+type TreeFolderRow =
   | { type: 'folder'; id: string; state: LoadedNode; expanded: boolean }
   | { type: 'track'; id: string; track: DbTrack; node: NativeFolderNode }
   | { type: 'more'; id: string; nodeId: string; depth: number };
@@ -145,6 +158,136 @@ function FolderNodeRow({
   );
 }
 
+function BrowserFolderRow({
+  node,
+  onOpen,
+  onOpenActions,
+}: {
+  node: NativeFolderNode;
+  onOpen: () => void;
+  onOpenActions: () => void;
+}) {
+  const styles = useStyles();
+  const colors = useColors();
+  const countLabel = `${node.totalTrackCount} ${node.totalTrackCount === 1 ? 'track' : 'tracks'}`;
+  return (
+    <AppPressable
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={styles.browserFolderRow}
+      onPress={onOpen}
+      onLongPress={() => {
+        playHaptic('holdAccepted');
+        onOpenActions();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${node.name}, folder, ${countLabel}`}
+    >
+      <Ionicons
+        name={node.available ? 'folder-outline' : 'alert-circle-outline'}
+        size={24}
+        color={node.available ? colors.textSecondary : colors.warning}
+      />
+      <View style={styles.browserFolderMeta}>
+        <Text variant="body" numberOfLines={1}>{node.name}</Text>
+        <Text
+          variant="label"
+          numberOfLines={1}
+          color={node.available ? colors.textSecondary : colors.warning}
+        >
+          {node.available ? countLabel : `Access lost · ${countLabel}`}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+    </AppPressable>
+  );
+}
+
+function BrowserDirectoryHeader({
+  state,
+  onPlay,
+  onShuffle,
+  onOpenActions,
+}: {
+  state: LoadedNode;
+  onPlay: () => void;
+  onShuffle: () => void;
+  onOpenActions: () => void;
+}) {
+  const styles = useStyles();
+  const colors = useColors();
+  const { node } = state;
+  const empty = node.totalTrackCount === 0;
+  return (
+    <AppPressable
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={styles.browserDirectoryHeader}
+      onLongPress={() => {
+        playHaptic('holdAccepted');
+        onOpenActions();
+      }}
+      accessibilityRole="summary"
+    >
+      <View style={styles.browserDirectoryMeta}>
+        <Text variant="heading" numberOfLines={1}>{node.name}</Text>
+        <View style={styles.browserDirectoryCountRow}>
+          <Text variant="label" numberOfLines={1}>
+            {node.totalTrackCount} {node.totalTrackCount === 1 ? 'track' : 'tracks'}
+          </Text>
+          {state.loading ? <ActivityIndicator size="small" color={colors.textTertiary} /> : null}
+        </View>
+      </View>
+      <View style={styles.browserDirectoryActions}>
+        <AppPressable
+          feedback="control"
+          style={styles.browserDirectoryButton}
+          onPress={(event) => {
+            event.stopPropagation();
+            onPlay();
+          }}
+          disabled={empty}
+          accessibilityRole="button"
+          accessibilityLabel={`Play ${node.name}`}
+        >
+          <Ionicons name="play" size={20} color={empty ? colors.textTertiary : colors.accent} />
+        </AppPressable>
+        <AppPressable
+          feedback="control"
+          style={styles.browserDirectoryButton}
+          onPress={(event) => {
+            event.stopPropagation();
+            onShuffle();
+          }}
+          disabled={empty}
+          accessibilityRole="button"
+          accessibilityLabel={`Shuffle ${node.name}`}
+        >
+          <Ionicons name="shuffle" size={20} color={colors.textSecondary} />
+        </AppPressable>
+      </View>
+    </AppPressable>
+  );
+}
+
+function BrowserUpRow({ label, onPress }: { label: string; onPress: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
+  return (
+    <AppPressable
+      unstable_pressDelay={SCROLL_PRESS_DELAY}
+      style={styles.browserFolderRow}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Up to ${label}`}
+    >
+      <Ionicons name="return-up-back-outline" size={24} color={colors.textSecondary} />
+      <View style={styles.browserFolderMeta}>
+        <Text variant="body">..</Text>
+        <Text variant="label" numberOfLines={1}>{label}</Text>
+      </View>
+    </AppPressable>
+  );
+}
+
 function FolderTrackRow({
   track,
   node,
@@ -214,6 +357,7 @@ function FolderTrackRow({
 }
 
 export function FoldersView({
+  presentation,
   onScroll,
   scrollEventThrottle,
   contentPaddingTop = 0,
@@ -222,6 +366,7 @@ export function FoldersView({
   listRef,
   onOpenTrackActions,
   onOpenFolderActions,
+  onBrowserLocationChange,
 }: FoldersViewProps) {
   const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
@@ -230,6 +375,7 @@ export function FoldersView({
   const [nodes, setNodes] = useState<Map<string, LoadedNode>>(() => new Map());
   const [rootIds, setRootIds] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [browserPath, setBrowserPath] = useState<string[]>([]);
 
   const replaceRoots = async () => {
     const roots = await AstraLibraryData.getFolderNodes(null);
@@ -239,6 +385,7 @@ export function FoldersView({
     ])));
     setRootIds(roots.map((node) => node.id));
     setExpanded(new Set());
+    setBrowserPath([]);
   };
 
   useEffect(() => {
@@ -300,7 +447,7 @@ export function FoldersView({
   };
 
   const rows = useMemo(() => {
-    const result: FolderRow[] = [];
+    const result: TreeFolderRow[] = [];
     const visit = (id: string) => {
       const state = nodes.get(id);
       if (!state) return;
@@ -318,6 +465,45 @@ export function FoldersView({
     rootIds.forEach(visit);
     return result;
   }, [expanded, nodes, rootIds]);
+
+  const browserRows = useMemo(
+    () => folderBrowserRows({
+      path: browserPath,
+      rootIds,
+      nodes,
+      trackId: (track: DbTrack) => track.path,
+    }),
+    [browserPath, nodes, rootIds],
+  );
+  const browserNodeId = currentFolderId(browserPath);
+  const browserState = browserNodeId == null ? null : nodes.get(browserNodeId) ?? null;
+  const browserLocationKey = browserPath.join('\u0000');
+
+  useEffect(() => {
+    if (presentation === 'browser') onBrowserLocationChange?.();
+  }, [browserLocationKey, onBrowserLocationChange, presentation]);
+
+  const enterBrowserFolder = (nodeId: string) => {
+    setBrowserPath((path) => enterFolder(path, nodeId));
+    if (!nodes.get(nodeId)?.loaded) void loadNode(nodeId);
+  };
+
+  const leaveBrowserFolder = () => {
+    setBrowserPath((path) => leaveFolder(path) ?? path);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (presentation !== 'browser' || browserPath.length === 0) return undefined;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        const parent = leaveFolder(browserPath);
+        if (parent == null) return false;
+        setBrowserPath(parent);
+        return true;
+      });
+      return () => subscription.remove();
+    }, [browserPath, presentation]),
+  );
 
   const playFolder = (node: NativeFolderNode, shuffle = false) => {
     if (node.totalTrackCount === 0) return;
@@ -350,6 +536,96 @@ export function FoldersView({
           </Text>
         </View>
       </View>
+    );
+  }
+
+  if (presentation === 'browser') {
+    const parentName = browserPath.length > 1
+      ? nodes.get(browserPath[browserPath.length - 2])?.node.name ?? 'Parent folder'
+      : 'Folder roots';
+    return (
+      <ReanimatedFlashList
+        key={`folder-browser:${browserNodeId ?? 'root'}`}
+        ref={listRef}
+        data={browserRows}
+        keyExtractor={(row) => row.id}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        renderScrollComponent={PullSearchScrollView}
+        onScroll={onScroll}
+        scrollEventThrottle={scrollEventThrottle}
+        contentContainerStyle={{
+          paddingTop: contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: contentPaddingBottom ?? sceneBottomInset,
+        }}
+        ListHeaderComponent={
+          <>
+            {listHeader}
+            {browserState ? (
+              <BrowserDirectoryHeader
+                state={browserState}
+                onPlay={() => playFolder(browserState.node)}
+                onShuffle={() => playFolder(browserState.node, true)}
+                onOpenActions={() => onOpenFolderActions(browserState.node)}
+              />
+            ) : null}
+          </>
+        }
+        ListFooterComponent={
+          browserState?.loaded &&
+          browserState.childIds.length === 0 &&
+          browserState.tracks.length === 0 ? (
+            <View style={styles.browserEmpty}>
+              <Text variant="body" color={colors.textSecondary}>This folder is empty.</Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) => {
+          if (item.type === 'up') {
+            return <BrowserUpRow label={parentName} onPress={leaveBrowserFolder} />;
+          }
+          if (item.type === 'folder') {
+            return (
+              <BrowserFolderRow
+                node={item.node}
+                onOpen={() => enterBrowserFolder(item.node.id)}
+                onOpenActions={() => onOpenFolderActions(item.node)}
+              />
+            );
+          }
+          if (item.type === 'more') {
+            return (
+              <AppPressable
+                unstable_pressDelay={SCROLL_PRESS_DELAY}
+                style={styles.browserMoreRow}
+                onPress={() => void loadNode(item.nodeId, true)}
+                accessibilityRole="button"
+              >
+                <Text variant="label" color={colors.accent}>Load more tracks</Text>
+              </AppPressable>
+            );
+          }
+          if (!browserState) return null;
+          return (
+            <TrackRow
+              track={item.track}
+              active={item.track.path === currentPath}
+              onPress={() => {
+                void playLibraryQuery(
+                  { kind: 'folder', folderNodeId: browserState.node.id },
+                  {
+                    anchorPath: item.track.path,
+                    source: { kind: 'folder', label: browserState.node.name },
+                  },
+                );
+              }}
+              onLongPress={() => onOpenTrackActions(item.track)}
+              onOpenActions={() => onOpenTrackActions(item.track)}
+            />
+          );
+        }}
+      />
     );
   }
 
@@ -468,6 +744,62 @@ const useStyles = createThemedStyles((colors) => ({
     borderBottomColor: colors.glassBorder,
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: spacing.sm,
+  },
+  browserFolderRow: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  browserFolderMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  browserDirectoryHeader: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  browserDirectoryMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  browserDirectoryCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  browserDirectoryActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  browserDirectoryButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+  },
+  browserMoreRow: {
+    minHeight: 52,
+    justifyContent: 'center',
+    paddingLeft: 36,
+    borderBottomColor: colors.glassBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  browserEmpty: {
+    minHeight: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   folderMeta: {
     flex: 1,

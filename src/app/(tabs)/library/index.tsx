@@ -618,6 +618,11 @@ export default function LibraryScreen() {
     settledHeadListIdentityUi,
   ]);
 
+  const resetFolderBrowserLocation = useCallback(() => {
+    setScrollAtTop(true);
+    resetHeader();
+  }, [resetHeader, setScrollAtTop]);
+
   const syncScrollTopGate = useCallback((y: number) => {
     // A queued runOnJS call can also trail an unmount, so retain the JS-side
     // identity guard even though the animation is independently gated below.
@@ -942,6 +947,7 @@ export default function LibraryScreen() {
 
                 {viewMode === 'folders' ? (
                 <FoldersView
+                  presentation={phoneContextBar ? 'browser' : 'tree'}
                   listRef={setFolderList}
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -950,6 +956,7 @@ export default function LibraryScreen() {
                   listHeader={inlineStatus}
                   onOpenTrackActions={setActionTrack}
                   onOpenFolderActions={setActionFolder}
+                  onBrowserLocationChange={resetFolderBrowserLocation}
                 />
                 ) : null}
 
