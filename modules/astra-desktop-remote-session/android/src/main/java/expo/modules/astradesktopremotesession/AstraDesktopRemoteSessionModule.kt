@@ -35,6 +35,13 @@ private const val ACTION_NEXT = ACTION_PREFIX + "NEXT"
 private const val ACTION_TOGGLE_FAVORITE = ACTION_PREFIX + "TOGGLE_FAVORITE"
 private const val ACTION_STOP = ACTION_PREFIX + "STOP"
 private const val MAX_ART_EDGE = 512
+private const val NOTIFICATION_ICON_RESOURCE = "astra_notification_icon"
+
+private fun notificationSmallIcon(context: Context): Int =
+  context.resources
+    .getIdentifier(NOTIFICATION_ICON_RESOURCE, "drawable", context.packageName)
+    .takeIf { it != 0 }
+    ?: android.R.drawable.ic_media_play
 
 class AstraDesktopRemoteSessionState : Record {
   @Field
@@ -240,7 +247,7 @@ object AstraDesktopRemoteSessionController {
     }
     val largeIcon = decodeDataUrlBitmap(state.artworkDataUrl)
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-      .setSmallIcon(android.R.drawable.ic_media_play)
+      .setSmallIcon(notificationSmallIcon(context))
       .setContentTitle(state.title?.ifBlank { "Unknown track" } ?: "Unknown track")
       .setContentText(state.artist?.ifBlank { state.desktopName } ?: state.desktopName ?: "Astra Desktop")
       .setSubText(state.desktopName ?: "Desktop Remote")

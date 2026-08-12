@@ -15,6 +15,14 @@ import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
 
+private const val NOTIFICATION_ICON_RESOURCE = "astra_notification_icon"
+
+private fun notificationSmallIcon(context: Context): Int =
+  context.resources
+    .getIdentifier(NOTIFICATION_ICON_RESOURCE, "drawable", context.packageName)
+    .takeIf { it != 0 }
+    ?: android.R.drawable.ic_media_play
+
 class AstraCarCommandService : HeadlessJsTaskService() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     // We're started via startForegroundService (so transport from the car works even when
@@ -72,7 +80,7 @@ class AstraCarCommandService : HeadlessJsTaskService() {
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setContentTitle("Astra")
       .setContentText("Handling car controls")
-      .setSmallIcon(android.R.drawable.ic_media_play)
+      .setSmallIcon(notificationSmallIcon(this))
       .setPriority(NotificationCompat.PRIORITY_LOW)
       .setOngoing(true)
       .build()

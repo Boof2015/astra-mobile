@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
@@ -64,4 +67,37 @@ test('marks QR scanning camera hardware as optional without duplicating it', () 
       },
     },
   ]);
+});
+
+test('writes deterministic Astra and RNTP notification icon resources', async (t) => {
+  const projectRoot = await mkdtemp(path.join(tmpdir(), 'astra-notification-icon-'));
+  t.after(() => rm(projectRoot, { recursive: true, force: true }));
+
+  await _internal.writeNotificationIconResources(projectRoot);
+  const drawablePath = path.join(
+    projectRoot,
+    'app/src/main/res/drawable',
+    _internal.NOTIFICATION_ICON_FILE
+  );
+  const overridePath = path.join(
+    projectRoot,
+    'app/src/main/res/values',
+    _internal.NOTIFICATION_OVERRIDE_FILE
+  );
+  const firstDrawable = await readFile(drawablePath, 'utf8');
+  const firstOverride = await readFile(overridePath, 'utf8');
+
+  assert.equal(firstDrawable, _internal.NOTIFICATION_ICON_VECTOR);
+  assert.match(firstDrawable, /android:width="24dp"/);
+  assert.match(firstDrawable, /android:fillColor="#FFFFFFFF"/);
+  assert.doesNotMatch(firstDrawable, /background|logoShadow/);
+  assert.equal(firstOverride, _internal.NOTIFICATION_ICON_OVERRIDE);
+  assert.match(
+    firstOverride,
+    /name="exo_notification_small_icon" type="drawable">@drawable\/astra_notification_icon/
+  );
+
+  await _internal.writeNotificationIconResources(projectRoot);
+  assert.equal(await readFile(drawablePath, 'utf8'), firstDrawable);
+  assert.equal(await readFile(overridePath, 'utf8'), firstOverride);
 });
