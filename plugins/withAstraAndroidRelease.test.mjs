@@ -53,6 +53,86 @@ test('appendBlock adds a native block exactly once', () => {
   assert.equal(once.split(_internal.SETTINGS_MARKER).length - 1, 1);
 });
 
+test('raises the generated Gradle Metaspace cap while preserving unrelated properties', () => {
+  const properties = [
+    { type: 'comment', value: 'Project-wide Gradle settings.' },
+    {
+      type: 'property',
+      key: _internal.GRADLE_JVM_ARGS_PROPERTY,
+      value: '-Xmx2048m -XX:MaxMetaspaceSize=512m',
+    },
+    { type: 'property', key: 'org.gradle.parallel', value: 'true' },
+  ];
+
+  assert.deepEqual(
+    _internal.upsertGradleProperty(
+      properties,
+      _internal.GRADLE_JVM_ARGS_PROPERTY,
+      _internal.GRADLE_JVM_ARGS_VALUE
+    ),
+    [
+      properties[0],
+      {
+        type: 'property',
+        key: _internal.GRADLE_JVM_ARGS_PROPERTY,
+        value: '-Xmx2048m -XX:MaxMetaspaceSize=1024m',
+      },
+      properties[2],
+    ]
+  );
+});
+
+test('adds the Gradle JVM arguments when the generated property is absent', () => {
+  const transformed = _internal.upsertGradleProperty(
+    [{ type: 'property', key: 'org.gradle.parallel', value: 'true' }],
+    _internal.GRADLE_JVM_ARGS_PROPERTY,
+    _internal.GRADLE_JVM_ARGS_VALUE
+  );
+
+  assert.deepEqual(transformed.slice(-2), [
+    { type: 'empty' },
+    {
+      type: 'property',
+      key: _internal.GRADLE_JVM_ARGS_PROPERTY,
+      value: _internal.GRADLE_JVM_ARGS_VALUE,
+    },
+  ]);
+});
+
+test('Gradle JVM argument transform is idempotent and removes duplicate properties', () => {
+  const properties = [
+    {
+      type: 'property',
+      key: _internal.GRADLE_JVM_ARGS_PROPERTY,
+      value: '-Xmx2048m -XX:MaxMetaspaceSize=512m',
+    },
+    {
+      type: 'property',
+      key: _internal.GRADLE_JVM_ARGS_PROPERTY,
+      value: '-Xmx1024m -XX:MaxMetaspaceSize=256m',
+    },
+  ];
+  const once = _internal.upsertGradleProperty(
+    properties,
+    _internal.GRADLE_JVM_ARGS_PROPERTY,
+    _internal.GRADLE_JVM_ARGS_VALUE
+  );
+  const twice = _internal.upsertGradleProperty(
+    once,
+    _internal.GRADLE_JVM_ARGS_PROPERTY,
+    _internal.GRADLE_JVM_ARGS_VALUE
+  );
+
+  assert.deepEqual(twice, once);
+  assert.equal(
+    once.filter(
+      (property) =>
+        property.type === 'property' && property.key === _internal.GRADLE_JVM_ARGS_PROPERTY
+    ).length,
+    1
+  );
+});
+
 test('marks QR scanning camera hardware as optional without duplicating it', () => {
   const manifest = { manifest: {} };
 

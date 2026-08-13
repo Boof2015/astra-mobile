@@ -96,6 +96,7 @@ jobs:
           grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
           grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
+          grep -Fq 'org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
 
       - name: Decode app-signing keystore
@@ -218,6 +219,7 @@ jobs:
           grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
           grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
+          grep -Fq 'org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
 
       - name: Run Astra native unit tests

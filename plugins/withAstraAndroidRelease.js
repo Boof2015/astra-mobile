@@ -3,6 +3,7 @@ const path = require('path');
 const {
   AndroidConfig,
   withDangerousMod,
+  withGradleProperties,
   withAndroidManifest,
   withAppBuildGradle,
   withProjectBuildGradle,
@@ -15,6 +16,8 @@ const SIGNING_MARKER = '// ASTRA RELEASE SIGNING';
 const CAMERA_FEATURE = 'android.hardware.camera';
 const NOTIFICATION_ICON_FILE = 'astra_notification_icon.xml';
 const NOTIFICATION_OVERRIDE_FILE = 'astra_notification_icon_overrides.xml';
+const GRADLE_JVM_ARGS_PROPERTY = 'org.gradle.jvmargs';
+const GRADLE_JVM_ARGS_VALUE = '-Xmx2048m -XX:MaxMetaspaceSize=1024m';
 
 // A notification small icon is an alpha mask: Android supplies the color for
 // the status bar, lock screen and media controls. Keep only the main Astra mark
@@ -108,6 +111,31 @@ function appendBlock(contents, marker, block) {
   return contents.includes(marker) ? contents : `${contents.trimEnd()}${block}`;
 }
 
+function upsertGradleProperty(properties, key, value) {
+  let propertyFound = false;
+  const updatedProperties = [];
+
+  for (const property of properties) {
+    if (property.type === 'property' && property.key === key) {
+      if (!propertyFound) {
+        updatedProperties.push({ ...property, value });
+        propertyFound = true;
+      }
+      continue;
+    }
+    updatedProperties.push(property);
+  }
+
+  if (!propertyFound) {
+    if (updatedProperties.length > 0 && updatedProperties.at(-1)?.type !== 'empty') {
+      updatedProperties.push({ type: 'empty' });
+    }
+    updatedProperties.push({ type: 'property', key, value });
+  }
+
+  return updatedProperties;
+}
+
 function addReleaseSigning(contents) {
   if (contents.includes(SIGNING_MARKER)) return contents;
 
@@ -155,6 +183,17 @@ function withVendoredKotlinAudio(config) {
 function withReleaseSigning(config) {
   return withAppBuildGradle(config, (mod) => {
     mod.modResults.contents = addReleaseSigning(mod.modResults.contents);
+    return mod;
+  });
+}
+
+function withGradleBuildMemory(config) {
+  return withGradleProperties(config, (mod) => {
+    mod.modResults = upsertGradleProperty(
+      mod.modResults,
+      GRADLE_JVM_ARGS_PROPERTY,
+      GRADLE_JVM_ARGS_VALUE
+    );
     return mod;
   });
 }
@@ -224,6 +263,7 @@ function withAstraNotificationIcon(config) {
 function withAstraAndroidRelease(config) {
   config = withVendoredKotlinAudio(config);
   config = withReleaseSigning(config);
+  config = withGradleBuildMemory(config);
   config = withAstraNotificationIcon(config);
   return withProfileableRelease(config);
 }
@@ -233,12 +273,15 @@ module.exports._internal = {
   PROJECT_BUILD_MARKER,
   SETTINGS_MARKER,
   SIGNING_MARKER,
+  GRADLE_JVM_ARGS_PROPERTY,
+  GRADLE_JVM_ARGS_VALUE,
   NOTIFICATION_ICON_FILE,
   NOTIFICATION_ICON_VECTOR,
   NOTIFICATION_OVERRIDE_FILE,
   NOTIFICATION_ICON_OVERRIDE,
   addReleaseSigning,
   appendBlock,
+  upsertGradleProperty,
   ensureOptionalCameraFeature,
   writeNotificationIconResources,
 };
