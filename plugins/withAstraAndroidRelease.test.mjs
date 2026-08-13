@@ -56,6 +56,18 @@ test('adds an idempotent side-by-side Astra Dev preview build', () => {
   assert.equal(_internal.addPreviewBuildType(transformed), transformed);
 });
 
+test('builds the side-by-side preview with production JS transforms', async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL('../package.json', import.meta.url), 'utf8')
+  );
+  const previewCommand = packageJson.scripts?.['android:preview'];
+
+  assert.equal(typeof previewCommand, 'string');
+  assert.match(previewCommand, /(?:^|\s)NODE_ENV=production(?:\s|$)/);
+  assert.match(previewCommand, /(?:^|\s)BABEL_ENV=production(?:\s|$)/);
+  assert.match(previewCommand, /--variant preview(?:\s|$)/);
+});
+
 test('appendBlock adds a native block exactly once', () => {
   const once = _internal.appendBlock('base\n', _internal.SETTINGS_MARKER, `\n${_internal.SETTINGS_MARKER}\nblock\n`);
   const twice = _internal.appendBlock(once, _internal.SETTINGS_MARKER, `\n${_internal.SETTINGS_MARKER}\nblock\n`);
