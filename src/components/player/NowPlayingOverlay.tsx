@@ -69,7 +69,10 @@ import {
   ScopedPaletteProvider,
   useColors,
 } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
+import {
+  AppPressable,
+  AppPressableGestureScope,
+} from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { paletteWithAccent } from '@/theme/scopedAccent';
 import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
@@ -1078,6 +1081,7 @@ export function NowPlayingOverlay({
             },
           ]}
         >
+          <AppPressableGestureScope>
           <NowPlayingWash
             artworkUri={washArtworkUri}
             offset={{
@@ -1874,6 +1878,7 @@ export function NowPlayingOverlay({
               ) : null}
             </View>
           </View>
+          </AppPressableGestureScope>
         </Animated.View>
       </MaybePan>
       {menuOpen && menuItems.length > 0 && (

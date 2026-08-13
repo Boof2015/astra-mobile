@@ -1,11 +1,14 @@
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are mutable press state. */
-import type { ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import {
-  Pressable,
-  type PressableProps,
   type StyleProp,
+  type View as NativeView,
   type ViewStyle,
 } from 'react-native';
+import {
+  Pressable as GesturePressable,
+  type PressableProps as GesturePressableProps,
+} from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -15,12 +18,17 @@ import Animated, {
 import { playHaptic, type HapticEvent } from '@/lib/haptics';
 import { motion } from '@/theme/motion';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const GesturePressableWithRef = forwardRef<NativeView, GesturePressableProps>(
+  function GesturePressableWithRef(props, ref) {
+    return <GesturePressable {...props} ref={ref} />;
+  }
+);
+const AnimatedPressable = Animated.createAnimatedComponent(GesturePressableWithRef);
 
 type HapticFeedback = HapticEvent | 'none';
 
 interface TactilePressableProps
-  extends Omit<PressableProps, 'children' | 'style'> {
+  extends Omit<GesturePressableProps, 'children' | 'style'> {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   pressedScale?: number;
@@ -49,17 +57,17 @@ export function TactilePressable({
     transform: [{ scale: scale.value }],
   }));
 
-  const handlePressIn: NonNullable<PressableProps['onPressIn']> = (event) => {
+  const handlePressIn: NonNullable<GesturePressableProps['onPressIn']> = (event) => {
     scale.value = withTiming(pressedScale, motion.quick);
     onPressIn?.(event);
   };
 
-  const handlePressOut: NonNullable<PressableProps['onPressOut']> = (event) => {
+  const handlePressOut: NonNullable<GesturePressableProps['onPressOut']> = (event) => {
     scale.value = withTiming(1, motion.quick);
     onPressOut?.(event);
   };
 
-  const handlePress: NonNullable<PressableProps['onPress']> = (event) => {
+  const handlePress: NonNullable<GesturePressableProps['onPress']> = (event) => {
     if (haptic !== 'none') playHaptic(haptic);
     if (confirmationScale) {
       scale.value = withSequence(
