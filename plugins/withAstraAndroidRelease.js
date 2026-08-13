@@ -13,6 +13,7 @@ const {
 const SETTINGS_MARKER = '// ASTRA VENDORED KOTLIN AUDIO';
 const PROJECT_BUILD_MARKER = '// ASTRA KOTLIN AUDIO SUBSTITUTION';
 const SIGNING_MARKER = '// ASTRA RELEASE SIGNING';
+const PREVIEW_MARKER = '// ASTRA SIDE-BY-SIDE PREVIEW';
 const CAMERA_FEATURE = 'android.hardware.camera';
 const NOTIFICATION_ICON_FILE = 'astra_notification_icon.xml';
 const NOTIFICATION_OVERRIDE_FILE = 'astra_notification_icon_overrides.xml';
@@ -86,9 +87,11 @@ def astraReleaseSigningValues = [
 def astraReleaseSigningConfigured = astraReleaseSigningValues.every { value -> value != null && !value.trim().isEmpty() }
 
 gradle.taskGraph.whenReady { taskGraph ->
-    def astraReleaseTaskRequested = taskGraph.allTasks.any { task -> task.name.toLowerCase().contains('release') }
+    def astraReleaseTaskRequested = taskGraph.allTasks.any { task ->
+        task.project == project && task.name.toLowerCase().contains('release')
+    }
     if (astraReleaseTaskRequested && !astraReleaseSigningConfigured && !astraAllowInsecureReleaseSigning) {
-        throw new GradleException('Release signing is not configured. Supply the ASTRA_ANDROID_KEYSTORE_* variables, or explicitly set ASTRA_ALLOW_INSECURE_RELEASE_SIGNING=true for a non-publishable local preview.')
+        throw new GradleException('Release signing is not configured. Supply the ASTRA_ANDROID_KEYSTORE_* variables, or explicitly set ASTRA_ALLOW_INSECURE_RELEASE_SIGNING=true for a non-publishable local release build.')
     }
 }
 
@@ -105,6 +108,23 @@ const RELEASE_SIGNING_CONFIG = `        if (astraReleaseSigningConfigured) {
                 keyPassword astraReleaseKeyPassword
             }
         }
+`;
+
+const PREVIEW_BUILD_CONFIGURATION = `
+
+${PREVIEW_MARKER}
+android {
+    buildTypes {
+        preview {
+            initWith release
+            applicationIdSuffix '.dev'
+            versionNameSuffix '-dev'
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            resValue 'string', 'app_name', 'Astra Dev'
+        }
+    }
+}
 `;
 
 function appendBlock(contents, marker, block) {
@@ -164,6 +184,10 @@ function addReleaseSigning(contents) {
   return `${result.slice(0, lastDebugSigning)}signingConfig astraReleaseSigningConfigured ? signingConfigs.release : signingConfigs.debug${result.slice(lastDebugSigning + debugSigning.length)}`;
 }
 
+function addPreviewBuildType(contents) {
+  return appendBlock(contents, PREVIEW_MARKER, PREVIEW_BUILD_CONFIGURATION);
+}
+
 function withVendoredKotlinAudio(config) {
   config = withSettingsGradle(config, (mod) => {
     mod.modResults.contents = appendBlock(mod.modResults.contents, SETTINGS_MARKER, SETTINGS_BLOCK);
@@ -180,9 +204,11 @@ function withVendoredKotlinAudio(config) {
   });
 }
 
-function withReleaseSigning(config) {
+function withAndroidBuildTypes(config) {
   return withAppBuildGradle(config, (mod) => {
-    mod.modResults.contents = addReleaseSigning(mod.modResults.contents);
+    mod.modResults.contents = addPreviewBuildType(
+      addReleaseSigning(mod.modResults.contents)
+    );
     return mod;
   });
 }
@@ -262,7 +288,7 @@ function withAstraNotificationIcon(config) {
 
 function withAstraAndroidRelease(config) {
   config = withVendoredKotlinAudio(config);
-  config = withReleaseSigning(config);
+  config = withAndroidBuildTypes(config);
   config = withGradleBuildMemory(config);
   config = withAstraNotificationIcon(config);
   return withProfileableRelease(config);
@@ -273,6 +299,7 @@ module.exports._internal = {
   PROJECT_BUILD_MARKER,
   SETTINGS_MARKER,
   SIGNING_MARKER,
+  PREVIEW_MARKER,
   GRADLE_JVM_ARGS_PROPERTY,
   GRADLE_JVM_ARGS_VALUE,
   NOTIFICATION_ICON_FILE,
@@ -280,6 +307,7 @@ module.exports._internal = {
   NOTIFICATION_OVERRIDE_FILE,
   NOTIFICATION_ICON_OVERRIDE,
   addReleaseSigning,
+  addPreviewBuildType,
   appendBlock,
   upsertGradleProperty,
   ensureOptionalCameraFeature,

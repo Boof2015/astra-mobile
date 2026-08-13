@@ -45,6 +45,17 @@ test('release signing transform is idempotent', () => {
   assert.equal(transformed.split(_internal.SIGNING_MARKER).length - 1, 1);
 });
 
+test('adds an idempotent side-by-side Astra Dev preview build', () => {
+  const transformed = _internal.addPreviewBuildType(APP_GRADLE);
+
+  assert.match(transformed, /ASTRA SIDE-BY-SIDE PREVIEW/);
+  assert.match(transformed, /preview \{\n            initWith release/);
+  assert.match(transformed, /applicationIdSuffix '\.dev'/);
+  assert.match(transformed, /signingConfig signingConfigs\.debug/);
+  assert.match(transformed, /resValue 'string', 'app_name', 'Astra Dev'/);
+  assert.equal(_internal.addPreviewBuildType(transformed), transformed);
+});
+
 test('appendBlock adds a native block exactly once', () => {
   const once = _internal.appendBlock('base\n', _internal.SETTINGS_MARKER, `\n${_internal.SETTINGS_MARKER}\nblock\n`);
   const twice = _internal.appendBlock(once, _internal.SETTINGS_MARKER, `\n${_internal.SETTINGS_MARKER}\nblock\n`);
