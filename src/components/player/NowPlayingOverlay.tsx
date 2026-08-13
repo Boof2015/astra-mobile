@@ -1920,7 +1920,7 @@ export function NowPlayingOverlay({
       {sleepTimerOpen ? (
         <AppSheet onClose={() => setSleepTimerOpen(false)}>
           <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerStatus(sleepTimer) : undefined} />
-          <SleepTimerControls />
+          <SleepTimerControls inputContext="bottom-sheet" />
         </AppSheet>
       ) : null}
       {artistPickerOpen && track ? (

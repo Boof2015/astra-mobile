@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { TextInput, View } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import { SLEEP_TIMER_PRESETS, formatSleepTimerStatus, normalizeSleepTimerMinutes } from '@/audio/sleepTimerState';
@@ -11,7 +11,11 @@ import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 
-export function SleepTimerControls() {
+export interface SleepTimerControlsProps {
+  inputContext?: 'screen' | 'bottom-sheet';
+}
+
+export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerControlsProps) {
   const styles = useStyles();
   const colors = useColors();
   const timer = useSleepTimerStore((s) => s.timer);
@@ -26,6 +30,7 @@ export function SleepTimerControls() {
   const [customMinutes, setCustomMinutes] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const available = target === 'phone' && Boolean(track);
+  const MinutesInput = inputContext === 'bottom-sheet' ? BottomSheetTextInput : TextInput;
   void remainingMs;
 
   useEffect(() => {
@@ -91,7 +96,7 @@ export function SleepTimerControls() {
       </View>
 
       <View style={styles.customRow}>
-        <BottomSheetTextInput
+        <MinutesInput
           value={customMinutes}
           onChangeText={setCustomMinutes}
           editable={available}
