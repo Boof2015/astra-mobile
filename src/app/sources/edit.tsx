@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -18,7 +17,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceType } from '@/types/remote';
 
@@ -85,7 +84,6 @@ function Field({
 
 export default function SourceEditScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -189,12 +187,12 @@ export default function SourceEditScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goBack} hitSlop={8}>
+          <AppPressable feedback="control"  style={styles.back} onPress={goBack} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               {backLabel}
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
 
         {step === 'type' ? (
@@ -208,7 +206,7 @@ export default function SourceEditScreen() {
 
             <View style={styles.typeCards}>
               {TYPE_OPTIONS.map((option) => (
-                <Pressable android_ripple={ripple.bounded}
+                <AppPressable
                   key={option.type}
                   style={styles.typeCard}
                   onPress={() => chooseType(option.type)}
@@ -228,7 +226,7 @@ export default function SourceEditScreen() {
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-                </Pressable>
+                </AppPressable>
               ))}
             </View>
           </ScrollView>
@@ -276,7 +274,7 @@ export default function SourceEditScreen() {
             ) : null}
 
             <View style={styles.actions}>
-              <Pressable android_ripple={ripple.bounded}
+              <AppPressable feedback="control"
                 style={[styles.button, styles.secondaryButton, busy ? styles.buttonDisabled : null]}
                 onPress={() => void onTest()}
                 disabled={!!busy}
@@ -288,8 +286,8 @@ export default function SourceEditScreen() {
                     Test connection
                   </Text>
                 )}
-              </Pressable>
-              <Pressable android_ripple={ripple.bounded}
+              </AppPressable>
+              <AppPressable feedback="accent"
                 style={[
                   styles.button,
                   styles.primaryButton,
@@ -305,7 +303,7 @@ export default function SourceEditScreen() {
                     {editing ? 'Save' : 'Add server'}
                   </Text>
                 )}
-              </Pressable>
+              </AppPressable>
             </View>
           </ScrollView>
         )}

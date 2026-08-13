@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
@@ -10,14 +11,13 @@ import { genEqId } from '@/audio/eqPresets';
 import { useEQStore } from '@/stores/eqStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { EQPreset } from '@/types/audio';
 
 export default function EQPresetImportScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const importPreset = useEQStore((state) => state.importPreset);
   const { data } = useLocalSearchParams<{ data?: string }>();
 
@@ -30,27 +30,29 @@ export default function EQPresetImportScreen() {
     }
   }, [data]);
 
-  const goToEq = () => router.replace('/eq' as never);
+  // `/eq` is a tab, and this screen is a root-stack sibling of `(tabs)`, so a
+  // bare replace here mints a second copy of the whole tab tree.
+  const goToEq = () => returnToTabs('/eq' as never);
 
   if (!preset) {
     return (
       <Screen>
         <View style={styles.header}>
-          <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goToEq} hitSlop={8}>
+          <AppPressable feedback="control"  style={styles.back} onPress={goToEq} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
             <Text variant="body" color={colors.textSecondary}>
               Equalizer
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={28} color={colors.warning} />
           <Text variant="body">This link does not contain a valid Astra EQ preset.</Text>
-          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={goToEq}>
+          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={goToEq}>
             <Text variant="body" color={colors.accentTextStrong}>
               Go to Equalizer
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       </Screen>
     );

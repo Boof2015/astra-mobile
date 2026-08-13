@@ -14,29 +14,7 @@
 // DesktopSyncPlaylistConflict for the user to resolve. Timestamp LWW remains
 // the fallback for pairs without a baseline yet.
 
-import { openLibraryDb } from '@/db/database';
-import { getAllTracks, setSetting } from '@/db/queries';
-import { renamePlaylist } from '@/db/playlistQueries';
-import {
-  adoptPlaylistSyncUid,
-  applySyncedFavoriteAdd,
-  applySyncedFavoriteRemove,
-  applySyncedPlaylistDelete,
-  clonePlaylistAsLocalCopy,
-  deletePlaylistSyncBaseline,
-  ensurePlaylistSyncUids,
-  getLocalSyncState,
-  getPlaylistSyncBaselines,
-  getSyncPlaylistEntries,
-  removeFavoriteTombstone,
-  removePlaylistTombstone,
-  replaceSyncedPlaylist,
-  resolvePendingFavorites,
-  upsertPendingFavorite,
-  upsertPlaylistSyncBaseline,
-  type LocalSyncPlaylist,
-} from '@/db/desktopSyncQueries';
-import { buildImportIndex, matchSyncEntry } from '@/library/playlistFiles';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { normalizeSyncKeyPart } from '@/shared/sync/identity';
 import { syncPlaylistToSnapshot } from '@/shared/sync/conflictPreview';
 import { normalizeDynamicPlaylistRules } from '@/shared/playlists/dynamicPlaylist';
@@ -69,6 +47,48 @@ import {
 import { ensureDesktopRemoteCredentialsFresh } from './desktopRemoteSession';
 
 const CLOCK_SKEW_WARN_MS = 5 * 60_000;
+
+interface NativeLocalSyncFavorite extends SyncFavorite {
+  trackPaths: string[];
+  pending: boolean;
+}
+
+interface NativeLocalSyncPlaylist extends SyncPlaylist {
+  id: number;
+}
+
+interface NativeLocalSyncState {
+  favorites: NativeLocalSyncFavorite[];
+  favoriteTombstones: { key: string; deletedAt: number }[];
+  playlists: NativeLocalSyncPlaylist[];
+  playlistTombstones: { syncUid: string; deletedAt: number }[];
+  baselines: { syncUid: string; localUpdatedAt: number; remoteUpdatedAt: number }[];
+}
+
+interface DesktopSyncMutationPlan {
+  settings: Record<string, string>;
+  favoriteAdds: SyncFavorite[];
+  favoriteRemoves: (SyncFavorite & { trackPaths: string[]; deletedAt: number })[];
+  favoriteTombstoneRemovals: string[];
+  playlistAdoptions: { playlistId: number; syncUid: string }[];
+  playlistUpserts: SyncPlaylist[];
+  playlistDeletes: { syncUid: string; deletedAt: number }[];
+  playlistTombstoneRemovals: string[];
+  baselineUpserts: { syncUid: string; localUpdatedAt: number; remoteUpdatedAt: number }[];
+  baselineDeletes: string[];
+}
+
+interface NativeDesktopSyncApplyResult {
+  favoritesAdded: number;
+  favoritesPending: number;
+  favoritesRemoved: number;
+  playlistResults: {
+    syncUid: string;
+    status: 'created' | 'replaced' | 'deleted' | 'skipped-incompatible';
+    entriesMatched: number;
+    entriesFallback: number;
+  }[];
+}
 
 /** The paired desktop runs a protocol without /v1/sync/* — needs an update. */
 export class DesktopSyncUnsupportedError extends Error {
@@ -214,11 +234,17 @@ async function runDesktopSyncOnce(): Promise<{
     throw new DesktopSyncUnsupportedError();
   }
 
-  const db = await openLibraryDb();
-  await ensurePlaylistSyncUids(db);
-  const index = buildImportIndex(await getAllTracks(db));
-  await resolvePendingFavorites(db, index);
-  const local = await getLocalSyncState(db);
+  const localState = await AstraLibraryData.getDesktopSyncState<NativeLocalSyncState>();
+  const local = {
+    favorites: new Map(localState.favorites.map((favorite) => [favorite.key, favorite])),
+    favoriteTombstones: new Map(
+      localState.favoriteTombstones.map((tombstone) => [tombstone.key, tombstone.deletedAt])
+    ),
+    playlists: localState.playlists,
+    playlistTombstones: new Map(
+      localState.playlistTombstones.map((tombstone) => [tombstone.syncUid, tombstone.deletedAt])
+    ),
+  };
   const remote = await fetchDesktopSyncState(connection.baseUrl, token, connection.certificateFingerprint);
   if (remote.syncFormat !== DESKTOP_SYNC_FORMAT) {
     throw new DesktopSyncUnsupportedError();
@@ -251,7 +277,27 @@ async function runDesktopSyncOnce(): Promise<{
     startedAt,
     finishedAt: startedAt,
   };
-  const baselines = await getPlaylistSyncBaselines(db);
+  const baselines = new Map(
+    localState.baselines.map((baseline) => [
+      baseline.syncUid,
+      {
+        localUpdatedAt: baseline.localUpdatedAt,
+        remoteUpdatedAt: baseline.remoteUpdatedAt,
+      },
+    ])
+  );
+  const plan: DesktopSyncMutationPlan = {
+    settings: {},
+    favoriteAdds: [],
+    favoriteRemoves: [],
+    favoriteTombstoneRemovals: [],
+    playlistAdoptions: [],
+    playlistUpserts: [],
+    playlistDeletes: [],
+    playlistTombstoneRemovals: [],
+    baselineUpserts: [],
+    baselineDeletes: [],
+  };
   // Baselines are recorded only for playlists that END this run in sync;
   // push-dependent ones wait for the desktop's per-playlist apply result.
   const baselinePlans: { uid: string; localUpdatedAt: number; remoteUpdatedAt: number; afterPush: boolean }[] = [];
@@ -261,8 +307,7 @@ async function runDesktopSyncOnce(): Promise<{
   const remoteByUid = new Map(remote.playlists.map((playlist) => [playlist.syncUid, playlist]));
   const remoteTombByUid = new Map(remote.playlistTombstones.map((tomb) => [tomb.syncUid, tomb.deletedAt]));
 
-  await db.transaction(async (tx) => {
-    // ── Favorites ────────────────────────────────────────────────────────────
+  // ── Favorites ────────────────────────────────────────────────────────────
     const favoriteKeys = new Set<string>([
       ...local.favorites.keys(),
       ...local.favoriteTombstones.keys(),
@@ -281,25 +326,17 @@ async function runDesktopSyncOnce(): Promise<{
 
       if (present) {
         if (localTombAt !== null) {
-          await removeFavoriteTombstone(tx, key);
+          plan.favoriteTombstoneRemovals.push(key);
         }
         if (!localFav || localFav.pending) {
-          const match = matchSyncEntry(
-            { title: bestAdd.title, artist: bestAdd.artist, album: bestAdd.album },
-            index
-          );
-          if (match.kind === 'matched') {
-            await applySyncedFavoriteAdd(tx, match.track.path, key, bestAdd.addedAt);
-            summary.favoritesAdded += 1;
-          } else if (!localFav || localFav.addedAt < bestAdd.addedAt) {
-            await upsertPendingFavorite(tx, {
+          if (!localFav || localFav.addedAt < bestAdd.addedAt || localFav.pending) {
+            plan.favoriteAdds.push({
               key,
               title: bestAdd.title,
               artist: bestAdd.artist,
               album: bestAdd.album,
               addedAt: bestAdd.addedAt,
             });
-            if (!localFav) summary.favoritesPending += 1;
           }
         }
         if (!remoteFav) {
@@ -313,12 +350,27 @@ async function runDesktopSyncOnce(): Promise<{
         }
       } else if (bestDelAt !== null) {
         if (localFav) {
-          await applySyncedFavoriteRemove(tx, localFav.trackPaths, key, bestDelAt);
-          if (!localFav.pending) summary.favoritesRemoved += 1;
+          plan.favoriteRemoves.push({
+            key,
+            title: localFav.title,
+            artist: localFav.artist,
+            album: localFav.album,
+            addedAt: localFav.addedAt,
+            trackPaths: localFav.trackPaths,
+            deletedAt: bestDelAt,
+          });
         } else if (localTombAt === null || localTombAt < bestDelAt) {
           // Record the peer's tombstone locally so the merge stays
           // deterministic even if the desktop ever loses its copy.
-          await applySyncedFavoriteRemove(tx, [], key, bestDelAt);
+          plan.favoriteRemoves.push({
+            key,
+            title: '',
+            artist: '',
+            album: '',
+            addedAt: 0,
+            trackPaths: [],
+            deletedAt: bestDelAt,
+          });
         }
         if (remoteFav) {
           payload.favoriteRemoves.push({ key, deletedAt: bestDelAt });
@@ -326,15 +378,15 @@ async function runDesktopSyncOnce(): Promise<{
       }
     }
 
-    // ── Playlists ────────────────────────────────────────────────────────────
+  // ── Playlists ────────────────────────────────────────────────────────────
     const localByUid = new Map(local.playlists.map((playlist) => [playlist.syncUid, playlist]));
     const skippedConflictUids = new Set<string>();
 
-    const localContentsFor = async (row: LocalSyncPlaylist): Promise<SyncPlaylistEntry[]> =>
-      row.kind === 'normal' ? getSyncPlaylistEntries(tx, row.id) : [];
+    const localContentsFor = async (row: NativeLocalSyncPlaylist): Promise<SyncPlaylistEntry[]> =>
+      row.kind === 'normal' ? row.entries ?? [] : [];
 
     const contentsMatch = async (
-      localRow: LocalSyncPlaylist,
+      localRow: NativeLocalSyncPlaylist,
       remoteRow: SyncPlaylist,
       localEntries: SyncPlaylistEntry[]
     ): Promise<boolean> => {
@@ -347,7 +399,7 @@ async function runDesktopSyncOnce(): Promise<{
 
     const buildConflict = (
       kind: DesktopSyncPlaylistConflict['kind'],
-      localRow: LocalSyncPlaylist,
+      localRow: NativeLocalSyncPlaylist,
       remoteRow: SyncPlaylist,
       localEntries: SyncPlaylistEntry[]
     ): DesktopSyncPlaylistConflict => {
@@ -388,7 +440,7 @@ async function runDesktopSyncOnce(): Promise<{
       if (local.playlistTombstones.has(remotePlaylist.syncUid)) continue;
       const nameKey = normalizeSyncKeyPart(remotePlaylist.name);
       if (!nameKey) continue;
-      let paired: LocalSyncPlaylist | null = null;
+      let paired: NativeLocalSyncPlaylist | null = null;
       for (const candidate of local.playlists) {
         if (candidate.syncUid === remotePlaylist.syncUid) continue;
         if (remoteByUid.has(candidate.syncUid) || remoteTombByUid.has(candidate.syncUid)) continue;
@@ -398,7 +450,10 @@ async function runDesktopSyncOnce(): Promise<{
       if (!paired) continue;
       const pairedEntries = await localContentsFor(paired);
       if (await contentsMatch(paired, remotePlaylist, pairedEntries)) {
-        await adoptPlaylistSyncUid(tx, paired.id, remotePlaylist.syncUid);
+        plan.playlistAdoptions.push({
+          playlistId: paired.id,
+          syncUid: remotePlaylist.syncUid,
+        });
         localByUid.delete(paired.syncUid);
         paired.syncUid = remotePlaylist.syncUid;
         localByUid.set(remotePlaylist.syncUid, paired);
@@ -428,21 +483,20 @@ async function runDesktopSyncOnce(): Promise<{
       // Deletion wins only when strictly newer than the newest edit.
       if (bestTombAt !== null && (bestRowAt === null || bestTombAt > bestRowAt)) {
         if (localRow) {
-          await applySyncedPlaylistDelete(tx, uid, bestTombAt);
-          summary.playlistsDeleted += 1;
+          plan.playlistDeletes.push({ syncUid: uid, deletedAt: bestTombAt });
         } else if (localTombAt === null || localTombAt < bestTombAt) {
-          await applySyncedPlaylistDelete(tx, uid, bestTombAt);
+          plan.playlistDeletes.push({ syncUid: uid, deletedAt: bestTombAt });
         }
-        await deletePlaylistSyncBaseline(tx, uid);
+        plan.baselineDeletes.push(uid);
         if (remoteRow) {
           payload.playlistDeletes.push({ syncUid: uid, deletedAt: bestTombAt });
         }
         continue;
       }
 
-      const pushLocal = async (row: LocalSyncPlaylist) => {
+      const pushLocal = async (row: NativeLocalSyncPlaylist) => {
         if (localTombAt !== null) {
-          await removePlaylistTombstone(tx, uid);
+          plan.playlistTombstoneRemovals.push(uid);
         }
         payload.playlistUpserts.push({
           syncUid: uid,
@@ -451,7 +505,7 @@ async function runDesktopSyncOnce(): Promise<{
           dynamicRules: row.dynamicRules,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
-          entries: row.kind === 'normal' ? await getSyncPlaylistEntries(tx, row.id) : null,
+          entries: row.kind === 'normal' ? row.entries ?? [] : null,
         } satisfies SyncPlaylist);
         baselinePlans.push({
           uid,
@@ -462,19 +516,13 @@ async function runDesktopSyncOnce(): Promise<{
       };
 
       const applyRemote = async (row: SyncPlaylist) => {
-        const result = await replaceSyncedPlaylist(tx, row, index);
-        if (result.status === 'created') summary.playlistsCreated += 1;
-        else if (result.status === 'replaced') summary.playlistsReplaced += 1;
-        else summary.playlistsSkipped += 1;
-        summary.entriesFallback += result.entriesFallback;
-        if (result.status !== 'skipped-incompatible') {
-          baselinePlans.push({
-            uid,
-            localUpdatedAt: row.updatedAt,
-            remoteUpdatedAt: row.updatedAt,
-            afterPush: false,
-          });
-        }
+        plan.playlistUpserts.push(row);
+        baselinePlans.push({
+          uid,
+          localUpdatedAt: row.updatedAt,
+          remoteUpdatedAt: row.updatedAt,
+          afterPush: false,
+        });
       };
 
       // With a baseline, sync direction comes from WHICH side changed since
@@ -534,23 +582,25 @@ async function runDesktopSyncOnce(): Promise<{
         });
       }
     }
-  });
 
-  // Baselines that don't depend on the push are valid as soon as the local
-  // transaction committed.
-  for (const plan of baselinePlans) {
-    if (plan.afterPush) continue;
-    const existing = baselines.get(plan.uid);
+  for (const baselinePlan of baselinePlans) {
+    if (baselinePlan.afterPush) continue;
+    const existing = baselines.get(baselinePlan.uid);
     if (
       existing &&
-      existing.localUpdatedAt === plan.localUpdatedAt &&
-      existing.remoteUpdatedAt === plan.remoteUpdatedAt
+      existing.localUpdatedAt === baselinePlan.localUpdatedAt &&
+      existing.remoteUpdatedAt === baselinePlan.remoteUpdatedAt
     ) {
       continue;
     }
-    await upsertPlaylistSyncBaseline(db, plan.uid, plan.localUpdatedAt, plan.remoteUpdatedAt);
+    plan.baselineUpserts.push({
+      syncUid: baselinePlan.uid,
+      localUpdatedAt: baselinePlan.localUpdatedAt,
+      remoteUpdatedAt: baselinePlan.remoteUpdatedAt,
+    });
   }
 
+  let pushStatusByUid = new Map<string, string>();
   const hasDiff =
     payload.favoriteAdds.length > 0 ||
     payload.favoriteRemoves.length > 0 ||
@@ -567,7 +617,7 @@ async function runDesktopSyncOnce(): Promise<{
     summary.favoritesAdded += result.favorites.added;
     summary.favoritesPending += result.favorites.pending;
     summary.favoritesRemoved += result.favorites.removed;
-    const pushStatusByUid = new Map(result.playlists.map((entry) => [entry.syncUid, entry.status]));
+    pushStatusByUid = new Map(result.playlists.map((entry) => [entry.syncUid, entry.status]));
     for (const playlistResult of result.playlists) {
       if (playlistResult.status === 'created') summary.playlistsCreated += 1;
       else if (playlistResult.status === 'replaced') summary.playlistsReplaced += 1;
@@ -577,15 +627,32 @@ async function runDesktopSyncOnce(): Promise<{
     }
     // Push-dependent baselines only count once the desktop confirmed the
     // upsert; a failed/skipped push re-syncs naturally next run.
-    for (const plan of baselinePlans) {
-      if (!plan.afterPush) continue;
-      const status = pushStatusByUid.get(plan.uid);
+    for (const baselinePlan of baselinePlans) {
+      if (!baselinePlan.afterPush) continue;
+      const status = pushStatusByUid.get(baselinePlan.uid);
       if (status !== 'created' && status !== 'replaced') continue;
-      await upsertPlaylistSyncBaseline(db, plan.uid, plan.localUpdatedAt, plan.remoteUpdatedAt);
+      plan.baselineUpserts.push({
+        syncUid: baselinePlan.uid,
+        localUpdatedAt: baselinePlan.localUpdatedAt,
+        remoteUpdatedAt: baselinePlan.remoteUpdatedAt,
+      });
     }
   }
 
-  await setSetting(db, desktopSyncSettingKey(connection), String(Date.now()));
+  plan.settings[desktopSyncSettingKey(connection)] = String(Date.now());
+  const applied = await AstraLibraryData.applyDesktopSyncPlan<NativeDesktopSyncApplyResult>(
+    plan as unknown as Record<string, unknown>
+  );
+  summary.favoritesAdded += applied.favoritesAdded;
+  summary.favoritesPending += applied.favoritesPending;
+  summary.favoritesRemoved += applied.favoritesRemoved;
+  for (const playlistResult of applied.playlistResults) {
+    if (playlistResult.status === 'created') summary.playlistsCreated += 1;
+    else if (playlistResult.status === 'replaced') summary.playlistsReplaced += 1;
+    else if (playlistResult.status === 'deleted') summary.playlistsDeleted += 1;
+    else summary.playlistsSkipped += 1;
+    summary.entriesFallback += playlistResult.entriesFallback;
+  }
   await usePlaylistStore.getState().refresh();
 
   summary.finishedAt = Date.now();
@@ -603,82 +670,32 @@ export async function applyDesktopSyncConflictResolution(
   conflict: DesktopSyncPlaylistConflict,
   resolution: DesktopSyncConflictResolution
 ): Promise<void> {
-  const db = await openLibraryDb();
-  const currentRow = await db.get<{ updated_at: number; name: string }>(
-    'SELECT updated_at, name FROM playlists WHERE id = ?',
-    [conflict.localPlaylistId]
-  );
-  if (!currentRow) {
-    // The local copy vanished since detection — nothing to choose between;
-    // the next sync settles whatever remains.
-    return;
-  }
-
-  switch (resolution) {
-    case 'desktop': {
-      if (conflict.kind === 'first-pairing') {
-        await adoptPlaylistSyncUid(db, conflict.localPlaylistId, conflict.syncUid);
-      }
-      // Local reads as unchanged, remote as changed → next run pulls desktop.
-      await upsertPlaylistSyncBaseline(db, conflict.syncUid, currentRow.updated_at, 0);
-      break;
+  let mergedPlaylist: SyncPlaylist | null = null;
+  if (resolution === 'merge') {
+    if (conflict.playlistKind !== 'normal') {
+      throw new Error('Dynamic playlists cannot be merged — keep one side instead.');
     }
-    case 'phone': {
-      if (conflict.kind === 'first-pairing') {
-        await adoptPlaylistSyncUid(db, conflict.localPlaylistId, conflict.syncUid);
-      }
-      // Remote reads as unchanged (as of detection), local as changed → next
-      // run pushes the phone copy.
-      await upsertPlaylistSyncBaseline(db, conflict.syncUid, 0, conflict.remoteUpdatedAt);
-      break;
-    }
-    case 'both': {
-      const copyName = `${currentRow.name} (Phone)`;
-      if (conflict.kind === 'first-pairing') {
-        // Rename the local copy out of the collision; both lists then sync as
-        // independent playlists.
-        await renamePlaylist(db, conflict.localPlaylistId, copyName);
-      } else {
-        // Duplicate the local version under a fresh identity, then let the
-        // shared uid take the desktop version.
-        await clonePlaylistAsLocalCopy(db, conflict.localPlaylistId, copyName);
-        await upsertPlaylistSyncBaseline(db, conflict.syncUid, currentRow.updated_at, 0);
-      }
-      break;
-    }
-    case 'merge': {
-      if (conflict.playlistKind !== 'normal') {
-        throw new Error('Dynamic playlists cannot be merged — keep one side instead.');
-      }
-      const localEntries = await getSyncPlaylistEntries(db, conflict.localPlaylistId);
-      const remoteEntries = conflict.remote.entries ?? [];
-      const localIsNewer = conflict.localUpdatedAt >= conflict.remoteUpdatedAt;
-      const merged = mergePlaylistEntries(
+    const localEntries = conflict.local.entries ?? [];
+    const remoteEntries = conflict.remote.entries ?? [];
+    const localIsNewer = conflict.localUpdatedAt >= conflict.remoteUpdatedAt;
+    mergedPlaylist = {
+      syncUid: conflict.syncUid,
+      name: localIsNewer ? conflict.local.name : conflict.remote.name,
+      kind: 'normal',
+      dynamicRules: null,
+      createdAt: conflict.remote.createdAt,
+      updatedAt: Date.now(),
+      entries: mergePlaylistEntries(
         localIsNewer ? localEntries : remoteEntries,
         localIsNewer ? remoteEntries : localEntries
-      );
-      if (conflict.kind === 'first-pairing') {
-        await adoptPlaylistSyncUid(db, conflict.localPlaylistId, conflict.syncUid);
-      }
-      const index = buildImportIndex(await getAllTracks(db));
-      await replaceSyncedPlaylist(
-        db,
-        {
-          syncUid: conflict.syncUid,
-          name: localIsNewer ? currentRow.name : conflict.remote.name,
-          kind: 'normal',
-          dynamicRules: null,
-          createdAt: conflict.remote.createdAt,
-          updatedAt: Date.now(),
-          entries: merged,
-        },
-        index
-      );
-      // The merged list is a fresh local edit → next run pushes it.
-      await upsertPlaylistSyncBaseline(db, conflict.syncUid, 0, conflict.remoteUpdatedAt);
-      break;
-    }
+      ),
+    };
   }
 
+  await AstraLibraryData.resolveDesktopSyncConflict(
+    conflict as unknown as Record<string, unknown>,
+    resolution,
+    mergedPlaylist as unknown as Record<string, unknown> | null
+  );
   await usePlaylistStore.getState().refresh();
 }

@@ -31,6 +31,7 @@ import {
   useSharedValue
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
+import { useScreenTopBleed } from '@/components/screenTopBleed';
 import {
   radius,
   spacing,
@@ -96,21 +97,40 @@ export function usePullSearchGestureRef(): PullSearchGestureRef | null {
 export function useScrollTopGate(initialAtTop = true) {
   const atTopRef = useRef(initialAtTop);
   const [atTop, setAtTop] = useState(initialAtTop);
+  // A ref, not state: this only ever feeds an imperative decision (how far a
+  // scroll-to-top has to travel), so re-rendering the screen on every frame of
+  // every scroll to carry it would be pure cost.
+  const offsetRef = useRef(0);
 
   const setScrollAtTop = useCallback((next: boolean) => {
+    if (next) offsetRef.current = 0;
     if (next === atTopRef.current) return;
     atTopRef.current = next;
     setAtTop(next);
   }, []);
 
-  const onScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      setScrollAtTop(event.nativeEvent.contentOffset.y <= 2);
+  const onScrollOffset = useCallback(
+    (y: number) => {
+      offsetRef.current = y;
+      setScrollAtTop(y <= 2);
     },
     [setScrollAtTop]
   );
+  const onScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      onScrollOffset(event.nativeEvent.contentOffset.y);
+    },
+    [onScrollOffset]
+  );
 
-  return { atTop, onScroll, scrollEventThrottle: 16 as const, setScrollAtTop };
+  return {
+    atTop,
+    offsetRef,
+    onScroll,
+    onScrollOffset,
+    scrollEventThrottle: 16 as const,
+    setScrollAtTop,
+  };
 }
 
 export function PullSearchGesture({
@@ -126,6 +146,7 @@ export function PullSearchGesture({
 }) {
   const styles = useStyles();
   const colors = useColors();
+  const topBleed = useScreenTopBleed();
   const [pull, setPull] = useState(0);
   const [armed, setArmed] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -235,6 +256,10 @@ export function PullSearchGesture({
 
   const progress = clamp(pull / OPEN_THRESHOLD, 0, 1);
   const indicatorStyle = {
+    // The chip pins to the top of whatever screen it's on, and on a screen that
+    // bleeds under the status bar (Home) that top is the top of the *window*.
+    // Zero on Library, which doesn't bleed, so nothing moves there.
+    top: topBleed + spacing.xs,
     opacity: pull <= 0 ? 0 : Math.max(0.72, progress),
     transform: [
       { translateY: -18 + (clamp(pull, 0, MAX_PULL) / MAX_PULL) * 38 },
@@ -266,8 +291,9 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   indicator: {
+    // `top` is applied inline — it depends on whether the screen bleeds under
+    // the status bar.
     position: 'absolute',
-    top: spacing.xs,
     alignSelf: 'center',
     zIndex: 20,
     flexDirection: 'row',

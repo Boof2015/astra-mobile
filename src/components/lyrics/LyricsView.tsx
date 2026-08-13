@@ -6,17 +6,21 @@
 // art view; swipe-down still closes the player.
 
 import { Image } from 'expo-image';
-import { Pressable, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { MarqueeText } from '@/components/MarqueeText';
 import { AstraLogo } from '@/components/AstraLogo';
 import { SeekBar } from '@/components/SeekBar';
 import { TactilePressable } from '@/components/player/TactilePressable';
+import {
+  getNowPlayingTrackTransitionKey,
+  NowPlayingTrackFadeThrough,
+} from '@/components/player/nowPlayingTrackTransition';
 import { LyricsBand } from './LyricsBand';
 import { spacing, radius } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { getLyricsPayloadSourceLabel } from '@/lyrics/presentation';
@@ -53,7 +57,6 @@ export function LyricsView({
   onDismiss,
 }: LyricsViewProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   // Lyrics mode is phone-target only, so progress comes straight from the
   // player store — the 2Hz tick re-renders this takeover, not the whole screen.
@@ -62,52 +65,66 @@ export function LyricsView({
   const duration = usePlayerStore((s) => s.duration);
   const result = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
   const sourceLabel = result?.status === 'hit' ? getLyricsPayloadSourceLabel(result.lyrics) : null;
+  const transitionTrackKey = getNowPlayingTrackTransitionKey('phone', track.path);
 
   return (
     <View style={styles.root}>
       <View style={styles.strip}>
-        <Pressable android_ripple={ripple.bounded} onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
+        <AppPressable feedback="control"  onPress={onDismiss} hitSlop={12} style={styles.stripBtn} accessibilityLabel="Close player">
           <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-        </Pressable>
+        </AppPressable>
 
-        <View style={styles.thumb}>
-          {track.artworkData ? (
-            <Image source={{ uri: track.artworkData }} style={styles.thumbImage} contentFit="cover" />
-          ) : (
-            <AstraLogo size={18} />
-          )}
+        <View style={styles.stripTrackFrame}>
+          <NowPlayingTrackFadeThrough
+            transitionKey={transitionTrackKey}
+            style={StyleSheet.absoluteFill}
+            contentStyle={styles.stripTrack}
+          >
+            <View style={styles.thumb}>
+              {track.artworkData ? (
+                <Image source={{ uri: track.artworkData }} style={styles.thumbImage} contentFit="cover" />
+              ) : (
+                <AstraLogo size={18} />
+              )}
+            </View>
+
+            <View style={styles.stripText}>
+              <MarqueeText variant="label" style={styles.stripTitle}>
+                {track.title}
+              </MarqueeText>
+              <View style={styles.stripSubRow}>
+                <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
+                  {track.artist}
+                </Text>
+                {sourceLabel ? (
+                  <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
+                    {sourceLabel}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </NowPlayingTrackFadeThrough>
         </View>
-
-        <View style={styles.stripText}>
-          <MarqueeText variant="label" style={styles.stripTitle}>
-            {track.title}
-          </MarqueeText>
-          <View style={styles.stripSubRow}>
-            <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
-              {track.artist}
-            </Text>
-            {sourceLabel ? (
-              <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
-                {sourceLabel}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
       </View>
 
-      <LyricsBand
-        track={track}
-        currentTime={currentTime}
-        duration={duration}
-        isPlaying={isPlaying && active}
-        onSeek={onSeek}
-      />
+      <NowPlayingTrackFadeThrough
+        transitionKey={transitionTrackKey}
+        style={styles.lyricsFrame}
+        contentStyle={StyleSheet.absoluteFill}
+      >
+        <LyricsBand
+          track={track}
+          currentTime={currentTime}
+          duration={duration}
+          isPlaying={isPlaying && active}
+          onSeek={onSeek}
+        />
+      </NowPlayingTrackFadeThrough>
 
       <View style={styles.controls}>
         <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
         <View style={styles.transport}>
-          <TactilePressable android_ripple={ripple.bounded}
+          <TactilePressable
             onPress={onToggleFavorite}
             haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
             confirmationScale={1.08}
@@ -122,20 +139,20 @@ export function LyricsView({
               color={isFavorite ? colors.accent : colors.textTertiary}
             />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
+          <TactilePressable  onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
             <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+          <TactilePressable  onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
             <Ionicons
               name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
               size={28}
               color={colors.bgPrimary}
             />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded} onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
+          <TactilePressable  onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
             <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
           </TactilePressable>
-          <TactilePressable android_ripple={ripple.bounded}
+          <TactilePressable
             onPress={onExitLyrics}
             haptic="selection"
             hitSlop={10}
@@ -143,7 +160,7 @@ export function LyricsView({
             accessibilityLabel="Hide lyrics"
             accessibilityState={{ selected: true }}
           >
-            <MaterialCommunityIcons name="script-text-outline" size={22} color={colors.accent} />
+            <MaterialCommunityIcons name="comment-quote-outline" size={22} color={colors.accent} />
           </TactilePressable>
         </View>
       </View>
@@ -167,6 +184,21 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stripTrackFrame: {
+    flex: 1,
+    height: 40,
+    position: 'relative',
+  },
+  stripTrack: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   thumb: {
     width: 40,
     height: 40,
@@ -183,6 +215,11 @@ const useStyles = createThemedStyles((colors) => ({
   stripText: {
     flex: 1,
     minWidth: 0,
+  },
+  lyricsFrame: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
   },
   stripTitle: {
     color: colors.textPrimary,

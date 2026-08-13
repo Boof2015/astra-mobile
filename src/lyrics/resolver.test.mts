@@ -166,3 +166,38 @@ test('local misses fall through to XLRCDB then LRCLIB and cache definitive misse
   assert.equal(calls.lrclib, 1);
   assert.equal(calls.notFound, 1);
 });
+
+test('force refresh bypasses a cached miss and returns a fresh provider hit', async () => {
+  const fresh = payload('xlrcdb', 'Fresh provider lyrics');
+  const { calls, deps } = dependencies({
+    getCache: async () => {
+      calls.cache += 1;
+      return {
+        status: 'not_found',
+        source: 'xlrcdb',
+        provider: 'xlrcdb',
+        format: null,
+        plainLyrics: null,
+        syncedLyrics: null,
+        syncedLines: [],
+      };
+    },
+    lookupXlrcdb: async (_query, forceRefresh) => {
+      calls.xlrcdb += 1;
+      assert.equal(forceRefresh, true);
+      return { status: 'hit', lyrics: fresh };
+    },
+  });
+
+  const result = await resolveLyricsWithDependencies(
+    QUERY,
+    { forceRefresh: true, onlineEnabled: true },
+    deps
+  );
+
+  assert.equal(result.status === 'hit' ? result.lyrics.plainLyrics : '', 'Fresh provider lyrics');
+  assert.equal(result.status === 'hit' ? result.cached : true, false);
+  assert.equal(calls.cache, 1);
+  assert.equal(calls.xlrcdb, 1);
+  assert.equal(calls.lrclib, 0);
+});

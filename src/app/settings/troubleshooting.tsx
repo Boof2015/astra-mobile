@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import {
   SettingsNavRow,
@@ -10,17 +11,17 @@ import {
   SettingsSectionScreen,
   type SettingsIconName,
 } from '@/components/settings/SettingsSectionScaffold';
-import { openLibraryDb } from '@/db/database';
 import { getLyricsCacheCount } from '@/db/lyricsQueries';
-import { getWaveformCacheCount } from '@/db/waveformQueries';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 import { clearAllLyricsCache } from '@/lyrics/lyrics';
 import { clearAllWaveformCache } from '@/scope/waveform';
+import { getRecentAnalysisTimings, type AnalysisTiming } from '@/audio/trackAnalysis';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 
 type ActionKey = 'scan' | 'rebuild' | 'lyrics' | 'waveform' | 'onboarding';
 
@@ -45,10 +46,9 @@ export default function TroubleshootingSettingsScreen() {
   const disabled = isScanning || runningAction !== null;
 
   const refreshCounts = useCallback(async () => {
-    const db = await openLibraryDb();
     const [lyrics, waveforms] = await Promise.all([
-      getLyricsCacheCount(db),
-      getWaveformCacheCount(db),
+      getLyricsCacheCount(),
+      AstraLibraryData.countWaveforms(),
     ]);
     setCounts({ lyrics, waveforms });
   }, []);
@@ -81,35 +81,35 @@ export default function TroubleshootingSettingsScreen() {
   };
 
   const confirmRebuild = () => {
-    Alert.alert(
-      'Rebuild local library index?',
-      'A foreground scan will re-read every local track. Folders, playlists, favorites, history, remote sources, and settings are preserved.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: 'Rebuild local library index?',
+      message: 'A foreground scan will re-read every local track. Folders, playlists, favorites, history, remote sources, and settings are preserved.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Rebuild',
+          label: 'Rebuild',
           onPress: () => void run(
             'rebuild',
             () => useLibraryStore.getState().rebuildLocalIndex(),
             'Local library index rebuilt.',
           ),
         },
-      ]
-    );
+      ],
+    });
   };
 
   const confirmOnboarding = () => {
-    Alert.alert(
-      'Replay onboarding?',
-      'The first-run setup opens immediately. Your library and settings are kept.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: 'Replay onboarding?',
+      message: 'The first-run setup opens immediately. Your library and settings are kept.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Replay',
+          label: 'Replay',
           onPress: () => void run('onboarding', () => useOnboardingStore.getState().reset(), 'Opening onboarding…'),
         },
-      ]
-    );
+      ],
+    });
   };
 
   return (
@@ -185,7 +185,56 @@ export default function TroubleshootingSettingsScreen() {
         subtitle="Audition semantic feedback, device primitives, and signature candidates."
         onPress={() => router.push('/settings/haptics-lab' as never)}
       />
+      <AnalysisTimingPanel />
     </SettingsSectionScreen>
+  );
+}
+
+/**
+ * How fast waveform/loudness decodes are actually running, per format and decoder. The
+ * realtime multiple is the number that decides whether MediaCodec is fast enough or whether
+ * the analysis path needs its own in-process decoder.
+ */
+function AnalysisTimingPanel() {
+  const styles = useStyles();
+  const colors = useColors();
+  const [timings, setTimings] = useState<readonly AnalysisTiming[]>([]);
+
+  useEffect(() => {
+    const read = () => setTimings(getRecentAnalysisTimings().slice(0, 6));
+    read();
+    const timer = setInterval(read, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (timings.length === 0) {
+    return (
+      <Text variant="caption" color={colors.textSecondary} style={styles.timingEmpty}>
+        Decode speed appears here after a track with no cached waveform plays.
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.timingPanel}>
+      {timings.map((timing) => (
+        <View key={`${timing.path}-${timing.at}`} style={styles.timingRow}>
+          <Text variant="mono" color={colors.textPrimary}>
+            {timing.kind === 'preview'
+              ? `preview · ${Math.round(timing.decodeMs)}ms`
+              : `${(timing.mime ?? 'audio/?').replace('audio/', '')} · ${Math.round(timing.decodeMs)}ms` +
+                (timing.realtimeFactor ? ` · ${Math.round(timing.realtimeFactor)}× realtime` : '')}
+          </Text>
+          <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
+            {timing.kind === 'preview'
+              ? 'sparse first-paint pass'
+              : `${timing.decoderName ?? 'unknown decoder'}${
+                  timing.withLoudness ? ' · loudness folded in' : ''
+                }`}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -206,11 +255,10 @@ function MaintenanceRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable
+    <AppPressable
       disabled={disabled}
-      android_ripple={ripple.bounded}
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onPress}
       accessibilityRole="button"
@@ -225,7 +273,7 @@ function MaintenanceRow({
         <Text variant="caption" color={colors.textSecondary} style={styles.description}>{description}</Text>
       </View>
       {running ? <ActivityIndicator size="small" color={colors.accent} /> : <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />}
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -249,4 +297,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   errorFeedback: { borderColor: colors.warning },
   feedbackText: { flex: 1 },
+  timingPanel: {
+    gap: spacing.sm, padding: spacing.md, borderRadius: radius.sm,
+    borderWidth: 1, borderColor: colors.glassBorder, backgroundColor: colors.glassBg,
+  },
+  timingRow: { gap: 1 },
+  timingEmpty: { paddingHorizontal: spacing.md, lineHeight: 16 },
 }));

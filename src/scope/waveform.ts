@@ -1,24 +1,28 @@
-// Waveform peaks for the seek bar: cache-first, preview-on-miss, accurate
-// decode-on-miss, store. The heavy native decode (extractWaveform) still runs
-// once per track and persists; extractWaveformPreview gives uncached local
-// tracks a fast first paint.
+// Waveform peaks for the seek bar: cache-first, preview-on-miss, then the accurate
+// decode. The accurate pass lives in trackAnalysis (it shares one decode with loudness)
+// and streams partial results back through onWaveformProgress, so the bar fills in
+// left-to-right instead of snapping in when the whole file is done.
 
-import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
-import { openLibraryDb } from '@/db/database';
-import { clearWaveformCache, getWaveformPeaks, putWaveformPeaks } from '@/db/waveformQueries';
-import { CacheInvalidationGate } from '@/lib/cacheInvalidation';
+import { AstraLibraryData, AstraLibraryScanner } from '../../modules/astra-library-scanner';
+import {
+  WAVEFORM_BINS,
+  clearWaveformCache,
+  ensureTrackAnalysis,
+  isAnalysisRunning,
+  recordPreviewTiming,
+} from '@/audio/trackAnalysis';
 
-export const WAVEFORM_BINS = 512;
+export { WAVEFORM_BINS };
+export { downsampleWaveform, mergeProgressiveWaveform } from '@/scope/waveformMath';
 export const WAVEFORM_PREVIEW_BINS = 96;
 
 export interface WaveformLoadOptions {
   onPreview?: (peaks: Float32Array) => void;
 }
 
-// Dedupe concurrent requests for the same track (e.g. mini-player + now-playing).
-const inflight = new Map<string, Promise<Float32Array | null>>();
+// Dedupe concurrent preview requests for the same track (e.g. mini-player + now-playing).
+// The accurate decode is deduped inside trackAnalysis.
 const previewInflight = new Map<string, Promise<Float32Array | null>>();
-const cacheGate = new CacheInvalidationGate();
 
 export function getWaveform(
   trackPath: string,
@@ -32,55 +36,88 @@ async function loadWaveform(
   trackPath: string,
   options: WaveformLoadOptions
 ): Promise<Float32Array | null> {
-  const db = await openLibraryDb();
-  const cached = await getWaveformPeaks(db, trackPath);
-  if (cached && cached.length > 0) return cached;
+  const cached = await AstraLibraryData.getWaveform(trackPath).catch(() => null);
+  if (cached && cached.length > 0) return Float32Array.from(cached);
 
-  if (options.onPreview) {
+  // The preview is a SECOND native decode competing for the same two permits as the real
+  // pass. It only earns that cost when it can beat the real decode's first progress event
+  // to the screen. If a decode for this track is already running — the common case, since
+  // the queue prefetch starts one several tracks ahead — progress events are about to
+  // arrive immediately, and the preview would land late enough only to cause a visible
+  // rescale. Skip it entirely there.
+  if (options.onPreview && !isAnalysisRunning(trackPath)) {
+    const startedAt = Date.now();
     void getWaveformPreview(trackPath).then((preview) => {
+      recordPreviewTiming(trackPath, Date.now() - startedAt);
       if (preview && preview.length > 0) options.onPreview?.(preview);
     });
   }
 
-  const existing = inflight.get(trackPath);
-  if (existing) return existing;
-  const generation = cacheGate.capture();
-  const task = decodeAccurateWaveform(trackPath, generation).finally(() => {
-    if (inflight.get(trackPath) === task) inflight.delete(trackPath);
-  });
-  inflight.set(trackPath, task);
-  return task;
-}
-
-async function decodeAccurateWaveform(trackPath: string, generation: number): Promise<Float32Array | null> {
-  let raw: number[];
+  // Shares one decode pass with loudness, and may already be running from the queue
+  // prefetch — in which case this just joins it. Failures fall back to flat bars.
   try {
-    raw = await AstraLibraryScanner.extractWaveform(trackPath, WAVEFORM_BINS);
+    const { peaks } = await ensureTrackAnalysis(trackPath);
+    return peaks;
   } catch {
     return null;
   }
-  if (!raw || raw.length === 0) return null;
-
-  const peaks = Float32Array.from(raw);
-  await cacheGate.enqueue(async () => {
-    if (!cacheGate.isCurrent(generation)) return;
-    const db = await openLibraryDb();
-    if (!cacheGate.isCurrent(generation)) return;
-    await putWaveformPeaks(db, trackPath, peaks);
-  }).catch(() => {
-    /* cache write failure is non-fatal */
-  });
-  return peaks;
 }
 
 /** Deletes waveform rows and prevents decodes already in flight from writing them back. */
 export async function clearAllWaveformCache(): Promise<void> {
-  inflight.clear();
   previewInflight.clear();
-  await cacheGate.invalidate(async () => {
-    const db = await openLibraryDb();
-    await clearWaveformCache(db);
-  });
+  await clearWaveformCache();
+}
+
+// ---------------------------------------------------------------------------
+// Progressive decode updates
+// ---------------------------------------------------------------------------
+
+export type WaveformProgressListener = (partial: {
+  /** Raw (un-normalized) RMS for the bins decoded so far. */
+  peaks: Float32Array;
+  filledBins: number;
+  totalBins: number;
+}) => void;
+
+const progressListeners = new Map<string, Set<WaveformProgressListener>>();
+let nativeProgressSub: { remove(): void } | null = null;
+
+/**
+ * Listen for partial waveforms while a track decodes. Independent of who started the
+ * decode, so the seek bar still fills progressively when the queue prefetch kicked it off.
+ * Returns an unsubscribe function.
+ */
+export function subscribeWaveformProgress(
+  trackPath: string,
+  listener: WaveformProgressListener
+): () => void {
+  if (!nativeProgressSub) {
+    nativeProgressSub = AstraLibraryScanner.addListener('onWaveformProgress', (event) => {
+      const listeners = progressListeners.get(event.uri);
+      if (!listeners || listeners.size === 0) return;
+      const partial = {
+        peaks: Float32Array.from(event.peaks),
+        filledBins: event.filledBins,
+        totalBins: event.totalBins,
+      };
+      for (const cb of listeners) cb(partial);
+    });
+  }
+
+  let listeners = progressListeners.get(trackPath);
+  if (!listeners) {
+    listeners = new Set();
+    progressListeners.set(trackPath, listeners);
+  }
+  listeners.add(listener);
+
+  return () => {
+    const current = progressListeners.get(trackPath);
+    if (!current) return;
+    current.delete(listener);
+    if (current.size === 0) progressListeners.delete(trackPath);
+  };
 }
 
 function getWaveformPreview(trackPath: string): Promise<Float32Array | null> {
@@ -104,45 +141,6 @@ async function decodePreviewWaveform(trackPath: string): Promise<Float32Array | 
   return Float32Array.from(raw);
 }
 
-function isLocalWaveformPath(trackPath: string): boolean {
+export function isLocalWaveformPath(trackPath: string): boolean {
   return trackPath.startsWith('content://') || trackPath.startsWith('file://');
-}
-
-/**
- * Downsample high-res peaks to `barCount` bars with a power curve and two
- * smoothing passes. Ported verbatim from desktop waveformExtractor.ts so the
- * mobile seek bar matches the desktop look.
- */
-export function downsampleWaveform(source: Float32Array, barCount: number): Float32Array {
-  if (source.length === 0 || barCount <= 0) return new Float32Array(0);
-  const binsPerBar = source.length / barCount;
-  const peaks = new Float32Array(barCount);
-
-  for (let i = 0; i < barCount; i++) {
-    const start = Math.floor(i * binsPerBar);
-    const end = Math.max(start + 1, Math.floor((i + 1) * binsPerBar));
-    let sum = 0;
-    for (let j = start; j < end; j++) sum += source[j];
-    peaks[i] = sum / (end - start);
-  }
-
-  let max = 0;
-  for (let i = 0; i < barCount; i++) if (peaks[i] > max) max = peaks[i];
-  if (max > 0) for (let i = 0; i < barCount; i++) peaks[i] /= max;
-
-  // Power curve — exaggerate dynamic range.
-  for (let i = 0; i < barCount; i++) peaks[i] = peaks[i] ** 2;
-
-  // Two smoothing passes.
-  let current = peaks;
-  for (let p = 0; p < 2; p++) {
-    const smoothed = new Float32Array(current.length);
-    smoothed[0] = current[0];
-    smoothed[current.length - 1] = current[current.length - 1];
-    for (let i = 1; i < current.length - 1; i++) {
-      smoothed[i] = current[i - 1] * 0.25 + current[i] * 0.5 + current[i + 1] * 0.25;
-    }
-    current = smoothed;
-  }
-  return current;
 }

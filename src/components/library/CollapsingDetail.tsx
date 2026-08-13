@@ -1,16 +1,16 @@
+/* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's UI-thread scroll state. */
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type ReactNode
 } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Extrapolation,
   interpolate,
+  runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue
@@ -34,23 +36,24 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import {
+  DETAIL_ART_COLLAPSED,
+  DETAIL_BAR_H,
+  getDetailExpandedHeight,
+  getDetailHeroLayout,
+} from '@/components/library/detailHeroLayout';
 
-// Collapsing detail header. An absolute container whose height shrinks with the
-// scroll and clips its faded content, so the track list (padded to the expanded
-// height) rises to meet it — no mid-scroll dead space. The artwork is a single
-// element that shrinks/tucks into the top-left corner as the header collapses.
-// Tune on device.
-const ART_SIZE = 210;
-const ART_COLLAPSED = 34;
-const BAR_H = 48;
-const ART_TOP = 44;
-/** Top of the title/meta/buttons block, just below the artwork. */
-const HERO_BLOCK_TOP = 262;
-/** Gap below the buttons to the header's bottom edge (where row 1 sits at rest). */
-const BLOCK_BOTTOM_PAD = 20;
-/** Expanded header height below the inset until the block is measured. */
-const FALLBACK_EXPANDED = 424;
+// Collapsing detail header. A fixed-size clipping layer translates upward with
+// the scroll while its contents counter-translate, producing a rising bottom
+// edge without animating layout. The artwork is a single element that
+// shrinks/tucks into the top-left corner as the header collapses.
+//
+// Hero geometry — artwork size/position, where the title block goes, and the
+// ceiling that keeps the list reachable — lives in ./detailHeroLayout so it can
+// be tested without a renderer. See the note there about landscape.
+const ART_COLLAPSED = DETAIL_ART_COLLAPSED;
+const BAR_H = DETAIL_BAR_H;
 const FADE_H = 150;
 
 /**
@@ -61,31 +64,68 @@ const FADE_H = 150;
  * taps mid-transition.
  */
 export function useDetailCollapse() {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const hero = getDetailHeroLayout(width, height, insets.top);
+  const fallback = Math.min(hero.fallbackExpandedHeight, hero.maxExpandedHeight);
   const scrollY = useSharedValue(0);
-  const [expandedHeight, setExpandedHeight] = useState(FALLBACK_EXPANDED);
-  const expandedRef = useRef(FALLBACK_EXPANDED);
+  // The measurement carries the orientation it was taken in. Rotating reshapes
+  // the hero underneath it, and a portrait measurement applied to a landscape
+  // window is taller than the window itself — so a mismatched one is ignored in
+  // favour of the fallback rather than kept until the next layout pass.
+  const [measured, setMeasured] = useState<{ wide: boolean; height: number } | null>(
+    null
+  );
+  const expandedHeight = Math.min(
+    measured && measured.wide === hero.wide ? measured.height : fallback,
+    hero.maxExpandedHeight
+  );
   const ref = useRef({ heroFaded: false, collapsed: false });
   const [state, setState] = useState({ heroFaded: false, collapsed: false });
+  const collapseDistance = useSharedValue(expandedHeight - BAR_H);
+  const collapseFlags = useSharedValue(0);
+
+  const updateCollapseState = useCallback((heroFaded: boolean, collapsed: boolean) => {
+    if (heroFaded === ref.current.heroFaded && collapsed === ref.current.collapsed) return;
+    ref.current = { heroFaded, collapsed };
+    setState({ heroFaded, collapsed });
+  }, []);
+
+  // Measurements and rotations are rare JS-side events. Keep the worklet's
+  // threshold current without routing any per-frame scroll values through JS.
+  useEffect(() => {
+    const dist = expandedHeight - BAR_H;
+    collapseDistance.value = dist;
+    const y = scrollY.value;
+    const flags = (y >= 60 ? 1 : 0) | (y >= dist - 40 ? 2 : 0);
+    collapseFlags.value = flags;
+    updateCollapseState((flags & 1) !== 0, (flags & 2) !== 0);
+  }, [collapseDistance, collapseFlags, expandedHeight, scrollY, updateCollapseState]);
 
   const onHeroBlockLayout = (e: LayoutChangeEvent) => {
-    const next = HERO_BLOCK_TOP + e.nativeEvent.layout.height + BLOCK_BOTTOM_PAD;
-    if (Math.abs(next - expandedRef.current) > 1) {
-      expandedRef.current = next;
-      setExpandedHeight(next);
-    }
+    const next = getDetailExpandedHeight(hero, e.nativeEvent.layout.height);
+    setMeasured((prev) =>
+      prev && prev.wide === hero.wide && Math.abs(prev.height - next) <= 1
+        ? prev
+        : { wide: hero.wide, height: next }
+    );
   };
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    scrollY.value = y;
-    const dist = expandedRef.current - BAR_H;
-    const heroFaded = y >= 60;
-    const collapsed = y >= dist - 40;
-    if (heroFaded !== ref.current.heroFaded || collapsed !== ref.current.collapsed) {
-      ref.current = { heroFaded, collapsed };
-      setState({ heroFaded, collapsed });
-    }
-  };
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const y = event.contentOffset.y;
+      const dist = collapseDistance.value;
+      const flags = (y >= 60 ? 1 : 0) | (y >= dist - 40 ? 2 : 0);
+
+      // This is the animation's source of truth and now stays on the UI thread.
+      // React only hears about the two pointer-event handoff thresholds.
+      scrollY.value = y;
+      if (flags !== collapseFlags.value) {
+        collapseFlags.value = flags;
+        runOnJS(updateCollapseState)((flags & 1) !== 0, (flags & 2) !== 0);
+      }
+    },
+  });
 
   return {
     scrollY,
@@ -126,7 +166,9 @@ export function CollapsingHeader({
   heroExtra,
   disabled,
   onBack,
+  backLabel,
   onMore,
+  moreAccessibilityLabel = 'More options',
   onPlay,
   onShuffle,
   scrollY,
@@ -145,7 +187,10 @@ export function CollapsingHeader({
   heroExtra?: ReactNode;
   disabled?: boolean;
   onBack: () => void;
+  /** Names the screen `onBack` returns to; must track the real action. */
+  backLabel: string;
   onMore?: () => void;
+  moreAccessibilityLabel?: string;
   onPlay: () => void;
   onShuffle: () => void;
   scrollY: SharedValue<number>;
@@ -156,24 +201,65 @@ export function CollapsingHeader({
   onHeroBlockLayout: (e: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { width: W } = useWindowDimensions();
+  const { width: W, height: H } = useWindowDimensions();
+  const hero = getDetailHeroLayout(W, H, insets.top);
   const dist = expandedHeight - BAR_H;
   const settle = dist - 36;
 
   const maxH = insets.top + expandedHeight;
   const minH = insets.top + BAR_H;
   const barCenterY = insets.top + BAR_H / 2;
-  const artExpandedTop = insets.top + ART_TOP;
+  const artExpandedTop = insets.top + hero.artTop;
   const thumbCenterX = spacing.md + 24 + spacing.sm + ART_COLLAPSED / 2;
-  const txTarget = thumbCenterX - W / 2;
-  const tyTarget = barCenterY - (artExpandedTop + ART_SIZE / 2);
-  const scaleTarget = ART_COLLAPSED / ART_SIZE;
+  // Measured from where the artwork actually sits: landscape puts it against
+  // the leading edge rather than centred, so `W / 2` would fly it off target.
+  const txTarget = thumbCenterX - hero.artCenterX;
+  const tyTarget = barCenterY - (artExpandedTop + hero.artSize / 2);
+  const scaleTarget = ART_COLLAPSED / hero.artSize;
 
-  const containerStyle = useAnimatedStyle(() => ({
-    height: interpolate(scrollY.value, [0, dist], [maxH, minH], Extrapolation.CLAMP),
+  // Moving a fixed-size clipping layer produces the same visible bottom edge as
+  // shrinking `height`, while keeping every per-frame update to transform and
+  // opacity. Its contents counter-translate so the header stays anchored as the
+  // clip edge rises with the list.
+  const collapseClipStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: -interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
+  }));
+  // Reanimated animated-style objects are view-specific; keep separate inverse
+  // styles for the wash and foreground even though they share the same math.
+  const washFixedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
+  }));
+  const headerFixedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(
+          scrollY.value,
+          [0, dist],
+          [0, dist],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
   }));
   const artStyle = useAnimatedStyle(() => ({
     transform: [
@@ -214,18 +300,29 @@ export function CollapsingHeader({
   }));
 
   return (
-    <Animated.View style={[styles.container, containerStyle]} pointerEvents="box-none">
-      {/* Blurred wash (fixed tall, clipped by the shrinking container) + fade at the bottom edge. */}
-      <View style={[styles.wash, { height: maxH }]} pointerEvents="none">
+    <View style={[styles.container, { height: maxH }]} pointerEvents="box-none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.collapseClip, collapseClipStyle]}
+        pointerEvents="box-none"
+      >
+      {/* The wash counter-translates to stay fixed while the clip's bottom edge rises. */}
+      <Animated.View
+        style={[styles.wash, { height: maxH }, washFixedStyle]}
+        pointerEvents="none"
+      >
         {backdropUri ? (
           <Image source={{ uri: backdropUri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={40} transition={null} />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.washFallback]} />
         )}
         <View style={styles.scrim} />
-      </View>
+      </Animated.View>
       <BottomFade />
 
+      <Animated.View
+        style={[StyleSheet.absoluteFill, headerFixedStyle]}
+        pointerEvents="box-none"
+      >
       <Animated.View style={[styles.barBg, { height: minH }, barBgStyle]} pointerEvents="none">
         {backdropUri ? (
           <>
@@ -238,17 +335,32 @@ export function CollapsingHeader({
       </Animated.View>
 
       <Animated.View
-        style={[styles.heroBlock, { top: insets.top + HERO_BLOCK_TOP }, heroBlockStyle]}
+        style={[
+          styles.heroBlock,
+          {
+            top: insets.top + hero.blockTop,
+            left: hero.blockLeft,
+            right: hero.blockRight,
+            alignItems: hero.blockAlign,
+          },
+          heroBlockStyle,
+        ]}
         pointerEvents={heroFaded ? 'none' : 'auto'}
         onLayout={onHeroBlockLayout}
       >
-        <Text variant="title" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.heroTitle}>
+        <Text
+          variant="title"
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          style={[styles.heroTitle, { textAlign: hero.textAlign }]}
+        >
           {title}
         </Text>
         {heroMeta}
         {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
             onPress={onPlay}
             disabled={disabled}
@@ -258,8 +370,8 @@ export function CollapsingHeader({
             <Text variant="body" style={styles.primaryActionText}>
               Play
             </Text>
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          </AppPressable>
+          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
             onPress={onShuffle}
             disabled={disabled}
@@ -269,11 +381,11 @@ export function CollapsingHeader({
             <Text variant="body" color={colors.accent} style={styles.secondaryActionText}>
               Shuffle
             </Text>
-          </Pressable>
+          </AppPressable>
         </Animated.View>
       </Animated.View>
 
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
         onPress={onBack}
         hitSlop={8}
         style={[styles.chevron, { top: barCenterY - 12, left: spacing.md }]}
@@ -281,9 +393,18 @@ export function CollapsingHeader({
         accessibilityLabel="Back"
       >
         <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-      </Pressable>
-      <Animated.Text style={[styles.label, { top: barCenterY - 10, left: spacing.md + 26 }, labelStyle]}>
-        Library
+      </AppPressable>
+      <Animated.Text
+        numberOfLines={1}
+        style={[
+          styles.label,
+          // Bounded so a long artist name ellipsizes instead of running off the
+          // edge; clears the overflow button when the screen has one.
+          { top: barCenterY - 10, left: spacing.md + 26, right: onMore ? 56 : spacing.md },
+          labelStyle,
+        ]}
+      >
+        {backLabel}
       </Animated.Text>
 
       <Animated.Text
@@ -301,38 +422,45 @@ export function CollapsingHeader({
         style={[styles.barIcons, { top: barCenterY - 16, right: onMore ? spacing.md + 40 : spacing.md }, barIconsStyle]}
         pointerEvents={collapsed ? 'auto' : 'none'}
       >
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPlay} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="play" size={20} color={colors.accent} />
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
+        </AppPressable>
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onShuffle} disabled={disabled} hitSlop={6} style={styles.iconBtn}>
           <Ionicons name="shuffle" size={20} color={colors.accent} />
-        </Pressable>
+        </AppPressable>
       </Animated.View>
 
       {onMore ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={onMore}
           hitSlop={8}
           style={[styles.moreButton, { top: barCenterY - 16, right: spacing.md }]}
           accessibilityRole="button"
-          accessibilityLabel="Playlist options"
+          accessibilityLabel={moreAccessibilityLabel}
         >
           <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
-        </Pressable>
+        </AppPressable>
       ) : null}
 
       {/* Rendered last so the large art sits on top of the header text until it tucks away. */}
       <Animated.View
         style={[
           styles.art,
-          { top: artExpandedTop, left: (W - ART_SIZE) / 2, width: ART_SIZE, height: ART_SIZE },
+          {
+            top: artExpandedTop,
+            left: hero.artLeft,
+            width: hero.artSize,
+            height: hero.artSize,
+          },
           artStyle,
         ]}
         pointerEvents="none"
       >
         {artwork}
       </Animated.View>
-    </Animated.View>
+      </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -342,6 +470,8 @@ const useStyles = createThemedStyles((colors) => ({
     top: 0,
     left: 0,
     right: 0,
+  },
+  collapseClip: {
     overflow: 'hidden',
   },
   wash: {
@@ -396,16 +526,14 @@ const useStyles = createThemedStyles((colors) => ({
     bottom: 0,
     backgroundColor: colors.bgSecondary,
   },
+  // left / right / alignItems come from getDetailHeroLayout: the block sits
+  // under the artwork in portrait and beside it in landscape.
   heroBlock: {
     position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    alignItems: 'center',
     gap: spacing.xs,
   },
   heroTitle: {
     maxWidth: '100%',
-    textAlign: 'center',
   },
   actionRow: {
     width: '100%',

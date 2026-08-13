@@ -5,7 +5,7 @@
  * INVARIANT: solid-color tokens must stay 6-digit `#rrggbb` hex — the Skia
  * visualizers (SpectrumCurve, OscilloscopeWave, EQGraph, GraphicResponseCurve)
  * slice hex chars to build alpha variants. Only `glass*`, `*Glow`,
- * `overlayFaint`, `ripple`, and `backdrop` may be `rgba()` strings (they are
+ * `overlayFaint` and `backdrop` may be `rgba()` strings (they are
  * never fed through those helpers).
  */
 
@@ -18,9 +18,14 @@ export interface Palette {
   // Glass / surface overlays
   glassBg: string;
   glassBorder: string;
+  /**
+   * For surfaces that float over arbitrary content rather than over a known
+   * background. `glassBorder` is tuned to be barely-there against the app's own
+   * backgrounds, which means it vanishes entirely against a bright album grid —
+   * the floating mini-player pill needs a rim that still cuts.
+   */
+  glassBorderStrong: string;
   glassHighlight: string;
-  /** Native android_ripple tint (glassHighlight family, transient so slightly stronger). */
-  ripple: string;
 
   // Text ramp
   textPrimary: string;
@@ -66,8 +71,8 @@ export const midnightBase: BasePalette = {
 
   glassBg: 'rgba(124, 146, 196, 0.05)',
   glassBorder: 'rgba(124, 146, 196, 0.16)',
+  glassBorderStrong: 'rgba(124, 146, 196, 0.34)',
   glassHighlight: 'rgba(140, 162, 208, 0.08)',
-  ripple: 'rgba(140, 162, 208, 0.13)',
 
   textPrimary: '#e2e8f4',
   textSecondary: '#8a98b8',
@@ -94,8 +99,8 @@ export const darkBase: BasePalette = {
 
   glassBg: 'rgba(165, 175, 195, 0.05)',
   glassBorder: 'rgba(165, 175, 195, 0.16)',
+  glassBorderStrong: 'rgba(165, 175, 195, 0.34)',
   glassHighlight: 'rgba(175, 185, 205, 0.08)',
-  ripple: 'rgba(175, 185, 205, 0.13)',
 
   textPrimary: '#e6e8ec',
   textSecondary: '#979da8',
@@ -123,8 +128,8 @@ export const amoledBase: BasePalette = {
 
   glassBg: 'rgba(124, 146, 196, 0.06)',
   glassBorder: 'rgba(124, 146, 196, 0.20)',
+  glassBorderStrong: 'rgba(124, 146, 196, 0.38)',
   glassHighlight: 'rgba(140, 162, 208, 0.10)',
-  ripple: 'rgba(140, 162, 208, 0.14)',
 
   textPrimary: '#e2e8f4',
   textSecondary: '#8a98b8',
@@ -152,8 +157,8 @@ export const lightBase: BasePalette = {
 
   glassBg: 'rgba(52, 74, 130, 0.06)',
   glassBorder: 'rgba(52, 74, 130, 0.18)',
+  glassBorderStrong: 'rgba(52, 74, 130, 0.32)',
   glassHighlight: 'rgba(52, 74, 130, 0.10)',
-  ripple: 'rgba(52, 74, 130, 0.12)',
 
   textPrimary: '#171d2e',
   textSecondary: '#4d5a78',

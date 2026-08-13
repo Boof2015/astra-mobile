@@ -4,21 +4,24 @@ import {
   type ComponentProps
 } from 'react';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   View
 } from 'react-native';
 import { Image } from 'expo-image';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
+import { ArtistImageSearchSheet } from '@/components/library/ArtistImageSearchSheet';
+import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
   fontSize,
@@ -26,21 +29,31 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import type { Palette } from '@/theme/palettes';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import {
   buildArtistDetail,
   type ArtistAlbum,
   type ArtistDetail
 } from '@/library/artistDetail';
+import {
+  useNativeArtistAlbums,
+  useNativeArtistDetail,
+} from '@/library/nativePages';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
+import type { DeezerArtistCandidate } from '@/types/artistImages';
+import { normalizeKey } from '@/shared/library/albumGrouping';
+import {
+  resetLocalArtistImage,
+  selectDeezerArtistImage,
+  selectLocalArtistImage,
+} from '@/library/artistImageLookup';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type ArtistSectionTarget = 'songs' | 'albums' | 'appearances';
@@ -62,6 +75,7 @@ type ArtistPageItem =
   | { key: 'empty'; type: 'empty' };
 
 export default function ArtistScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -69,37 +83,87 @@ export default function ArtistScreen() {
     name: string;
     credit?: string;
   }>();
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
-  const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [imageSearchOpen, setImageSearchOpen] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
 
-  const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, detailGroupingMode),
-    [allTracks, name, detailGroupingMode]
+  const allPage = useNativeArtistDetail(name, detailGroupingMode, 'all');
+  const songsPage = useNativeArtistDetail(name, detailGroupingMode, 'songs');
+  const appearancesPage = useNativeArtistDetail(name, detailGroupingMode, 'appearances');
+  const albumsPage = useNativeArtistAlbums(name, detailGroupingMode);
+  const detail = useMemo(() => {
+    const base = buildArtistDetail(allPage.items, name, detailGroupingMode);
+    return {
+      ...base,
+      albums: albumsPage.items.map((album) => ({
+        ...album,
+        duration: album.total_duration ?? 0,
+      })),
+      tracks: allPage.items,
+      playbackTracks: allPage.items,
+      songTracks: songsPage.items,
+      appearanceTracks: appearancesPage.items,
+      showAppearances: appearancesPage.totalCount > 0,
+      artworkHashes: allPage.summary?.artwork_hashes ?? base.artworkHashes,
+    };
+  }, [
+    allPage.items,
+    allPage.summary,
+    albumsPage.items,
+    appearancesPage.items,
+    appearancesPage.totalCount,
+    detailGroupingMode,
+    name,
+    songsPage.items,
+  ]);
+
+  const listItems = useMemo(
+    () =>
+      buildListItems(
+        detail,
+        albumsPage.totalCount,
+        songsPage.totalCount,
+        appearancesPage.totalCount
+      ),
+    [albumsPage.totalCount, appearancesPage.totalCount, detail, songsPage.totalCount]
   );
 
-  const listItems = useMemo(() => buildListItems(detail), [detail]);
-
-  const playTrackListFrom = (tracks: readonly DbTrack[], index: number) => {
+  const playTrackListFrom = (
+    tracks: readonly DbTrack[],
+    index: number,
+    section: 'songs' | 'appearances' | 'all',
+  ) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({
+      kind: 'artist',
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section,
+    }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'artist', label: name },
     });
   };
 
-  const playArtist = () => playTrackListFrom(detail.playbackTracks, 0);
+  const playArtist = () => playTrackListFrom(detail.playbackTracks, 0, 'all');
   const shuffleArtist = () => {
     if (detail.playbackTracks.length === 0) return;
-    void shuffleTracks(detail.playbackTracks.map(dbTrackToTrack), {
+    void playLibraryQuery({
       kind: 'artist',
-      label: name,
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section: 'all',
+    }, {
+      shuffle: true,
+      source: { kind: 'artist', label: name },
     });
   };
 
@@ -141,8 +205,15 @@ export default function ArtistScreen() {
           <TrackRow
             track={item.track}
             subtitle={trackSubtitle(item.track, item.section)}
+            showFormat={false}
             active={item.track.path === currentPath}
-            onPress={() => playTrackListFrom(sourceTracks, item.index)}
+            onPress={() =>
+              playTrackListFrom(
+                sourceTracks,
+                item.index,
+                item.section === 'appearances' ? 'appearances' : 'songs',
+              )
+            }
             onLongPress={() => setActionTrack(item.track)}
             onOpenActions={() => setActionTrack(item.track)}
           />
@@ -162,20 +233,102 @@ export default function ArtistScreen() {
 
   const backdropHash = detail.artworkHashes[0] ?? null;
   const disabled = detail.playbackTracks.length === 0;
+  const artistKey = normalizeKey(name);
+
+  const reportImageError = (message: string) => {
+    showAppDialog({
+      title: 'Artist image unchanged',
+      message,
+    });
+  };
+
+  const chooseLocalImage = async () => {
+    setImageMenuOpen(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'image/webp'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      setImageBusy(true);
+      await selectLocalArtistImage(
+        artistKey,
+        name,
+        detailGroupingMode,
+        result.assets[0].uri
+      );
+    } catch {
+      reportImageError('Choose a valid JPEG, PNG, or WebP image smaller than 12 MB.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const chooseDeezerImage = async (candidate: DeezerArtistCandidate) => {
+    await selectDeezerArtistImage(artistKey, name, detailGroupingMode, candidate);
+  };
+
+  const resetImage = async () => {
+    setImageMenuOpen(false);
+    setImageBusy(true);
+    try {
+      await resetLocalArtistImage(artistKey, name, detailGroupingMode);
+    } catch {
+      reportImageError('Astra could not reset this artist image. Try again.');
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const imageActions: ActionSheetItem[] = [
+    {
+      key: 'search-deezer',
+      label: 'Search Deezer',
+      icon: 'search-outline',
+      onPress: () => {
+        setImageMenuOpen(false);
+        setImageSearchOpen(true);
+      },
+    },
+    {
+      key: 'choose-local',
+      label: imageBusy ? 'Choosing local image…' : 'Choose local image',
+      icon: 'image-outline',
+      onPress: () => void chooseLocalImage(),
+    },
+    ...(allPage.summary?.artwork_source === 'manual'
+      ? [{
+          key: 'reset',
+          label: 'Reset to automatic',
+          icon: 'refresh-outline' as const,
+          onPress: () => void resetImage(),
+        }]
+      : []),
+  ];
 
   return (
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={listItems}
         keyExtractor={(item) => item.key}
         showsVerticalScrollIndicator={false}
         renderItem={renderItem}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        // This screen composes four paged sources into one list and had no paging
+        // trigger at all, so anything past the first page was unreachable. Each
+        // loadMore no-ops once its own cursor runs out.
+        onEndReached={() => {
+          void allPage.loadMore();
+          void songsPage.loadMore();
+          void appearancesPage.loadMore();
+          void albumsPage.loadMore();
+        }}
+        onEndReachedThreshold={2}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: sceneBottomInset,
         }}
       />
       <CollapsingHeader
@@ -184,19 +337,27 @@ export default function ArtistScreen() {
         title={name}
         heroMeta={
           <View style={styles.stats}>
-            {detail.albums.length > 0 ? (
-              <StatChip icon="albums-outline" label={formatCount(detail.albums.length, 'album')} />
+            {/*
+              The album page's own count, not summary.album_count: the stored
+              summary counts albums the artist only appears on, and only settles
+              on the next rescan.
+            */}
+            {albumsPage.totalCount > 0 ? (
+              <StatChip icon="albums-outline" label={formatCount(albumsPage.totalCount, 'album')} />
             ) : null}
-            <StatChip icon="musical-notes-outline" label={formatCount(detail.tracks.length, 'track')} />
+            <StatChip icon="musical-notes-outline" label={formatCount(allPage.totalCount, 'track')} />
             {detail.totalDuration > 0 ? (
               <StatChip icon="time-outline" label={formatRuntime(detail.totalDuration)} />
             ) : null}
           </View>
         }
         disabled={disabled}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onPlay={playArtist}
         onShuffle={shuffleArtist}
+        onMore={() => setImageMenuOpen(true)}
+        moreAccessibilityLabel="Artist image options"
         scrollY={scrollY}
         heroFaded={heroFaded}
         collapsed={collapsed}
@@ -204,11 +365,29 @@ export default function ArtistScreen() {
         onHeroBlockLayout={onHeroBlockLayout}
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
+      <ActionSheet
+        visible={imageMenuOpen}
+        title={`${name} image`}
+        items={imageActions}
+        onClose={() => setImageMenuOpen(false)}
+      />
+      {imageSearchOpen ? (
+        <ArtistImageSearchSheet
+          artistName={name}
+          onClose={() => setImageSearchOpen(false)}
+          onSelect={chooseDeezerImage}
+        />
+      ) : null}
     </Screen>
   );
 }
 
-function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
+function buildListItems(
+  detail: ArtistDetail,
+  albumCount: number,
+  songCount: number,
+  appearanceCount: number
+): ArtistPageItem[] {
   const items: ArtistPageItem[] = [];
 
   if (detail.tracks.length === 0) {
@@ -221,29 +400,33 @@ function buildListItems(detail: ArtistDetail): ArtistPageItem[] {
       key: 'section-albums',
       type: 'section',
       title: 'Albums',
-      trailing: formatCount(detail.albums.length, 'album'),
+      trailing: formatCount(albumCount, 'album'),
       target: 'albums',
     });
     items.push({ key: 'albums', type: 'albums' });
   }
 
-  items.push({
-    key: 'section-songs',
-    type: 'section',
-    title: 'Songs',
-    trailing: formatCount(detail.songTracks.length, 'track'),
-    target: 'songs',
-  });
-  detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
-    items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
-  });
+  // An artist who only guests on other people's albums has no songs of their
+  // own, and a bare "Songs · 0 tracks" header reads as a loading failure.
+  if (songCount > 0) {
+    items.push({
+      key: 'section-songs',
+      type: 'section',
+      title: 'Songs',
+      trailing: formatCount(songCount, 'track'),
+      target: 'songs',
+    });
+    detail.songTracks.slice(0, SONG_PREVIEW_LIMIT).forEach((track, index) => {
+      items.push({ key: `song-${track.id}`, type: 'track', track, section: 'songs', index });
+    });
+  }
 
   if (detail.showAppearances) {
     items.push({
       key: 'section-appearances',
       type: 'section',
       title: 'Appears On',
-      trailing: formatCount(detail.appearanceTracks.length, 'track'),
+      trailing: formatCount(appearanceCount, 'track'),
       target: 'appearances',
     });
     detail.appearanceTracks.slice(0, APPEARANCE_PREVIEW_LIMIT).forEach((track, index) => {
@@ -302,7 +485,6 @@ function SectionHeader({
   onPress?: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
@@ -315,12 +497,12 @@ function SectionHeader({
         </Text>
       </View>
       {onPress ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.seeAllButton} onPress={onPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             See all
           </Text>
           <Ionicons name="chevron-forward" size={14} color={colors.accentText} />
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );
@@ -334,7 +516,6 @@ function AlbumRail({
   onAlbumPress: (album: ArtistAlbum) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   return (
     <ScrollView
       horizontal
@@ -342,7 +523,7 @@ function AlbumRail({
       contentContainerStyle={styles.albumRail}
     >
       {albums.map((album) => (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
           key={album.identity_key}
           style={styles.albumCard}
           onPress={() => onAlbumPress(album)}
@@ -368,7 +549,7 @@ function AlbumRail({
               .filter(Boolean)
               .join(' - ')}
           </Text>
-        </Pressable>
+        </AppPressable>
       ))}
     </ScrollView>
   );

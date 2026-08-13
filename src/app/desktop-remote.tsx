@@ -5,10 +5,8 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -18,16 +16,18 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { isWideWindow, WIDE_MIN_WIDTH } from '@/theme/adaptive';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
@@ -191,10 +191,9 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
   disabled: boolean;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable android_ripple={ripple.bounded}
+    <AppPressable
       style={[styles.discoveredRow, disabled && styles.buttonDisabled]}
       onPress={() => onPair(desktop)}
       disabled={disabled}
@@ -216,15 +215,15 @@ function DiscoveredDesktopRow({ desktop, onPair, disabled }: {
         </Text>
         <Ionicons name="keypad-outline" size={17} color={colors.accent} />
       </View>
-    </Pressable>
+    </AppPressable>
   );
 }
 
 export default function DesktopRemoteScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const pairingParams = useLocalSearchParams<{
     pair?: string;
     baseUrl?: string;
@@ -337,10 +336,14 @@ export default function DesktopRemoteScreen() {
   }, [connection, discoveryAvailable, discoveryRunning, message]);
 
   const confirmForget = () => {
-    Alert.alert('Forget desktop?', 'This removes the saved desktop pairing from this phone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Forget', style: 'destructive', onPress: () => void forget() },
-    ]);
+    showAppDialog({
+      title: 'Forget desktop?',
+      message: 'This removes the saved desktop pairing from this phone.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        { label: 'Forget', role: 'destructive', onPress: () => void forget() },
+      ],
+    });
   };
 
   const pairDiscovered = (desktop: DesktopRemoteDiscoveredDesktop) => {
@@ -430,7 +433,7 @@ export default function DesktopRemoteScreen() {
               maxLength={6}
               textContentType="oneTimeCode"
             />
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               style={[
                 styles.primaryButton,
                 (normalizedPinInput.length !== 6 || !pinPairingActive) && styles.buttonDisabled,
@@ -442,7 +445,7 @@ export default function DesktopRemoteScreen() {
               <Text variant="body" color={colors.accentTextStrong}>
                 Confirm PIN
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         ) : null}
       </View>
@@ -456,12 +459,12 @@ export default function DesktopRemoteScreen() {
           Open Astra Desktop settings, enable Phone Remote, then scan or paste the pairing link.
         </Text>
         <View style={styles.actionRow}>
-          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
+          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
             <Ionicons name="scan" size={18} color={colors.accentTextStrong} />
             <Text variant="body" color={colors.accentTextStrong}>
               Scan QR
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
         <TextInput
           style={styles.input}
@@ -473,7 +476,7 @@ export default function DesktopRemoteScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <Pressable android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
           style={[styles.secondaryButton, !pairingLink.trim() && styles.buttonDisabled]}
           disabled={!pairingLink.trim()}
           onPress={() => void pairFromInput(pairingLink)}
@@ -481,7 +484,7 @@ export default function DesktopRemoteScreen() {
           <Text variant="body" color={pairingLink.trim() ? colors.textPrimary : colors.textTertiary}>
             Pair from link
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <View style={styles.card}>
@@ -501,7 +504,7 @@ export default function DesktopRemoteScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <Pressable android_ripple={ripple.bounded}
+        <AppPressable feedback="control"
           style={[
             styles.secondaryButton,
             !manualBaseUrl.trim() && styles.buttonDisabled,
@@ -515,7 +518,7 @@ export default function DesktopRemoteScreen() {
           >
             Request secure PIN
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {pinPairing ? (
@@ -554,9 +557,9 @@ export default function DesktopRemoteScreen() {
     >
       <View style={[styles.remoteShell, { width: remoteLayout.contentWidth }]}>
         <View style={styles.remoteNowHeader}>
-          <Pressable android_ripple={ripple.bounded} style={styles.headerBtn} onPress={() => router.back()} hitSlop={12}>
+          <AppPressable feedback="control"  style={styles.headerBtn} onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
-          </Pressable>
+          </AppPressable>
           <View style={styles.headerMid}>
             <Text variant="caption" style={styles.eyebrow}>
               DESKTOP REMOTE
@@ -565,14 +568,14 @@ export default function DesktopRemoteScreen() {
               {remoteSource}
             </Text>
           </View>
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="control"
             style={styles.headerBtn}
             onPress={() => void reconnect()}
             hitSlop={12}
             accessibilityLabel="Reconnect to desktop"
           >
             <Ionicons name="refresh" size={20} color={colors.textSecondary} />
-          </Pressable>
+          </AppPressable>
         </View>
 
         <View style={styles.managePanel}>
@@ -613,31 +616,31 @@ export default function DesktopRemoteScreen() {
           </View>
 
           <View style={styles.manageActions}>
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               style={styles.primaryButton}
               onPress={() => {
                 // The player is an overlay, not a route: open it and pop this
                 // screen so it slides in above wherever the user came from.
                 usePlayerUiStore.getState().openPlayer();
                 if (router.canGoBack()) router.back();
-                else router.replace('/');
+                else returnToTabs('/');
               }}
             >
               <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Open Now Playing
               </Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={() => void reconnect()}>
+            </AppPressable>
+            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void reconnect()}>
               <Ionicons name="refresh" size={18} color={colors.textPrimary} />
               <Text variant="body">Reconnect</Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded} style={styles.dangerButton} onPress={confirmForget}>
+            </AppPressable>
+            <AppPressable feedback="control"  style={styles.dangerButton} onPress={confirmForget}>
               <Ionicons name="trash-outline" size={18} color={colors.warning} />
               <Text variant="body" color={colors.warning}>
                 Forget desktop
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
@@ -667,12 +670,12 @@ export default function DesktopRemoteScreen() {
         ) : (
           <>
             <View style={styles.topBar}>
-              <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+              <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
                 <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
                 <Text variant="body" color={colors.textSecondary}>
                   Settings
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
             {renderSetup()}
           </>

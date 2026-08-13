@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -13,15 +13,14 @@ import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
+import { useNativeAlbumDetail } from '@/library/nativePages';
 import { albumArtworkSource, artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type AlbumRow =
   | { kind: 'track'; track: DbTrack; index: number }
@@ -38,28 +37,18 @@ function DiscHeader({ disc }: { disc: number }) {
 }
 
 export default function AlbumScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
   const { key } = useLocalSearchParams<{ key: string }>();
-  const albums = useLibraryStore((s) => s.albums);
-  const allTracks = useLibraryStore((s) => s.tracks);
+  const { items: tracks, summary: album, totalCount, loadMore } = useNativeAlbumDetail(key);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
   const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
     useDetailCollapse();
 
-  const album = albums.find((entry) => entry.identity_key === key);
-  // Store tracks are artist-ordered, so a multi-artist group (Various Artists
-  // compilation) would come out blocked by artist — re-sort into album order.
-  const tracks = useMemo(
-    () =>
-      allTracks
-        .filter((track) => track.album_identity_key === key)
-        .sort(compareTracksByDiscTrackTitle),
-    [allTracks, key]
-  );
-
-  const totalDuration = tracks.reduce((sum, track) => sum + track.duration, 0);
+  const totalDuration =
+    album?.total_duration ?? tracks.reduce((sum, track) => sum + track.duration, 0);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
   // Interleave "Disc N" headers only when the album spans multiple discs;
@@ -84,8 +73,8 @@ export default function AlbumScreen() {
   }, [tracks]);
 
   const playFrom = (index: number) => {
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'album', albumKey: key }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'album', label: album?.album ?? tracks[0]?.album ?? 'Album' },
     });
   };
@@ -109,7 +98,7 @@ export default function AlbumScreen() {
   const backdropUri = headerArtworkHash ? artworkThumbUri(headerArtworkHash) : artSource;
   const meta = [
     (album?.year ?? fallbackTrack?.year) ? String(album?.year ?? fallbackTrack?.year) : null,
-    `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`,
+    `${totalCount} ${totalCount === 1 ? 'track' : 'tracks'}`,
     formatDuration(totalDuration),
   ]
     .filter(Boolean)
@@ -117,17 +106,19 @@ export default function AlbumScreen() {
 
   return (
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={albumItems}
         keyExtractor={(item) => (item.kind === 'disc' ? `disc-${item.disc}` : String(item.track.id))}
         getItemType={(item) => item.kind}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={2}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: sceneBottomInset,
         }}
         renderItem={({ item }) =>
           item.kind === 'disc' ? (
@@ -135,7 +126,8 @@ export default function AlbumScreen() {
           ) : (
             <TrackRow
               track={item.track}
-              showArtist={false}
+              showTrackNumber
+              showFormat={false}
               active={item.track.path === currentPath}
               onPress={() => playFrom(item.index)}
               onLongPress={() => setActionTrack(item.track)}
@@ -165,11 +157,15 @@ export default function AlbumScreen() {
           </>
         }
         disabled={tracks.length === 0}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onPlay={() => playFrom(0)}
-        onShuffle={() => void shuffleTracks(tracks.map(dbTrackToTrack), {
-          kind: 'album',
-          label: album?.album ?? tracks[0]?.album ?? 'Album',
+        onShuffle={() => void playLibraryQuery({ kind: 'album', albumKey: key }, {
+          shuffle: true,
+          source: {
+            kind: 'album',
+            label: album?.album ?? tracks[0]?.album ?? 'Album',
+          },
         })}
         scrollY={scrollY}
         heroFaded={heroFaded}

@@ -18,6 +18,7 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
 import { NowPlayingHost } from '@/components/player/NowPlayingHost';
+import { PlayerDock } from '@/components/player/PlayerDock';
 import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
 import { useScopeLifecycle } from '@/scope/useScopeLifecycle';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -44,11 +45,16 @@ import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
 import { SyncConflictPrompt } from '@/components/sync/SyncConflictPrompt';
 import { useThemeStore } from '@/stores/themeStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { ArtistImageDisclosurePrompt } from '@/components/onboarding/ArtistImageDisclosurePrompt';
 import { useTheme } from '@/theme/themed';
 import { SessionLifecycle } from '@/session/SessionLifecycle';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import { Text } from '@/components/Text';
+import { AppDialogHost } from '@/components/dialogs/AppDialog';
+import { startArtistImageLookupCoordinator } from '@/library/artistImageLookup';
 
 // Anchor the root stack at the tabs so a deep link straight to a top-level route
 // (the widget's `recently-played`, the notification-click redirect) builds
@@ -328,6 +334,8 @@ export default function RootLayout() {
   const themeLoaded = useThemeStore((s) => s.loaded);
   const onboardingLoaded = useOnboardingStore((s) => s.loaded);
   const onboardingComplete = useOnboardingStore((s) => s.onboardingComplete);
+  const libraryStatus = useLibraryStore((s) => s.status);
+  const fatalUserData = libraryStatus === 'fatalUserData';
   const theme = useTheme();
   const renderReady = (fontsLoaded && themeLoaded && onboardingLoaded) || splashTimedOut;
   const [sessionReady, setSessionReady] = useState(false);
@@ -345,6 +353,7 @@ export default function RootLayout() {
   // Library tab + playback adapters get data immediately. EQ + audio settings load
   // alongside so the native EQ/gain reflect persisted prefs from the first play.
   useEffect(() => {
+    startArtistImageLookupCoordinator();
     useThemeStore
       .getState()
       .load()
@@ -390,7 +399,7 @@ export default function RootLayout() {
             needs a root navigator), but the playback/sync/desktop side-effects and
             overlays are gated off during the wizard — no LAN-discovery bursts or
             scrobbler running mid-onboarding. */}
-        {onboardingComplete ? (
+        {onboardingComplete && !fatalUserData ? (
           <>
             <ThemeSystemSync />
             <SleepTimerLifecycle />
@@ -403,22 +412,59 @@ export default function RootLayout() {
             <DesktopSyncAutoTrigger />
           </>
         ) : null}
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.bgPrimary },
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-        {onboardingComplete ? <SessionLifecycle onReady={handleSessionReady} /> : null}
-        {onboardingComplete ? (
+        {/* The player dock sits BESIDE the whole Stack, not inside (tabs), so
+            the pane survives every route — settings sub-pages and the other
+            root-stack screens are pushed above the tabs navigator and would
+            otherwise make a ~460dp pane vanish and reappear. It renders nothing
+            unless the shell says this window can seat one, so on a phone this
+            row is a plain full-width Stack. */}
+        <View style={styles.shellRow}>
+          <View style={styles.shellScene}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: theme.colors.bgPrimary },
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+          </View>
+          <PlayerDock />
+        </View>
+        {onboardingComplete && !fatalUserData ? <SessionLifecycle onReady={handleSessionReady} /> : null}
+        {fatalUserData ? (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: theme.colors.bgPrimary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 32,
+                gap: 12,
+              },
+            ]}
+          >
+            <Text variant="title" style={{ textAlign: 'center' }}>
+              Library data unavailable
+            </Text>
+            <Text
+              variant="body"
+              color={theme.colors.textSecondary}
+              style={{ maxWidth: 420, textAlign: 'center' }}
+            >
+              Astra could not restore your playlists, favorites, and settings from either safety
+              snapshot. Nothing was silently reset, and your music files were not changed.
+            </Text>
+          </View>
+        ) : onboardingComplete ? (
           <>
             {/* Always-mounted player overlay (store-gated); open/close is a pure
                 UI-thread slide with zero mount cost after the first mount. */}
             <NowPlayingHost />
             <QuickSearchOverlay />
             <SyncConflictPrompt />
+            <ArtistImageDisclosurePrompt />
           </>
         ) : (
           // First-run gate: opaque full-screen wizard over the (hidden) navigator.
@@ -426,12 +472,29 @@ export default function RootLayout() {
           <View style={StyleSheet.absoluteFill}>
             <OnboardingFlow
               onDone={() => {
-                void useOnboardingStore.getState().markComplete();
+                void (async () => {
+                  await useSettingsStore.getState().acknowledgeArtistImageDisclosure();
+                  await useOnboardingStore.getState().markComplete();
+                })();
               }}
             />
           </View>
         )}
+        <AppDialogHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  // A row only in the sense that the dock may claim the trailing edge. With no
+  // dock the scene is the only child and this is indistinguishable from the
+  // Stack rendering on its own.
+  shellRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  shellScene: {
+    flex: 1,
+  },
+});

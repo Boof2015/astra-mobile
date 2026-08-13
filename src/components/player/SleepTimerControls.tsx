@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { View } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import { SLEEP_TIMER_PRESETS, formatSleepTimerStatus, normalizeSleepTimerMinutes } from '@/audio/sleepTimerState';
 import { supportsNativePauseAtEndOfItem } from '@/audio/trackPlayerExtensions';
@@ -8,12 +9,11 @@ import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 
 export function SleepTimerControls() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const timer = useSleepTimerStore((s) => s.timer);
   const remainingMs = useSleepTimerStore((s) => s.remainingMs);
   const hydrate = useSleepTimerStore((s) => s.hydrate);
@@ -76,22 +76,22 @@ export function SleepTimerControls() {
 
       <View style={styles.presets}>
         {SLEEP_TIMER_PRESETS.map((minutes) => (
-          <Pressable
+          <AppPressable feedback="none"
             key={minutes}
             disabled={!available}
-            android_ripple={ripple.bounded}
+
             unstable_pressDelay={SCROLL_PRESS_DELAY}
             onPress={() => void run(() => startMinutes(minutes), `Timer set for ${minutes} minutes.`)}
             style={({ pressed }) => [styles.preset, !available && styles.disabled, pressed && available && styles.pressed]}
             accessibilityRole="button"
           >
             <Text variant="label" color={colors.textPrimary}>{minutes} min</Text>
-          </Pressable>
+          </AppPressable>
         ))}
       </View>
 
       <View style={styles.customRow}>
-        <TextInput
+        <BottomSheetTextInput
           value={customMinutes}
           onChangeText={setCustomMinutes}
           editable={available}
@@ -103,19 +103,19 @@ export function SleepTimerControls() {
           style={[styles.input, !available && styles.disabled]}
           accessibilityLabel="Custom sleep timer minutes"
         />
-        <Pressable
+        <AppPressable feedback="none"
           disabled={!available}
-          android_ripple={ripple.bounded}
+
           onPress={startCustom}
           style={({ pressed }) => [styles.action, !available && styles.disabled, pressed && available && styles.pressed]}
         >
           <Text variant="label" color={colors.accentTextStrong}>Set custom</Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
-      <Pressable
+      <AppPressable feedback="none"
         disabled={!available || !supportsNativePauseAtEndOfItem()}
-        android_ripple={ripple.bounded}
+
         onPress={() => void run(startEndOfTrack, 'Timer set for the end of the track.')}
         style={({ pressed }) => [
           styles.fullAction,
@@ -127,12 +127,12 @@ export function SleepTimerControls() {
         <Text variant="caption" color={colors.textSecondary}>
           {supportsNativePauseAtEndOfItem() ? 'Pause exactly before the next track begins.' : 'Requires the Android playback engine.'}
         </Text>
-      </Pressable>
+      </AppPressable>
 
       {timer ? (
-        <Pressable android_ripple={ripple.bounded} onPress={() => void run(cancel, 'Sleep timer canceled.')} style={styles.cancel}>
+        <AppPressable feedback="control"  onPress={() => void run(cancel, 'Sleep timer canceled.')} style={styles.cancel}>
           <Text variant="label" color={colors.warning}>Cancel sleep timer</Text>
-        </Pressable>
+        </AppPressable>
       ) : null}
 
       {feedback ? <Text variant="caption" color={colors.textSecondary}>{feedback}</Text> : null}

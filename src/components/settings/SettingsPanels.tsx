@@ -1,12 +1,12 @@
 import {
-  Alert,
-  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { ScanProgress } from '@/components/library/ScanProgress';
+import { ScanNotificationPermissionCard } from '@/components/library/ScanNotificationPermissionCard';
+import { ArtistImageSweepStatus } from '@/components/library/ArtistImageSweepStatus';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
 import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
@@ -17,7 +17,7 @@ import {
 } from '@/components/settings/SettingsSectionScaffold';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import type { ReplayGainMode } from '@/audio/normalization';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
 import type { BaseThemeId, PreferredDark } from '@/theme/resolve';
@@ -25,8 +25,13 @@ import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useLibraryStore, type FolderWithCount } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
+import type {
+  CoverArtAccentMethod,
+  NowPlayingAccentSource,
+} from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { playHaptic } from '@/lib/haptics';
 import type { HomeGreetingTextMode } from '@/home/homeGreeting';
 
@@ -66,6 +71,17 @@ const HOME_GREETING_SEGMENTS = [
   { key: 'off', label: 'Off' },
 ];
 
+const NOW_PLAYING_ACCENT_SEGMENTS = [
+  { key: 'app', label: 'App' },
+  { key: 'cover-art', label: 'Cover Art' },
+];
+
+const COVER_ART_METHOD_SEGMENTS = [
+  { key: 'dominant', label: 'Dominant' },
+  { key: 'vibrant', label: 'Vibrant' },
+  { key: 'average', label: 'Average' },
+];
+
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
   {
     mode: 'astra',
@@ -91,16 +107,17 @@ export function themeOptionTitle(id: BaseThemeId): string {
 
 export function AppearanceSettingsPanel() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const preferredDark = useThemeStore((s) => s.preferredDark);
-  const accentId = useThemeStore((s) => s.accentId);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
   const resolvedId = useThemeStore((s) => s.theme.id);
+  const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
+  const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const setBaseTheme = useThemeStore((s) => s.setBaseTheme);
   const setPreferredDark = useThemeStore((s) => s.setPreferredDark);
-  const setAccent = useThemeStore((s) => s.setAccent);
+  const setNowPlayingAccentSource = useThemeStore((s) => s.setNowPlayingAccentSource);
+  const setCoverArtAccentMethod = useThemeStore((s) => s.setCoverArtAccentMethod);
 
   const options = THEME_OPTIONS.filter(
     (option) => option.id !== 'materialYou' || materialYouAvailable
@@ -117,7 +134,7 @@ export function AppearanceSettingsPanel() {
         {options.map((option) => {
           const selected = option.id === baseTheme;
           return (
-            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+            <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.id}
               style={[styles.option, selected && styles.optionSelected]}
               onPress={() => {
@@ -141,7 +158,7 @@ export function AppearanceSettingsPanel() {
               ) : (
                 <Ionicons name="ellipse-outline" size={20} color={colors.textTertiary} />
               )}
-            </Pressable>
+            </AppPressable>
           );
         })}
       </View>
@@ -161,9 +178,40 @@ export function AppearanceSettingsPanel() {
 
       {accentApplies ? (
         <View style={styles.appearanceBlock}>
-          <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
+          <AccentSwatchRow />
         </View>
       ) : null}
+
+      <SettingsSectionLabel spaced>NOW PLAYING ACCENT</SettingsSectionLabel>
+      <SettingsCard>
+        <Text variant="body" style={styles.settingTitle}>
+          Accent source
+        </Text>
+        <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+          Cover Art colors only the open player. The app accent is used when artwork is unavailable.
+        </Text>
+        <SegmentedControl
+          segments={NOW_PLAYING_ACCENT_SEGMENTS}
+          value={nowPlayingAccentSource}
+          onChange={(key) =>
+            void setNowPlayingAccentSource(key as NowPlayingAccentSource)
+          }
+        />
+        {nowPlayingAccentSource === 'cover-art' ? (
+          <View style={styles.coverArtMethod}>
+            <Text variant="caption" color={colors.textSecondary}>
+              Cover art method
+            </Text>
+            <SegmentedControl
+              segments={COVER_ART_METHOD_SEGMENTS}
+              value={coverArtAccentMethod}
+              onChange={(key) =>
+                void setCoverArtAccentMethod(key as CoverArtAccentMethod)
+              }
+            />
+          </View>
+        ) : null}
+      </SettingsCard>
 
       <SettingsSectionLabel spaced>HOME</SettingsSectionLabel>
       <SettingsCard>
@@ -199,7 +247,6 @@ function LibraryFolderSettingsRow({
   onRemove: (folder: FolderWithCount) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
     <View style={styles.folderSettingsRow}>
@@ -222,7 +269,7 @@ function LibraryFolderSettingsRow({
             : 'Access lost. Remove and add again.'}
         </Text>
       </View>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable feedback="control" unstable_pressDelay={SCROLL_PRESS_DELAY}
         hitSlop={8}
         disabled={disabled}
         onPress={() => onRemove(folder)}
@@ -231,14 +278,13 @@ function LibraryFolderSettingsRow({
         style={disabled && styles.actionDisabled}
       >
         <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
-      </Pressable>
+      </AppPressable>
     </View>
   );
 }
 
 function LibraryFoldersSettings() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const isScanning = useLibraryStore((s) => s.isScanning);
@@ -251,14 +297,18 @@ function LibraryFoldersSettings() {
   const totalTracks = folders.reduce((sum, folder) => sum + folder.track_count, 0);
 
   const confirmRemove = (folder: FolderWithCount) => {
-    Alert.alert(
-      'Remove folder?',
-      `"${folder.display_name}" and its ${formatTrackCount(folder.track_count)} will be removed from the library. Files on disk are not touched.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => void removeFolder(folder.id) },
-      ]
-    );
+    showAppDialog({
+      title: 'Remove folder?',
+      message: `"${folder.display_name}" and its ${formatTrackCount(folder.track_count)} will be removed from the library. Files on disk are not touched.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Remove',
+          role: 'destructive',
+          onPress: () => void removeFolder(folder.id),
+        },
+      ],
+    });
   };
 
   return (
@@ -272,7 +322,7 @@ function LibraryFoldersSettings() {
               : `${formatFolderCount(folders.length)} / ${formatTrackCount(totalTracks)}`}
           </Text>
         </View>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={[styles.folderPrimaryAction, isScanning && styles.actionDisabled]}
           disabled={isScanning}
           onPress={() => void addFolder()}
@@ -282,12 +332,12 @@ function LibraryFoldersSettings() {
           <Text variant="label" style={styles.folderPrimaryActionText}>
             Add
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {folders.length > 0 ? (
         <View style={styles.folderSettingsActions}>
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             style={[styles.folderSecondaryAction, isScanning && styles.actionDisabled]}
             disabled={isScanning}
             onPress={() => void rescan()}
@@ -297,7 +347,7 @@ function LibraryFoldersSettings() {
             <Text variant="label" color={colors.textSecondary}>
               Rescan all
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       ) : null}
 
@@ -333,7 +383,6 @@ function LibraryFoldersSettings() {
 
 export function LibrarySettingsPanel() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const setArtistGroupingMode = useSettingsStore((s) => s.setArtistGroupingMode);
@@ -341,11 +390,51 @@ export function LibrarySettingsPanel() {
   const setIncludeSingles = useSettingsStore((s) => s.setIncludeSingles);
   const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const setIncludeCollabArtists = useLibraryStore((s) => s.setIncludeCollabArtists);
+  const artistImageAutoPolicy = useSettingsStore((s) => s.artistImageAutoPolicy);
+  const setArtistImageAutoPolicy = useSettingsStore((s) => s.setArtistImageAutoPolicy);
+  const artistImagesEnabled = artistImageAutoPolicy !== 'off';
 
   return (
     <>
       <SettingsSectionLabel>LOCAL FOLDERS</SettingsSectionLabel>
       <LibraryFoldersSettings />
+      {/* Renders nothing once the permission is granted — the style carries the
+          spacing so no empty gap is left behind. */}
+      <ScanNotificationPermissionCard style={styles.cardSpacing} />
+
+      <SettingsSectionLabel spaced>ARTIST IMAGES</SettingsSectionLabel>
+      <SettingsCard>
+        <SettingsToggleRow
+          title="Automatic artist images"
+          description="Send artist names to Deezer and cache selected images locally for offline use."
+          value={artistImagesEnabled}
+          onValueChange={(enabled) =>
+            void setArtistImageAutoPolicy(enabled ? 'wifi' : 'off')
+          }
+        />
+        {artistImagesEnabled ? (
+          <View style={styles.indent}>
+            <Text variant="caption" color={colors.textSecondary} style={styles.settingNote}>
+              Download network
+            </Text>
+            <SegmentedControl
+              segments={[
+                { key: 'wifi', label: 'Wi-Fi / Ethernet' },
+                { key: 'any', label: 'Any network' },
+              ]}
+              value={artistImageAutoPolicy}
+              onChange={(value) =>
+                void setArtistImageAutoPolicy(value === 'any' ? 'any' : 'wifi')
+              }
+            />
+          </View>
+        ) : (
+          <Text variant="caption" color={colors.textTertiary} style={styles.settingNote}>
+            Manual Deezer searches remain available from an artist’s menu.
+          </Text>
+        )}
+        <ArtistImageSweepStatus enabled={artistImagesEnabled} />
+      </SettingsCard>
 
       <SettingsSectionLabel spaced>LIBRARY VIEW</SettingsSectionLabel>
       <Text variant="body" style={styles.settingTitle}>
@@ -359,7 +448,7 @@ export function LibrarySettingsPanel() {
         {ARTIST_GROUPING_OPTIONS.map((option) => {
           const selected = option.mode === groupingMode;
           return (
-            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+            <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
               key={option.mode}
               style={[styles.option, selected && styles.optionSelected]}
               onPress={() => {
@@ -383,7 +472,7 @@ export function LibrarySettingsPanel() {
               ) : (
                 <Ionicons name="ellipse-outline" size={20} color={colors.textTertiary} />
               )}
-            </Pressable>
+            </AppPressable>
           );
         })}
       </View>
@@ -412,7 +501,6 @@ export function LibrarySettingsPanel() {
 
 export function AudioSettingsPanel() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
   const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
@@ -460,7 +548,7 @@ export function AudioSettingsPanel() {
             {REPLAYGAIN_MODES.map((m) => {
               const selected = m.mode === replayGainMode;
               return (
-                <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+                <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
                   key={m.mode}
                   style={[styles.modePill, selected && styles.modePillSelected]}
                   onPress={() => {
@@ -472,7 +560,7 @@ export function AudioSettingsPanel() {
                   <Text variant="label" color={selected ? colors.accentTextStrong : colors.textSecondary}>
                     {m.label}
                   </Text>
-                </Pressable>
+                </AppPressable>
               );
             })}
           </View>
@@ -491,6 +579,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   settingNote: {
     marginBottom: spacing.md,
+  },
+  coverArtMethod: {
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
   options: {
     gap: spacing.sm,

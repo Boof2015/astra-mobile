@@ -1,4 +1,4 @@
-import { hexToHsl, hslToHex, rgbaFromHex } from './colorUtils';
+import { hexToHsl, hslToHex, normalizeHexColor, rgbaFromHex } from './colorUtils.ts';
 
 /**
  * Named accent choices. Each is a single base hex; the full 5-token ramp is
@@ -38,8 +38,33 @@ export type AccentId = keyof typeof ACCENTS;
 export const DEFAULT_ACCENT: AccentId = 'indigo';
 export const ACCENT_IDS = Object.keys(ACCENTS) as AccentId[];
 
+export type AccentPreference =
+  | { kind: 'preset'; id: AccentId }
+  | { kind: 'custom'; hex: string };
+
+export const DEFAULT_ACCENT_PREFERENCE: AccentPreference = {
+  kind: 'preset',
+  id: DEFAULT_ACCENT,
+};
+
 export function parseAccentId(value: string | null): AccentId {
   return value !== null && value in ACCENTS ? (value as AccentId) : DEFAULT_ACCENT;
+}
+
+export function parseAccentPreference(value: string | null): AccentPreference {
+  if (value !== null && value in ACCENTS) {
+    return { kind: 'preset', id: value as AccentId };
+  }
+  const hex = value === null ? null : normalizeHexColor(value);
+  return hex ? { kind: 'custom', hex } : DEFAULT_ACCENT_PREFERENCE;
+}
+
+export function serializeAccentPreference(preference: AccentPreference): string {
+  return preference.kind === 'preset' ? preference.id : preference.hex;
+}
+
+export function accentPreferenceBase(preference: AccentPreference): string {
+  return preference.kind === 'preset' ? ACCENTS[preference.id].base : preference.hex;
 }
 
 export interface AccentTokens {
@@ -55,23 +80,45 @@ export interface AccentTokens {
  * text L=83, textStrong L=92, glow rgba(base, .30)). Light themes ramp DOWN
  * (text darker than base) because accentText sits on light surfaces.
  */
-export function deriveAccent(id: AccentId, isDark: boolean): AccentTokens {
-  const def: AccentDef = ACCENTS[id];
-  const { h, s, l } = hexToHsl(def.base);
+function deriveAccentBase(
+  base: string,
+  isDark: boolean,
+  overridesDark?: Partial<AccentTokens>,
+  overridesLight?: Partial<AccentTokens>,
+): AccentTokens {
+  const { h, s, l } = hexToHsl(base);
   const derived: AccentTokens = isDark
     ? {
-        accent: def.base,
+        accent: base,
         accentHover: hslToHex(h, s, Math.min(l + 8, 96)),
-        accentGlow: rgbaFromHex(def.base, 0.3),
+        accentGlow: rgbaFromHex(base, 0.3),
         accentText: hslToHex(h, s, 83),
         accentTextStrong: hslToHex(h, s, 92),
       }
     : {
-        accent: def.base,
+        accent: base,
         accentHover: hslToHex(h, s, Math.max(l - 8, 20)),
-        accentGlow: rgbaFromHex(def.base, 0.25),
+        accentGlow: rgbaFromHex(base, 0.25),
         accentText: hslToHex(h, s, 36),
         accentTextStrong: hslToHex(h, s, 26),
       };
-  return { ...derived, ...(isDark ? def.overridesDark : def.overridesLight) };
+  return { ...derived, ...(isDark ? overridesDark : overridesLight) };
+}
+
+export function deriveAccent(id: AccentId, isDark: boolean): AccentTokens {
+  const def: AccentDef = ACCENTS[id];
+  return deriveAccentBase(def.base, isDark, def.overridesDark, def.overridesLight);
+}
+
+export function deriveAccentFromHex(hex: string, isDark: boolean): AccentTokens {
+  return deriveAccentBase(normalizeHexColor(hex) ?? ACCENTS[DEFAULT_ACCENT].base, isDark);
+}
+
+export function deriveAccentPreference(
+  preference: AccentPreference,
+  isDark: boolean,
+): AccentTokens {
+  return preference.kind === 'preset'
+    ? deriveAccent(preference.id, isDark)
+    : deriveAccentFromHex(preference.hex, isDark);
 }

@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AppState,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
+  useWindowDimensions,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useTopBleedInset } from '@/components/screenTopBleed';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -28,27 +32,34 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { compareTracksByDiscTrackTitle } from '@/library/albumIdentity';
-import { buildArtistDetail } from '@/library/artistDetail';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { filterArtistBrowseList } from '@/library/artistGrouping';
-import { dbTrackToTrack } from '@/library/trackAdapter';
 import { albumArtworkSource, artworkUri } from '@/library/artwork';
 import {
   chooseHomeGreeting,
   HOME_GREETING_ROTATION_MS,
   type HomeGreetingTextMode,
 } from '@/home/homeGreeting';
+import { getHomeLayout, HOME_COLUMN_GAP } from '@/home/homeLayout';
+import { useHomeLibraryNavigation } from '@/navigation/useHomeLibraryNavigation';
 import type { Album, Artist, DbTrack } from '@/types/library';
+import {
+  hasListeningPreview,
+  ListeningPreviewCard,
+} from '@/components/listening/ListeningPreviewCard';
+import { useListeningStatsStore } from '@/stores/listeningStatsStore';
+import { subscribeToListeningHistory } from '@/listeningStats/events';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
+import { useTabReselect } from '@/navigation/useTabReselect';
+import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
 
 const RECENT_ALBUM_LIMIT = 8;
-const RECENT_TRACK_LIMIT = 3;
 const PLAYLIST_LIMIT = 4;
 
 type RandomSpotlight =
@@ -132,7 +143,6 @@ function HomeMasthead({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [clockNow, setClockNow] = useState(() => new Date());
   const [greeting, setGreeting] = useState(() => chooseHomeGreeting(null, new Date()));
 
@@ -178,9 +188,9 @@ function HomeMasthead({
   }, [mode]);
 
   const searchButton = (
-    <Pressable
+    <AppPressable
       style={styles.mastheadSearch}
-      android_ripple={ripple.icon(22)}
+      feedback="control"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onSearch}
       accessibilityRole="button"
@@ -188,13 +198,13 @@ function HomeMasthead({
       hitSlop={4}
     >
       <Ionicons name="search" size={22} color={colors.textPrimary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const scanButton = (
-    <Pressable
+    <AppPressable
       style={styles.mastheadSearch}
-      android_ripple={ripple.icon(22)}
+      feedback="control"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onScan}
       accessibilityRole="button"
@@ -202,7 +212,7 @@ function HomeMasthead({
       hitSlop={4}
     >
       <Ionicons name="scan-outline" size={22} color={colors.textPrimary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const utilityButtons = (
@@ -253,7 +263,6 @@ function SectionHeader({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleGroup}>
@@ -267,12 +276,12 @@ function SectionHeader({
         ) : null}
       </View>
       {onActionPress && actionLabel ? (
-        <Pressable style={styles.seeAllButton} android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
+        <AppPressable feedback="control" style={styles.seeAllButton}  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
             {actionLabel}
           </Text>
           <Ionicons name="chevron-forward" size={14} color={colors.accentText} />
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );
@@ -335,36 +344,41 @@ function ArtistCover({ artist, size }: { artist: Artist; size: number }) {
 
 function RecentlyAddedAlbum({
   album,
+  size,
   onPress,
 }: {
   album: Album;
+  size: number;
   onPress: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   return (
-    <Pressable style={styles.recentAlbum} android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
-      <AlbumCover album={album} size={112} />
+    <AppPressable style={[styles.recentAlbum, { width: size }]} feedback="tile" unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onPress} accessibilityRole="button">
+      <AlbumCover album={album} size={size} />
       <Text variant="body" numberOfLines={1} style={styles.recentAlbumTitle}>
         {album.album}
       </Text>
       <Text variant="label" numberOfLines={1}>
         {album.artist}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 
 function RandomSpotlightCard({
   spotlight,
-  tracks,
+  hasTracks,
+  coverSize,
+  style,
   onPlay,
   onShuffle,
   onReroll,
   onOpen,
 }: {
   spotlight: { kind: 'album'; album: Album } | { kind: 'artist'; artist: Artist };
-  tracks: DbTrack[];
+  hasTracks: boolean;
+  coverSize: number;
+  style?: StyleProp<ViewStyle>;
   onPlay: () => void;
   onShuffle: () => void;
   onReroll: () => void;
@@ -372,8 +386,7 @@ function RandomSpotlightCard({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
-  const disabled = tracks.length === 0;
+  const disabled = !hasTracks;
   const title = spotlight.kind === 'album' ? spotlight.album.album : spotlight.artist.artist;
   const label = spotlight.kind === 'album' ? 'RANDOM ALBUM' : 'RANDOM ARTIST';
   const meta = spotlight.kind === 'album'
@@ -385,9 +398,9 @@ function RandomSpotlightCard({
   };
 
   return (
-    <Pressable
-      style={styles.randomCard}
-      android_ripple={ripple.tile}
+    <AppPressable
+      style={[styles.randomCard, style]}
+      feedback="tile"
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       onPress={onOpen}
       accessibilityRole="button"
@@ -395,9 +408,9 @@ function RandomSpotlightCard({
     >
       <View style={styles.randomMain}>
         {spotlight.kind === 'album' ? (
-          <AlbumCover album={spotlight.album} size={88} />
+          <AlbumCover album={spotlight.album} size={coverSize} />
         ) : (
-          <ArtistCover artist={spotlight.artist} size={88} />
+          <ArtistCover artist={spotlight.artist} size={coverSize} />
         )}
         <View style={styles.randomMeta}>
           <Text variant="label" color={colors.textTertiary}>
@@ -410,8 +423,8 @@ function RandomSpotlightCard({
             {meta}
           </Text>
           <View style={styles.randomActions}>
-            <Pressable
-              android_ripple={ripple.onAccent()}
+            <AppPressable
+              feedback="accent"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={[styles.randomPrimaryAction, disabled && styles.buttonDisabled]}
               disabled={disabled}
@@ -421,9 +434,9 @@ function RandomSpotlightCard({
               accessibilityLabel={`Play ${title}`}
             >
               <Ionicons name="play" size={16} color={colors.bgPrimary} />
-            </Pressable>
-            <Pressable
-              android_ripple={ripple.icon(18)}
+            </AppPressable>
+            <AppPressable
+              feedback="control"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={[styles.randomAction, disabled && styles.buttonDisabled]}
               disabled={disabled}
@@ -433,9 +446,9 @@ function RandomSpotlightCard({
               accessibilityLabel={`Shuffle ${title}`}
             >
               <Ionicons name="shuffle" size={17} color={colors.accent} />
-            </Pressable>
-            <Pressable
-              android_ripple={ripple.icon(18)}
+            </AppPressable>
+            <AppPressable
+              feedback="control"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.randomAction}
               onPress={(event) => runAction(event, onReroll)}
@@ -444,31 +457,53 @@ function RandomSpotlightCard({
               accessibilityLabel="Pick another random album or artist"
             >
               <Ionicons name="refresh" size={17} color={colors.textSecondary} />
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
-    </Pressable>
+    </AppPressable>
   );
 }
 
 function EmptyHomeCard({
   scanError,
+  status,
   onManageFolders,
 }: {
   scanError: string | null;
+  status: 'initializing' | 'empty' | 'ready' | 'scanning' | 'rebuilding' | 'degraded' | 'fatalUserData';
   onManageFolders: () => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
+  const fatal = status === 'fatalUserData';
+  const rebuilding = status === 'rebuilding';
+  const degraded = status === 'degraded';
   return (
     <View style={styles.emptyCard}>
-      <Ionicons name="folder-open-outline" size={34} color={colors.textTertiary} />
+      <Ionicons
+        name={fatal || degraded ? 'warning-outline' : rebuilding ? 'construct-outline' : 'folder-open-outline'}
+        size={34}
+        color={fatal || degraded ? colors.warning : colors.textTertiary}
+      />
       <View style={styles.emptyCopy}>
-        <Text variant="heading">No music yet</Text>
+        <Text variant="heading">
+          {fatal
+            ? 'Library data unavailable'
+            : rebuilding
+              ? 'Rebuilding your library'
+              : degraded
+                ? 'Library temporarily unavailable'
+                : 'No music yet'}
+        </Text>
         <Text variant="body" color={colors.textSecondary}>
-          Add a local folder to fill Home with albums, history, favorites, and playlists.
+          {fatal
+            ? 'Astra could not restore your playlists, favorites, and settings from either safety snapshot. Your music files were not changed.'
+            : rebuilding
+              ? 'The damaged catalog was quarantined. Astra is rebuilding from available folders and remote sources.'
+              : degraded
+                ? 'Astra cannot currently read the catalog, so it will not treat your library as empty.'
+                : 'Add a local folder to fill Home with albums, history, favorites, and playlists.'}
         </Text>
         {scanError ? (
           <Text variant="caption" color={colors.warning} numberOfLines={2}>
@@ -476,42 +511,125 @@ function EmptyHomeCard({
           </Text>
         ) : null}
       </View>
-      <Pressable
-        android_ripple={ripple.onAccent()} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable
+        feedback="accent" unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.primaryButton}
         onPress={onManageFolders}
         accessibilityRole="button"
       >
-        <Ionicons name="folder-open-outline" size={18} color={colors.bgPrimary} />
+        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={colors.bgPrimary} />
         <Text variant="body" style={styles.primaryButtonText}>
-          Folder settings
+          {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
-      </Pressable>
+      </AppPressable>
+    </View>
+  );
+}
+
+/**
+ * One Home section and the space above it. Sections carry no margin of their
+ * own so the same section can be stacked or seated in a band without either
+ * shape double-paying for it.
+ */
+function HomeSection({ children }: { children: ReactNode }) {
+  const styles = useStyles();
+  if (!children) return null;
+  return <View style={styles.section}>{children}</View>;
+}
+
+/**
+ * Two Home sections of similar weight, seated side by side when the scene is
+ * wide enough and stacked when it isn't.
+ *
+ * Collapses to a single full-width section whenever one half has nothing to
+ * show — otherwise the survivor sits in half a row beside an empty column.
+ */
+function HomeBand({
+  paired,
+  stretch = false,
+  primary,
+  secondary,
+}: {
+  paired: boolean;
+  /** Match the two columns to the taller one. For cards; wrong for row lists. */
+  stretch?: boolean;
+  primary: ReactNode;
+  secondary: ReactNode;
+}) {
+  const styles = useStyles();
+  if (!paired || !primary || !secondary) {
+    return (
+      <>
+        <HomeSection>{primary}</HomeSection>
+        <HomeSection>{secondary}</HomeSection>
+      </>
+    );
+  }
+  return (
+    <View style={[styles.section, styles.band, stretch && styles.bandStretch]}>
+      <View style={styles.bandColumn}>{primary}</View>
+      <View style={styles.bandColumn}>{secondary}</View>
     </View>
   );
 }
 
 export default function HomeScreen() {
+  const sceneBottomInset = useSceneBottomInset();
+  // `<Screen bleedTop>` hands this back to the content: the scroll frame runs
+  // to the top of the window so the masthead can travel behind the status bar,
+  // and the content container re-pays the inset so it still starts below it.
+  // Zero in a window too short to bleed, where `Screen` keeps paying it.
+  const topBleed = useTopBleedInset();
   const styles = useStyles();
   const router = useRouter();
-  const tracks = useLibraryStore((s) => s.tracks);
-  const albums = useLibraryStore((s) => s.albums);
-  const artists = useLibraryStore((s) => s.artists);
+  const openLibrary = useHomeLibraryNavigation();
+  const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
+  const albums = useLibraryStore((s) => s.homeAlbums);
+  const artists = useLibraryStore((s) => s.homeArtists);
   const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const scanError = useLibraryStore((s) => s.scanError);
+  const libraryStatus = useLibraryStore((s) => s.status);
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
+  const listeningPreview = useListeningStatsStore((s) => s.homePreview);
+  const loadListeningPreview = useListeningStatsStore((s) => s.loadHomePreview);
 
   const [spotlightOverride, setSpotlightOverride] = useState<RandomSpotlight | null>(null);
   const [randomSeeds] = useState(() => [Math.random(), Math.random()] as const);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
-  const hasLibrary = tracks.length > 0;
+  const hasLibrary = totalTrackCount > 0;
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  // Stable members of the gate; the object itself is rebuilt on every `atTop` flip.
+  const { offsetRef: scrollOffsetRef, setScrollAtTop } = scrollTop;
+
+  // Re-tapping Home while already on it returns to the top, matching Library.
+  const scrollHomeToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({
+      y: 0,
+      animated: shouldAnimateScrollToTop(scrollOffsetRef.current, windowHeight),
+    });
+    // A programmatic scroll gives the pull-to-search gate no onScroll it can
+    // rely on, so arm it directly.
+    setScrollAtTop(true);
+  }, [scrollOffsetRef, setScrollAtTop, windowHeight]);
+
+  useTabReselect('index', scrollHomeToTop);
+
+  // Measured, not derived from the window: the player dock takes a column out
+  // of the scene, so a tablet with the dock open has a phone's worth of content
+  // width and has to lay out like one.
+  const [contentWidth, setContentWidth] = useState(0);
+  const measureContent = useCallback((event: LayoutChangeEvent) => {
+    setContentWidth(event.nativeEvent.layout.width);
+  }, []);
+  const home = getHomeLayout(contentWidth);
 
   const recentlyAddedAlbums = useMemo(
     () => [...albums].sort((a, b) => b.latest_added_at - a.latest_added_at).slice(0, RECENT_ALBUM_LIMIT),
@@ -564,64 +682,39 @@ export default function HomeScreen() {
       ? ({ kind: 'artist', artist: randomArtist } as const)
       : null;
 
-  const randomAlbumNeedsTracks = hasLibrary && randomAlbum != null;
-  const tracksByAlbum = useMemo(() => {
-    if (!randomAlbumNeedsTracks) return null;
-    const map = new Map<string, DbTrack[]>();
-    for (const track of tracks) {
-      const list = map.get(track.album_identity_key) ?? [];
-      list.push(track);
-      map.set(track.album_identity_key, list);
-    }
-    // Store tracks are artist-ordered; a multi-artist compilation would play
-    // blocked by artist without an explicit album-order sort.
-    for (const list of map.values()) list.sort(compareTracksByDiscTrackTitle);
-    return map;
-  }, [randomAlbumNeedsTracks, tracks]);
-  const randomTracks =
-    randomAlbum && tracksByAlbum ? (tracksByAlbum.get(randomAlbum.identity_key) ?? []) : [];
-  const randomArtistDetail = useMemo(
-    () => randomArtist
-      ? buildArtistDetail(tracks, randomArtist.artist, artistGroupingMode)
-      : null,
-    [artistGroupingMode, randomArtist, tracks]
-  );
-  const spotlightTracks = randomAlbum ? randomTracks : randomArtistDetail?.playbackTracks ?? [];
-  const recentTracks = recentlyPlayedTracks.slice(0, RECENT_TRACK_LIMIT);
-  const canExpandRecentTracks = recentlyPlayedTracks.length > RECENT_TRACK_LIMIT;
+  const recentTracks = recentlyPlayedTracks.slice(0, home.recentTrackCount);
+  const canExpandRecentTracks = recentlyPlayedTracks.length > home.recentTrackCount;
 
   const openAlbum = (album: Album) => {
-    router.push({
-      pathname: '/library/album/[key]',
-      params: { key: album.identity_key },
-    });
+    openLibrary({ kind: 'album', key: album.identity_key });
   };
 
   const openArtist = (artist: Artist) => {
-    router.push({
-      pathname: '/library/artist/[name]',
-      params: { name: artist.artist },
-    });
+    openLibrary({ kind: 'artist', name: artist.artist });
   };
 
   const playRecentlyPlayed = (list: DbTrack[], index = 0) => {
     if (list.length === 0) return;
-    void playTracks(list.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({ kind: 'recent' }, {
+      anchorPath: list[index]?.path,
       source: { kind: 'recently-played', label: 'Recently Played' },
     });
   };
 
   const playSpotlight = (shuffled = false) => {
-    if (spotlightTracks.length === 0) return;
+    if (!spotlightContent) return;
     const source = spotlightContent?.kind === 'album'
       ? { kind: 'album' as const, label: spotlightContent.album.album }
       : { kind: 'artist' as const, label: spotlightContent?.artist.artist ?? 'Artist' };
-    if (shuffled) {
-      void shuffleTracks(spotlightTracks.map(dbTrackToTrack), source);
-    } else {
-      void playTracks(spotlightTracks.map(dbTrackToTrack), { source });
-    }
+    const query = spotlightContent.kind === 'album'
+      ? { kind: 'album' as const, albumKey: spotlightContent.album.identity_key }
+      : {
+          kind: 'artist' as const,
+          artistKey: spotlightContent.artist.artist,
+          groupingMode: artistGroupingMode,
+          section: 'all' as const,
+        };
+    void playLibraryQuery(query, { shuffle: shuffled, source });
   };
 
   const rerollSpotlight = () => {
@@ -631,13 +724,131 @@ export default function HomeScreen() {
   const openSearch = () => openQuickSearch();
   const openSignalScanner = () => router.push('/signal/scan' as never);
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadListeningPreview();
+      const unsubscribe = subscribeToListeningHistory(() => void loadListeningPreview());
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') void loadListeningPreview();
+      });
+      return () => {
+        unsubscribe();
+        subscription.remove();
+      };
+    }, [loadListeningPreview]),
+  );
+
+  const spotlightCard = spotlightContent ? (
+    <RandomSpotlightCard
+      spotlight={spotlightContent}
+      hasTracks={
+        spotlightContent.kind === 'album'
+          ? spotlightContent.album.track_count > 0
+          : spotlightContent.artist.track_count > 0
+      }
+      coverSize={home.spotlightCoverSize}
+      style={home.paired ? styles.bandCard : undefined}
+      onOpen={() => spotlightContent.kind === 'album'
+        ? openAlbum(spotlightContent.album)
+        : openArtist(spotlightContent.artist)}
+      onPlay={() => playSpotlight()}
+      onShuffle={() => playSpotlight(true)}
+      onReroll={rerollSpotlight}
+    />
+  ) : null;
+
+  // Asked before rendering rather than after: the card returns null on its own
+  // when there is no history, which inside a band would leave an empty column.
+  const listeningCard = hasListeningPreview(listeningPreview) ? (
+    <ListeningPreviewCard
+      dashboard={listeningPreview}
+      style={home.paired ? styles.bandCard : undefined}
+      onPress={() => router.push('/stats' as never)}
+    />
+  ) : null;
+
+  const recentlyPlayedSection = recentTracks.length > 0 ? (
+    <>
+      <SectionHeader
+        title="Recently Played"
+        trailing={formatCount(recentlyPlayedTracks.length, 'track')}
+        actionLabel={canExpandRecentTracks ? 'See all' : undefined}
+        onActionPress={
+          canExpandRecentTracks ? () => router.push('/recently-played') : undefined
+        }
+      />
+      <View style={styles.listBlock}>
+        {recentTracks.map((track, index) => (
+          <TrackRow
+            key={track.path}
+            track={track}
+            active={track.path === currentPath}
+            swipeToQueue={false}
+            onPress={() => playRecentlyPlayed(recentTracks, index)}
+            onLongPress={() => setActionTrack(track)}
+            onOpenActions={() => setActionTrack(track)}
+          />
+        ))}
+      </View>
+    </>
+  ) : null;
+
+  const recentlyAddedSection = recentlyAddedAlbums.length > 0 ? (
+    <>
+      <SectionHeader title="Recently Added" />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.albumRail}
+      >
+        {recentlyAddedAlbums.map((album) => (
+          <RecentlyAddedAlbum
+            key={album.identity_key}
+            album={album}
+            size={home.railCoverSize}
+            onPress={() => openAlbum(album)}
+          />
+        ))}
+      </ScrollView>
+    </>
+  ) : null;
+
+  const playlistsSection = favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
+    <>
+      <SectionHeader title="Favorites & Playlists" />
+      <View style={styles.listBlock}>
+        {favoriteTracks.length > 0 ? (
+          <PlaylistRow
+            name="Favorites"
+            trackCount={favoriteTracks.length}
+            coverHash={favoriteTracks[0]?.artwork_hash ?? null}
+            pinned
+            onPress={() => openLibrary({ kind: 'playlist', id: 'favorites' })}
+          />
+        ) : null}
+        {homePlaylists.map((playlist) => (
+          <PlaylistRow
+            key={playlist.id}
+            name={playlist.name}
+            trackCount={playlist.track_count}
+            missingCount={playlist.missing_track_count}
+            coverHash={playlist.auto_cover_hash}
+            onPress={() => openLibrary({ kind: 'playlist', id: playlist.id })}
+          />
+        ))}
+      </View>
+    </>
+  ) : null;
+
   return (
-    <Screen>
+    <Screen bleedTop>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
         <PullSearchScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
-          contentContainerStyle={styles.content}
+          contentContainerStyle={{ paddingTop: topBleed, paddingBottom: sceneBottomInset }}
+          onLayout={measureContent}
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
         >
@@ -650,98 +861,40 @@ export default function HomeScreen() {
           <ScanProgress />
 
           {!hasLibrary ? (
-            <EmptyHomeCard
-              scanError={scanError}
-              onManageFolders={() => router.push('/settings')}
+            <HomeBand
+              paired={home.paired}
+              primary={
+                <EmptyHomeCard
+                  scanError={scanError}
+                  status={libraryStatus}
+                  onManageFolders={() => router.push(
+                    libraryStatus === 'fatalUserData' ? '/settings/troubleshooting' : '/settings'
+                  )}
+                />
+              }
+              secondary={listeningCard}
             />
+          ) : home.paired ? (
+            // Wide: two bands of paired sections around the one section that
+            // genuinely wants the full width. Recently Added moves above
+            // Recently Played here and only here — a rail is the natural break
+            // between two bands, and it has nothing to pair with.
+            <>
+              <HomeBand paired stretch primary={spotlightCard} secondary={listeningCard} />
+              <HomeSection>{recentlyAddedSection}</HomeSection>
+              <HomeBand
+                paired
+                primary={recentlyPlayedSection}
+                secondary={playlistsSection}
+              />
+            </>
           ) : (
             <>
-            {spotlightContent ? (
-              <View style={styles.topFeature}>
-                <RandomSpotlightCard
-                  spotlight={spotlightContent}
-                  tracks={spotlightTracks}
-                  onOpen={() => spotlightContent.kind === 'album'
-                    ? openAlbum(spotlightContent.album)
-                    : openArtist(spotlightContent.artist)}
-                  onPlay={() => playSpotlight()}
-                  onShuffle={() => playSpotlight(true)}
-                  onReroll={rerollSpotlight}
-                />
-              </View>
-            ) : null}
-
-            {recentTracks.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader
-                  title="Recently Played"
-                  trailing={formatCount(recentlyPlayedTracks.length, 'track')}
-                  actionLabel={canExpandRecentTracks ? 'See all' : undefined}
-                  onActionPress={
-                    canExpandRecentTracks ? () => router.push('/recently-played') : undefined
-                  }
-                />
-                <View style={styles.listBlock}>
-                  {recentTracks.map((track, index) => (
-                    <TrackRow
-                      key={track.path}
-                      track={track}
-                      active={track.path === currentPath}
-                      swipeToQueue={false}
-                      onPress={() => playRecentlyPlayed(recentTracks, index)}
-                      onLongPress={() => setActionTrack(track)}
-                      onOpenActions={() => setActionTrack(track)}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {recentlyAddedAlbums.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader title="Recently Added" />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.albumRail}
-                >
-                  {recentlyAddedAlbums.map((album) => (
-                    <RecentlyAddedAlbum
-                      key={album.identity_key}
-                      album={album}
-                      onPress={() => openAlbum(album)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
-
-            {favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
-              <View style={styles.section}>
-                <SectionHeader title="Favorites & Playlists" />
-                <View style={styles.listBlock}>
-                  {favoriteTracks.length > 0 ? (
-                    <PlaylistRow
-                      name="Favorites"
-                      trackCount={favoriteTracks.length}
-                      coverHash={favoriteTracks[0]?.artwork_hash ?? null}
-                      pinned
-                      onPress={() => router.push('/library/playlist/favorites')}
-                    />
-                  ) : null}
-                  {homePlaylists.map((playlist) => (
-                    <PlaylistRow
-                      key={playlist.id}
-                      name={playlist.name}
-                      trackCount={playlist.track_count}
-                      missingCount={playlist.missing_track_count}
-                      coverHash={playlist.auto_cover_hash}
-                      onPress={() => router.push(`/library/playlist/${playlist.id}`)}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
+              <HomeSection>{spotlightCard}</HomeSection>
+              <HomeSection>{listeningCard}</HomeSection>
+              <HomeSection>{recentlyPlayedSection}</HomeSection>
+              <HomeSection>{recentlyAddedSection}</HomeSection>
+              <HomeSection>{playlistsSection}</HomeSection>
             </>
           )}
         </PullSearchScrollView>
@@ -752,9 +905,6 @@ export default function HomeScreen() {
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  content: {
-    paddingBottom: spacing.xxl,
-  },
   masthead: {
     minHeight: 72,
     flexDirection: 'row',
@@ -794,11 +944,25 @@ const useStyles = createThemedStyles((colors) => ({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
   },
-  topFeature: {
-    marginTop: spacing.xl,
-  },
   section: {
     marginTop: spacing.xl,
+  },
+  band: {
+    flexDirection: 'row',
+    // Row lists end where their content ends; only cards are matched.
+    alignItems: 'flex-start',
+    gap: HOME_COLUMN_GAP,
+  },
+  bandStretch: {
+    alignItems: 'stretch',
+  },
+  bandColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  /** Fills the height a stretched column hands down. */
+  bandCard: {
+    flex: 1,
   },
   sectionHeader: {
     minHeight: 32,
@@ -828,7 +992,8 @@ const useStyles = createThemedStyles((colors) => ({
     paddingRight: spacing.lg,
   },
   recentAlbum: {
-    width: 112,
+    // Width comes from the layout — the rail keeps the full scene width, so its
+    // tiles are what grows when the scene does.
   },
   recentAlbumTitle: {
     marginTop: spacing.sm,
@@ -857,6 +1022,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   randomCard: {
     minHeight: 112,
+    // Centres the cover and meta in whatever height a stretched band hands
+    // down; a no-op when the card is sizing itself.
+    justifyContent: 'center',
     borderRadius: radius.md,
     backgroundColor: colors.glassBg,
     borderColor: colors.glassBorder,
@@ -919,7 +1087,6 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.bgPrimary,
   },
   emptyCard: {
-    marginTop: spacing.xl,
     padding: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.glassBg,

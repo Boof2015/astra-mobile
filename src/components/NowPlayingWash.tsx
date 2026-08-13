@@ -54,7 +54,7 @@ export function NowPlayingWash({
         style={[StyleSheet.absoluteFill, { opacity: ART_OPACITY }]}
         contentFit="cover"
         blurRadius={BLUR_RADIUS}
-        transition={reduceMotion ? null : 200}
+        transition={reduceMotion ? null : 220}
       />
       <Canvas style={StyleSheet.absoluteFill}>
         <Rect x={0} y={0} width={bandW} height={bandH}>

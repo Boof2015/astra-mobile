@@ -13,7 +13,7 @@ import { router, usePathname } from 'expo-router';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { formatRelativeTime } from '@/lib/format';
 import {
   buildSyncConflictResolutionPreview,
@@ -65,7 +65,6 @@ function diffLine(desktop: SyncPlaylistSnapshot, phone: SyncPlaylistSnapshot): s
 
 export function SyncConflictPrompt() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const conflicts = useDesktopSyncStore((s) => s.conflicts);
   const status = useDesktopSyncStore((s) => s.status);
@@ -160,7 +159,7 @@ export function SyncConflictPrompt() {
             </Text>
             <View style={styles.choiceList}>
               {options.map((resolution) => (
-                <Pressable android_ripple={ripple.bounded}
+                <AppPressable
                   key={resolution}
                   style={[
                     styles.choiceRow,
@@ -171,7 +170,7 @@ export function SyncConflictPrompt() {
                   onPress={() => setChoice({ syncUid: firstConflict.syncUid, resolution })}
                 >
                   <Text variant="label">{RESOLUTION_LABELS[resolution]}</Text>
-                </Pressable>
+                </AppPressable>
               ))}
             </View>
             <View style={styles.previewBox}>
@@ -185,20 +184,20 @@ export function SyncConflictPrompt() {
               </Text>
             </View>
             {count > 1 ? (
-              <Pressable android_ripple={ripple.bounded} onPress={review} style={styles.reviewLink}>
+              <AppPressable feedback="control"  onPress={review} style={styles.reviewLink}>
                 <Text variant="caption" color={colors.accent}>
                   Review all {count} conflicts
                 </Text>
-              </Pressable>
+              </AppPressable>
             ) : null}
           </ScrollView>
           <View style={styles.actions}>
-            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={dismissConflictPrompt}>
+            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={dismissConflictPrompt}>
               <Text variant="body" color={colors.textSecondary}>
                 Not now
               </Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded}
+            </AppPressable>
+            <AppPressable feedback="accent"
               style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
               disabled={!selectedResolution || busy}
               onPress={confirm}
@@ -206,7 +205,7 @@ export function SyncConflictPrompt() {
               <Text variant="body" color={colors.accentTextStrong}>
                 Confirm
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>

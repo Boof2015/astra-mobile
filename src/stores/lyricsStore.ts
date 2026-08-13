@@ -49,7 +49,10 @@ export const useLyricsStore = create<LyricsStore>((set, get) => ({
     const force = Boolean(options.force);
 
     const existing = get().byPath[path];
-    if (!force && existing && (existing.result || existing.loading)) return;
+    // A forced retry may replace a completed result, but it should never start
+    // a second request while this track already has one in progress.
+    if (existing?.loading) return;
+    if (!force && existing?.result) return;
 
     const requestId = ++requestSeq;
     requestIds.set(path, requestId);

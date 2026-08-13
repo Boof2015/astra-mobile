@@ -1,71 +1,43 @@
-import { useEffect, useRef, useState } from 'react';
-import { Linking } from 'react-native';
-import {
-  useGlobalSearchParams,
-  usePathname,
-  useRootNavigationState,
-  useRouter,
-  useSegments,
-} from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { useRootNavigationState } from 'expo-router';
 import { useLibraryStore } from '@/stores/libraryStore';
-import { usePlaylistStore } from '@/stores/playlistStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
-import { buildArtistDetail } from '@/library/artistDetail';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   hasActiveNativePlaybackSession,
   restorePlaybackSession,
+  restoreVirtualPlaybackContext,
 } from '@/audio/playbackController';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
+import type { DbTrack } from '@/types/library';
 import {
   installMobileSessionPersistence,
   readPersistedMobileSession,
-  rememberStableHref,
-  setInitialStableHref,
 } from './sessionPersistence';
-import {
-  normalizeStableHref,
-  resolvePlaybackSession,
-  shouldRestoreSavedRoute,
-  stableHrefForRoute,
-  validateRestoredHref,
-} from './sessionState';
+import { resolvePlaybackSession } from './sessionState';
 
 interface SessionLifecycleProps {
   onReady: () => void;
 }
 
-function validateSavedHref(href: string): string {
-  const tracks = useLibraryStore.getState().tracks;
-  return validateRestoredHref(href, {
-    hasAlbum: (identityKey) => tracks.some((track) => track.album_identity_key === identityKey),
-    hasArtist: (name, credit) => {
-      const groupingMode = credit ? 'astra' : useSettingsStore.getState().artistGroupingMode;
-      return buildArtistDetail(tracks, name, groupingMode).tracks.length > 0;
-    },
-    hasPlaylist: (id) => usePlaylistStore.getState().playlists.some((playlist) => playlist.id === id),
-  });
-}
-
-/** Restores once, then owns stable-route tracking and session autosave. */
+/**
+ * Restores the playback session once, then owns session autosave.
+ *
+ * Deliberately does *not* restore the route. Closing an app on mobile means
+ * "start me fresh"; leaving it in recents keeps the task alive, and React
+ * Navigation already holds that state in memory without our help. So a cold
+ * launch falls through to the router's own initial route (Home) and only the
+ * queue, current track, and position come back off disk.
+ */
 export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const segments = useSegments();
-  const params = useGlobalSearchParams<{
-    key?: string | string[];
-    name?: string | string[];
-    id?: string | string[];
-    credit?: string | string[];
-  }>();
+  // The navigator does not gate anything we restore, but the effect resets the
+  // player overlay, so let the router mount its first screen before we run.
   const rootNavigationState = useRootNavigationState();
   const navigationKey = rootNavigationState?.key;
-  const initialPathname = useRef(pathname);
   const started = useRef(false);
   const uninstallPersistence = useRef<(() => void) | null>(null);
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (!navigationKey || started.current) return;
@@ -76,9 +48,8 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
       const snapshotRead = readPersistedMobileSession();
       let snapshot: Awaited<typeof snapshotRead> = null;
       try {
-        const [loadedSnapshot, initialUrl] = await Promise.all([
+        const [loadedSnapshot] = await Promise.all([
           snapshotRead,
-          Linking.getInitialURL(),
           (async () => {
             await useLibraryStore.getState().initialize();
             try {
@@ -94,35 +65,36 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
         if (cancelled) return;
 
         // Every relaunch begins at rest even when a React activity was rebuilt
-        // inside a still-live JS process.
-        usePlayerUiStore.setState({ playerOpen: false });
+        // inside a still-live JS process — unless something already asked for the
+        // player during startup (a notification or widget tap resolves before
+        // these awaits finish, and used to be silently overridden here).
+        if (usePlayerUiStore.getState().openRequest === 0) {
+          usePlayerUiStore.setState({ phase: 'closed' });
+        }
         useSearchStore.getState().closeQuickSearch();
 
         const liveNativeSession = await hasActiveNativePlaybackSession();
         if (!cancelled && snapshot?.playback && !liveNativeSession) {
-          const resolved = resolvePlaybackSession(
-            snapshot.playback,
-            useLibraryStore.getState().tracks
-          );
-          restorePlaybackSession(
-            resolved
-              ? { ...resolved, tracks: resolved.tracks.map(dbTrackToTrack) }
-              : null
-          );
+          const nativeContext = await AstraLibraryData.restorePlaybackContext<DbTrack>();
+          if (nativeContext) {
+            restoreVirtualPlaybackContext(nativeContext, snapshot.playback);
+          } else {
+            const resolved = resolvePlaybackSession(
+              snapshot.playback,
+              useLibraryStore.getState().tracks
+            );
+            restorePlaybackSession(
+              resolved
+                ? { ...resolved, tracks: resolved.tracks.map(dbTrackToTrack) }
+                : null
+            );
+          }
         }
         if (cancelled) return;
-
-        const stableHref = validateSavedHref(snapshot?.lastStableHref ?? '/');
-        setInitialStableHref(stableHref);
-        if (shouldRestoreSavedRoute(initialPathname.current, initialUrl) && stableHref !== '/') {
-          router.replace(stableHref as never);
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        }
 
         uninstallPersistence.current = installMobileSessionPersistence(
           snapshot?.playback ?? null
         );
-        setHydrated(true);
       } catch (error) {
         if (cancelled) return;
         console.warn('[session] restore failed', error);
@@ -132,13 +104,8 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
           // The normal empty-session fallback below remains safe.
         }
         if (cancelled) return;
-        setInitialStableHref(
-          normalizeStableHref(snapshot?.lastStableHref)
-            ?? normalizeStableHref(initialPathname.current)
-            ?? '/'
-        );
+        // A failed restore must never leave autosave uninstalled.
         uninstallPersistence.current = installMobileSessionPersistence(snapshot?.playback ?? null);
-        setHydrated(true);
       } finally {
         if (!cancelled) onReady();
       }
@@ -150,12 +117,7 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
       uninstallPersistence.current?.();
       uninstallPersistence.current = null;
     };
-  }, [navigationKey, onReady, router]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    rememberStableHref(stableHrefForRoute(segments, pathname, params));
-  }, [hydrated, params, pathname, segments]);
+  }, [navigationKey, onReady]);
 
   return null;
 }

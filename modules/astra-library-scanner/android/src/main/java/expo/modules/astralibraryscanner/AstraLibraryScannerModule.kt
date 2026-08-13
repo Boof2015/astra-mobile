@@ -2,24 +2,33 @@ package expo.modules.astralibraryscanner
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioFormat
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.util.Log
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.MetadataRetriever
 import com.google.android.exoplayer2.metadata.id3.BinaryFrame
 import com.google.android.exoplayer2.metadata.id3.InternalFrame
 import com.google.android.exoplayer2.metadata.id3.TextInformationFrame
 import com.google.android.exoplayer2.metadata.flac.VorbisComment
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.log10
@@ -32,28 +41,135 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.astralibraryscanner.data.AstraLibraryRepository
+import expo.modules.astralibraryscanner.data.ArtistCreditMetadataReader
+import expo.modules.astralibraryscanner.data.LocalAudioFile
+import expo.modules.astralibraryscanner.data.LocalAudioMetadata
+import expo.modules.astralibraryscanner.data.ScanCancelledException
+import expo.modules.astralibraryscanner.data.formatArtistNames
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
+
+private const val LIBRARY_SCAN_LOG_TAG = "AstraLibraryScan"
+
+private data class MetadataStageTiming(
+  val androidMetadataNanos: Long,
+  val multiArtistNanos: Long,
+  val technicalFormatNanos: Long,
+  val artworkNanos: Long,
+  val totalNanos: Long,
+)
+
+private data class MetadataTimingSnapshot(
+  val count: Int,
+  val androidMetadataNanos: Long,
+  val multiArtistNanos: Long,
+  val technicalFormatNanos: Long,
+  val artworkNanos: Long,
+  val totalNanos: Long,
+  val maximumTotalNanos: Long,
+)
+
+private class MetadataTimingAccumulator {
+  private var count = 0
+  private var androidMetadataNanos = 0L
+  private var multiArtistNanos = 0L
+  private var technicalFormatNanos = 0L
+  private var artworkNanos = 0L
+  private var totalNanos = 0L
+  private var maximumTotalNanos = 0L
+
+  @Synchronized
+  fun record(timing: MetadataStageTiming) {
+    count += 1
+    androidMetadataNanos += timing.androidMetadataNanos
+    multiArtistNanos += timing.multiArtistNanos
+    technicalFormatNanos += timing.technicalFormatNanos
+    artworkNanos += timing.artworkNanos
+    totalNanos += timing.totalNanos
+    maximumTotalNanos = maxOf(maximumTotalNanos, timing.totalNanos)
+  }
+
+  @Synchronized
+  private fun snapshot(): MetadataTimingSnapshot = MetadataTimingSnapshot(
+    count = count,
+    androidMetadataNanos = androidMetadataNanos,
+    multiArtistNanos = multiArtistNanos,
+    technicalFormatNanos = technicalFormatNanos,
+    artworkNanos = artworkNanos,
+    totalNanos = totalNanos,
+    maximumTotalNanos = maximumTotalNanos,
+  )
+
+  fun logIfDebuggable(context: Context, folderId: Long) {
+    val debuggable =
+      context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    if (!debuggable) return
+    val timing = snapshot()
+    Log.d(
+      LIBRARY_SCAN_LOG_TAG,
+      "folderId=$folderId metadataFiles=${timing.count}" +
+        " androidMetadataTotalMs=${nanosToMs(timing.androidMetadataNanos)}" +
+        " androidMetadataAvgMs=${averageMs(timing.androidMetadataNanos, timing.count)}" +
+        " multiArtistTotalMs=${nanosToMs(timing.multiArtistNanos)}" +
+        " multiArtistAvgMs=${averageMs(timing.multiArtistNanos, timing.count)}" +
+        " technicalFormatTotalMs=${nanosToMs(timing.technicalFormatNanos)}" +
+        " technicalFormatAvgMs=${averageMs(timing.technicalFormatNanos, timing.count)}" +
+        " artworkTotalMs=${nanosToMs(timing.artworkNanos)}" +
+        " artworkAvgMs=${averageMs(timing.artworkNanos, timing.count)}" +
+        " trackExtractionTotalMs=${nanosToMs(timing.totalNanos)}" +
+        " trackExtractionAvgMs=${averageMs(timing.totalNanos, timing.count)}" +
+        " trackExtractionMaxMs=${nanosToMs(timing.maximumTotalNanos)}",
+    )
+  }
+
+  private fun averageMs(totalNanos: Long, count: Int): Double =
+    if (count == 0) 0.0 else nanosToMs(totalNanos / count)
+
+  private fun nanosToMs(nanos: Long): Double =
+    (nanos / 10_000.0).roundToInt() / 100.0
+}
 
 class FileRequest : Record {
   @Field val uri: String = ""
   @Field val coverUri: String? = null
 }
 
-/** Result of one scan-time decode: waveform peaks + integrated loudness + sample peak. */
+/**
+ * Result of ONE decode pass over a track: waveform peaks + integrated loudness + sample
+ * peak, plus timing so the JS side can report how fast the decode actually ran. Peaks and
+ * loudness share a pass because both need every sample; decoding twice was pure waste.
+ */
 class AudioAnalysis : Record {
   @Field var peaks: FloatArray = FloatArray(0)
   @Field var lufs: Double? = null // integrated LUFS (negative dB); null if unmeasured
   @Field var peak: Double? = null // absolute sample peak, linear [0,1]; null if unmeasured
+  /** True when the decode was cancelled mid-flight; peaks/lufs are then meaningless. */
+  @Field var cancelled: Boolean = false
+  /** Wall-clock decode time in ms — the number that decides whether we need a native decoder. */
+  @Field var decodeMs: Double? = null
+  /** Track duration in ms, from the container. */
+  @Field var durationMs: Double? = null
+  /** durationMs / decodeMs — "how many times faster than realtime". Higher is better. */
+  @Field var realtimeFactor: Double? = null
+  /** Which MediaCodec actually ran (e.g. "c2.android.flac.decoder"). */
+  @Field var decoderName: String? = null
+  /** Audio track mime (e.g. "audio/flac"). */
+  @Field var mime: String? = null
+  /** Whether the loudness meter rode along on this pass. */
+  @Field var withLoudness: Boolean = false
 }
 
 /** ReplayGain tags read from the container (no audio decode). Null = tag absent. */
@@ -72,13 +188,25 @@ class AstraLibraryScannerModule : Module() {
   // read and hashed once, not once per track.
   private val coverHashMemo = ConcurrentHashMap<String, String>()
 
-  // Waveform decode is whole-file and CPU-heavy; throttle concurrent decodes.
+  // Analysis decode is whole-file and CPU-heavy; throttle concurrent decodes. Also keeps
+  // us from monopolising decoder instances while a track is actually playing.
   private val waveformSemaphore = Semaphore(2)
+
+  // Cancellation flags for in-flight analyses, keyed by track URI. Set by cancelAnalysis
+  // so a skipped-past track stops burning CPU instead of running to completion holding a
+  // semaphore permit. Registered before the permit is acquired, so a queued-but-unstarted
+  // decode can be cancelled too.
+  private val activeAnalyses = ConcurrentHashMap<String, AtomicBoolean>()
+
+  // Scans are serialized by the repository, but register before acquiring that lock so
+  // cancelScan also stops a queued scan. A set keeps the native boundary robust if a
+  // caller ever bypasses the JS single-scan guard.
+  private val activeScans = ConcurrentHashMap.newKeySet<AtomicBoolean>()
 
   override fun definition() = ModuleDefinition {
     Name("AstraLibraryScanner")
 
-    Events("onScanProgress")
+    Events("onScanProgress", "onWaveformProgress")
 
     AsyncFunction("listAudioFiles") Coroutine { treeUri: String, extensions: List<String> ->
       withContext(Dispatchers.IO) { listAudioFiles(treeUri, extensions) }
@@ -93,30 +221,103 @@ class AstraLibraryScannerModule : Module() {
       }
     }
 
-    // Offline waveform peaks for the seek bar: full PCM decode -> RMS per bin,
-    // normalized to [0,1]. Heavy (whole-file decode), so cap concurrency and
-    // run lazily per track on the JS side; results are cached in SQLite there.
-    AsyncFunction("extractWaveform") Coroutine { uri: String, bins: Int ->
-      waveformSemaphore.withPermit {
-        withContext(Dispatchers.IO) { decodeAndAnalyze(uri, if (bins > 0) bins else 512).peaks }
+    AsyncFunction("scanFolderNative") Coroutine {
+        folderId: Double,
+        mode: String,
+        extensions: List<String>,
+      ->
+      val context = requireContext().applicationContext
+      val cancelFlag = AtomicBoolean(false)
+      val metadataTimings = MetadataTimingAccumulator()
+      activeScans.add(cancelFlag)
+      try {
+        withContext(Dispatchers.IO) {
+          val repository = AstraLibraryRepository.get(context)
+          repository.withUserRecovery { scanLocalFolder(
+            folderId = folderId.toLong(),
+            full = mode == "full",
+            discover = { treeUri ->
+              val listing = listAudioFiles(treeUri, extensions, cancelFlag)
+              @Suppress("UNCHECKED_CAST")
+              val files = listing["files"] as? List<Map<String, Any?>> ?: emptyList()
+              @Suppress("UNCHECKED_CAST")
+              val covers = listing["covers"] as? Map<String, String> ?: emptyMap()
+              files.mapNotNull { file ->
+                val uri = file["uri"] as? String ?: return@mapNotNull null
+                val parentUri = file["parentUri"] as? String ?: ""
+                LocalAudioFile(
+                  uri = uri,
+                  name = file["name"] as? String ?: uri.substringAfterLast('/'),
+                  size = (file["size"] as? Number)?.toLong(),
+                  lastModified = (file["lastModified"] as? Number)?.toLong() ?: 0L,
+                  mimeType = file["mimeType"] as? String,
+                  parentUri = parentUri,
+                  coverUri = covers[parentUri],
+                )
+              }
+            },
+            extract = { file ->
+              extractOne(file.uri, file.coverUri, metadataTimings::record).toLocalAudioMetadata()
+            },
+            onProgress = { phase, processed, total, folderName ->
+              sendEvent(
+                "onScanProgress",
+                mapOf(
+                  "phase" to phase,
+                  "processed" to processed,
+                  "total" to total,
+                  "folderName" to folderName,
+                ),
+              )
+            },
+            isCancelled = cancelFlag::get,
+          ).toMap() }
+        }
+      } finally {
+        runCatching { metadataTimings.logIfDebuggable(context, folderId.toLong()) }
+        activeScans.remove(cancelFlag)
       }
+    }
+
+    // Request cooperative cancellation for every active or queued library scan.
+    // Each scan unwinds at a safe checkpoint and discards its staging generation.
+    Function("cancelScan") {
+      activeScans.forEach { it.set(true) }
+    }
+
+    // ONE whole-file PCM decode producing waveform peaks and (when withLoudness) gated
+    // integrated loudness + sample peak. Both need every sample, so they ride the same
+    // pass — running them separately meant decoding each track twice. Heavy, so cap
+    // concurrency; the JS side caches results in SQLite and prefetches the queue ahead.
+    // Emits onWaveformProgress as bins finalize so the seek bar can fill in left-to-right.
+    AsyncFunction("analyzeTrack") Coroutine { uri: String, bins: Int, withLoudness: Boolean ->
+      val flag = AtomicBoolean(false)
+      activeAnalyses[uri] = flag
+      try {
+        waveformSemaphore.withPermit {
+          // Cancelled while queued behind another decode — don't start at all.
+          if (flag.get()) AudioAnalysis().apply { cancelled = true }
+          else withContext(Dispatchers.IO) {
+            runAnalysis(uri, if (bins > 0) bins else 512, withLoudness, flag)
+          }
+        }
+      } finally {
+        activeAnalyses.remove(uri, flag)
+      }
+    }
+
+    // Stop an in-flight (or still-queued) analysis for this URI. Safe to call for a URI
+    // with no analysis running. The decode bails at the next buffer boundary.
+    AsyncFunction("cancelAnalysis") Coroutine { uri: String ->
+      activeAnalyses[uri]?.set(true)
     }
 
     // Fast waveform preview for first paint: sparse short-window decode across
-    // the file. The JS side shows this immediately but only persists the full
-    // extractWaveform result.
+    // the file. The JS side shows this immediately as the coarse full-width shape
+    // that the progressive accurate pass then fills over; only analyzeTrack persists.
     AsyncFunction("extractWaveformPreview") Coroutine { uri: String, bins: Int ->
       waveformSemaphore.withPermit {
         withContext(Dispatchers.IO) { decodeWaveformPreview(uri, if (bins > 0) bins else 96) }
-      }
-    }
-
-    // Fast loudness (M4): decodes only a few short windows spread across the track
-    // (not the whole file) + gated K-weighting -> integrated LUFS + sample peak.
-    // Waveform peaks stay lazy/full-decode (extractWaveform), decoupled from this.
-    AsyncFunction("measureLoudness") Coroutine { uri: String ->
-      waveformSemaphore.withPermit {
-        withContext(Dispatchers.IO) { measureLoudness(uri) }
       }
     }
 
@@ -150,6 +351,10 @@ class AstraLibraryScannerModule : Module() {
 
     AsyncFunction("ensureArtworkThumbnails") Coroutine { hashes: List<String> ->
       withContext(Dispatchers.IO) { ensureArtworkThumbnails(hashes) }
+    }
+
+    AsyncFunction("cacheArtworkFromUri") Coroutine { uri: String ->
+      withContext(Dispatchers.IO) { cacheArtworkFromUri(uri) }
     }
 
     Function("getPersistedTreeUris") {
@@ -193,6 +398,20 @@ class AstraLibraryScannerModule : Module() {
 
     Function("stopScanService") {
       ScanForegroundService.stop(requireContext())
+    }
+
+    /**
+     * A wait that still elapses while Astra is backgrounded.
+     *
+     * React Native drives `setTimeout` from a Choreographer frame callback that
+     * `JavaTimerManager.onHostPause()` removes, so JS timers simply stop firing
+     * once the activity is paused — a foreground service keeps the process alive
+     * but does not bring them back. Work that must pace itself across a
+     * backgrounded stretch has to wait on native instead, because a promise
+     * resolved from here reaches the JS thread without the frame callback.
+     */
+    AsyncFunction("backgroundDelay") Coroutine { milliseconds: Int ->
+      delay(milliseconds.toLong().coerceIn(0L, 60_000L))
     }
   }
 
@@ -401,7 +620,11 @@ class AstraLibraryScannerModule : Module() {
   private val coverBaseNames = listOf("cover", "folder", "front", "albumart")
   private val coverExtensions = setOf("jpg", "jpeg", "png", "webp")
 
-  private fun listAudioFiles(treeUri: String, extensions: List<String>): Map<String, Any> {
+  private fun listAudioFiles(
+    treeUri: String,
+    extensions: List<String>,
+    cancelFlag: AtomicBoolean? = null,
+  ): Map<String, Any> {
     coverHashMemo.clear()
 
     val resolver = requireContext().contentResolver
@@ -424,6 +647,7 @@ class AstraLibraryScannerModule : Module() {
     queue.add(DocumentsContract.getTreeDocumentId(tree))
 
     while (queue.isNotEmpty()) {
+      if (cancelFlag?.get() == true) throw ScanCancelledException()
       val dirDocId = queue.removeFirst()
       val parentUri = DocumentsContract.buildDocumentUriUsingTree(tree, dirDocId).toString()
       val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirDocId)
@@ -432,6 +656,7 @@ class AstraLibraryScannerModule : Module() {
         ?: continue // directory disappeared mid-walk; skip it
       cursor.use {
         while (it.moveToNext()) {
+          if (cancelFlag?.get() == true) throw ScanCancelledException()
           val docId = it.getString(0) ?: continue
           val name = it.getString(1) ?: continue
           val mime = it.getString(2) ?: ""
@@ -483,102 +708,213 @@ class AstraLibraryScannerModule : Module() {
   // ---------------------------------------------------------------------------
 
   private fun extractOne(request: FileRequest): Map<String, Any?> {
-    val context = requireContext()
-    val uri = Uri.parse(request.uri)
-    val result = mutableMapOf<String, Any?>("uri" to request.uri, "ok" to true)
-
-    var embeddedPicture: ByteArray? = null
-    val retriever = MediaMetadataRetriever()
-    try {
-      retriever.setDataSource(context, uri)
-
-      result["title"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-      result["artist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-      result["album"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
-      result["albumArtist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
-      result["genre"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
-      result["mimeType"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-      result["durationMs"] =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-      result["bitrate"] =
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
-      result["trackNumber"] = parseTagNumber(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
-      )
-      result["discNumber"] = parseTagNumber(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)
-      )
-      result["year"] = parseYear(
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR),
-        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
-      )
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        result["sampleRate"] =
-          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull()
-      }
-      embeddedPicture = retriever.embeddedPicture
-    } catch (t: Throwable) {
-      return mapOf(
-        "uri" to request.uri,
-        "ok" to false,
-        "error" to (t.message ?: t.javaClass.simpleName)
-      )
-    } finally {
-      try {
-        retriever.release()
-      } catch (_: Throwable) {}
-    }
-
-    // Header-level facts MMR can't provide (channels, bit depth) or only on
-    // API 31+ (sample rate). Failure here is non-fatal — keep the tag data.
-    val extractor = MediaExtractor()
-    try {
-      extractor.setDataSource(context, uri, null)
-      for (i in 0 until extractor.trackCount) {
-        val format = extractor.getTrackFormat(i)
-        val trackMime = format.getString(MediaFormat.KEY_MIME) ?: continue
-        if (!trackMime.startsWith("audio/")) continue
-
-        result["codecMime"] = trackMime
-        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
-          result["channels"] = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        }
-        if (result["sampleRate"] == null && format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
-          result["sampleRate"] = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        }
-        result["bitsPerSample"] = readBitsPerSample(format)
-        break
-      }
-    } catch (_: Throwable) {
-      // Container not supported by MediaExtractor — tag data already collected.
-    } finally {
-      try {
-        extractor.release()
-      } catch (_: Throwable) {}
-    }
-
-    try {
-      result["artworkHash"] = resolveArtwork(embeddedPicture, request.coverUri)
-    } catch (_: Throwable) {
-      // Artwork failure never fails the track.
-    }
-
-    return result
+    return extractOne(request.uri, request.coverUri)
   }
 
+  private fun extractOne(
+    uriString: String,
+    coverUri: String?,
+    timingRecorder: ((MetadataStageTiming) -> Unit)? = null,
+  ): Map<String, Any?> {
+    val totalStartedNanos = SystemClock.elapsedRealtimeNanos()
+    var androidMetadataNanos = 0L
+    var multiArtistNanos = 0L
+    var technicalFormatNanos = 0L
+    var artworkNanos = 0L
+    val context = requireContext()
+    val uri = Uri.parse(uriString)
+    val result = mutableMapOf<String, Any?>("uri" to uriString, "ok" to true)
+
+    try {
+      var embeddedPicture: ByteArray? = null
+      var androidMetadataError: Throwable? = null
+      val androidMetadataStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val retriever = MediaMetadataRetriever()
+      try {
+        retriever.setDataSource(context, uri)
+
+        result["title"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+        result["artist"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+        result["album"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+        result["albumArtist"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+        result["genre"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
+        result["mimeType"] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+        result["durationMs"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        result["bitrate"] =
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull()
+        result["trackNumber"] = parseTagNumber(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
+        )
+        result["discNumber"] = parseTagNumber(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)
+        )
+        result["year"] = parseYear(
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR),
+          retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          result["sampleRate"] =
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toIntOrNull()
+        }
+        embeddedPicture = retriever.embeddedPicture
+      } catch (error: Throwable) {
+        androidMetadataError = error
+      } finally {
+        try {
+          retriever.release()
+        } catch (_: Throwable) {}
+        androidMetadataNanos = SystemClock.elapsedRealtimeNanos() - androidMetadataStartedNanos
+      }
+      androidMetadataError?.let { error ->
+        return mapOf(
+          "uri" to uriString,
+          "ok" to false,
+          "error" to (error.message ?: error.javaClass.simpleName),
+        )
+      }
+
+      val multiArtistStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val credits = try {
+        ArtistCreditMetadataReader.read(context, uri, metadataTimeoutMs)
+      } finally {
+        multiArtistNanos = SystemClock.elapsedRealtimeNanos() - multiArtistStartedNanos
+      }
+      val artistNames = credits.artists.takeIf { it.size > 1 }.orEmpty()
+      val albumArtistNames = credits.albumArtists.takeIf { it.size > 1 }.orEmpty()
+      result["artistNames"] = artistNames
+      result["albumArtistNames"] = albumArtistNames
+      if (artistNames.isNotEmpty()) {
+        result["artist"] = formatArtistNames(artistNames)
+      } else if (result["artist"] == null && credits.artists.size == 1) {
+        result["artist"] = credits.artists[0]
+      }
+      if (albumArtistNames.isNotEmpty()) {
+        result["albumArtist"] = formatArtistNames(albumArtistNames)
+      } else if (result["albumArtist"] == null && credits.albumArtists.size == 1) {
+        result["albumArtist"] = credits.albumArtists[0]
+      }
+
+      // Header-level facts MMR can't provide (channels, bit depth) or only on
+      // API 31+ (sample rate). Failure here is non-fatal — keep the tag data.
+      val technicalFormatStartedNanos = SystemClock.elapsedRealtimeNanos()
+      val extractor = MediaExtractor()
+      try {
+        extractor.setDataSource(context, uri, null)
+        for (i in 0 until extractor.trackCount) {
+          val format = extractor.getTrackFormat(i)
+          val trackMime = format.getString(MediaFormat.KEY_MIME) ?: continue
+          if (!trackMime.startsWith("audio/")) continue
+
+          result["codecMime"] = trackMime
+          if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+            result["channels"] = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+          }
+          if (result["sampleRate"] == null && format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+            result["sampleRate"] = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+          }
+          result["bitsPerSample"] = readBitsPerSample(format)
+          break
+        }
+      } catch (_: Throwable) {
+        // Container not supported by MediaExtractor — tag data already collected.
+      } finally {
+        try {
+          extractor.release()
+        } catch (_: Throwable) {}
+        technicalFormatNanos =
+          SystemClock.elapsedRealtimeNanos() - technicalFormatStartedNanos
+      }
+
+      val artworkStartedNanos = SystemClock.elapsedRealtimeNanos()
+      try {
+        result["artworkHash"] = resolveArtwork(embeddedPicture, coverUri)
+      } catch (_: Throwable) {
+        // Artwork failure never fails the track.
+      } finally {
+        artworkNanos = SystemClock.elapsedRealtimeNanos() - artworkStartedNanos
+      }
+
+      return result
+    } finally {
+      runCatching {
+        timingRecorder?.invoke(
+          MetadataStageTiming(
+            androidMetadataNanos = androidMetadataNanos,
+            multiArtistNanos = multiArtistNanos,
+            technicalFormatNanos = technicalFormatNanos,
+            artworkNanos = artworkNanos,
+            totalNanos = SystemClock.elapsedRealtimeNanos() - totalStartedNanos,
+          ),
+        )
+      }
+    }
+  }
+
+  private fun Map<String, Any?>.toLocalAudioMetadata(): LocalAudioMetadata =
+    LocalAudioMetadata(
+      ok = this["ok"] as? Boolean ?: false,
+      title = this["title"] as? String,
+      artist = this["artist"] as? String,
+      artistNames = (this["artistNames"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+      album = this["album"] as? String,
+      albumArtist = this["albumArtist"] as? String,
+      albumArtistNames =
+        (this["albumArtistNames"] as? List<*>)?.filterIsInstance<String>().orEmpty(),
+      genre = this["genre"] as? String,
+      mimeType = this["mimeType"] as? String,
+      durationMs = (this["durationMs"] as? Number)?.toLong(),
+      bitrate = (this["bitrate"] as? Number)?.toInt(),
+      trackNumber = (this["trackNumber"] as? Number)?.toInt(),
+      discNumber = (this["discNumber"] as? Number)?.toInt(),
+      year = (this["year"] as? Number)?.toInt(),
+      sampleRate = (this["sampleRate"] as? Number)?.toInt(),
+      channels = (this["channels"] as? Number)?.toInt(),
+      bitsPerSample = (this["bitsPerSample"] as? Number)?.toInt(),
+      codecMime = this["codecMime"] as? String,
+      artworkHash = this["artworkHash"] as? String,
+      error = this["error"] as? String,
+    )
+
   // ---------------------------------------------------------------------------
-  // Waveform peaks (offline RMS bins)
+  // Track analysis: waveform peaks + loudness in ONE decode pass
   // ---------------------------------------------------------------------------
 
-  // One whole-file PCM decode -> per-bin RMS waveform peaks (normalized [0,1]) for the
-  // seek bar. Returns empty peaks on any failure (caller falls back to a flat seek
-  // bar). Loudness is measured separately by measureLoudness.
-  private fun decodeAndAnalyze(uriStr: String, bins: Int): AudioAnalysis {
+  /** Throttle for onWaveformProgress — ~12 emits/sec is plenty for a fill animation. */
+  private val progressEmitNanos = 80L * 1_000_000L
+
+  /** Hard ceiling so a corrupt file can't hang a decode forever holding a semaphore permit. */
+  private val analysisTimeoutMs = 180_000L
+
+  /**
+   * One whole-file PCM decode producing per-bin RMS waveform peaks (normalized to [0,1])
+   * and, when `withLoudness`, gated integrated LUFS + absolute sample peak. Both analyses
+   * need every sample, so they share a pass.
+   *
+   * Uses MediaCodec in async (callback) mode: the old synchronous dequeue loop burned a
+   * 10ms timeout every time a buffer wasn't ready, thousands of times per track. All four
+   * callbacks land on one handler thread, so the extractor and accumulator are touched from
+   * exactly one thread and need no locking.
+   *
+   * Returns empty peaks on any failure and sets `cancelled` if it bailed early — callers
+   * must not persist a cancelled result.
+   */
+  private suspend fun runAnalysis(
+    uriStr: String,
+    bins: Int,
+    withLoudness: Boolean,
+    cancelFlag: AtomicBoolean,
+  ): AudioAnalysis {
     val context = requireContext()
     val result = AudioAnalysis()
+    result.withLoudness = withLoudness
     val uri = Uri.parse(uriStr)
     val extractor = MediaExtractor()
     var codec: MediaCodec? = null
+    var handlerThread: HandlerThread? = null
+    val startNanos = System.nanoTime()
+
     try {
       extractor.setDataSource(context, uri, null)
 
@@ -593,63 +929,305 @@ class AstraLibraryScannerModule : Module() {
       val format = trackFormat ?: return result
       extractor.selectTrack(trackIndex)
 
+      val mime = format.getString(MediaFormat.KEY_MIME) ?: return result
+      result.mime = mime
+
       val sampleRate =
         if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
       val durationUs =
         if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+      result.durationMs = durationUs / 1000.0
       val totalFrames = max(1L, (durationUs / 1_000_000.0 * sampleRate).toLong())
-      var channelCount =
+
+      val acc = AnalyzeAccumulator(bins, totalFrames, withLoudness)
+      acc.sampleRate = sampleRate
+      acc.channelCount =
         if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
-      var pcmFloat = false
 
-      val sumSquares = DoubleArray(bins)
-      val counts = LongArray(bins)
+      val decoder = createAnalysisDecoder(mime)
+      codec = decoder
+      result.decoderName = decoder.name
 
-      codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+      handlerThread = HandlerThread("astra-analyze").also { it.start() }
+      val done = CompletableDeferred<Unit>()
+      var sawInputEOS = false
+      var lastEmitNanos = 0L
+      var lastEmitBin = 0
+
+      decoder.setCallback(
+        object : MediaCodec.Callback() {
+          override fun onInputBufferAvailable(mc: MediaCodec, index: Int) {
+            if (done.isCompleted) return
+            try {
+              if (cancelFlag.get()) {
+                result.cancelled = true
+                done.complete(Unit)
+                return
+              }
+              if (sawInputEOS) return
+              val buf = mc.getInputBuffer(index) ?: return
+              val size = extractor.readSampleData(buf, 0)
+              if (size < 0) {
+                mc.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                sawInputEOS = true
+              } else {
+                mc.queueInputBuffer(index, 0, size, extractor.sampleTime, 0)
+                extractor.advance()
+              }
+            } catch (_: Throwable) {
+              done.complete(Unit)
+            }
+          }
+
+          override fun onOutputBufferAvailable(
+            mc: MediaCodec,
+            index: Int,
+            info: MediaCodec.BufferInfo,
+          ) {
+            if (done.isCompleted) return
+            try {
+              if (cancelFlag.get()) {
+                result.cancelled = true
+                done.complete(Unit)
+                return
+              }
+              if (info.size > 0) {
+                val out = mc.getOutputBuffer(index)
+                if (out != null) {
+                  out.position(info.offset)
+                  out.limit(info.offset + info.size)
+                  out.order(ByteOrder.nativeOrder())
+                  acc.accumulate(out)
+                }
+              }
+              val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+              mc.releaseOutputBuffer(index, false)
+
+              // Progressive emit so the seek bar fills left-to-right instead of snapping
+              // in at the end. Skipped on the EOS buffer — the promise carries the final,
+              // globally-normalized result a moment later.
+              val now = System.nanoTime()
+              if (!eos && acc.filledBins > lastEmitBin && now - lastEmitNanos >= progressEmitNanos) {
+                lastEmitNanos = now
+                lastEmitBin = acc.filledBins
+                emitWaveformProgress(uriStr, acc, lastEmitBin)
+              }
+              if (eos) done.complete(Unit)
+            } catch (_: Throwable) {
+              done.complete(Unit)
+            }
+          }
+
+          override fun onOutputFormatChanged(mc: MediaCodec, fmt: MediaFormat) {
+            if (fmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+              acc.channelCount = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            }
+            if (fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+              acc.sampleRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            }
+            if (fmt.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+              acc.pcmFloat =
+                fmt.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+            }
+          }
+
+          override fun onError(mc: MediaCodec, e: MediaCodec.CodecException) {
+            done.complete(Unit)
+          }
+        },
+        Handler(handlerThread.looper),
+      )
+
       codec.configure(format, null, null, 0)
       codec.start()
 
-      val info = MediaCodec.BufferInfo()
-      var sawInputEOS = false
-      var sawOutputEOS = false
-      var frame = 0L
+      if (withTimeoutOrNull(analysisTimeoutMs) { done.await() } == null) {
+        // Timed out: peaks are partial, so treat it as a cancellation rather than caching
+        // a truncated waveform.
+        result.cancelled = true
+      }
+      if (result.cancelled) return result
 
-      while (!sawOutputEOS) {
-        if (!sawInputEOS) {
-          val inIndex = codec.dequeueInputBuffer(10_000)
-          if (inIndex >= 0) {
-            val inBuf = codec.getInputBuffer(inIndex)!!
-            val size = extractor.readSampleData(inBuf, 0)
-            if (size < 0) {
-              codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-              sawInputEOS = true
-            } else {
-              codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
-              extractor.advance()
+      result.peaks = acc.finalPeaks()
+      if (withLoudness) {
+        result.lufs = acc.loudness
+        result.peak = acc.samplePeak
+      }
+      val decodeMs = (System.nanoTime() - startNanos) / 1_000_000.0
+      result.decodeMs = decodeMs
+      val dur = result.durationMs
+      if (dur != null && dur > 0 && decodeMs > 0) result.realtimeFactor = dur / decodeMs
+      return result
+    } catch (_: Throwable) {
+      return result
+    } finally {
+      // Order matters: stopping the codec while a callback is mid-flight on the handler
+      // thread can crash. Quit the looper and wait for the in-flight callback to drain
+      // first, THEN tear the codec down.
+      try {
+        handlerThread?.quitSafely()
+        handlerThread?.join(1_000)
+      } catch (_: Throwable) {}
+      try { codec?.stop() } catch (_: Throwable) {}
+      try { codec?.release() } catch (_: Throwable) {}
+      try { extractor.release() } catch (_: Throwable) {}
+    }
+  }
+
+  // Emits the raw (un-normalized) RMS prefix; JS normalizes against its own max, so the
+  // bars rescale slightly as louder material arrives rather than needing a global max we
+  // don't have yet.
+  private fun emitWaveformProgress(uri: String, acc: AnalyzeAccumulator, filledBins: Int) {
+    try {
+      sendEvent(
+        "onWaveformProgress",
+        mapOf(
+          "uri" to uri,
+          "filledBins" to filledBins,
+          "totalBins" to acc.bins,
+          "peaks" to acc.rmsPrefix(filledBins),
+        ),
+      )
+    } catch (_: Throwable) {
+      // Best-effort: the final result still arrives via the promise.
+    }
+  }
+
+  // Offline analysis wants raw throughput. Hardware audio decoders are tuned for low-power
+  // realtime playback, not bulk decode, and the instance is a scarce global resource shared
+  // with the track that is actually playing — so prefer a software decoder and fall back to
+  // the platform's default pick.
+  private fun createAnalysisDecoder(mime: String): MediaCodec {
+    try {
+      val info = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { c ->
+        !c.isEncoder &&
+          c.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
+          isSoftwareDecoder(c)
+      }
+      if (info != null) return MediaCodec.createByCodecName(info.name)
+    } catch (_: Throwable) {
+      // Fall through to the platform default.
+    }
+    return MediaCodec.createDecoderByType(mime)
+  }
+
+  private fun isSoftwareDecoder(info: MediaCodecInfo): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return info.isSoftwareOnly
+    val name = info.name.lowercase()
+    return name.startsWith("omx.google.") || name.startsWith("c2.android.")
+  }
+
+  /**
+   * Per-bin RMS accumulation over the decoded PCM stream, with the K-weighted loudness
+   * meter folded in when requested.
+   *
+   * Two things matter here because this runs ~20M times for a 4-minute stereo track: PCM is
+   * bulk-copied out of the codec buffer into a reused scratch array rather than read one
+   * sample at a time, and frames are consumed in runs (every frame landing in the same bin
+   * is summed in one tight loop) instead of recomputing the bin index per frame with a
+   * floating-point division.
+   */
+  private class AnalyzeAccumulator(
+    val bins: Int,
+    private val totalFrames: Long,
+    private val withLoudness: Boolean,
+  ) {
+    private val sumSquares = DoubleArray(bins)
+    private val counts = LongArray(bins)
+
+    var channelCount = 2
+    var sampleRate = 44100
+    var pcmFloat = false
+
+    /** Index of the highest bin reached — every bin below it is fully accumulated. */
+    var filledBins = 0
+      private set
+
+    private var frame = 0L
+    private var meter: LoudnessMeter? = null
+    private var floatScratch = FloatArray(0)
+    private var shortScratch = ShortArray(0)
+
+    val loudness: Double? get() = meter?.lufs()
+    val samplePeak: Double? get() = meter?.peak
+
+    fun accumulate(out: ByteBuffer) {
+      val ch = channelCount.coerceAtLeast(1)
+      // Created lazily: the true output channel count / rate only arrive with the first
+      // onOutputFormatChanged, which always precedes the first output buffer.
+      if (withLoudness && meter == null) meter = LoudnessMeter(ch, sampleRate)
+      if (pcmFloat) {
+        val fb = out.asFloatBuffer()
+        val n = fb.remaining()
+        if (floatScratch.size < n) floatScratch = FloatArray(n)
+        fb.get(floatScratch, 0, n)
+        consume(floatScratch, null, n, ch)
+      } else {
+        val sb = out.asShortBuffer()
+        val n = sb.remaining()
+        if (shortScratch.size < n) shortScratch = ShortArray(n)
+        sb.get(shortScratch, 0, n)
+        consume(null, shortScratch, n, ch)
+      }
+    }
+
+    private fun consume(f: FloatArray?, s: ShortArray?, n: Int, ch: Int) {
+      val m = meter
+      var k = 0
+      while (k < n) {
+        var bin = ((frame * bins) / totalFrames).toInt()
+        if (bin < 0) bin = 0 else if (bin >= bins) bin = bins - 1
+        // First frame belonging to the next bin: ceil((bin + 1) * totalFrames / bins).
+        val boundary = ((bin + 1).toLong() * totalFrames + bins - 1L) / bins
+        val framesAvail = (n - k) / ch
+        if (framesAvail <= 0) break // trailing partial frame; drop it
+        var run = (boundary - frame).coerceAtLeast(1L)
+        if (run > framesAvail) run = framesAvail.toLong()
+        val end = k + run.toInt() * ch
+
+        var acc = 0.0
+        var j = k
+        if (m == null) {
+          if (f != null) {
+            while (j < end) { val v = f[j].toDouble(); acc += v * v; j++ }
+          } else if (s != null) {
+            while (j < end) { val v = s[j] / 32768.0; acc += v * v; j++ }
+          }
+        } else {
+          var c = 0
+          if (f != null) {
+            while (j < end) {
+              val v = f[j].toDouble(); acc += v * v; m.process(v, c)
+              j++; c++; if (c == ch) c = 0
+            }
+          } else if (s != null) {
+            while (j < end) {
+              val v = s[j] / 32768.0; acc += v * v; m.process(v, c)
+              j++; c++; if (c == ch) c = 0
             }
           }
         }
 
-        val outIndex = codec.dequeueOutputBuffer(info, 10_000)
-        if (outIndex >= 0) {
-          if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
-          if (info.size > 0) {
-            val out = codec.getOutputBuffer(outIndex)!!
-            out.position(info.offset)
-            out.limit(info.offset + info.size)
-            out.order(ByteOrder.nativeOrder())
-            frame = accumulateAnalyze(out, pcmFloat, channelCount, bins, totalFrames, frame, sumSquares, counts)
-          }
-          codec.releaseOutputBuffer(outIndex, false)
-        } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-          val nf = codec.outputFormat
-          if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channelCount = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-          if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
-            pcmFloat = nf.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
-          }
-        }
+        sumSquares[bin] += acc
+        counts[bin] += run * ch
+        frame += run
+        k = end
+        if (bin > filledBins) filledBins = bin
       }
+    }
 
+    /** Raw, un-normalized RMS for the first `count` bins (progressive emit). */
+    fun rmsPrefix(count: Int): FloatArray {
+      val n = count.coerceIn(0, bins)
+      val out = FloatArray(n)
+      for (i in 0 until n) {
+        if (counts[i] > 0) out[i] = sqrt(sumSquares[i] / counts[i]).toFloat()
+      }
+      return out
+    }
+
+    /** Final peaks, normalized against the global max across every bin. */
+    fun finalPeaks(): FloatArray {
       val peaks = FloatArray(bins)
       var globalMax = 0.0
       for (i in 0 until bins) {
@@ -662,14 +1240,7 @@ class AstraLibraryScannerModule : Module() {
       if (globalMax > 0) {
         for (i in 0 until bins) peaks[i] = (peaks[i] / globalMax).toFloat()
       }
-      result.peaks = peaks
-      return result
-    } catch (_: Throwable) {
-      return result
-    } finally {
-      try { codec?.stop() } catch (_: Throwable) {}
-      try { codec?.release() } catch (_: Throwable) {}
-      try { extractor.release() } catch (_: Throwable) {}
+      return peaks
     }
   }
 
@@ -681,7 +1252,7 @@ class AstraLibraryScannerModule : Module() {
 
   // Sparse preview waveform: seek to a bounded number of points, decode a very
   // short audio window at each point, and normalize those RMS samples. This is
-  // intentionally approximate; decodeAndAnalyze remains the accurate cache fill.
+  // intentionally approximate; runAnalysis remains the accurate cache fill.
   private fun decodeWaveformPreview(uriStr: String, bins: Int): FloatArray {
     val context = requireContext()
     val previewBins = bins.coerceIn(16, 128)
@@ -837,172 +1408,6 @@ class AstraLibraryScannerModule : Module() {
       }
     }
     return PcmEnergy(sumSquares, sampleCount, frameCount)
-  }
-
-  // Integrated gated loudness over the WHOLE file (accurate — subset sampling caused
-  // too much loudness inconsistency). Decodes the full track and feeds the gated
-  // K-weighting meter. Measured on the fly per track (current + queue lookahead) and
-  // cached, so the cost is paid once per track, never in a bulk background pass.
-  private fun measureLoudness(uriStr: String): AudioAnalysis {
-    val context = requireContext()
-    val result = AudioAnalysis()
-    val uri = Uri.parse(uriStr)
-    val extractor = MediaExtractor()
-    var codec: MediaCodec? = null
-    try {
-      extractor.setDataSource(context, uri, null)
-
-      var trackFormat: MediaFormat? = null
-      var trackIndex = -1
-      for (i in 0 until extractor.trackCount) {
-        val f = extractor.getTrackFormat(i)
-        if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-          trackFormat = f; trackIndex = i; break
-        }
-      }
-      val format = trackFormat ?: return result
-      extractor.selectTrack(trackIndex)
-
-      val sampleRate =
-        if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
-      var channelCount =
-        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
-      var pcmFloat = false
-
-      codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
-      codec.configure(format, null, null, 0)
-      codec.start()
-      val info = MediaCodec.BufferInfo()
-
-      var meter: LoudnessMeter? = null
-      var sawInputEOS = false
-      var sawOutputEOS = false
-      while (!sawOutputEOS) {
-        if (!sawInputEOS) {
-          val inIndex = codec.dequeueInputBuffer(10_000)
-          if (inIndex >= 0) {
-            val inBuf = codec.getInputBuffer(inIndex)!!
-            val size = extractor.readSampleData(inBuf, 0)
-            if (size < 0) {
-              codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-              sawInputEOS = true
-            } else {
-              codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
-              extractor.advance()
-            }
-          }
-        }
-        val outIndex = codec.dequeueOutputBuffer(info, 10_000)
-        if (outIndex >= 0) {
-          if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
-          if (info.size > 0) {
-            val out = codec.getOutputBuffer(outIndex)!!
-            out.position(info.offset)
-            out.limit(info.offset + info.size)
-            out.order(ByteOrder.nativeOrder())
-            val m = meter ?: LoudnessMeter(channelCount, sampleRate).also { meter = it }
-            feedMeter(out, pcmFloat, channelCount, m)
-          }
-          codec.releaseOutputBuffer(outIndex, false)
-        } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-          val nf = codec.outputFormat
-          if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channelCount = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-          if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
-            pcmFloat = nf.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
-          }
-        }
-      }
-
-      meter?.let {
-        result.lufs = it.lufs()
-        result.peak = it.peak
-      }
-      return result
-    } catch (_: Throwable) {
-      return result
-    } finally {
-      try { codec?.stop() } catch (_: Throwable) {}
-      try { codec?.release() } catch (_: Throwable) {}
-      try { extractor.release() } catch (_: Throwable) {}
-    }
-  }
-
-  // Feeds one decoded PCM buffer (16-bit or float) to the loudness meter.
-  private fun feedMeter(
-    out: java.nio.ByteBuffer,
-    pcmFloat: Boolean,
-    channelCount: Int,
-    meter: LoudnessMeter
-  ) {
-    if (pcmFloat) {
-      val fb = out.asFloatBuffer()
-      val n = fb.remaining()
-      var k = 0
-      while (k < n) {
-        var c = 0
-        while (c < channelCount && k < n) {
-          meter.process(fb.get(k).toDouble(), c); k++; c++
-        }
-      }
-    } else {
-      val sb = out.asShortBuffer()
-      val n = sb.remaining()
-      var k = 0
-      while (k < n) {
-        var c = 0
-        while (c < channelCount && k < n) {
-          meter.process(sb.get(k) / 32768.0, c); k++; c++
-        }
-      }
-    }
-  }
-
-  // Folds one decoded PCM buffer into the per-bin RMS accumulators and, when a
-  // loudness meter is provided, the K-weighted loudness + sample peak. Handles
-  // 16-bit (default) and float PCM. Returns the updated running frame index.
-  private fun accumulateAnalyze(
-    out: java.nio.ByteBuffer,
-    pcmFloat: Boolean,
-    channelCount: Int,
-    bins: Int,
-    totalFrames: Long,
-    startFrame: Long,
-    sumSquares: DoubleArray,
-    counts: LongArray
-  ): Long {
-    var frame = startFrame
-    if (pcmFloat) {
-      val fb = out.asFloatBuffer()
-      val n = fb.remaining()
-      var k = 0
-      while (k < n) {
-        val bin = ((frame.toDouble() / totalFrames) * bins).toInt().coerceIn(0, bins - 1)
-        var c = 0
-        while (c < channelCount && k < n) {
-          val s = fb.get(k).toDouble()
-          sumSquares[bin] += s * s
-          k++; c++
-        }
-        counts[bin] += c.toLong()
-        frame++
-      }
-    } else {
-      val sb = out.asShortBuffer()
-      val n = sb.remaining()
-      var k = 0
-      while (k < n) {
-        val bin = ((frame.toDouble() / totalFrames) * bins).toInt().coerceIn(0, bins - 1)
-        var c = 0
-        while (c < channelCount && k < n) {
-          val s = sb.get(k) / 32768.0
-          sumSquares[bin] += s * s
-          k++; c++
-        }
-        counts[bin] += c.toLong()
-        frame++
-      }
-    }
-    return frame
   }
 
   // Gated integrated K-weighted loudness per ITU-R BS.1770 + absolute sample peak.
@@ -1172,6 +1577,18 @@ class AstraLibraryScannerModule : Module() {
     return fileName
   }
 
+  private fun cacheArtworkFromUri(rawUri: String): String {
+    val uri = Uri.parse(rawUri.trim().ifEmpty { error("An image URI is required") })
+    val bytes = requireContext().contentResolver.openInputStream(uri)
+      ?.use(::readImportedArtworkBytes)
+      ?: error("The selected image could not be opened")
+    return ImportedArtworkCache(
+      artworkDirectory = artworkDir(),
+      thumbnailDirectory = artworkThumbDir(),
+      thumbnailSize = artworkThumbSize,
+    ).cache(bytes)
+  }
+
   private fun ensureArtworkThumbnails(hashes: List<String>): Int {
     var generated = 0
     val seen = mutableSetOf<String>()
@@ -1274,11 +1691,19 @@ class AstraLibraryScannerModule : Module() {
   private fun md5Hex(bytes: ByteArray): String =
     MessageDigest.getInstance("MD5").digest(bytes).joinToString("") { "%02x".format(it) }
 
-  private fun sniffImageExtension(bytes: ByteArray): String = when {
+  private fun sniffSupportedImageExtension(bytes: ByteArray): String? = when {
     bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> ".jpg"
-    bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() -> ".png"
-    bytes.size >= 12 && bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
+    bytes.size >= 8 &&
+      bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+      bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> ".png"
+    bytes.size >= 12 &&
+      bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+      bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+      bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
       bytes[10] == 'B'.code.toByte() && bytes[11] == 'P'.code.toByte() -> ".webp"
-    else -> ".jpg"
+    else -> null
   }
+
+  private fun sniffImageExtension(bytes: ByteArray): String =
+    sniffSupportedImageExtension(bytes) ?: ".jpg"
 }

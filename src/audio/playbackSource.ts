@@ -12,6 +12,7 @@ const PLAYBACK_SOURCE_KINDS = new Set<PlaybackSourceKind>([
   'search',
   'signal',
   'android-auto',
+  'listening-stats',
   'sample',
 ]);
 

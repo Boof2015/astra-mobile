@@ -7,14 +7,17 @@
 // static scroll; loading/not-found/error states get a centered message.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
+import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import {
+  getLyricsEmptyStatePresentation,
   getLyricsLineSeekTimeSeconds,
   getSyncedLyricsDisplayLines,
   getSyncedLyricsGapProgress,
@@ -27,6 +30,32 @@ import type { Track } from '@/types/audio';
 
 const ANCHOR_RATIO = 0.4;
 const H_PADDING = 22;
+
+/**
+ * Type sizing per surface.
+ *
+ * The phone body scales its type with its column, which is fine when the column
+ * is the whole screen — there is no other use for the width.
+ *
+ * A pane must not do that. Scaling type with width means widening the pane
+ * spends the new space on bigger glyphs and every line still breaks in the same
+ * place: going 504 → 576dp took the type 29pt → 32pt and changed nothing about
+ * the wrapping. So the pane declares its size and lets width buy *characters*,
+ * which is the only thing that actually stops a line breaking mid-phrase.
+ */
+interface LyricsSurfaceSpec {
+  /** Declared point size; `null` scales with the column instead. */
+  fixedSize: number | null;
+  /** Ceiling for the scaled path. */
+  maxSize: number;
+  hPadding: number;
+}
+const SURFACE: Record<'band' | 'panel', LyricsSurfaceSpec> = {
+  band: { fixedSize: null, maxSize: 24, hPadding: H_PADDING },
+  panel: { fixedSize: 26, maxSize: 26, hPadding: 28 },
+};
+
+export type LyricsSurface = keyof typeof SURFACE;
 // The displayed active line lags the audio by a fixed pipeline delay (RNTP
 // position reporting + poll/smoothing) that the desktop doesn't have, so advance
 // the lyrics clock by this much. Tune to taste — bigger = earlier highlight.
@@ -37,15 +66,24 @@ interface LyricsBandProps {
   duration: number;
   isPlaying: boolean;
   onSeek: (seconds: number) => void;
+  /** `panel` is the tablet companion column; `band` is the phone body. */
+  surface?: LyricsSurface;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: LyricsBandProps) {
+export function LyricsBand({
+  track,
+  currentTime,
+  duration,
+  isPlaying,
+  onSeek,
+  surface = 'band',
+}: LyricsBandProps) {
+  const { fixedSize, maxSize, hPadding } = SURFACE[surface];
   const colors = useColors();
-  const ripple = useRipple();
   const entry = useLyricsStore((s) => s.byPath[track.path]);
   const loadForTrack = useLyricsStore((s) => s.loadForTrack);
   const wordTimingEnabled = useLyricsSettingsStore((s) => s.wordTimingEnabled);
@@ -84,7 +122,8 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
 
   // Uniform size for every line (LyricsLine no longer scales font per tier), so pick
   // a comfortable reading size rather than the old oversized active value.
-  const baseSize = size.w > 0 ? Math.round(clamp(size.w * 0.058, 18, 24)) : 22;
+  const baseSize =
+    fixedSize ?? (size.w > 0 ? Math.round(clamp(size.w * 0.058, 18, maxSize)) : 22);
 
   // --- auto-scroll centering ---
   const scrollRef = useRef<ScrollView>(null);
@@ -127,26 +166,14 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
     centerOn(focusIndex, true);
   }, [centerOn, focusIndex]);
 
-  const message = !hasSynced
-    ? result?.status === 'transient_error'
-      ? 'Lyrics lookup ran into a problem. A retry may work.'
-      : result?.status === 'not_found'
-        ? result.reason === 'online-disabled'
-          ? 'Online lyrics lookup is off.'
-          : result.reason === 'provider-unavailable'
-            ? "Lyrics providers didn't respond in time."
-            : 'No lyrics found for this track.'
-        : isLoading
-          ? 'Finding lyrics…'
-          : 'Lyrics are ready when a track is playing.'
-    : null;
+  const emptyState = getLyricsEmptyStatePresentation({ result, isLoading });
 
   // --- plain (unsynced) hit ---
   if (result?.status === 'hit' && !hasSynced) {
     return (
       <View style={{ flex: 1 }} onLayout={onContainerLayout}>
         <ScrollView
-          contentContainerStyle={{ paddingVertical: 24, paddingHorizontal: H_PADDING }}
+          contentContainerStyle={{ paddingVertical: 24, paddingHorizontal: hPadding }}
           showsVerticalScrollIndicator={false}
         >
           <Text variant="body" color={colors.textSecondary} style={{ lineHeight: 28 }}>
@@ -160,10 +187,52 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
   // --- loading / not-found / error ---
   if (!hasSynced) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.md,
+          paddingHorizontal: 28,
+        }}
+      >
         <Text variant="body" color={colors.textTertiary} style={{ textAlign: 'center' }}>
-          {message}
+          {emptyState.message}
         </Text>
+        {emptyState.retryable ? (
+          <AppPressable feedback="none"
+
+            disabled={isLoading}
+            onPress={() => void loadForTrack(track, { force: true })}
+            accessibilityRole="button"
+            accessibilityLabel="Retry lyrics lookup"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
+            style={({ pressed }) => ({
+              minHeight: 40,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.sm,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: colors.glassBorder,
+              backgroundColor: colors.accentGlow,
+              overflow: 'hidden',
+              opacity: isLoading ? 0.65 : pressed ? 0.82 : 1,
+            })}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={colors.accentTextStrong} />
+            ) : (
+              <Ionicons name="refresh" size={16} color={colors.accentTextStrong} />
+            )}
+            <Text variant="label" color={colors.accentTextStrong}>
+              {isLoading ? 'Retrying…' : 'Retry'}
+            </Text>
+          </AppPressable>
+        ) : null}
       </View>
     );
   }
@@ -178,7 +247,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
         onScrollBeginDrag={() => setFollowPaused(true)}
         contentContainerStyle={{
           paddingVertical: size.h > 0 ? Math.round(size.h * ANCHOR_RATIO) : 120,
-          paddingHorizontal: H_PADDING,
+          paddingHorizontal: hPadding,
           alignItems: 'stretch',
         }}
       >
@@ -240,7 +309,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
       </ScrollView>
 
       {followPaused ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={recenter}
           hitSlop={10}
           style={{
@@ -258,7 +327,7 @@ export function LyricsBand({ track, currentTime, duration, isPlaying, onSeek }: 
           <Text variant="mono" color={colors.accentText} style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' }}>
             Recenter
           </Text>
-        </Pressable>
+        </AppPressable>
       ) : null}
     </View>
   );

@@ -1,6 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+/* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
+  PixelRatio,
   View,
   Pressable,
   StyleSheet,
@@ -12,9 +14,9 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withDelay,
   withSequence,
@@ -33,24 +35,47 @@ import { Visualizer } from '@/components/Visualizer';
 import { LyricsView } from '@/components/lyrics/LyricsView';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
-import { QueueTray } from '@/components/queue/QueueTray';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
+import type { NowPlayingCompanion } from '@/components/player/nowPlayingPreferences';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
-import { resolveNowPlayingDismissSpring } from '@/components/player/nowPlayingDismiss';
+import { NowPlayingArtistCredits } from '@/components/player/NowPlayingArtistCredits';
+import {
+  getNowPlayingTrackTransitionKey,
+  NowPlayingTrackFadeThrough,
+} from '@/components/player/nowPlayingTrackTransition';
+import {
+  resolveNowPlayingPanRelease,
+  shouldEnableNowPlayingPan,
+  shouldStartNowPlayingPan,
+} from '@/components/player/nowPlayingDismiss';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
+import {
+  NOW_PLAYING_CLOSE_COMMIT_MS,
+  NOW_PLAYING_OPEN_SETTLE_MS,
+} from '@/components/renderPresenceTiming';
+import { useAppForeground } from '@/lib/useAppForeground';
 import { SleepTimerControls } from '@/components/player/SleepTimerControls';
-import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
+import { AppSheet, AppSheetItem, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   radius,
   spacing,
 } from '@/theme';
-import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import {
+  createThemedStyles,
+  ScopedPaletteProvider,
+  useColors,
+} from '@/theme/themed';
+import {
+  AppPressable,
+  AppPressableGestureScope,
+} from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
+import { paletteWithAccent } from '@/theme/scopedAccent';
+import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
 import {
   getNowPlayingLayout,
   getTabletCompanionLayout,
@@ -58,13 +83,15 @@ import {
   NOW_PLAYING_CONTENT_TOP_PADDING,
   NOW_PLAYING_HEADER_HEIGHT,
   NOW_PLAYING_PLAY_BUTTON_SIZE,
-  NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
   NOW_PLAYING_SUB_BUTTON_SIZE,
-  NOW_PLAYING_WAVEFORM_TOUCH_PADDING,
   NOW_PLAYING_WIDE_PANE_GAP,
 } from '@/components/player/nowPlayingLayout';
-import { resolveNavigationArtist, splitCollaborators } from '@/library/artistGrouping';
-import { buildArtistNameTokens } from '@/shared/library/artistCredits';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
+import { resolveNavigationArtist } from '@/library/artistGrouping';
+import {
+  buildArtistNameTokens,
+  parseArtistMetadata,
+} from '@/shared/library/artistCredits';
 import {
   artworkThumbFromSource,
   playerBackdropArtworkSource,
@@ -76,17 +103,26 @@ import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
+import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
+import { useThemeStore } from '@/stores/themeStore';
 import type { DbTrack } from '@/types/library';
 import {
   cycleRepeat,
+  jumpToQueueIndex,
   seekTo,
   skipToNext,
   skipToPrevious,
+  synchronizeVirtualQueueRevision,
   togglePlay,
   toggleShuffle
 } from '@/audio/playbackController';
+import {
+  AstraQueue,
+  toNativeQueuePalette,
+} from '../../../modules/astra-library-scanner';
 import {
   desktopConnectionLabel,
   getDesktopPlaybackPresentation,
@@ -96,22 +132,23 @@ import {
 } from '@/playback/playbackTargetPresentation';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
 
-const DISMISS_DISTANCE = 140;
-const DISMISS_VELOCITY = 1000;
-
 const HEADER_HEIGHT = NOW_PLAYING_HEADER_HEIGHT;
 const CONTENT_TOP_PADDING = NOW_PLAYING_CONTENT_TOP_PADDING;
 const CONTENT_BOTTOM_PADDING = NOW_PLAYING_CONTENT_BOTTOM_PADDING;
-const WAVEFORM_TOUCH_PADDING = NOW_PLAYING_WAVEFORM_TOUCH_PADDING;
 const PLAY_BUTTON_SIZE = NOW_PLAYING_PLAY_BUTTON_SIZE;
 const SKIP_ICON_SIZE = 32;
 const PLAY_ICON_SIZE = 34;
 const SUB_BUTTON_SIZE = NOW_PLAYING_SUB_BUTTON_SIZE;
 const SUB_ICON_SIZE = 20;
+/** Comfortable thumb span for the transport row; see styles.transport. */
+const TRANSPORT_MAX_WIDTH = 400;
 const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
 const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
+const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
+const PAN_TOUCH_END_BACKSTOP_MS = 80;
+const PAN_GESTURE_RECOVERY_MS = 1200;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -120,23 +157,80 @@ interface NowPlayingMenuItem {
   onPress: () => void;
 }
 
-export function NowPlayingOverlay() {
-  const styles = useStyles();
-  const colors = useColors();
-  const ripple = useRipple();
+/**
+ * Wraps its child in the dismiss-gesture detector only where dismissing is a
+ * thing. A docked pane has nowhere to be dragged to, and a live pan recognizer
+ * around it would just eat vertical drags meant for the scene.
+ */
+function MaybePan({
+  enabled,
+  gesture,
+  children,
+}: {
+  enabled: boolean;
+  gesture: ReturnType<typeof Gesture.Pan>;
+  children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
+}
+
+export interface NowPlayingOverlayProps {
+  /**
+   * `overlay` is the fullscreen sheet: absolutely filling, pan-to-dismiss,
+   * gated by the player phase machine.
+   *
+   * `dock` is the persistent tablet pane: a sized column that is always on
+   * screen, so it has no slide, no dismiss gesture and no close. Everything
+   * below it — the deck geometry, the scope, the queue, the sheets — is shared,
+   * because the pane is portrait-shaped and that is exactly what the standard
+   * layout branch already solves.
+   */
+  presentation?: 'overlay' | 'dock';
+  /** Dock only: the column's width, which is not the window's. */
+  dockWidth?: number;
+}
+
+export function NowPlayingOverlay({
+  presentation = 'overlay',
+  dockWidth = 0,
+}: NowPlayingOverlayProps = {}) {
+  const dock = presentation === 'dock';
+  const appColors = useColors();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const reduceMotion = useReducedMotion();
-  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
+  const returnToTabs = useReturnToTabs();
+  const rawInsets = useSafeAreaInsets();
+  const { width: rawWindowWidth, height: windowHeight } = useWindowDimensions();
+  // The whole layout is a function of these two. Pointing them at the dock's
+  // box is what lets the pane reuse every line of geometry below rather than
+  // growing a parallel set: its leading edge is interior so it carries no
+  // inset, and its trailing edge is the window's.
+  const insets = dock ? { ...rawInsets, left: 0 } : rawInsets;
+  const windowWidth = dock ? dockWidth : rawWindowWidth;
+  const phase = usePlayerUiStore((s) => s.phase);
+  const openRequest = usePlayerUiStore((s) => s.openRequest);
+  const exitAnimated = usePlayerUiStore((s) => s.exitAnimated);
+  const fullscreenUp = isPlayerOnScreen(phase);
+  // Docked, this pane is always present — except while the fullscreen player is
+  // over it, which is precisely when its scope surfaces should go quiet. That
+  // is the same gate MiniPlayer uses to avoid a second frame loop.
+  const playerOpen = dock ? !fullscreenUp : fullscreenUp;
+  // Heavy scope/spectrum surfaces release their native backing in the
+  // background. The overlay itself stays mounted — unmounting it mid-close used
+  // to tear down the exit animation and strand the phase.
+  const foreground = useAppForeground();
+  const surfacesLive = playerOpen && foreground;
   const [queueOpen, setQueueOpen] = useState(false);
-  // Stable identity: QueueTray is memo'd, so a fresh arrow here would defeat it.
-  const closeQueue = useCallback(() => setQueueOpen(false), []);
+  const [lyricsBodySwitching, setLyricsBodySwitching] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
+  const [artistPickerOpen, setArtistPickerOpen] = useState(false);
   const [playlistActionTrack, setPlaylistActionTrack] = useState<DbTrack | null>(null);
   const selectedTarget = usePlaybackTargetStore((s) => s.target);
+  const themeIsDark = useThemeStore((s) => s.theme.isDark);
+  const nowPlayingAccentSource = useThemeStore((s) => s.nowPlayingAccentSource);
+  const coverArtAccentMethod = useThemeStore((s) => s.coverArtAccentMethod);
   const scopeMode = useSettingsStore((s) => s.scopeMode);
   const scopeStageVisible = useSettingsStore((s) => s.scopeStageVisible);
   const setScopeStageVisible = useSettingsStore((s) => s.setScopeStageVisible);
@@ -146,6 +240,8 @@ export function NowPlayingOverlay() {
   const setLyricsVisible = useSettingsStore((s) => s.setLyricsVisible);
   const nowPlayingCompanion = useSettingsStore((s) => s.nowPlayingCompanion);
   const setNowPlayingCompanion = useSettingsStore((s) => s.setNowPlayingCompanion);
+  const companionOpen = useSettingsStore((s) => s.nowPlayingCompanionOpen);
+  const setCompanionOpen = useSettingsStore((s) => s.setNowPlayingCompanionOpen);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
@@ -180,17 +276,44 @@ export function NowPlayingOverlay() {
     desktop: desktopPresentation,
   });
   const isDesktopTarget = activePresentation.target === 'desktop';
+  const artworkIdentity = activePresentation.trackKey
+    ? `${activePresentation.target}:${
+        isDesktopTarget
+          ? activePresentation.trackKey
+          : track?.artworkHash ?? activePresentation.trackKey
+      }`
+    : null;
+  const coverArtAccent = useNowPlayingArtworkAccent({
+    enabled: playerOpen && nowPlayingAccentSource === 'cover-art',
+    artworkUri: activePresentation.artworkUri,
+    artworkIdentity,
+    method: coverArtAccentMethod,
+  });
+  const colors = useMemo(
+    () => paletteWithAccent(appColors, coverArtAccent, themeIsDark),
+    [appColors, coverArtAccent, themeIsDark],
+  );
+  const styles = useStyles(colors);
   const effectiveScopeStageVisible = !isDesktopTarget && scopeStageVisible;
+  // Backgrounding drops these two subtrees, which is what actually releases the
+  // scope TextureViews and the decoded artwork. The overlay shell around them
+  // deliberately stays mounted instead — dropping the whole tree used to tear
+  // down the close animation mid-flight and strand the player unopenable.
   const renderScopeSurfaces = useDelayedUnmountPresence(
     effectiveScopeStageVisible,
-    motion.snap.duration
+    motion.snap.duration,
+    !foreground
   );
   const renderArtworkFace = useDelayedUnmountPresence(
     railStyle || !effectiveScopeStageVisible,
-    motion.snap.duration
+    motion.snap.duration,
+    !foreground
   );
   const activeTrack = desktopSnapshot?.currentTrack ?? null;
-  const transitionTrackKey = isDesktopTarget ? activeTrack?.id ?? '' : track?.id ?? '';
+  const transitionTrackKey = getNowPlayingTrackTransitionKey(
+    activePresentation.target,
+    activePresentation.trackKey
+  );
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
   // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
@@ -205,89 +328,179 @@ export function NowPlayingOverlay() {
   // The rack style swaps the art card's face in place, so only the rail style
   // reserves stage height for a scope strip below the art.
   const layoutScopeVisible = effectiveScopeStageVisible && railStyle;
+  // Deck rows reserve real line boxes, so the font scale is an input to the
+  // geometry rather than something the estimates silently got wrong.
+  const fontScale = PixelRatio.getFontScale();
   const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
-    layoutScopeVisible
+    layoutScopeVisible,
+    false,
+    fontScale
   );
-  const tabletCompanionLayout = getTabletCompanionLayout(
+  // Two separate facts, the same split the shell makes for the dock: whether
+  // this window *could* seat a pane beside the player, and whether the pane is
+  // actually out. The default tablet player is the full-width composition with
+  // nothing docked — the queue and lyrics buttons open the pane, exactly as they
+  // open a sheet and a takeover on a phone.
+  const companionFit = getTabletCompanionLayout(
     effectiveWidth,
     availableHeight,
-    layoutScopeVisible
+    layoutScopeVisible,
+    fontScale,
+    nowPlayingCompanion
   );
-  const hasTabletCompanion = tabletCompanionLayout !== null;
-  const lyricPeekEnabled = !isDesktopTarget && availableHeight >= 720;
+  const companionCapable = companionFit !== null && !dock;
+  const hasTabletCompanion = companionCapable && companionOpen;
+  // Held true until the pane has finished sliding out, so the player's geometry
+  // changes exactly once per direction and does it while the pane is out of the
+  // way. Releasing it the instant the button is tapped would widen the deck
+  // underneath a pane that is still physically there — the same second reflow
+  // the dock had.
+  const companionMounted = useDelayedUnmountPresence(
+    hasTabletCompanion,
+    motion.snap.duration
+  );
+  const tabletCompanionLayout = companionMounted ? companionFit : null;
+  /**
+   * The player is laid out across the *whole* shell and shifted left by half the
+   * pane's footprint. Centring in the full width and shifting by half is
+   * arithmetically the same as centring in what's left, which means the push is
+   * a transform — no width is ever animated, and the artwork (height-bound in
+   * every state) never resizes at all.
+   */
+  const companionFootprint = companionFit
+    ? companionFit.companionWidth + companionFit.gap
+    : 0;
+  const companionShift = useSharedValue(0);
+  const companionSlide = useSharedValue(companionFit?.companionWidth ?? 0);
   const layout = tabletCompanionLayout?.playerLayout ?? standardLayout;
+  const deck = layout.deck;
+  // The density tier owns whether there is room for the lyric row, and it is
+  // chosen without reference to the scope state — so this can never change
+  // while the screen is open and shift the deck.
+  const lyricPeekEnabled = !isDesktopTarget && deck.lyricRowHeight > 0;
   const contentPadding = tabletCompanionLayout ? spacing.lg : layout.contentPadding;
   const shellWidth = tabletCompanionLayout?.shellWidth ?? layout.contentWidth;
   // Lyrics takes over only on the phone. Roomy tablets keep the player visible
   // and render lyrics in the companion rail.
+  // Gated on *capable*, not open: a window that can seat the pane never shows
+  // the phone's full-body lyrics takeover, even while the pane is closed. Lyrics
+  // there is a pane, and `lyricsVisible` only pre-selects which tab it opens on.
   const lyricsMode =
-    !hasTabletCompanion && !isDesktopTarget && !!track && lyricsVisible;
+    !companionCapable && !isDesktopTarget && !!track && lyricsVisible;
   const source = activePresentation.sourceLabel;
   const shellRight =
     insets.right +
     contentPadding +
     Math.max(0, (effectiveWidth - contentPadding * 2 - shellWidth) / 2);
+  const shellLeft =
+    insets.left +
+    contentPadding +
+    Math.max(0, (effectiveWidth - contentPadding * 2 - shellWidth) / 2);
+  const companionStartX = tabletCompanionLayout
+    ? shellLeft + shellWidth - tabletCompanionLayout.companionWidth
+    : Number.POSITIVE_INFINITY;
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
   const libraryTrack = useMemo(
     () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
     [libraryTracks, track]
   );
   const artistName = track
-    ? resolveNavigationArtist(
-        libraryTrack ?? { artist: track.artist, album_artist: track.albumArtist ?? null },
+      ? resolveNavigationArtist(
+        libraryTrack ?? {
+          artist: track.artist,
+          artist_names: track.artistNames,
+          album_artist: track.albumArtist ?? null,
+          album_artist_names: track.albumArtistNames,
+        },
         artistGroupingMode
       )
     : '';
   const artistCreditTokens = useMemo(() => {
     if (!track) return [];
-    const collaborators = splitCollaborators(track.artist);
-    return buildArtistNameTokens(
-      collaborators.length > 0 ? collaborators : [track.artist]
-    ).map((token) => ({
-      ...token,
-      separator: token.separator ? ', ' : null,
-    }));
+    if (track.artistNames && track.artistNames.length > 0) {
+      return buildArtistNameTokens(track.artistNames);
+    }
+    return parseArtistMetadata(track.artist);
   }, [track]);
   const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
 
+  // The overlay stays mounted; open/close is this one shared value sliding the
+  // sheet on the UI thread. The gesture itself is memoized below, so changing
+  // child/body state updates these gates rather than replacing the recognizer.
+  const translateY = useSharedValue(windowHeight);
+  const panEnabled = useSharedValue(
+    !dock && shouldEnableNowPlayingPan(playerOpen, queueOpen, lyricsBodySwitching)
+  );
+  const panDismissRequested = useSharedValue(false);
+  const panRecoveryLease = useSharedValue(0);
+  const screenHeight = useSharedValue(windowHeight);
+  const companionTouchStartX = useSharedValue(companionStartX);
+  const menuProgress = useSharedValue(0);
+  // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
+  // rack = art face crossfading to the instrument rack. The presence gates keep
+  // both faces for the 220 ms transition, then release the invisible surface.
+  const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
+
+  const suspendPanForChildTransition = () => {
+    panEnabled.value = false;
+    panDismissRequested.value = false;
+    cancelAnimation(panRecoveryLease);
+    cancelAnimation(translateY);
+    translateY.value = 0;
+  };
+
   useEffect(() => {
-    if (!hasTabletCompanion || isDesktopTarget) return;
+    if (!companionCapable || isDesktopTarget) return;
+    // A queue sheet reached by some other path can't coexist with the pane, so
+    // fold it in — that one *does* open the pane, because the user asked for the
+    // queue. A stale `lyricsVisible` only picks the tab; it must not force the
+    // pane out, or the default composition would never be what you see first.
     if (queueOpen) {
       const frame = requestAnimationFrame(() => {
         setQueueOpen(false);
         void setNowPlayingCompanion('queue');
+        void setCompanionOpen(true);
       });
       return () => cancelAnimationFrame(frame);
     }
     if (lyricsVisible) void setNowPlayingCompanion('lyrics');
     return undefined;
   }, [
+    companionCapable,
     isDesktopTarget,
     lyricsVisible,
     queueOpen,
+    setCompanionOpen,
     setNowPlayingCompanion,
-    hasTabletCompanion,
   ]);
 
-  const showLyrics = () => {
-    if (hasTabletCompanion) {
-      void setNowPlayingCompanion('lyrics');
-      return;
-    }
-    void setLyricsVisible(!lyricsVisible);
+  /**
+   * Open the pane on `which`, or close it if that is already what it is showing.
+   * The buttons are the pane's only trigger, so each has to be able to undo
+   * itself the way the phone's sheet and takeover do.
+   */
+  const toggleCompanion = (which: NowPlayingCompanion) => {
+    const alreadyShowing = companionOpen && nowPlayingCompanion === which;
+    void setNowPlayingCompanion(which);
+    void setCompanionOpen(!alreadyShowing);
   };
 
   const showQueue = () => {
-    if (hasTabletCompanion) {
-      if (!isDesktopTarget) {
-        void setLyricsVisible(false);
-        void setNowPlayingCompanion('queue');
-      }
+    if (companionCapable) {
+      if (!isDesktopTarget) void setLyricsVisible(false);
+      toggleCompanion('queue');
       return;
     }
+    suspendPanForChildTransition();
     setQueueOpen(true);
+    if (!isDesktopTarget) {
+      void AstraQueue.present({ palette: toNativeQueuePalette(colors) }).catch((error) => {
+        console.warn('[queue] native presentation failed', error);
+        setQueueOpen(false);
+      });
+    }
   };
 
   const swapScopeMode = () =>
@@ -295,23 +508,26 @@ export function NowPlayingOverlay() {
       .getState()
       .setScopeMode(scopeMode === 'spectrum' ? 'scope' : 'spectrum');
 
+  // The player is an overlay, so it can be open over a root-stack sibling of
+  // `(tabs)` (e.g. desktop-remote). Going straight to a library route from there
+  // diverges at the root stack and mints a second copy of the whole tab tree.
   const navigateToArtist = (targetArtist = artistName, credit = false) => {
     if (!targetArtist) return;
     // Slide the overlay away while the library detail loads underneath.
     dismissSheet();
-    router.navigate({
-      pathname: '/library/artist/[name]',
-      params: { name: targetArtist, ...(credit ? { credit: '1' } : {}) },
-    });
+    returnToTabs(
+      {
+        pathname: '/library/artist/[name]',
+        params: { name: targetArtist, ...(credit ? { credit: '1' } : {}) },
+      },
+      'push'
+    );
   };
 
   const navigateToAlbum = () => {
     if (!albumKey) return;
     dismissSheet();
-    router.navigate({
-      pathname: '/library/album/[key]',
-      params: { key: albumKey },
-    });
+    returnToTabs({ pathname: '/library/album/[key]', params: { key: albumKey } }, 'push');
   };
 
   const menuItems: NowPlayingMenuItem[] = [];
@@ -381,32 +597,89 @@ export function NowPlayingOverlay() {
     });
   }
 
-  // The overlay stays mounted; open/close is this one shared value sliding the
-  // sheet on the UI thread. Starts off-screen so a pre-warmed mount never flashes.
-  const translateY = useSharedValue(windowHeight);
-  const menuProgress = useSharedValue(0);
-  const trackProgress = useSharedValue(1);
-  // ∿ engagement, shared by both scope styles: rail = art shrink + strip fade,
-  // rack = art face crossfading to the instrument rack. The presence gates keep
-  // both faces for the 220 ms transition, then release the invisible surface.
-  const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
+  /**
+   * Swapping the phone player body unmounts every normal control underneath the
+   * parent pan detector. Suspend that pan for the commit frame and synchronously
+   * restore its anchor first, so a cancelled child gesture cannot carry a stale
+   * translateY into the lyrics tree (or back into the standard player).
+   */
+  const setPhoneLyricsVisible = (visible: boolean) => {
+    if (!playerOpen) return;
+    suspendPanForChildTransition();
+    setLyricsBodySwitching(true);
+    void setLyricsVisible(visible);
+  };
+
+  const showLyrics = () => {
+    if (companionCapable) {
+      toggleCompanion('lyrics');
+      return;
+    }
+    setPhoneLyricsVisible(!lyricsVisible);
+  };
 
   useEffect(() => {
-    if (!transitionTrackKey) return;
-    trackProgress.value = 0;
-    trackProgress.value = withTiming(1, { ...motion.snap, duration: 200 });
-  }, [trackProgress, transitionTrackKey]);
+    if (!lyricsBodySwitching) return undefined;
+    const frame = requestAnimationFrame(() => setLyricsBodySwitching(false));
+    return () => cancelAnimationFrame(frame);
+  }, [lyricsBodySwitching, lyricsMode]);
+
+  useEffect(() => {
+    panEnabled.value = shouldEnableNowPlayingPan(
+      playerOpen && !dock,
+      queueOpen,
+      lyricsBodySwitching
+    );
+  }, [dock, lyricsBodySwitching, panEnabled, playerOpen, queueOpen]);
+
+  useEffect(() => {
+    screenHeight.value = windowHeight;
+  }, [screenHeight, windowHeight]);
+
+  useEffect(() => {
+    companionTouchStartX.value = companionStartX;
+  }, [companionStartX, companionTouchStartX]);
+
+  useEffect(() => {
+    const paneWidth = companionFit?.companionWidth ?? 0;
+    companionShift.value = withTiming(
+      hasTabletCompanion ? -companionFootprint / 2 : 0,
+      motion.snap
+    );
+    companionSlide.value = withTiming(hasTabletCompanion ? 0 : paneWidth, motion.snap);
+    // `companionFootprint` retargets when the companion changes as well as when
+    // it opens, so switching queue → lyrics animates the width difference too
+    // rather than jumping between two shells.
+  }, [
+    companionFit,
+    companionFootprint,
+    companionShift,
+    companionSlide,
+    hasTabletCompanion,
+  ]);
 
   useEffect(() => {
     stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
   }, [effectiveScopeStageVisible, stageProgress]);
-  // Closing is a store toggle, not navigation. Reset the inner layers so a
-  // reopen starts from the plain player (parity with the old per-open mount).
-  const dismiss = () => {
+  const commitClosed = useCallback(
+    () => usePlayerUiStore.getState().commitClosed(),
+    []
+  );
+  /**
+   * Enter the closing phase and drop the inner layers. Split out from
+   * `dismissSheet` so the pan gesture can commit the phase without handing the
+   * offset back to a fresh animation — it is already driving `translateY`.
+   * Clearing the layers here rather than at the end also unpins the menu card,
+   * which renders outside the translating content.
+   */
+  const beginDismiss = useCallback(() => {
+    if (dock) return;
     setMenuOpen(false);
     setQueueOpen(false);
-    usePlayerUiStore.getState().closePlayer();
-  };
+    // `true`: this path drives the sheet away itself, so the effect below must
+    // not overwrite the offset with a competing generic slide-out.
+    usePlayerUiStore.getState().closePlayer(true);
+  }, [dock]);
   const finishCloseMenu = () => setMenuOpen(false);
 
   function openMenu() {
@@ -422,7 +695,14 @@ export function NowPlayingOverlay() {
     });
   }
 
+  // Closing is a store transition, not navigation. The phase moves to `closing`
+  // BEFORE the animation starts — a spring that gets cancelled never reports
+  // completion, and depending on that callback is what used to leave the player
+  // flagged open with the sheet parked off-screen, unopenable for the rest of
+  // the session. The completion callback now only commits the release early;
+  // a fallback timer commits it otherwise.
   const dismissSheet = (velocity = 0) => {
+    beginDismiss();
     translateY.value = withSpring(
       windowHeight,
       {
@@ -432,77 +712,290 @@ export function NowPlayingOverlay() {
         overshootClamping: true,
       },
       (finished) => {
-        if (finished) runOnJS(dismiss)();
+        if (finished) runOnJS(commitClosed)();
       }
     );
   };
 
-  const pan = Gesture.Pan()
-    .activeOffsetY(14) // engage only on a downward drag
-    .failOffsetY(-14)
-    .failOffsetX([-24, 24]) // let the horizontal seek drag through
-    .onUpdate((e) => {
-      translateY.value = e.translationY > 0 ? e.translationY : 0;
-    })
-    .onEnd((e) => {
-      if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
-        const releaseSpring = resolveNowPlayingDismissSpring(
-          e.velocityY,
-          windowHeight - translateY.value
-        );
-        translateY.value = withSpring(
-          windowHeight,
-          {
-            damping: releaseSpring.damping,
-            stiffness: releaseSpring.stiffness,
-            velocity: releaseSpring.velocity,
-            overshootClamping: true,
-            energyThreshold: 1e-4,
-          },
-          (finished) => {
-            if (finished) runOnJS(dismiss)();
-          }
-        );
-      } else {
-        translateY.value = withTiming(0, motion.snap);
-      }
-    });
-
-  // Open animation (close normally animates via dismissSheet's spring first;
-  // the else branch covers direct closePlayer calls and keeps the resting
-  // offset pinned to the current window height across rotation). NOTE: this
-  // effect must stay BELOW every direct `translateY.value` write — the react
-  // compiler forbids mutations after an effect that depends on the value.
+  // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
+  // a player that already believes it is open still re-runs the slide-in — that
+  // is the recovery path for a sheet stranded off-screen by an interrupted
+  // close. `queueOpen` re-anchors the player before its modal BottomSheet
+  // appears, and `lyricsMode` provides the same backstop after the phone body
+  // swap. `windowHeight` is deliberately NOT a dependency: a dimension change
+  // (rotation, or an RN Modal like the output picker) would re-run this effect
+  // and cancel an in-flight exit spring. NOTE: this effect must stay BELOW every
+  // direct `translateY.value` write — the react compiler forbids mutations
+  // after an effect that depends on the value.
   useEffect(() => {
-    if (playerOpen) {
-      translateY.value = withTiming(0, { duration: 240 });
-    } else {
-      translateY.value = withTiming(windowHeight, { duration: 200 });
+    if (phase === 'closing') {
+      // Gesture/button paths attach their own exit animation. Only animate here
+      // when `closing` arrived from a direct closePlayer() call.
+      if (!exitAnimated) {
+        translateY.value = withTiming(windowHeight, { duration: 200 });
+      }
+      return;
     }
-  }, [playerOpen, windowHeight, translateY]);
+    translateY.value = withTiming(0, { duration: 240 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
+  }, [
+    phase,
+    openRequest,
+    exitAnimated,
+    queueOpen,
+    lyricsMode,
+    translateY,
+  ]);
+
+  // `closing` → `closed`, and `opening` → `open`. Both are timers rather than
+  // animation callbacks, so a cancelled animation can never strand the phase.
+  // The store guards each transition, and this cleanup cancels a pending commit
+  // if the user reopens mid-close. The store actions are read through getState
+  // so this effect's identity never changes between playback ticks — a restarted
+  // timer would mean the commit never lands.
+  useEffect(() => {
+    if (phase === 'closing') {
+      const timer = setTimeout(
+        () => usePlayerUiStore.getState().commitClosed(),
+        NOW_PLAYING_CLOSE_COMMIT_MS
+      );
+      return () => clearTimeout(timer);
+    }
+    if (phase === 'opening') {
+      const timer = setTimeout(
+        () => usePlayerUiStore.getState().settleOpen(),
+        NOW_PLAYING_OPEN_SETTLE_MS
+      );
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [phase, openRequest]);
+
+  const dismissFromPan = useCallback(() => {
+    // One JS transaction: the store enters `closing` before the deterministic
+    // slide is scheduled. Its 220 ms duration always beats the 450 ms fallback
+    // unmount, so a normal release cannot visibly despawn.
+    beginDismiss();
+    cancelAnimation(panRecoveryLease);
+    cancelAnimation(translateY);
+    translateY.value = withTiming(
+      screenHeight.value,
+      motion.snap,
+      (finished) => {
+        if (finished) runOnJS(commitClosed)();
+      }
+    );
+  }, [beginDismiss, commitClosed, panRecoveryLease, screenHeight, translateY]);
+
+  const pan = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetY(14) // engage only on a downward drag
+      .failOffsetY(-14)
+      .failOffsetX([-24, 24]) // let the horizontal seek drag through
+      .onTouchesDown((event, stateManager) => {
+        const touchX = event.allTouches[0]?.absoluteX ?? Number.NaN;
+        if (
+          !shouldStartNowPlayingPan(
+            panEnabled.value,
+            touchX,
+            companionTouchStartX.value
+          )
+        ) {
+          stateManager.fail();
+        }
+      })
+      .onTouchesMove((_event, stateManager) => {
+        if (!panEnabled.value) stateManager.fail();
+      })
+      .onTouchesUp(() => {
+        if (panDismissRequested.value) return;
+        translateY.value = withDelay(
+          PAN_TOUCH_END_BACKSTOP_MS,
+          withTiming(0, motion.snap)
+        );
+      })
+      .onTouchesCancelled(() => {
+        if (panDismissRequested.value) return;
+        translateY.value = withTiming(0, motion.snap);
+      })
+      .onStart(() => {
+        panDismissRequested.value = false;
+        cancelAnimation(translateY);
+        cancelAnimation(panRecoveryLease);
+        panRecoveryLease.value = withDelay(
+          PAN_GESTURE_RECOVERY_MS,
+          withTiming(panRecoveryLease.value + 1, { duration: 0 }, (finished) => {
+            if (!finished || panDismissRequested.value) return;
+            // This lease is independent of RNGH's terminal callbacks. If a
+            // nested native gesture drops the handler, the partial drag still
+            // repairs itself on the UI thread.
+            translateY.value = withTiming(0, motion.snap);
+          })
+        );
+      })
+      .onUpdate((event) => {
+        if (!panEnabled.value) {
+          translateY.value = 0;
+          return;
+        }
+        translateY.value = event.translationY > 0 ? event.translationY : 0;
+      })
+      .onEnd((event, success) => {
+        const release = resolveNowPlayingPanRelease(
+          event.translationY,
+          event.velocityY,
+          success && panEnabled.value
+        );
+        if (release === 'dismiss') {
+          panDismissRequested.value = true;
+          cancelAnimation(panRecoveryLease);
+          // If the RN handoff is ever dropped, restore the partial drag instead
+          // of leaving an open player stranded. dismissFromPan cancels this
+          // delayed animation after synchronously entering `closing`.
+          translateY.value = withDelay(
+            PAN_DISMISS_HANDOFF_BACKSTOP_MS,
+            withTiming(0, motion.snap)
+          );
+          runOnJS(dismissFromPan)();
+          return;
+        }
+        panDismissRequested.value = false;
+        cancelAnimation(panRecoveryLease);
+        translateY.value = withTiming(0, motion.snap);
+      })
+      .onFinalize(() => {
+        // Successful dismissals retain the short handoff backstop above. Every
+        // other terminal path, including cancellation, re-anchors immediately.
+        if (!panDismissRequested.value) {
+          cancelAnimation(panRecoveryLease);
+          translateY.value = withTiming(0, motion.snap);
+        }
+      }),
+    [
+      companionTouchStartX,
+      dismissFromPan,
+      panDismissRequested,
+      panEnabled,
+      panRecoveryLease,
+      translateY,
+    ]
+  );
+
+  // Stable identity: RemoteQueueSheet is memo'd, so a fresh arrow would defeat it.
+  const closeQueue = useCallback(() => {
+    suspendPanForChildTransition();
+    if (!isDesktopTarget) AstraQueue.dismiss();
+    setQueueOpen(false);
+    // Shared values and the state setter remain stable for this overlay mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesktopTarget]);
+
+  useEffect(() => {
+    const dismissed = AstraQueue.addListener('onDismissed', () => {
+      setQueueOpen(false);
+    });
+    const playbackRequest = AstraQueue.addListener('onPlaybackRequest', (request) => {
+      void (async () => {
+        try {
+          const position = await AstraQueue.resolveEntryPosition(
+            request.entryId,
+            request.queueRevision,
+          );
+          if (position == null) {
+            throw new Error('The queue changed. Try that song again.');
+          }
+          await jumpToQueueIndex(position, { virtualPosition: true });
+          AstraQueue.resolvePlaybackRequest(request.requestId, true);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not play that song';
+          AstraQueue.resolvePlaybackRequest(request.requestId, false, message);
+        }
+      })();
+    });
+    const revision = AstraQueue.addListener('onQueueRevision', (event) => {
+      void synchronizeVirtualQueueRevision(
+        event.queueRevision,
+        event.activePosition,
+      ).catch((error) => {
+        console.warn('[queue] transport revision sync failed', error);
+      });
+    });
+    return () => {
+      dismissed.remove();
+      playbackRequest.remove();
+      revision.remove();
+    };
+  }, []);
+
+  // `colors` is accent-scoped to the cover art, so it changes on every track
+  // change. present() captured the palette once, which left an open sheet
+  // wearing the previous track's accent.
+  useEffect(() => {
+    if (isDesktopTarget || !queueOpen) return;
+    AstraQueue.updatePalette(toNativeQueuePalette(colors));
+  }, [colors, isDesktopTarget, queueOpen]);
 
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
   // — e.g. the library-detail back interceptor underneath.
   useEffect(() => {
-    if (!playerOpen) return;
+    if (!playerOpen) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (menuOpen) {
         closeMenu();
         return true;
       }
-      if (queueOpen) {
-        setQueueOpen(false);
+      if (targetPickerOpen) {
+        setTargetPickerOpen(false);
         return true;
       }
+      if (sleepTimerOpen) {
+        setSleepTimerOpen(false);
+        return true;
+      }
+      if (artistPickerOpen) {
+        setArtistPickerOpen(false);
+        return true;
+      }
+      if (playlistActionTrack) {
+        setPlaylistActionTrack(null);
+        return true;
+      }
+      if (queueOpen) {
+        closeQueue();
+        return true;
+      }
+      // Overlay only. A docked pane is not a thing you can back out of, so the
+      // press belongs to whatever screen is beside it.
+      if (dock) return false;
       dismissSheet();
       return true;
     });
     return () => sub.remove();
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeMenu/dismissSheet are re-created every render; re-subscribing on each would thrash the LIFO chain. windowHeight is listed because dismissSheet captures it.
+  }, [
+    dock,
+    playerOpen,
+    menuOpen,
+    targetPickerOpen,
+    sleepTimerOpen,
+    artistPickerOpen,
+    playlistActionTrack,
+    queueOpen,
+    closeQueue,
+    windowHeight,
+  ]);
 
   const contentStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: dock ? 0 : translateY.value }],
+  }));
+
+  const playerShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: companionShift.value }],
+  }));
+
+  const companionSlideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: companionSlide.value }],
   }));
 
   const menuLayerStyle = useAnimatedStyle(() => ({
@@ -513,16 +1006,6 @@ export function NowPlayingOverlay() {
     transform: [{ translateY: MENU_ENTER_OFFSET_Y * (1 - menuProgress.value) }],
   }));
 
-  const artworkTransitionStyle = useAnimatedStyle(() => ({
-    opacity: 0.75 + trackProgress.value * 0.25,
-    transform: [{ scale: 0.985 + trackProgress.value * 0.015 }],
-  }));
-
-  const metadataTransitionStyle = useAnimatedStyle(() => ({
-    opacity: trackProgress.value,
-    transform: [{ translateY: 4 * (1 - trackProgress.value) }],
-  }));
-
   // Rail choreography (standard presentation only): the art box is laid out at
   // its scope-off size and driven to the scope-on size/position by
   // stageProgress, so the ∿ toggle animates as one move instead of snapping
@@ -530,21 +1013,29 @@ export function NowPlayingOverlay() {
   // state-dependent by design.
   const railChoreographed = railStyle && !layout.isWide && !isDesktopTarget;
   const artBoxSize = railChoreographed ? layout.artSizeScopeOff : layout.artSize;
+  const playButtonSizing = {
+    width: deck.playButtonSize,
+    height: deck.playButtonSize,
+    borderRadius: deck.playButtonSize / 2,
+  };
+  const subButtonSizing = {
+    width: deck.subButtonSize,
+    height: deck.subButtonSize,
+  };
   const railArtScale =
     railChoreographed && layout.artSizeScopeOff > 0
       ? layout.artSizeScopeOn / layout.artSizeScopeOff
       : 1;
-  const railArtShift = railChoreographed
-    ? layout.artSizeScopeOn / 2 - layout.mediaStackHeight / 2
-    : 0;
+  // The art box is centred in the stage at its scope-off size. Turning the rail
+  // on centres it in the space *above* the rail instead, which is exactly half
+  // the rail block higher — independent of either art size, so the two states
+  // can never disagree about where the stage's middle is.
+  const railArtShift = railChoreographed ? -layout.scopeBlockHeight / 2 : 0;
   const artStageTransitionStyle = useAnimatedStyle(() => ({
-    opacity: 0.75 + trackProgress.value * 0.25,
     transform: [
       { translateY: stageProgress.value * railArtShift },
       {
-        scale:
-          (0.985 + trackProgress.value * 0.015) *
-          (1 + stageProgress.value * (railArtScale - 1)),
+        scale: 1 + stageProgress.value * (railArtScale - 1),
       },
     ],
   }));
@@ -568,9 +1059,16 @@ export function NowPlayingOverlay() {
     [railStyle]
   );
 
+  // The only structural differences between the two presentations: an overlay
+  // fills the window and is draggable away, a dock is a sized column that is
+  // simply there. Everything inside is identical.
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={playerOpen ? 'auto' : 'none'}>
-      <GestureDetector gesture={pan}>
+    <ScopedPaletteProvider colors={colors}>
+    <View
+      style={dock ? styles.dockFrame : StyleSheet.absoluteFill}
+      pointerEvents={playerOpen || dock ? 'box-none' : 'none'}
+    >
+      <MaybePan enabled={!dock} gesture={pan}>
         <Animated.View
           style={[
             styles.content,
@@ -583,6 +1081,7 @@ export function NowPlayingOverlay() {
             },
           ]}
         >
+          <AppPressableGestureScope>
           <NowPlayingWash
             artworkUri={washArtworkUri}
             offset={{
@@ -595,9 +1094,28 @@ export function NowPlayingOverlay() {
             {!lyricsMode && (
               <View style={styles.header}>
                 <View style={styles.headerSide}>
-                  <Pressable style={styles.headerBtn} android_ripple={ripple.icon(22)} onPress={() => dismissSheet()} hitSlop={12}>
-                    <Ionicons name="chevron-down" size={26} color={colors.textSecondary} />
-                  </Pressable>
+                  {/* One chevron, two meanings: the overlay dismisses itself
+                      downward, the pane collapses sideways back to the bar
+                      card. Adding a second control alongside this one just
+                      gave the dock two chevrons that did different things. */}
+                  <AppPressable
+                    style={styles.headerBtn}
+                    feedback="control"
+                    onPress={() =>
+                      dock
+                        ? void useSettingsStore.getState().setPlayerDockOpen(false)
+                        : dismissSheet()
+                    }
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={dock ? 'Collapse player pane' : 'Close player'}
+                  >
+                    <Ionicons
+                      name={dock ? 'chevron-forward' : 'chevron-down'}
+                      size={26}
+                      color={colors.textSecondary}
+                    />
+                  </AppPressable>
                 </View>
                 <View style={styles.headerMid}>
                   <Text variant="caption" style={styles.eyebrow}>
@@ -608,35 +1126,40 @@ export function NowPlayingOverlay() {
                   </Text>
                 </View>
                 <View style={[styles.headerSide, styles.headerActions]}>
-                  <Pressable
-                    style={styles.headerBtn} android_ripple={ripple.icon(22)}
+                  {/* Lives in the header row rather than floating over it: the
+                      dock used to draw its own expand button on top of this
+                      one, which is what made it read as tacked on. */}
+                  {dock ? (
+                    <AppPressable
+                      style={styles.headerBtn}
+                      feedback="control"
+                      onPress={() => usePlayerUiStore.getState().openPlayer()}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open full screen player"
+                    >
+                      <Ionicons name="expand-outline" size={20} color={colors.textSecondary} />
+                    </AppPressable>
+                  ) : null}
+                  <AppPressable
+                    style={styles.headerBtn} feedback="control"
                     onPress={openMenu}
                     hitSlop={12}
                     accessibilityLabel="More options"
                   >
                     <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-                  </Pressable>
+                  </AppPressable>
                 </View>
               </View>
             )}
 
-            <View style={[styles.playerBody, hasTabletCompanion && styles.playerBodyTablet]}>
-              <View
-                style={[
-                  styles.playerRegion,
-                  hasTabletCompanion && styles.playerRegionTablet,
-                  tabletCompanionLayout
-                    ? {
-                        width: tabletCompanionLayout.playerRegionWidth,
-                      }
-                    : null,
-                ]}
-              >
+            <View style={[styles.playerBody, companionMounted && styles.playerBodyTablet]}>
+              <Animated.View style={[styles.playerRegion, playerShiftStyle]}>
                 <View style={[styles.playerCanvas, { width: layout.contentWidth }]}>
             {lyricsMode && track ? (
               <LyricsView
                 track={track}
-                active={playerOpen}
+                active={surfacesLive}
                 isPlaying={isPlaying}
                 isLoading={isLoading}
                 isFavorite={isFavorite}
@@ -645,7 +1168,7 @@ export function NowPlayingOverlay() {
                 onNext={skipToNext}
                 onPrev={skipToPrevious}
                 onToggleFavorite={() => void toggleFavorite(track)}
-                onExitLyrics={() => void setLyricsVisible(false)}
+                onExitLyrics={() => setPhoneLyricsVisible(false)}
                 onDismiss={() => dismissSheet()}
               />
             ) : isDesktopTarget ? (
@@ -653,55 +1176,53 @@ export function NowPlayingOverlay() {
                 <View style={[styles.player, layout.isWide && styles.playerWide]}>
                   <View
                     style={[
-                      styles.middleStack,
-                      !layout.isWide && styles.middleStackCentered,
+                      styles.stage,
                       layout.isWide
-                        ? { width: layout.leftPaneWidth, justifyContent: 'center' }
-                        : {
-                            height: layout.mediaStackHeight,
-                            marginTop: layout.mediaTopMargin,
-                            marginBottom: layout.mediaBottomGap,
-                          },
+                        ? {
+                            width: layout.leftPaneWidth,
+                            height: layout.stageHeight,
+                            paddingVertical: layout.stageInset,
+                          }
+                        : styles.stageFill,
                     ]}
                   >
-                    <Animated.View
+                    <NowPlayingTrackFadeThrough
+                      transitionKey={transitionTrackKey}
                       style={[
                         styles.artCard,
-                        artworkTransitionStyle,
                         {
                           width: layout.artSize,
                           height: layout.artSize,
                         },
                       ]}
+                      contentStyle={styles.trackVisualLayer}
                     >
                       {activePresentation.artworkUri ? (
                         <Image
                           source={{ uri: activePresentation.artworkUri }}
                           style={styles.artImage}
                           contentFit="cover"
-                          transition={reduceMotion ? null : 200}
                         />
                       ) : (
                         <AstraLogo size={Math.round(layout.artSize * 0.4)} />
                       )}
-                    </Animated.View>
+                    </NowPlayingTrackFadeThrough>
                   </View>
 
                   <View
                     style={[
-                      styles.playerControls,
+                      styles.deck,
+                      styles.deckSpread,
+                      { rowGap: deck.rowGap },
                       layout.isWide
-                        ? { width: layout.rightPaneWidth }
-                        : styles.playerControlsFill,
+                        ? { width: layout.rightPaneWidth, height: deck.height }
+                        : { height: deck.height },
                   ]}
                 >
-                    <View style={styles.primaryControls}>
-                    <Animated.View
-                      style={[
-                        styles.trackInfo,
-                        { marginBottom: layout.trackInfoGap },
-                        metadataTransitionStyle,
-                      ]}
+                    <NowPlayingTrackFadeThrough
+                      transitionKey={transitionTrackKey}
+                      style={[styles.trackInfoFrame, { height: deck.identityRowHeight }]}
+                      contentStyle={styles.trackInfo}
                     >
                       <View style={styles.trackTextStack}>
                         <MarqueeText
@@ -717,7 +1238,7 @@ export function NowPlayingOverlay() {
                       </View>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
+                        style={styles.inlineActionBtn}
                         haptic={activeTrack.isFavorite ? 'toggleOff' : 'toggleOn'}
                         confirmationScale={1.08}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
@@ -743,7 +1264,7 @@ export function NowPlayingOverlay() {
                           }
                         />
                       </TactilePressable>
-                    </Animated.View>
+                    </NowPlayingTrackFadeThrough>
 
                     <SeekBar
                       currentTime={activePresentation.currentTime}
@@ -752,10 +1273,10 @@ export function NowPlayingOverlay() {
                       onSeek={(seconds) => void sendDesktopControl('seek', seconds)}
                     />
 
-                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                    <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
-                        android_ripple={ripple.icon(24)}
+
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.shuffle === undefined && styles.controlDisabled,
@@ -778,10 +1299,13 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                       <TactilePressable
-                        onPress={() => void sendDesktopControl('previous')}
+                        onPress={() => {
+                          markNowPlayingTrackTransitionDirection('previous', 'desktop');
+                          void sendDesktopControl('previous');
+                        }}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Previous"
                       >
                         <Ionicons
@@ -795,7 +1319,8 @@ export function NowPlayingOverlay() {
                         haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
-                        style={styles.playButton} android_ripple={ripple.onAccent()}
+                        style={[styles.playButton, playButtonSizing]}
+
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
                       >
                         <Ionicons
@@ -805,10 +1330,13 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                       <TactilePressable
-                        onPress={() => void sendDesktopControl('next')}
+                        onPress={() => {
+                          markNowPlayingTrackTransitionDirection('next', 'desktop');
+                          void sendDesktopControl('next');
+                        }}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Next"
                       >
                         <Ionicons
@@ -819,7 +1347,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        android_ripple={ripple.icon(24)}
+
                         style={[
                           styles.transportSideBtn,
                           desktopSnapshot?.repeat === undefined && styles.controlDisabled,
@@ -848,16 +1376,8 @@ export function NowPlayingOverlay() {
                         />
                       </TactilePressable>
                     </View>
-                    </View>
 
-                    <View
-                      style={[
-                        styles.subRow,
-                        layout.isWide
-                          ? { marginTop: layout.controlsGap }
-                          : styles.utilityFooter,
-                      ]}
-                    >
+                    <View style={[styles.subRow, { height: deck.utilityRowHeight }]}>
                       <View style={styles.statusPill}>
                         <View
                           style={[
@@ -884,7 +1404,7 @@ export function NowPlayingOverlay() {
                       <View style={styles.subActions}>
                         <TactilePressable
                           hitSlop={10}
-                          style={styles.subBtn} android_ripple={ripple.icon(20)}
+                          style={styles.subBtn}
                           onPress={() => void reconnectDesktop()}
                           accessibilityLabel="Reconnect to desktop"
                         >
@@ -893,7 +1413,7 @@ export function NowPlayingOverlay() {
                         {desktopQueue ? (
                           <TactilePressable
                             hitSlop={10}
-                            style={styles.subBtn} android_ripple={ripple.icon(20)}
+                            style={styles.subBtn}
                             haptic="selection"
                             onPress={showQueue}
                             accessibilityLabel="Desktop queue"
@@ -916,8 +1436,8 @@ export function NowPlayingOverlay() {
                       ? desktopConnectionLabel(desktopConnectionState)
                       : 'Pair with Astra Desktop to control it here.'}
                   </Text>
-                  <Pressable
-                    style={styles.emptyAction} android_ripple={ripple.bounded}
+                  <AppPressable feedback="control"
+                    style={styles.emptyAction}
                     onPress={() => {
                       if (desktopConnection) {
                         void reconnectDesktop();
@@ -931,22 +1451,21 @@ export function NowPlayingOverlay() {
                     <Text variant="label" color={colors.accentTextStrong}>
                       {desktopConnection ? 'Reconnect' : 'Pair desktop'}
                     </Text>
-                  </Pressable>
+                  </AppPressable>
                 </View>
               )
             ) : track ? (
               <View style={[styles.player, layout.isWide && styles.playerWide]}>
                 <View
                   style={[
-                    styles.middleStack,
-                    !layout.isWide && styles.middleStackCentered,
+                    styles.stage,
                     layout.isWide
-                      ? { width: layout.leftPaneWidth, justifyContent: 'center' }
-                      : {
-                          height: layout.mediaStackHeight,
-                          marginTop: layout.mediaTopMargin,
-                          marginBottom: layout.mediaBottomGap,
-                        },
+                      ? {
+                          width: layout.leftPaneWidth,
+                          height: layout.stageHeight,
+                          paddingVertical: layout.stageInset,
+                        }
+                      : styles.stageFill,
                   ]}
                 >
                   <Animated.View
@@ -970,18 +1489,23 @@ export function NowPlayingOverlay() {
                       ]}
                     >
                       {renderArtworkFace ? (
-                        track.artworkData ? (
-                          <Image
-                            source={{ uri: track.artworkData }}
-                            style={styles.artImage}
-                            contentFit="cover"
-                            cachePolicy="disk"
-                            allowDownscaling
-                            transition={reduceMotion ? null : 200}
-                          />
-                        ) : (
-                          <AstraLogo size={Math.round(artBoxSize * 0.4)} />
-                        )
+                        <NowPlayingTrackFadeThrough
+                          transitionKey={transitionTrackKey}
+                          style={StyleSheet.absoluteFill}
+                          contentStyle={styles.trackVisualLayer}
+                        >
+                          {track.artworkData ? (
+                            <Image
+                              source={{ uri: track.artworkData }}
+                              style={styles.artImage}
+                              contentFit="cover"
+                              cachePolicy="disk"
+                              allowDownscaling
+                            />
+                          ) : (
+                            <AstraLogo size={Math.round(artBoxSize * 0.4)} />
+                          )}
+                        </NowPlayingTrackFadeThrough>
                       ) : null}
                     </Animated.View>
                     {!railStyle && renderScopeSurfaces && (
@@ -992,15 +1516,16 @@ export function NowPlayingOverlay() {
                         <ScopeRack
                           size={artBoxSize}
                           stripWidth={layout.scopeWidth}
+                          transitionKey={transitionTrackKey}
                           artworkUri={backdropArtworkUri}
                           spectrumSmoothing={NOW_PLAYING_SPECTRUM_SMOOTHING}
-                          paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                          paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         />
                       </Animated.View>
                     )}
                   </Animated.View>
 
-                  {railStyle && !layout.isWide && renderScopeSurfaces && (
+                  {railStyle && !layout.isWide && layout.scopeRailFits && renderScopeSurfaces && (
                     <Animated.View
                       pointerEvents={effectiveScopeStageVisible ? 'auto' : 'none'}
                       style={[
@@ -1009,7 +1534,7 @@ export function NowPlayingOverlay() {
                         {
                           width: layout.scopeWidth,
                           height: layout.scopeHeight,
-                          bottom: NOW_PLAYING_SCOPE_RAIL_BOTTOM_GAP,
+                          bottom: layout.railBottomOffset,
                         },
                       ]}
                     >
@@ -1017,13 +1542,13 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
                     </Animated.View>
                   )}
-                  {railStyle && layout.isWide && renderScopeSurfaces && (
+                  {railStyle && layout.isWide && layout.scopeRailFits && renderScopeSurfaces && (
                     <View
                       style={[
                         styles.scopeRail,
@@ -1039,7 +1564,7 @@ export function NowPlayingOverlay() {
                         width={layout.scopeWidth}
                         height={layout.scopeHeight}
                         mode={scopeMode}
-                        paused={!playerOpen || queueOpen || !effectiveScopeStageVisible}
+                        paused={!surfacesLive || queueOpen || !effectiveScopeStageVisible}
                         revealed={effectiveScopeStageVisible}
                         onSwap={swapScopeMode}
                       />
@@ -1049,104 +1574,103 @@ export function NowPlayingOverlay() {
 
                 <View
                   style={[
-                    styles.playerControls,
+                    styles.deck,
+                    { rowGap: deck.rowGap },
                     layout.isWide
-                      ? { width: layout.rightPaneWidth }
-                      : styles.playerControlsFill,
+                      ? { width: layout.rightPaneWidth, height: deck.height }
+                      : { height: deck.height },
                   ]}
                 >
-                  <View style={styles.primaryControls}>
-                    {lyricPeekEnabled ? (
-                      <CachedLyricPeek
-                        track={track}
-                        active={playerOpen && !queueOpen}
-                        hidden={
-                          hasTabletCompanion && nowPlayingCompanion === 'lyrics'
-                        }
-                        onOpenLyrics={showLyrics}
-                      />
-                    ) : null}
-                    <Animated.View
-                      style={[
-                        styles.trackInfo,
-                        { marginBottom: layout.trackInfoGap },
-                        metadataTransitionStyle,
-                      ]}
-                    >
-                      <View style={styles.trackTextStack}>
-                        <MarqueeText
-                          variant="heading"
-                          containerStyle={styles.trackTitle}
-                          style={styles.trackTitleText}
-                        >
-                          {track.title}
-                        </MarqueeText>
-                        <View style={styles.trackMetaRow}>
-                          {artistCreditTokens.map(({ artist, separator }) => (
-                            <Fragment key={artist}>
-                              <Pressable
-                                onPress={() => navigateToArtist(artist, true)}
-                                hitSlop={4}
-                                style={styles.artistCreditButton}
-                                android_ripple={ripple.bounded}
-                                accessibilityRole="link"
-                                accessibilityLabel={`View artist ${artist}`}
-                              >
-                                <Text variant="body" style={styles.artist}>
-                                  {artist}
-                                </Text>
-                              </Pressable>
-                              {separator ? (
-                                <Text variant="body" style={styles.artistSeparator}>
-                                  {separator}
-                                </Text>
-                              ) : null}
-                            </Fragment>
-                          ))}
-                        </View>
-                      </View>
-                      <TactilePressable
-                        hitSlop={10}
-                        style={styles.inlineActionBtn} android_ripple={ripple.icon(22)}
-                        haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
-                        confirmationScale={1.08}
-                        onPress={() => void toggleFavorite(track)}
-                        accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                        accessibilityState={{ selected: isFavorite }}
+                  <View style={[styles.identityGroup, { rowGap: deck.lyricGap }]}>
+                  {lyricPeekEnabled ? (
+                    <CachedLyricPeek
+                      track={track}
+                      height={deck.lyricRowHeight}
+                      active={surfacesLive && !queueOpen}
+                      hidden={
+                        hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                      }
+                      onOpenLyrics={showLyrics}
+                    />
+                  ) : null}
+                  <NowPlayingTrackFadeThrough
+                    transitionKey={transitionTrackKey}
+                    style={[
+                      styles.trackInfoFrame,
+                      { height: deck.identityRowHeight },
+                    ]}
+                    contentStyle={styles.trackInfo}
+                  >
+                    <View style={styles.trackTextStack}>
+                      <MarqueeText
+                        variant="heading"
+                        containerStyle={[
+                          styles.trackTitle,
+                          { height: deck.titleLineHeight },
+                        ]}
+                        style={styles.trackTitleText}
                       >
-                        <PlayerStateIcon
-                          selected={isFavorite}
-                          size={SUB_ICON_SIZE + 4}
-                          inactive={
-                            <Ionicons
-                              name="heart-outline"
-                              size={SUB_ICON_SIZE + 4}
-                              color={colors.textTertiary}
-                            />
-                          }
-                          active={
-                            <Ionicons
-                              name="heart"
-                              size={SUB_ICON_SIZE + 4}
-                              color={colors.accent}
-                            />
-                          }
+                        {track.title}
+                      </MarqueeText>
+                      {/* Keep every credit visible and directly actionable when
+                          it fits. Only replace a genuinely overflowing tail with
+                          the inline tray action. */}
+                      <View style={{ marginTop: deck.identityGap, alignSelf: 'stretch' }}>
+                        <NowPlayingArtistCredits
+                          tokens={artistCreditTokens}
+                          lineHeight={deck.artistLineHeight}
+                          onArtistPress={(artist) => navigateToArtist(artist, true)}
+                          onShowAll={() => setArtistPickerOpen(true)}
                         />
-                      </TactilePressable>
-                    </Animated.View>
+                      </View>
+                    </View>
+                    <TactilePressable
+                      hitSlop={10}
+                      style={[styles.inlineActionBtn, subButtonSizing]}
 
+                      haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
+                      confirmationScale={1.08}
+                      onPress={() => void toggleFavorite(track)}
+                      accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                      accessibilityState={{ selected: isFavorite }}
+                    >
+                      <PlayerStateIcon
+                        selected={isFavorite}
+                        size={SUB_ICON_SIZE + 4}
+                        inactive={
+                          <Ionicons
+                            name="heart-outline"
+                            size={SUB_ICON_SIZE + 4}
+                            color={colors.textTertiary}
+                          />
+                        }
+                        active={
+                          <Ionicons
+                            name="heart"
+                            size={SUB_ICON_SIZE + 4}
+                            color={colors.accent}
+                          />
+                        }
+                      />
+                    </TactilePressable>
+                  </NowPlayingTrackFadeThrough>
+                  </View>
+
+                  <View style={[styles.controlBlock, { rowGap: deck.controlGap }]}>
                     <WaveformSeekBar
-                      active={playerOpen}
-                      height={layout.waveformHeight}
-                      touchPadding={WAVEFORM_TOUCH_PADDING}
+                      active={surfacesLive}
+                      height={deck.waveformHeight}
+                      touchPadding={deck.waveformTouchPadding}
+                      timesGap={deck.timesGap}
+                      timesHeight={deck.timesRowHeight}
                       trackPath={track.path}
                       onSeek={(seconds) => void seekTo(seconds)}
                     />
 
-                    <View style={[styles.transport, { marginTop: layout.controlsGap }]}>
+                    <View style={[styles.transport, { height: deck.transportRowHeight }]}>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        style={styles.transportSideBtn}
                         haptic={shuffle ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void toggleShuffle()}
                         accessibilityLabel="Shuffle"
@@ -1167,7 +1691,7 @@ export function NowPlayingOverlay() {
                         onPress={skipToPrevious}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Previous"
                       >
                         <Ionicons
@@ -1181,8 +1705,8 @@ export function NowPlayingOverlay() {
                         haptic="action"
                         pressedScale={0.97}
                         hitSlop={12}
-                        style={styles.playButton}
-                        android_ripple={ripple.onAccent()}
+                        style={[styles.playButton, playButtonSizing]}
+
                         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                       >
                         <Ionicons
@@ -1195,7 +1719,7 @@ export function NowPlayingOverlay() {
                         onPress={skipToNext}
                         haptic="action"
                         hitSlop={12}
-                        style={styles.transportMainBtn} android_ripple={ripple.icon(26)}
+                        style={styles.transportMainBtn}
                         accessibilityLabel="Next"
                       >
                         <Ionicons
@@ -1206,7 +1730,7 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.transportSideBtn} android_ripple={ripple.icon(24)}
+                        style={styles.transportSideBtn}
                         haptic="modeCycle"
                         onPress={() => void cycleRepeat()}
                         accessibilityLabel="Repeat"
@@ -1232,14 +1756,7 @@ export function NowPlayingOverlay() {
                     </View>
                   </View>
 
-                  <View
-                    style={[
-                      styles.subRow,
-                      layout.isWide
-                        ? { marginTop: layout.controlsGap }
-                        : styles.utilityFooter,
-                    ]}
-                  >
+                  <View style={[styles.subRow, { height: deck.utilityRowHeight }]}>
                     <View style={styles.subBadges}>
                       <RemoteSourceBadge sourceType={track.sourceType} />
                       <FormatBadges track={track} wrap={false} variant="plain" />
@@ -1247,47 +1764,8 @@ export function NowPlayingOverlay() {
                     <View style={styles.subActions}>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
-                        haptic="selection"
-                        onPress={showLyrics}
-                        accessibilityLabel={
-                          hasTabletCompanion
-                            ? 'Show lyrics in companion'
-                            : lyricsVisible
-                              ? 'Hide lyrics'
-                              : 'Show lyrics'
-                        }
-                        accessibilityState={{
-                          selected: hasTabletCompanion
-                            ? nowPlayingCompanion === 'lyrics'
-                            : lyricsVisible,
-                        }}
-                      >
-                        <PlayerStateIcon
-                          selected={
-                            (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
-                            (!hasTabletCompanion && lyricsVisible)
-                          }
-                          size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <MaterialCommunityIcons
-                              name="script-text-outline"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.textTertiary}
-                            />
-                          }
-                          active={
-                            <MaterialCommunityIcons
-                              name="script-text-outline"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.accent}
-                            />
-                          }
-                        />
-                      </TactilePressable>
-                      <TactilePressable
-                        hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        style={[styles.subBtn, subButtonSizing]}
+
                         haptic={scopeStageVisible ? 'toggleOff' : 'toggleOn'}
                         onPress={() => void setScopeStageVisible(!scopeStageVisible)}
                         accessibilityLabel={scopeStageVisible ? 'Hide visualizer' : 'Show visualizer'}
@@ -1314,7 +1792,8 @@ export function NowPlayingOverlay() {
                       </TactilePressable>
                       <TactilePressable
                         hitSlop={10}
-                        style={styles.subBtn} android_ripple={ripple.icon(20)}
+                        style={[styles.subBtn, subButtonSizing]}
+
                         haptic="selection"
                         onPress={showQueue}
                         accessibilityLabel="Queue"
@@ -1323,6 +1802,49 @@ export function NowPlayingOverlay() {
                           name="list-outline"
                           size={SUB_ICON_SIZE + 2}
                           color={colors.textTertiary}
+                        />
+                      </TactilePressable>
+                      <TactilePressable
+                        hitSlop={10}
+                        style={[styles.subBtn, subButtonSizing]}
+
+                        haptic="selection"
+                        onPress={showLyrics}
+                        accessibilityLabel={
+                          (
+                            companionCapable
+                              ? hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                              : lyricsVisible
+                          )
+                            ? 'Hide lyrics'
+                            : 'Show lyrics'
+                        }
+                        accessibilityState={{
+                          selected: hasTabletCompanion
+                            ? nowPlayingCompanion === 'lyrics'
+                            : lyricsVisible,
+                        }}
+                      >
+                        <PlayerStateIcon
+                          selected={
+                            (hasTabletCompanion && nowPlayingCompanion === 'lyrics') ||
+                            (!hasTabletCompanion && lyricsVisible)
+                          }
+                          size={SUB_ICON_SIZE + 2}
+                          inactive={
+                            <MaterialCommunityIcons
+                              name="comment-quote-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <MaterialCommunityIcons
+                              name="comment-quote-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          }
                         />
                       </TactilePressable>
                     </View>
@@ -1338,25 +1860,27 @@ export function NowPlayingOverlay() {
               </View>
             )}
                 </View>
-              </View>
+              </Animated.View>
               {tabletCompanionLayout ? (
-                <View
+                <Animated.View
                   style={[
                     styles.companionRegion,
                     { width: tabletCompanionLayout.companionWidth },
+                    companionSlideStyle,
                   ]}
                 >
                   <NowPlayingCompanionPane
-                    active={playerOpen}
+                    active={surfacesLive}
                     desktopTarget={isDesktopTarget}
                     track={track}
                   />
-                </View>
+                </Animated.View>
               ) : null}
             </View>
           </View>
+          </AppPressableGestureScope>
         </Animated.View>
-      </GestureDetector>
+      </MaybePan>
       {menuOpen && menuItems.length > 0 && (
         <Animated.View
           pointerEvents="box-none"
@@ -1372,9 +1896,9 @@ export function NowPlayingOverlay() {
             style={[styles.menuCard, { top: menuTop, right: shellRight }, menuCardStyle]}
           >
             {menuItems.map((item) => (
-              <Pressable
+              <AppPressable
                 key={item.key}
-                android_ripple={ripple.bounded}
+
                 style={styles.menuItem}
                 onPress={item.onPress}
                 accessibilityRole="button"
@@ -1383,7 +1907,7 @@ export function NowPlayingOverlay() {
                 <Text variant="body" numberOfLines={1} style={styles.menuItemLabel}>
                   {item.label}
                 </Text>
-              </Pressable>
+              </AppPressable>
             ))}
           </Animated.View>
         </Animated.View>
@@ -1399,18 +1923,32 @@ export function NowPlayingOverlay() {
           <SleepTimerControls />
         </AppSheet>
       ) : null}
-      {queueOpen && !hasTabletCompanion && (
-        isDesktopTarget ? (
-          <RemoteQueueSheet onClose={closeQueue} />
-        ) : (
-          <QueueTray onClose={closeQueue} />
-        )
-      )}
+      {artistPickerOpen && track ? (
+        <AppSheet scrollable onClose={() => setArtistPickerOpen(false)}>
+          <AppSheetTitle title="Artists" subtitle={track.title} />
+          {artistCreditTokens.map(({ artist }) => (
+            <AppSheetItem
+              key={artist}
+              label={artist}
+              icon="person-outline"
+              onPress={() => {
+                setArtistPickerOpen(false);
+                navigateToArtist(artist, true);
+              }}
+            />
+          ))}
+        </AppSheet>
+      ) : null}
+      {/* The native queue presents its own dialog from AstraQueue.present(). */}
+      {queueOpen && !hasTabletCompanion && isDesktopTarget ? (
+        <RemoteQueueSheet onClose={closeQueue} />
+      ) : null}
       <PlaybackTargetPicker
         visible={targetPickerOpen}
         onClose={() => setTargetPickerOpen(false)}
       />
     </View>
+    </ScopedPaletteProvider>
   );
 }
 
@@ -1482,6 +2020,10 @@ function ScopeRail({ width, height, mode, paused, revealed, onSwap }: ScopeRailP
 }
 
 const useStyles = createThemedStyles((colors) => ({
+  // Fills the dock column rather than the window.
+  dockFrame: {
+    flex: 1,
+  },
   content: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -1501,19 +2043,14 @@ const useStyles = createThemedStyles((colors) => ({
   },
   playerBodyTablet: {
     position: 'relative',
+    // The pane parks itself one full width past the right edge when closed;
+    // without this it is simply drawn outside the body instead of gone.
+    overflow: 'hidden',
   },
   playerRegion: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
-  },
-  playerRegionTablet: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    flexGrow: 0,
-    flexShrink: 0,
   },
   playerCanvas: {
     flex: 1,
@@ -1553,12 +2090,12 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
   },
   eyebrow: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     letterSpacing: 1.5,
     fontSize: 10,
   },
   source: {
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     marginTop: 1,
   },
   menuLayer: {
@@ -1608,12 +2145,17 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'center',
     columnGap: NOW_PLAYING_WIDE_PANE_GAP,
   },
-  middleStack: {
+  // The stage is the screen's only elastic region. It owns every spare pixel,
+  // so surplus height reads as breathing room around the artwork instead of
+  // pooling as one dead gap above the controls.
+  stage: {
     width: '100%',
     alignItems: 'center',
-  },
-  middleStackCentered: {
     justifyContent: 'center',
+  },
+  stageFill: {
+    flex: 1,
+    minHeight: 0,
   },
   artButton: {
     alignItems: 'center',
@@ -1667,6 +2209,18 @@ const useStyles = createThemedStyles((colors) => ({
     width: '100%',
     height: '100%',
   },
+  trackVisualLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackInfoFrame: {
+    alignSelf: 'stretch',
+  },
   trackInfo: {
     alignSelf: 'stretch',
     flexDirection: 'row',
@@ -1690,42 +2244,43 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trackMetaRow: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-  },
-  artistCreditButton: {
-    alignSelf: 'flex-start',
-  },
-  artistSeparator: {
-    color: colors.textTertiary,
-  },
   centered: {
     textAlign: 'center',
   },
   artist: {
     color: colors.accentText,
   },
-  playerControls: {
+  // Rigid by construction: every child declares its own height and the deck is
+  // rendered at exactly `deck.height`, the same number the stage was sized
+  // against. Nothing in here can grow and push the artwork around, and nothing
+  // outside it can leave slack behind that shifts the controls upward.
+  deck: {
     width: '100%',
   },
-  playerControlsFill: {
-    flex: 1,
+  // Desktop-remote deck only — it has one row fewer than the phone's, so its
+  // leftover height spreads between rows rather than trailing off the bottom.
+  deckSpread: {
+    justifyContent: 'space-between',
   },
-  primaryControls: {
+  // Deck pairs. Grouping is what stops the reserved-but-often-empty lyric row
+  // from reading as a hole between the scope and the title: it sits on the
+  // title's leading, not on a band of its own.
+  identityGroup: {
     width: '100%',
   },
-  utilityFooter: {
-    marginTop: 'auto',
-    paddingTop: spacing.lg,
+  controlBlock: {
+    width: '100%',
   },
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // The seek bar above wants every pixel of a wide landscape deck; the
+    // transport does not — past this the buttons just drift to the far corners.
+    // Centred under a full-width bar, which is how wide players lay this out.
+    width: '100%',
+    maxWidth: TRANSPORT_MAX_WIDTH,
+    alignSelf: 'center',
   },
   transportMainBtn: {
     width: 48,

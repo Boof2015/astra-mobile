@@ -5,6 +5,7 @@ import {
   findActiveSyncedLineIndex,
   getActiveSyncedLyricsLine,
   getCompensatedLyricsTime,
+  getLyricsEmptyStatePresentation,
   getLyricsLineSeekTimeSeconds,
   getLyricsMetaChipText,
   getPreferredLyricsTranslation,
@@ -115,4 +116,28 @@ test('meta chip reflects source, sync, and cache state', () => {
     }),
     'Not Found'
   );
+});
+
+test('lyrics empty states offer retry only when another lookup can help', () => {
+  const transientError = { status: 'transient_error' as const, message: 'network failed' };
+  const unavailable = { status: 'not_found' as const, reason: 'provider-unavailable' as const };
+  const providerMiss = { status: 'not_found' as const, reason: 'provider-not-found' as const };
+  const embeddedMiss = { status: 'not_found' as const, reason: 'embedded-missing' as const };
+  const onlineDisabled = { status: 'not_found' as const, reason: 'online-disabled' as const };
+
+  assert.equal(getLyricsEmptyStatePresentation({ result: transientError, isLoading: false }).retryable, true);
+  assert.equal(getLyricsEmptyStatePresentation({ result: unavailable, isLoading: false }).retryable, true);
+  assert.equal(getLyricsEmptyStatePresentation({ result: providerMiss, isLoading: false }).retryable, true);
+  assert.equal(getLyricsEmptyStatePresentation({ result: embeddedMiss, isLoading: false }).retryable, true);
+  assert.equal(getLyricsEmptyStatePresentation({ result: onlineDisabled, isLoading: false }).retryable, false);
+  assert.equal(getLyricsEmptyStatePresentation({ result: hit('xlrcdb', 'xlrc', false), isLoading: false }).retryable, false);
+});
+
+test('lyrics retry keeps its action while showing loading feedback', () => {
+  const state = getLyricsEmptyStatePresentation({
+    result: { status: 'not_found', reason: 'provider-not-found' },
+    isLoading: true,
+  });
+
+  assert.deepEqual(state, { message: 'Finding lyrics…', retryable: true });
 });

@@ -1,13 +1,13 @@
 import { create } from 'zustand';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
-import type {
-  DynamicPlaylistPreview,
-  DynamicPlaylistRulesV1,
+import {
+  createDefaultDynamicPlaylistRules,
+  normalizeDynamicPlaylistRules,
+  type DynamicPlaylistPreview,
+  type DynamicPlaylistRulesV1,
 } from '@/shared/playlists/dynamicPlaylist';
-import { openLibraryDb, type LibraryDatabase } from '@/db/database';
-import { getAllTracks } from '@/db/queries';
-import * as playlistDb from '@/db/playlistQueries';
 import {
   buildImportIndex,
   decodedDocPath,
@@ -17,7 +17,9 @@ import {
   pickAndParseM3u,
   type M3uExportResult,
 } from '@/library/playlistFiles';
-import type { M3uExportEntry } from '@/lib/m3u';
+import type { M3uExportEntry, M3uEntry } from '@/lib/m3u';
+
+const ENTRY_PAGE_SIZE = 100;
 
 export interface M3uImportSummary {
   playlistId: number;
@@ -29,20 +31,18 @@ export interface M3uImportSummary {
   ambiguous: number;
 }
 
-/**
- * Playlists + favorites state — SQLite is the source of truth (no persist);
- * every mutation re-queries. libraryStore.refresh() chains into refresh() so
- * scans and folder removals update counts/missing states.
- */
 interface PlaylistStore {
   playlists: Playlist[];
   favoritePaths: Set<string>;
   favoriteTracks: DbTrack[];
   activePlaylistId: number | null;
   activeEntries: PlaylistTrackEntry[];
+  activeEntriesTotal: number;
+  activeEntriesNextOffset: number | null;
 
   refresh: () => Promise<void>;
   openPlaylist: (id: number) => Promise<void>;
+  loadNextEntries: () => Promise<void>;
   closePlaylist: () => void;
   createPlaylist: (name: string) => Promise<Playlist>;
   createDynamicPlaylist: (name: string, rules: DynamicPlaylistRulesV1) => Promise<Playlist>;
@@ -54,7 +54,6 @@ interface PlaylistStore {
   addTracksToPlaylist: (id: number, tracks: DbTrack[]) => Promise<number>;
   removeFromPlaylist: (id: number, trackPath: string) => Promise<void>;
   moveTrack: (id: number, trackPath: string, direction: -1 | 1) => Promise<void>;
-  // Only the path is read; accepts a library DbTrack or the now-playing Track.
   toggleFavorite: (track: { path: string }) => Promise<void>;
   markPlayed: (id: number) => Promise<void>;
   importM3u: () => Promise<M3uImportSummary | null>;
@@ -80,22 +79,45 @@ function entryToExportEntry(entry: PlaylistTrackEntry): M3uExportEntry {
   };
 }
 
+function parseRules(raw: string): DynamicPlaylistRulesV1 {
+  try {
+    return normalizeDynamicPlaylistRules(JSON.parse(raw));
+  } catch {
+    return createDefaultDynamicPlaylistRules();
+  }
+}
+
+async function candidatesForImport(entry: M3uEntry): Promise<DbTrack[]> {
+  const exact = await AstraLibraryData.getTrack<DbTrack>(entry.path).catch(() => null);
+  if (exact) return [exact];
+  const term = entry.title?.trim() || entry.path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || '';
+  return term ? AstraLibraryData.searchTracks<DbTrack>(term, 50) : [];
+}
+
 export const usePlaylistStore = create<PlaylistStore>((set, get) => {
-  const reloadActive = async (db: LibraryDatabase) => {
+  const reloadActive = async () => {
     const id = get().activePlaylistId;
     if (id == null) return;
-    const activeEntries = await playlistDb.getPlaylistEntries(db, id);
-    set({ activeEntries });
+    const page = await AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(
+      id,
+      0,
+      ENTRY_PAGE_SIZE
+    );
+    set({
+      activeEntries: page.items,
+      activeEntriesTotal: page.totalCount,
+      activeEntriesNextOffset: page.nextOffset,
+    });
   };
 
-  const refreshWith = async (db: LibraryDatabase) => {
-    const [playlists, favoritePathList, favoriteTracks] = await Promise.all([
-      playlistDb.getPlaylists(db),
-      playlistDb.getFavoritePaths(db),
-      playlistDb.getFavoriteTracks(db),
+  const refreshAll = async () => {
+    const [playlists, favoritePaths, favoriteTracks] = await Promise.all([
+      AstraLibraryData.listPlaylists<Playlist>(),
+      AstraLibraryData.getFavoritePaths(),
+      AstraLibraryData.getFavoriteTracks<DbTrack>(500),
     ]);
-    set({ playlists, favoritePaths: new Set(favoritePathList), favoriteTracks });
-    await reloadActive(db);
+    set({ playlists, favoritePaths: new Set(favoritePaths), favoriteTracks });
+    await reloadActive();
   };
 
   return {
@@ -104,69 +126,86 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
     favoriteTracks: [],
     activePlaylistId: null,
     activeEntries: [],
+    activeEntriesTotal: 0,
+    activeEntriesNextOffset: null,
 
-    refresh: async () => {
-      const db = await openLibraryDb();
-      await refreshWith(db);
-    },
+    refresh: refreshAll,
 
     openPlaylist: async (id) => {
-      const db = await openLibraryDb();
-      const activeEntries = await playlistDb.getPlaylistEntries(db, id);
-      set({ activePlaylistId: id, activeEntries });
+      set({ activePlaylistId: id, activeEntries: [], activeEntriesNextOffset: 0 });
+      await reloadActive();
     },
 
-    closePlaylist: () => set({ activePlaylistId: null, activeEntries: [] }),
+    loadNextEntries: async () => {
+      const id = get().activePlaylistId;
+      const offset = get().activeEntriesNextOffset;
+      if (id == null || offset == null) return;
+      const page = await AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(
+        id,
+        offset,
+        ENTRY_PAGE_SIZE
+      );
+      set((state) => ({
+        activeEntries: [...state.activeEntries, ...page.items],
+        activeEntriesTotal: page.totalCount,
+        activeEntriesNextOffset: page.nextOffset,
+      }));
+    },
+
+    closePlaylist: () =>
+      set({
+        activePlaylistId: null,
+        activeEntries: [],
+        activeEntriesTotal: 0,
+        activeEntriesNextOffset: null,
+      }),
 
     createPlaylist: async (name) => {
-      const db = await openLibraryDb();
-      const playlist = await playlistDb.createPlaylist(db, name);
-      await refreshWith(db);
+      const playlist = await AstraLibraryData.createPlaylist<Playlist>(name, 'normal', null);
+      await refreshAll();
       return playlist;
     },
 
     createDynamicPlaylist: async (name, rules) => {
-      const db = await openLibraryDb();
-      const playlist = await playlistDb.createDynamicPlaylist(db, name, rules);
-      await refreshWith(db);
+      const normalized = normalizeDynamicPlaylistRules(rules);
+      const playlist = await AstraLibraryData.createPlaylist<Playlist>(
+        name,
+        'dynamic',
+        JSON.stringify(normalized)
+      );
+      await refreshAll();
       return playlist;
     },
 
-    getDynamicPlaylistRules: async (id) => {
-      const db = await openLibraryDb();
-      return playlistDb.getDynamicPlaylistRules(db, id);
-    },
+    getDynamicPlaylistRules: async (id) =>
+      parseRules(await AstraLibraryData.getDynamicPlaylistRules(id)),
 
     updateDynamicPlaylistRules: async (id, rules) => {
-      const db = await openLibraryDb();
-      await playlistDb.updateDynamicPlaylistRules(db, id, rules);
-      await refreshWith(db);
+      await AstraLibraryData.updateDynamicPlaylistRules(
+        id,
+        JSON.stringify(normalizeDynamicPlaylistRules(rules))
+      );
+      await refreshAll();
     },
 
-    previewDynamicPlaylist: async (rules) => {
-      const db = await openLibraryDb();
-      return playlistDb.previewDynamicPlaylist(db, rules);
-    },
+    previewDynamicPlaylist: async (rules) =>
+      AstraLibraryData.previewDynamicPlaylist<DynamicPlaylistPreview>(
+        JSON.stringify(normalizeDynamicPlaylistRules(rules))
+      ),
 
     renamePlaylist: async (id, name) => {
-      const db = await openLibraryDb();
-      await playlistDb.renamePlaylist(db, id, name);
-      await refreshWith(db);
+      await AstraLibraryData.renamePlaylist(id, name);
+      await refreshAll();
     },
 
     deletePlaylist: async (id) => {
-      const db = await openLibraryDb();
-      await playlistDb.deletePlaylist(db, id);
-      if (get().activePlaylistId === id) {
-        set({ activePlaylistId: null, activeEntries: [] });
-      }
-      await refreshWith(db);
+      await AstraLibraryData.deletePlaylist(id);
+      if (get().activePlaylistId === id) get().closePlaylist();
+      await refreshAll();
     },
 
     addTracksToPlaylist: async (id, tracks) => {
-      const db = await openLibraryDb();
-      const inserted = await playlistDb.addPlaylistEntries(
-        db,
+      const inserted = await AstraLibraryData.addPlaylistEntries(
         id,
         tracks.map((track) => ({
           trackPath: track.path,
@@ -175,60 +214,42 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
           fallbackAlbum: track.album,
         }))
       );
-      await refreshWith(db);
+      await refreshAll();
       return inserted;
     },
 
     removeFromPlaylist: async (id, trackPath) => {
-      const db = await openLibraryDb();
-      await playlistDb.removeFromPlaylist(db, id, trackPath);
-      await refreshWith(db);
+      await AstraLibraryData.removePlaylistEntry(id, trackPath);
+      await refreshAll();
     },
 
     moveTrack: async (id, trackPath, direction) => {
-      const db = await openLibraryDb();
-      await playlistDb.movePlaylistTrack(db, id, trackPath, direction);
-      await refreshWith(db);
+      await AstraLibraryData.movePlaylistEntry(id, trackPath, direction);
+      await refreshAll();
     },
 
     toggleFavorite: async (track) => {
-      const wasFavorite = get().favoritePaths.has(track.path);
-      // Optimistic Set swap (always a fresh Set — never mutate in place).
+      const favorite = !get().favoritePaths.has(track.path);
       const optimistic = new Set(get().favoritePaths);
-      if (wasFavorite) {
-        optimistic.delete(track.path);
-      } else {
-        optimistic.add(track.path);
-      }
+      if (favorite) optimistic.add(track.path);
+      else optimistic.delete(track.path);
       set({ favoritePaths: optimistic });
-
-      const db = await openLibraryDb();
-      if (wasFavorite) {
-        await playlistDb.removeFavorite(db, track.path);
-      } else {
-        await playlistDb.addFavorite(db, track.path);
-      }
-      const [favoritePathList, favoriteTracks] = await Promise.all([
-        playlistDb.getFavoritePaths(db),
-        playlistDb.getFavoriteTracks(db),
+      await AstraLibraryData.setFavorite(track.path, favorite);
+      const [paths, tracks] = await Promise.all([
+        AstraLibraryData.getFavoritePaths(),
+        AstraLibraryData.getFavoriteTracks<DbTrack>(500),
       ]);
-      set({ favoritePaths: new Set(favoritePathList), favoriteTracks });
+      set({ favoritePaths: new Set(paths), favoriteTracks: tracks });
     },
 
     markPlayed: async (id) => {
-      const db = await openLibraryDb();
-      await playlistDb.markPlaylistPlayed(db, id);
-      const playlists = await playlistDb.getPlaylists(db);
-      set({ playlists });
+      await AstraLibraryData.markPlaylistPlayed(id);
+      set({ playlists: await AstraLibraryData.listPlaylists<Playlist>() });
     },
 
     importM3u: async () => {
       const picked = await pickAndParseM3u();
       if (!picked) return null;
-
-      const db = await openLibraryDb();
-      const index = buildImportIndex(await getAllTracks(db));
-
       const summary: Omit<M3uImportSummary, 'playlistId'> = {
         name: picked.name,
         total: picked.entries.length,
@@ -237,15 +258,13 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
         missing: 0,
         ambiguous: 0,
       };
-      const inserts: playlistDb.PlaylistEntryInsert[] = [];
+      const inserts: Parameters<typeof AstraLibraryData.addPlaylistEntries>[1] = [];
       for (const entry of picked.entries) {
-        const match = matchImportEntry(entry, index);
+        const candidates = await candidatesForImport(entry);
+        const match = matchImportEntry(entry, buildImportIndex(candidates));
         if (match.kind === 'matched') {
-          if (match.via === 'path') {
-            summary.matchedByPath += 1;
-          } else {
-            summary.matchedByMetadata += 1;
-          }
+          if (match.via === 'path') summary.matchedByPath += 1;
+          else summary.matchedByMetadata += 1;
           inserts.push({
             trackPath: match.track.path,
             fallbackTitle: match.track.title,
@@ -253,7 +272,6 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
             fallbackAlbum: match.track.album,
           });
         } else {
-          // Preserve unmatched entries as "missing" rows (desktop model).
           summary.missing += 1;
           if (match.kind === 'ambiguous') summary.ambiguous += 1;
           inserts.push({
@@ -263,15 +281,13 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
           });
         }
       }
-
-      const playlist = await playlistDb.createPlaylist(db, picked.name);
-      await playlistDb.addPlaylistEntries(db, playlist.id, inserts);
-      await refreshWith(db);
+      const playlist = await AstraLibraryData.createPlaylist<Playlist>(picked.name, 'normal', null);
+      await AstraLibraryData.addPlaylistEntries(playlist.id, inserts);
+      await refreshAll();
       return { ...summary, playlistId: playlist.id };
     },
 
     exportM3u: async (target) => {
-      const db = await openLibraryDb();
       let name: string;
       let entries: M3uExportEntry[];
       if (target === 'favorites') {
@@ -279,8 +295,19 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
         entries = get().favoriteTracks.map(trackToExportEntry);
       } else {
         name = get().playlists.find((playlist) => playlist.id === target)?.name ?? 'Playlist';
-        const playlistEntries = await playlistDb.getPlaylistEntries(db, target);
-        entries = playlistEntries.map(entryToExportEntry);
+        const all: PlaylistTrackEntry[] = [];
+        let offset = 0;
+        while (true) {
+          const page = await AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(
+            target,
+            offset,
+            200
+          );
+          all.push(...page.items);
+          if (page.nextOffset == null) break;
+          offset = page.nextOffset;
+        }
+        entries = all.map(entryToExportEntry);
       }
       return exportPlaylistM3u(name, entries);
     },

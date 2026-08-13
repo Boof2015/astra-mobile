@@ -8,6 +8,7 @@
 import type {
   LyricsFormat,
   LyricsLine,
+  LyricsLookupResult,
   LyricsPayload,
   LyricsSource,
   LyricsTranslation,
@@ -448,4 +449,36 @@ export function getLyricsMetaChipText(options: {
     return 'Not Found';
   }
   return 'Ready';
+}
+
+export interface LyricsEmptyStatePresentation {
+  message: string;
+  /** Keep the action visible while a retry is in flight so the layout stays stable. */
+  retryable: boolean;
+}
+
+/** Copy and retry eligibility for the shared phone/tablet lyrics empty state. */
+export function getLyricsEmptyStatePresentation(options: {
+  result: LyricsLookupResult | null;
+  isLoading: boolean;
+}): LyricsEmptyStatePresentation {
+  const { result, isLoading } = options;
+  const retryable =
+    result?.status === 'transient_error' ||
+    (result?.status === 'not_found' && result.reason !== 'online-disabled');
+
+  if (isLoading) return { message: 'Finding lyrics…', retryable };
+  if (result?.status === 'transient_error') {
+    return { message: 'Lyrics lookup ran into a problem. A retry may work.', retryable };
+  }
+  if (result?.status === 'not_found') {
+    if (result.reason === 'online-disabled') {
+      return { message: 'Online lyrics lookup is off.', retryable };
+    }
+    if (result.reason === 'provider-unavailable') {
+      return { message: "Lyrics providers didn't respond in time.", retryable };
+    }
+    return { message: 'No lyrics found for this track.', retryable };
+  }
+  return { message: 'Lyrics are ready when a track is playing.', retryable };
 }

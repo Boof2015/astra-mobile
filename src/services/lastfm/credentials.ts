@@ -9,7 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 function secretKey(profileId: string): string {
   // SecureStore keys must be alphanumeric + ".-_" — sanitize the profile id.
   const safe = profileId.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return `lastfm_session_${safe}`;
+  return `astra_room_v1_lastfm_session_${safe}`;
 }
 
 export async function getLastFmSessionKey(profileId: string): Promise<string | null> {

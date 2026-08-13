@@ -11,17 +11,10 @@ import { useQueueStore } from '@/stores/queueStore';
 import type { PlaybackState, Track } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
+import { subscribeToListeningHistory } from '@/listeningStats/events';
 
-const RECENT_PLAY_THRESHOLD_MS = 15_000;
 const SEEK_ACK_EPS = 0.75;
 const SEEK_ACK_TIMEOUT_MS = 3000;
-
-interface RecentPlayCandidate {
-  path: string | null;
-  accumulatedMs: number;
-  playingSinceMs: number | null;
-  recorded: boolean;
-}
 
 interface StablePlaybackState {
   path: string | null;
@@ -94,12 +87,6 @@ export function usePlaybackSync(): void {
   const activeTrack = useActiveTrack();
   const progress = useProgress(500);
   const playbackState = usePlaybackState();
-  const recentPlayCandidate = useRef<RecentPlayCandidate>({
-    path: null,
-    accumulatedMs: 0,
-    playingSinceMs: null,
-    recorded: false,
-  });
   const stablePlayback = useRef<{ path: string | null; state: PlaybackState }>({
     path: null,
     state: 'stopped',
@@ -112,8 +99,16 @@ export function usePlaybackSync(): void {
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
-  const recordTrackPlayed = useLibraryStore((s) => s.recordTrackPlayed);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
+
+  useEffect(
+    () => subscribeToListeningHistory((change) => {
+      if (change.qualifiedNow) {
+        void useLibraryStore.getState().refreshRecentlyPlayed().catch(() => {});
+      }
+    }),
+    [],
+  );
 
   useEffect(() => {
     if (restoredSessionPending && !activeTrack) return;
@@ -215,54 +210,4 @@ export function usePlaybackSync(): void {
     );
   }, [activeTrack, rawPlaybackState, recentlyPlayedTracks, restoredSessionPending, restoredTrack]);
 
-  useEffect(() => {
-    if (restoredSessionPending) return;
-    // Use the identity path (subsonic://|jellyfin:// for remote; the file URI for
-    // local) so history matches `tracks.path` — activeTrack.url is the stream URL.
-    const path = activeTrack ? rntpToTrack(activeTrack).path : null;
-    const mappedPlaybackState = resolveTransientLoading(
-      rawPlaybackState,
-      path,
-      stablePlayback.current
-    );
-    const now = Date.now();
-    const candidate = recentPlayCandidate.current;
-
-    if (!path || mappedPlaybackState === 'stopped') {
-      recentPlayCandidate.current = {
-        path: null,
-        accumulatedMs: 0,
-        playingSinceMs: null,
-        recorded: false,
-      };
-      return;
-    }
-
-    if (candidate.path !== path) {
-      candidate.path = path;
-      candidate.accumulatedMs = 0;
-      candidate.playingSinceMs = null;
-      candidate.recorded = false;
-    }
-
-    if (mappedPlaybackState !== 'playing') {
-      if (candidate.playingSinceMs != null) {
-        candidate.accumulatedMs += now - candidate.playingSinceMs;
-        candidate.playingSinceMs = null;
-      }
-      return;
-    }
-
-    if (candidate.playingSinceMs == null) {
-      candidate.playingSinceMs = now;
-    }
-
-    const elapsedMs = candidate.accumulatedMs + (now - candidate.playingSinceMs);
-    if (candidate.recorded || elapsedMs < RECENT_PLAY_THRESHOLD_MS) return;
-
-    candidate.recorded = true;
-    void recordTrackPlayed(path).catch((err) => {
-      console.warn('[library] playback history update failed', err);
-    });
-  }, [activeTrack, rawPlaybackState, progress.position, recordTrackPlayed, restoredSessionPending]);
 }

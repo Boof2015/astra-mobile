@@ -1,6 +1,5 @@
 import {
   View,
-  Pressable,
   StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -11,24 +10,25 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
-/** Compact album list row (search results) — the grid uses AlbumGridItem. */
+/** Compact album list row for library browsing and search results. */
 export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const artUri = albumArtworkSource(album);
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
+    <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {artUri ? (
           <Image
             source={{ uri: artUri }}
             style={styles.artImage}
             contentFit="cover"
+            recyclingKey={album.identity_key}
+            transition={null}
           />
         ) : (
           <Ionicons name="disc-outline" size={20} color={colors.textTertiary} />
@@ -43,7 +43,7 @@ export function AlbumRow({ album, onPress }: { album: Album; onPress: () => void
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-    </Pressable>
+    </AppPressable>
   );
 }
 

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import {
-  Pressable,
   View,
   StyleSheet,
   type GestureResponderEvent,
@@ -12,7 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 
 const THUMB = 16;
 
@@ -44,7 +43,6 @@ export function EQSlider({
   onValuePress,
 }: EQSliderProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const [width, setWidth] = useState(0);
   const [active, setActive] = useState(false);
   const widthRef = useRef(0);
@@ -120,10 +118,10 @@ export function EQSlider({
         />
       </View>
       {onValuePress && !disabled ? (
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="none"
+
           // Deliberate two-property pressed emphasis (accent border + fill), kept
-          // alongside the ripple — it marks the value as editable, not just pressed.
+          // alongside press feedback — it marks the value as editable, not just pressed.
           style={({ pressed }) => [styles.valueButton, pressed && styles.valueButtonPressed]}
           onPress={onValuePress}
           accessibilityRole="button"
@@ -132,7 +130,7 @@ export function EQSlider({
           <Text variant="mono" style={styles.value}>
             {format(value)}
           </Text>
-        </Pressable>
+        </AppPressable>
       ) : (
         <Text variant="mono" style={styles.value}>
           {format(value)}

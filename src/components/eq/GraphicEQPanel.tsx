@@ -15,6 +15,7 @@ import {
 interface GraphicEQPanelProps {
   gains: number[];
   enabled: boolean;
+  spectrumActive: boolean;
   onChangeGain: (index: number, gainDb: number) => void;
 }
 
@@ -25,7 +26,12 @@ interface GraphicEQPanelProps {
  * curve's scale. All cells are gap-less flex:1 so column centers match the
  * curve's evenly spaced band positions.
  */
-export function GraphicEQPanel({ gains, enabled, onChangeGain }: GraphicEQPanelProps) {
+export function GraphicEQPanel({
+  gains,
+  enabled,
+  spectrumActive,
+  onChangeGain,
+}: GraphicEQPanelProps) {
   const styles = useStyles();
   const colors = useColors();
   return (
@@ -44,7 +50,11 @@ export function GraphicEQPanel({ gains, enabled, onChangeGain }: GraphicEQPanelP
 
       <View style={styles.trackRow}>
         <View style={StyleSheet.absoluteFill}>
-          <GraphicResponseCurve gains={gains} enabled={enabled} />
+          <GraphicResponseCurve
+            gains={gains}
+            enabled={enabled}
+            spectrumActive={spectrumActive}
+          />
         </View>
         {GRAPHIC_BANDS.map((def, i) => (
           <VerticalEQSlider

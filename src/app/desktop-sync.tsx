@@ -7,7 +7,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -20,7 +19,7 @@ import { HapticSwitch } from '@/components/HapticSwitch';
 import { SyncConflictDetails } from '@/components/sync/SyncConflictDetails';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { formatRelativeTime } from '@/lib/format';
 import { getDesktopRemoteConnection } from '@/services/desktopRemoteCredentials';
 import { useDesktopSyncStore } from '@/stores/desktopSyncStore';
@@ -68,7 +67,6 @@ function ConflictCard({
   onResolve: (resolution: DesktopSyncConflictResolution) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [selectedResolution, setSelectedResolution] = useState<DesktopSyncConflictResolution | null>(null);
   const desktopSnapshot = syncPlaylistToSnapshot(conflict.remote);
@@ -87,7 +85,7 @@ function ConflictCard({
       </Text>
       <View style={styles.conflictActions}>
         {options.map((resolution) => (
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable
             key={resolution}
             style={[
               styles.conflictBtn,
@@ -98,7 +96,7 @@ function ConflictCard({
             onPress={() => setSelectedResolution(resolution)}
           >
             <Text variant="label">{RESOLUTION_LABELS[resolution]}</Text>
-          </Pressable>
+          </AppPressable>
         ))}
       </View>
       <View style={styles.previewBox}>
@@ -116,7 +114,7 @@ function ConflictCard({
         previewResolution={selectedResolution}
       />
       <View style={styles.conflictConfirmRow}>
-        <Pressable android_ripple={ripple.bounded}
+        <AppPressable feedback="accent"
           style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
           disabled={!selectedResolution || busy}
           onPress={() => selectedResolution ? onResolve(selectedResolution) : undefined}
@@ -124,7 +122,7 @@ function ConflictCard({
           <Text variant="body" color={colors.accentTextStrong}>
             Confirm
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </View>
   );
@@ -132,7 +130,6 @@ function ConflictCard({
 
 export default function DesktopSyncScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const status = useDesktopSyncStore((s) => s.status);
@@ -175,12 +172,12 @@ export default function DesktopSyncScreen() {
   return (
     <Screen>
       <View style={styles.topBar}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Settings
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.hero}>
@@ -204,7 +201,7 @@ export default function DesktopSyncScreen() {
               Sync uses the same pairing as the Desktop Remote. Pair this phone with Astra Desktop
               once and both features work.
             </Text>
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               style={styles.primaryButton}
               onPress={() => router.push('/desktop-remote' as never)}
             >
@@ -212,7 +209,7 @@ export default function DesktopSyncScreen() {
               <Text variant="body" color={colors.accentTextStrong}>
                 Pair with a desktop
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         ) : (
           <>
@@ -228,7 +225,7 @@ export default function DesktopSyncScreen() {
                         : 'Not synced yet'}
                   </Text>
                 </View>
-                <Pressable android_ripple={ripple.bounded}
+                <AppPressable feedback="accent"
                   style={[styles.primaryButton, (syncing || !desktopSyncEnabled) && styles.disabled]}
                   disabled={syncing || !desktopSyncEnabled}
                   onPress={() => void syncNow()}
@@ -242,7 +239,7 @@ export default function DesktopSyncScreen() {
                   <Text variant="body" color={colors.accentTextStrong}>
                     Sync now
                   </Text>
-                </Pressable>
+                </AppPressable>
               </View>
               {summaryLine ? (
                 <Text variant="caption" color={colors.textTertiary}>

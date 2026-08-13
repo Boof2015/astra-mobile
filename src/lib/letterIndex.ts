@@ -7,6 +7,12 @@ export const RAIL_LETTERS: readonly string[] = [
   ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
 ];
 
+const DESCENDING_RAIL_LETTERS: readonly string[] = [...RAIL_LETTERS].reverse();
+
+export function railLettersForDirection(direction: 'asc' | 'desc'): readonly string[] {
+  return direction === 'desc' ? DESCENDING_RAIL_LETTERS : RAIL_LETTERS;
+}
+
 export interface LetterIndexEntry {
   letter: string;
   firstIndex: number;

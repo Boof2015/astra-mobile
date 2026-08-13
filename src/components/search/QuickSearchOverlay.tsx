@@ -7,7 +7,6 @@ import {
 import {
   Keyboard,
   Modal,
-  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -17,7 +16,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -28,16 +27,16 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { rgbaFromHex } from '@/theme/colorUtils';
-import { enqueueTop, playTracks } from '@/audio/playbackController';
+import { enqueueTop, playLibraryQuery } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   albumArtworkSource,
   artworkUri,
   trackArtworkThumbSource
 } from '@/library/artwork';
-import { multiFieldScore, MIN_SCORE_THRESHOLD } from '@/lib/fuzzySearch';
+import { findFuzzyMatch, multiFieldScore } from '@/lib/fuzzySearch';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -51,6 +50,8 @@ import type {
 } from '@/types/library';
 import type { Playlist } from '@/types/playlist';
 import { SETTINGS_SEARCH_ROUTES } from '@/components/search/settingsSearchRoutes';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type RouteHref =
@@ -331,7 +332,7 @@ function plural(count: number, noun: string): string {
 }
 
 function scoreOrNull(score: number | null): score is number {
-  return score !== null && score >= MIN_SCORE_THRESHOLD;
+  return score !== null;
 }
 
 function playlistFromRow(playlist: Playlist): SearchPlaylist {
@@ -412,42 +413,45 @@ function resultIcon(result: SearchResult): IconName {
 
 function HighlightedLabel({ text, query }: { text: string; query: string }) {
   const styles = useStyles();
-  const normalizedText = text.toLocaleLowerCase();
-  const normalizedQuery = query.toLocaleLowerCase().trim();
+  const match = findFuzzyMatch(query, text);
+  if (!match || match.indices.length === 0) return <>{text}</>;
 
-  if (!normalizedQuery) {
-    return <>{text}</>;
-  }
-
-  const substringIndex = normalizedText.indexOf(normalizedQuery);
-  if (substringIndex >= 0) {
-    return (
-      <>
-        {text.slice(0, substringIndex)}
-        <Text variant="body" style={styles.highlight}>
-          {text.slice(substringIndex, substringIndex + normalizedQuery.length)}
-        </Text>
-        {text.slice(substringIndex + normalizedQuery.length)}
-      </>
-    );
-  }
-
+  const matchedIndices = [...new Set(match.indices)].sort((left, right) => left - right);
   const parts: { text: string; highlighted: boolean; key: string }[] = [];
-  let queryIndex = 0;
-  let lastPushed = 0;
+  let cursor = 0;
+  let groupStart = matchedIndices[0];
+  let groupEnd = groupStart + 1;
 
-  for (let i = 0; i < text.length && queryIndex < normalizedQuery.length; i += 1) {
-    if (text[i].toLocaleLowerCase() !== normalizedQuery[queryIndex]) continue;
-    if (i > lastPushed) {
-      parts.push({ text: text.slice(lastPushed, i), highlighted: false, key: `plain-${i}` });
+  const pushGroup = () => {
+    if (groupStart > cursor) {
+      parts.push({
+        text: text.slice(cursor, groupStart),
+        highlighted: false,
+        key: `plain-${cursor}`,
+      });
     }
-    parts.push({ text: text[i], highlighted: true, key: `mark-${i}` });
-    queryIndex += 1;
-    lastPushed = i + 1;
+    parts.push({
+      text: text.slice(groupStart, groupEnd),
+      highlighted: true,
+      key: `mark-${groupStart}`,
+    });
+    cursor = groupEnd;
+  };
+
+  for (let index = 1; index < matchedIndices.length; index += 1) {
+    const textIndex = matchedIndices[index];
+    if (textIndex === groupEnd) {
+      groupEnd += 1;
+      continue;
+    }
+    pushGroup();
+    groupStart = textIndex;
+    groupEnd = textIndex + 1;
   }
 
-  if (lastPushed < text.length) {
-    parts.push({ text: text.slice(lastPushed), highlighted: false, key: 'tail' });
+  pushGroup();
+  if (cursor < text.length) {
+    parts.push({ text: text.slice(cursor), highlighted: false, key: 'tail' });
   }
 
   return (
@@ -512,7 +516,6 @@ function ResultRow({
   onQueueTrack: (track: DbTrack) => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const isTrack = result.kind === 'track';
   const isShowMode = result.kind === 'show-all' || result.kind === 'show-top';
@@ -524,7 +527,7 @@ function ResultRow({
   };
 
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+    <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={[styles.resultRow, active && styles.resultRowActive, isShowMode && styles.showModeRow]}
       onPress={onPress}
       accessibilityRole="button"
@@ -539,7 +542,7 @@ function ResultRow({
         </Text>
       </View>
       {isTrack ? (
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           style={styles.queueButton}
           onPress={queueTrack}
           hitSlop={8}
@@ -547,13 +550,13 @@ function ResultRow({
           accessibilityLabel={`Play ${result.track.title} next`}
         >
           <Ionicons name={queued ? 'checkmark' : 'add'} size={18} color={colors.accentTextStrong} />
-        </Pressable>
+        </AppPressable>
       ) : result.kind === 'playlist' && result.playlist.remote ? (
         <Ionicons name="cloud" size={14} color={colors.accent} />
       ) : (
         <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
       )}
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -565,18 +568,17 @@ function QuickSearchPanel({
   onClose: () => void;
 }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
-  const router = useRouter();
+  const returnToTabs = useReturnToTabs();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const inputRef = useRef<TextInput | null>(null);
 
-  const tracks = useLibraryStore((s) => s.tracks);
-  const albums = useLibraryStore((s) => s.albums);
-  const artists = useLibraryStore((s) => s.artists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const setViewMode = useLibraryStore((s) => s.setViewMode);
+  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
+  const includeSingles = useSettingsStore((s) => s.includeSingles);
+  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
 
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
@@ -584,10 +586,48 @@ function QuickSearchPanel({
 
   const [query, setQuery] = useState(initialQuery);
   const [showAllLibrary, setShowAllLibrary] = useState(false);
+  const [tracks, setTracks] = useState<DbTrack[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
   const [queuedTrackPaths, setQueuedTrackPaths] = useState<Set<string>>(() => new Set());
   const queuedFeedbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
+
+  useEffect(() => {
+    if (!hasQuery) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void AstraLibraryData.searchLibrary<DbTrack, Album, Artist>(
+        trimmedQuery,
+        showAllLibrary ? 100 : 20,
+        includeSingles,
+        artistGroupingMode,
+        includeCollabArtists
+      ).then((result) => {
+        if (cancelled) return;
+        setTracks(result.tracks);
+        setAlbums(result.albums);
+        setArtists(result.artists);
+      }).catch(() => {
+        if (cancelled) return;
+        setTracks([]);
+        setAlbums([]);
+        setArtists([]);
+      });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    artistGroupingMode,
+    hasQuery,
+    includeCollabArtists,
+    includeSingles,
+    showAllLibrary,
+    trimmedQuery,
+  ]);
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 80);
@@ -916,8 +956,11 @@ function QuickSearchPanel({
     onClose();
   };
 
+  // The quick-search overlay renders above the navigator, so it can fire while a
+  // root-stack sibling of `(tabs)` is focused — a bare push there mints a second
+  // copy of the whole tab tree and back-navigation dead-ends on the stale one.
   const navigateTo = (href: RouteHref) => {
-    router.push(href as never);
+    returnToTabs(href as never, 'push');
   };
 
   const executeResult = (result: SearchResult) => {
@@ -933,41 +976,41 @@ function QuickSearchPanel({
     close();
 
     if (result.kind === 'track') {
-      const context = hasQuery ? allTrackResults.map((entry) => entry.track) : recentTrackResults.map((entry) => entry.track);
-      const index = Math.max(
-        0,
-        context.findIndex((track) => track.path === result.track.path)
-      );
-      void playTracks(context.map(dbTrackToTrack), {
-        startIndex: index,
+      void playLibraryQuery(
+        hasQuery
+          ? { kind: 'search', query: trimmedQuery }
+          : { kind: 'recent' },
+        {
+        anchorPath: result.track.path,
         source: hasQuery
           ? { kind: 'search', label: `Search: ${trimmedQuery}` }
           : { kind: 'recently-played', label: 'Recently Played' },
-      });
+        }
+      );
       return;
     }
 
     if (result.kind === 'album') {
-      router.push({
-        pathname: '/library/album/[key]',
-        params: { key: result.album.identity_key },
-      });
+      returnToTabs(
+        { pathname: '/library/album/[key]', params: { key: result.album.identity_key } },
+        'push'
+      );
       return;
     }
 
     if (result.kind === 'artist') {
-      router.push({
-        pathname: '/library/artist/[name]',
-        params: { name: result.artist.artist },
-      });
+      returnToTabs(
+        { pathname: '/library/artist/[name]', params: { name: result.artist.artist } },
+        'push'
+      );
       return;
     }
 
     if (result.kind === 'playlist') {
-      router.push({
-        pathname: '/library/playlist/[id]',
-        params: { id: result.playlist.id },
-      });
+      returnToTabs(
+        { pathname: '/library/playlist/[id]', params: { id: result.playlist.id } },
+        'push'
+      );
       return;
     }
 
@@ -1041,18 +1084,18 @@ function QuickSearchPanel({
           style={styles.input}
         />
         {query.length > 0 ? (
-          <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
             onPress={() => updateQuery('')}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
             <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
-          </Pressable>
+          </AppPressable>
         ) : null}
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
+        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={close} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close search">
           <Ionicons name="close" size={20} color={colors.textSecondary} />
-        </Pressable>
+        </AppPressable>
       </View>
 
       {showAllLibrary ? (
@@ -1102,7 +1145,6 @@ function QuickSearchPanel({
 
 export function QuickSearchOverlay() {
   const styles = useStyles();
-  const ripple = useRipple();
   const isOpen = useSearchStore((s) => s.isQuickSearchOpen);
   const initialQuery = useSearchStore((s) => s.initialQuery);
   const openVersion = useSearchStore((s) => s.openVersion);
@@ -1122,7 +1164,7 @@ export function QuickSearchOverlay() {
       onRequestClose={close}
     >
       <View style={styles.modalRoot}>
-        <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
+        <AppPressable feedback="none"  unstable_pressDelay={SCROLL_PRESS_DELAY} style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" />
         {isOpen ? (
           <QuickSearchPanel key={openVersion} initialQuery={initialQuery} onClose={close} />
         ) : null}

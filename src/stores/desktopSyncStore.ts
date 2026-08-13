@@ -5,8 +5,7 @@
 
 import { AppState } from 'react-native';
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import {
   DesktopSyncUnsupportedError,
   applyDesktopSyncConflictResolution,
@@ -80,17 +79,16 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const db = await openLibraryDb();
-      const masterSetting = await getSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY);
-      const legacySetting = await getSetting(db, LEGACY_AUTO_SYNC_SETTING_KEY);
+      const masterSetting = await getNativeSetting(DESKTOP_SYNC_ENABLED_SETTING_KEY);
+      const legacySetting = await getNativeSetting(LEGACY_AUTO_SYNC_SETTING_KEY);
       const enabled = decideDesktopSyncEnabled(masterSetting, legacySetting);
       set({ desktopSyncEnabled: enabled });
       if (masterSetting === null) {
-        await setSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
+        await setNativeSetting(DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
       }
       const connection = await getDesktopRemoteConnection();
       if (connection) {
-        const stored = await getSetting(db, desktopSyncSettingKey(connection));
+        const stored = await getNativeSetting(desktopSyncSettingKey(connection));
         const lastSyncAt = stored ? Number(stored) : NaN;
         if (Number.isFinite(lastSyncAt) && lastSyncAt > 0) {
           set({ lastSyncAt });
@@ -110,8 +108,7 @@ export const useDesktopSyncStore = create<DesktopSyncStore>((set, get) => ({
     }
     set({ desktopSyncEnabled: enabled });
     try {
-      const db = await openLibraryDb();
-      await setSetting(db, DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
+      await setNativeSetting(DESKTOP_SYNC_ENABLED_SETTING_KEY, enabled ? '1' : '0');
     } catch {
       // The in-memory value still applies for this session.
     }

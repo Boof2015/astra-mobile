@@ -1,22 +1,26 @@
 import { useEffect } from 'react';
 import {
-  Alert,
-  Pressable,
-  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import {
+  ScreenHeader,
+  ScreenHeaderAction,
+  useScreenHeader,
+} from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
   radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { requestLastFmFlush } from '@/services/lastfm';
 import type { LastFmProfileStatus } from '@/types/lastFm';
@@ -46,9 +50,9 @@ function customStatusLine(profile: LastFmProfileStatus): { text: string; tone: '
 
 export default function LastFmScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
+  const header = useScreenHeader({ actionCount: 1 });
   const status = useLastFmSettingsStore((s) => s.status);
   const authHint = useLastFmSettingsStore((s) => s.authHint);
   const errorMessage = useLastFmSettingsStore((s) => s.errorMessage);
@@ -66,24 +70,28 @@ export default function LastFmScreen() {
 
   const connectOfficial = (profile: LastFmProfileStatus) => {
     if (status && !status.hasApiCredentials) {
-      Alert.alert(
-        'Last.fm not configured',
-        'This build has no Last.fm API key. Set EXPO_PUBLIC_LASTFM_API_KEY / _SHARED_SECRET, or add a custom Last.fm-compatible / ListenBrainz destination instead.'
-      );
+      showAppDialog({
+        title: 'Last.fm not configured',
+        message: 'This build has no Last.fm API key. Set EXPO_PUBLIC_LASTFM_API_KEY / _SHARED_SECRET, or add a custom Last.fm-compatible / ListenBrainz destination instead.',
+      });
       return;
     }
     void beginAuth(profile.id);
   };
 
   const confirmDisconnect = (profile: LastFmProfileStatus) => {
-    Alert.alert(`Disconnect ${profile.name}?`, 'Astra will stop scrobbling to this destination.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Disconnect',
-        style: 'destructive',
-        onPress: () => void disconnectProfile(profile.id),
-      },
-    ]);
+    showAppDialog({
+      title: `Disconnect ${profile.name}?`,
+      message: 'Astra will stop scrobbling to this destination.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Disconnect',
+          role: 'destructive',
+          onPress: () => void disconnectProfile(profile.id),
+        },
+      ],
+    });
   };
 
   const renderOfficial = (profile: LastFmProfileStatus) => {
@@ -127,16 +135,16 @@ export default function LastFmScreen() {
                 {profile.username}
               </Text>
             ) : null}
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="control"
               onPress={() => confirmDisconnect(profile)}
               hitSlop={8}
               accessibilityLabel="Disconnect Last.fm"
             >
               <Ionicons name="close-circle" size={22} color={colors.textTertiary} />
-            </Pressable>
+            </AppPressable>
           </View>
         ) : (
-          <Pressable android_ripple={ripple.bounded}
+          <AppPressable feedback="accent"
             style={styles.connectButton}
             onPress={() => connectOfficial(profile)}
             accessibilityRole="button"
@@ -145,7 +153,7 @@ export default function LastFmScreen() {
             <Text variant="label" color={colors.accentTextStrong}>
               Connect
             </Text>
-          </Pressable>
+          </AppPressable>
         )}
       </View>
     );
@@ -154,7 +162,7 @@ export default function LastFmScreen() {
   const renderCustom = (profile: LastFmProfileStatus) => {
     const line = customStatusLine(profile);
     return (
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable
         key={profile.id}
         style={styles.row}
         onPress={() => router.push({ pathname: '/lastfm/edit', params: { id: profile.id } })}
@@ -190,33 +198,20 @@ export default function LastFmScreen() {
         ) : (
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
         )}
-      </Pressable>
+      </AppPressable>
     );
   };
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-          <Text variant="body" color={colors.textSecondary}>
-            Settings
-          </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded}
-          onPress={() => router.push('/lastfm/edit')}
-          hitSlop={8}
-          accessibilityLabel="Add destination"
-        >
-          <Ionicons name="add" size={26} color={colors.accent} />
-        </Pressable>
-      </View>
-
-      <Text variant="title" style={styles.heading}>
-        Scrobbling
-      </Text>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    // The header is an overlay the content scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the ScrollView.
+    <Screen padded={false} style={styles.screen}>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+      >
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={styles.toggleText}>
@@ -251,12 +246,12 @@ export default function LastFmScreen() {
         ) : null}
 
         {status && status.pendingScrobbles > 0 ? (
-          <Pressable android_ripple={ripple.bounded} style={styles.retryButton} onPress={() => requestLastFmFlush()}>
+          <AppPressable feedback="control"  style={styles.retryButton} onPress={() => requestLastFmFlush()}>
             <Ionicons name="sync" size={16} color={colors.accentText} />
             <Text variant="label" color={colors.accentText}>
               Retry {status.pendingScrobbles} queued now
             </Text>
-          </Pressable>
+          </AppPressable>
         ) : null}
 
         <Text
@@ -273,39 +268,44 @@ export default function LastFmScreen() {
           )}
         </View>
 
-        <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
+        <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
           <Ionicons name="add" size={18} color={colors.accentTextStrong} />
           <Text variant="body" color={colors.accentTextStrong}>
             Add destination
           </Text>
-        </Pressable>
+        </AppPressable>
 
         <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
           A scrobble is sent once a track plays past half its length (or 4 minutes). Tracks under 30
           seconds are skipped. Failed scrobbles queue offline and retry automatically.
         </Text>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      <ScreenHeader
+        header={header}
+        title="Scrobbling"
+        backLabel="Settings"
+        onBack={() => router.back()}
+        actions={
+          <ScreenHeaderAction
+            onPress={() => router.push('/lastfm/edit')}
+            accessibilityLabel="Add destination"
+          >
+            <Ionicons name="add" size={26} color={colors.accent} />
+          </ScreenHeaderAction>
+        }
+      />
     </Screen>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  heading: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the ScrollView pays the inset.
+  screen: {
+    paddingTop: 0,
   },
   content: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
   card: {

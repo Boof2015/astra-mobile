@@ -24,8 +24,12 @@ export interface ExtractedMetadata {
   error?: string;
   title?: string | null;
   artist?: string | null;
+  /** Ordered repeated ARTIST tag values; empty when the file has no multi-value credit. */
+  artistNames?: string[];
   album?: string | null;
   albumArtist?: string | null;
+  /** Ordered repeated ALBUMARTIST tag values; empty when not multi-valued. */
+  albumArtistNames?: string[];
   genre?: string | null;
   /** Container mime type reported by MediaMetadataRetriever. */
   mimeType?: string | null;
@@ -73,33 +77,89 @@ export type EmbeddedLyricsReadResult =
   | { status: 'unavailable' };
 
 export interface ScanProgressEvent {
-  phase: 'discovering';
-  found: number;
+  phase: 'discovering' | 'extracting' | 'indexing';
+  found?: number;
+  processed?: number;
+  total?: number;
+  folderName?: string;
+}
+
+export interface NativeScanResult {
+  added: number;
+  updated: number;
+  removed: number;
+  errors: number;
+  total: number;
+  catalogRevision: string;
+  cancelled: boolean;
+}
+
+/**
+ * Partial waveform emitted while `analyzeTrack` decodes, so the seek bar can fill in
+ * left-to-right. `peaks` holds RAW (un-normalized) RMS for bins `[0, filledBins)` — the
+ * global max isn't known until the decode ends, so callers normalize against the max of
+ * what they've received so far and accept a slight rescale as louder material arrives.
+ */
+export interface WaveformProgressEvent {
+  /** Track URI this partial belongs to — callers must filter, decodes overlap. */
+  uri: string;
+  filledBins: number;
+  totalBins: number;
+  peaks: number[];
 }
 
 type AstraLibraryScannerEvents = {
   onScanProgress: (event: ScanProgressEvent) => void;
+  onWaveformProgress: (event: WaveformProgressEvent) => void;
 };
+
+/** One decode pass: waveform peaks + (optionally) loudness, plus timing. */
+export interface TrackAnalysis {
+  /** `bins` RMS peaks normalized to [0,1]; empty on failure. */
+  peaks: number[];
+  /** Integrated LUFS; null when unmeasured (withLoudness false) or unmeasurable. */
+  lufs: number | null;
+  /** Absolute sample peak, linear [0,1]; null when unmeasured. */
+  peak: number | null;
+  /** True if the decode bailed early — do NOT persist peaks or loudness. */
+  cancelled: boolean;
+  decodeMs: number | null;
+  durationMs: number | null;
+  /** durationMs / decodeMs — how many times faster than realtime the decode ran. */
+  realtimeFactor: number | null;
+  decoderName: string | null;
+  mime: string | null;
+  withLoudness: boolean;
+}
 
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
   listAudioFiles(treeUri: string, extensions: string[]): Promise<ListResult>;
   extractMetadata(files: { uri: string; coverUri?: string | null }[]): Promise<ExtractedMetadata[]>;
+  scanFolderNative(
+    folderId: number,
+    mode: 'incremental' | 'full',
+    extensions: string[]
+  ): Promise<NativeScanResult>;
+  /** Cooperatively stop every active or queued library scan at its next safe checkpoint. */
+  cancelScan(): void;
   /**
-   * Decode the file's PCM and return `bins` RMS peaks normalized to [0,1] for
-   * the waveform seek bar. Whole-file decode (heavy); returns [] on failure.
+   * ONE whole-file PCM decode producing `bins` RMS waveform peaks and, when
+   * `withLoudness`, gated integrated LUFS + sample peak. Both analyses need every
+   * sample, so they share a pass — ask for loudness here whenever you'd otherwise
+   * measure it separately. Heavy; concurrency is capped natively at 2 and results
+   * should be cached. Emits `onWaveformProgress` as bins finalize.
    */
-  extractWaveform(uri: string, bins: number): Promise<number[]>;
+  analyzeTrack(uri: string, bins: number, withLoudness: boolean): Promise<TrackAnalysis>;
+  /**
+   * Stop an in-flight (or still-queued) `analyzeTrack` for this URI so a skipped-past
+   * track stops burning CPU. Safe to call when nothing is running.
+   */
+  cancelAnalysis(uri: string): Promise<void>;
   /**
    * Decode short windows across the file and return approximate RMS peaks for
    * immediate seek-bar paint. Cheap preview only; callers should not persist it.
    */
   extractWaveformPreview(uri: string, bins: number): Promise<number[]>;
-  /**
-   * Fast integrated loudness (M4): decodes only a few short windows across the
-   * track + gated K-weighting -> integrated LUFS + absolute sample peak. Null on
-   * failure / unmeasurable audio. Waveform peaks are separate (extractWaveform).
-   */
-  measureLoudness(uri: string): Promise<{ lufs: number | null; peak: number | null }>;
   /**
    * Read ReplayGain track/album gain (dB) + peak (linear) from container tags
    * (ID3 TXXX / Vorbis comments / MP4 freeform) without decoding audio. All fields
@@ -121,6 +181,13 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
   getArtworkDirPath(): string;
   getArtworkThumbDirPath(): string;
   ensureArtworkThumbnails(hashes: string[]): Promise<number>;
+  /** Validate and content-addressably cache a JPEG, PNG, or WebP URI plus thumbnail. */
+  cacheArtworkFromUri(uri: string): Promise<string>;
+  /**
+   * A wait that still elapses while the app is backgrounded, unlike `setTimeout`
+   * — React Native stops firing JS timers once the activity pauses.
+   */
+  backgroundDelay(milliseconds: number): Promise<void>;
   getPersistedTreeUris(): string[];
   takePersistableUriPermission(uri: string): Promise<boolean>;
   releasePersistedUriPermission(uri: string): Promise<void>;
@@ -145,3 +212,428 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
 
 export const AstraLibraryScanner =
   requireNativeModule<AstraLibraryScannerModuleType>('AstraLibraryScanner');
+
+export type LibraryStatus =
+  | 'initializing'
+  | 'empty'
+  | 'ready'
+  | 'scanning'
+  | 'rebuilding'
+  | 'degraded'
+  | 'fatalUserData';
+
+export interface LibraryStatusSnapshot {
+  status: LibraryStatus;
+  catalogRevision: string;
+  trackCount: number;
+  message: string | null;
+  recoveryNotice: string | null;
+}
+
+export interface NativePage<T> {
+  items: T[];
+  nextCursor: string | null;
+  previousCursor: string | null;
+  totalCount: number;
+  catalogRevision: string;
+  error?: 'STALE_REVISION';
+}
+
+export type LibraryQuery =
+  | {
+      kind: 'library';
+      sort: 'artist' | 'title' | 'recently_added' | 'duration';
+      direction: 'asc' | 'desc';
+    }
+  | { kind: 'album'; albumKey: string }
+  | {
+      kind: 'artist';
+      artistKey: string;
+      groupingMode: 'astra' | 'fileTags';
+      section: 'songs' | 'appearances' | 'all';
+    }
+  | { kind: 'folder'; folderNodeId?: string; folderId?: number }
+  | { kind: 'playlist'; playlistId: number }
+  | { kind: 'favorites' }
+  | { kind: 'recent' }
+  | { kind: 'search'; query: string }
+  | { kind: 'manual'; paths: string[] }
+  | { kind: 'dynamicPlaylist'; playlistId: number };
+
+export interface NativePlaybackWindow<T> {
+  sessionId: string;
+  items: (T & { queuePosition: number; queueEntryId: number })[];
+  windowStart: number;
+  activePosition: number;
+  totalCount: number;
+  contextJson: string;
+  shuffleSeed: number | null;
+  queueRevision: number;
+  catalogRevision: string;
+}
+
+export interface LibrarySectionAnchor {
+  label: string;
+  cursor: string;
+}
+
+export interface NativeFolderNode {
+  id: string;
+  folderId: number;
+  parentNodeId: string | null;
+  name: string;
+  depth: number;
+  directTrackCount: number;
+  totalTrackCount: number;
+  available: boolean;
+  catalogRevision: string;
+}
+
+export interface NativeTrackLoudness {
+  path: string;
+  loudness_lufs: number | null;
+  sample_peak: number | null;
+  replay_gain_track_db: number | null;
+  replay_gain_album_db: number | null;
+  replay_gain_track_peak: number | null;
+  replay_gain_album_peak: number | null;
+  rg_scanned: number;
+}
+
+export interface NativeLibraryLoudnessStats {
+  lufsCount: number;
+  medianLufs: number | null;
+  rgCount: number;
+  medianRgTrackDb: number | null;
+}
+
+export interface NativeArtistImageLookupTarget {
+  groupingMode: 'astra' | 'fileTags';
+  artistKey: string;
+  artistName: string;
+  retryCount: number;
+}
+
+export interface NativeArtistImageState {
+  groupingMode: 'astra' | 'fileTags';
+  artistKey: string;
+  artistName?: string;
+  manualImageHash: string | null;
+  automaticImageHash: string | null;
+  automaticProvider: 'deezer' | null;
+  automaticSourceId: string | null;
+  lookupStatus: 'never' | 'found' | 'not_found' | 'transient_error';
+  retryCount: number;
+  lastAttemptAt: number | null;
+  nextRetryAt: number | null;
+  updatedAt: number | null;
+}
+
+type AstraLibraryDataEvents = {
+  onLibraryStatus: (event: LibraryStatusSnapshot) => void;
+  onScanProgress: (event: {
+    scanId: string;
+    phase: 'discovering' | 'extracting' | 'publishing';
+    processed: number;
+    total: number;
+    folderName: string;
+  }) => void;
+  onCatalogChanged: (event: { catalogRevision: string }) => void;
+  onArtistImagesChanged: (event: {
+    artistKey: string;
+    groupingMode: 'astra' | 'fileTags';
+  }) => void;
+};
+
+declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEvents> {
+  initialize(): Promise<LibraryStatusSnapshot>;
+  getCurrentStatus(): LibraryStatusSnapshot;
+  getSettings(keys: string[]): Promise<Record<string, string | null>>;
+  setSettings(values: Record<string, string | null>): Promise<void>;
+  listFolders(): Promise<Record<string, unknown>[]>;
+  getFolderNodes(parentNodeId: string | null): Promise<NativeFolderNode[]>;
+  getFolderTracks<T>(
+    nodeId: string,
+    offset: number,
+    limit: number
+  ): Promise<{
+    items: T[];
+    nextOffset: number | null;
+    totalCount: number;
+    catalogRevision: string;
+  }>;
+  registerFolder(treeUri: string, displayName: string): Promise<Record<string, unknown>>;
+  removeFolder(folderId: number): Promise<void>;
+  getTrackPage<T>(
+    sort: 'artist' | 'title' | 'recently_added' | 'duration',
+    direction: 'asc' | 'desc',
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  /**
+   * The page immediately above `cursor` — how the lists refill upwards after an A-Z
+   * jump lands mid-catalog. Items come back ascending; `previousCursor` is null once
+   * there is nothing left above. Only the rail's sorts can be walked backwards.
+   */
+  getTrackPageBefore<T>(
+    sort: 'artist' | 'title',
+    direction: 'asc' | 'desc',
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  getTrack<T>(path: string): Promise<T | null>;
+  getTrackLoudness(paths: string[]): Promise<NativeTrackLoudness[]>;
+  setTrackLoudness(path: string, lufs: number | null, samplePeak: number | null): Promise<void>;
+  setTrackReplayGain(
+    path: string,
+    trackGainDb: number | null,
+    albumGainDb: number | null,
+    trackPeak: number | null,
+    albumPeak: number | null
+  ): Promise<void>;
+  getLibraryLoudnessStats(): Promise<NativeLibraryLoudnessStats>;
+  getWaveform(path: string): Promise<number[] | null>;
+  putWaveform(path: string, peaks: number[]): Promise<void>;
+  countWaveforms(): Promise<number>;
+  clearWaveforms(): Promise<void>;
+  getLyrics<T>(path: string, metadataSignature: string): Promise<T | null>;
+  putLyrics(path: string, values: Record<string, unknown>): Promise<void>;
+  deleteLyrics(path: string): Promise<void>;
+  countLyrics(): Promise<number>;
+  clearLyrics(): Promise<void>;
+  readMobileSession(): Promise<string | null>;
+  writeMobileSession(snapshotJson: string): Promise<void>;
+  createPlaybackContext<T>(
+    context: LibraryQuery,
+    anchorPath: string | null,
+    shuffle: boolean,
+    seed: number | null
+  ): Promise<NativePlaybackWindow<T>>;
+  getPlaybackWindow<T>(
+    sessionId: string,
+    start: number,
+    limit: number
+  ): Promise<NativePlaybackWindow<T>>;
+  updatePlaybackPosition(sessionId: string, activePosition: number): Promise<void>;
+  restorePlaybackContext<T>(): Promise<NativePlaybackWindow<T> | null>;
+  mutatePlaybackContext<T>(
+    operation:
+      | 'insertAfterActive'
+      | 'append'
+      | 'insertQueryAfterActive'
+      | 'appendQuery'
+      | 'remove'
+      | 'move'
+      | 'moveManyAfterActive'
+      | 'shuffle',
+    values: Record<string, unknown>
+  ): Promise<NativePlaybackWindow<T> | null>;
+  recordTrackPlayed(path: string): Promise<boolean>;
+  getListeningHistoryStatus<T>(): Promise<T>;
+  checkpointListeningSession<T>(payload: Record<string, unknown>): Promise<T>;
+  getListeningStatsDashboard<T>(query: Record<string, unknown>): Promise<T>;
+  clearDetailedListeningHistory<T>(): Promise<T>;
+  getRecentlyPlayed<T>(limit: number): Promise<T[]>;
+  listRemoteSources<T>(): Promise<T[]>;
+  getRemoteSource<T>(sourceId: number): Promise<T | null>;
+  createRemoteSource<T>(
+    type: 'subsonic' | 'jellyfin',
+    name: string,
+    baseUrl: string,
+    username: string,
+    enabled: boolean
+  ): Promise<T>;
+  updateRemoteSource(sourceId: number, fields: Record<string, unknown>): Promise<void>;
+  setRemoteSourceStatus(sourceId: number, status: string, error: string | null): Promise<void>;
+  deleteRemoteSource(sourceId: number, purgeCatalog: boolean): Promise<void>;
+  replaceRemoteUserState(
+    sourceId: number,
+    sourceType: 'subsonic' | 'jellyfin',
+    favoritePaths: string[],
+    playlists: Record<string, unknown>[]
+  ): Promise<void>;
+  beginRemoteSync(sourceId: number, sourceType: 'subsonic' | 'jellyfin'): Promise<string>;
+  appendRemoteTracks(syncId: string, rows: Record<string, unknown>[]): Promise<number>;
+  commitRemoteSync(
+    syncId: string
+  ): Promise<{ tracksScanned: number; removed: number; catalogRevision: string }>;
+  abortRemoteSync(syncId: string): Promise<void>;
+  listPlaylists<T>(): Promise<T[]>;
+  createPlaylist<T>(name: string, kind: 'normal' | 'dynamic', rulesJson: string | null): Promise<T>;
+  getDynamicPlaylistRules(playlistId: number): Promise<string>;
+  updateDynamicPlaylistRules(playlistId: number, rulesJson: string): Promise<void>;
+  previewDynamicPlaylist<T>(rulesJson: string): Promise<T>;
+  renamePlaylist(playlistId: number, name: string): Promise<void>;
+  deletePlaylist(playlistId: number): Promise<void>;
+  markPlaylistPlayed(playlistId: number): Promise<void>;
+  addPlaylistEntries(
+    playlistId: number,
+    entries: {
+      trackPath: string;
+      fallbackTitle?: string | null;
+      fallbackArtist?: string | null;
+      fallbackAlbum?: string | null;
+    }[]
+  ): Promise<number>;
+  removePlaylistEntry(playlistId: number, path: string): Promise<void>;
+  movePlaylistEntry(playlistId: number, path: string, direction: -1 | 1): Promise<void>;
+  getPlaylistEntries<T>(
+    playlistId: number,
+    offset: number,
+    limit: number
+  ): Promise<{ items: T[]; nextOffset: number | null; totalCount: number }>;
+  getFavoritePaths(): Promise<string[]>;
+  getFavoriteTracks<T>(limit: number): Promise<T[]>;
+  setFavorite(path: string, favorite: boolean): Promise<void>;
+  getDesktopSyncState<T>(): Promise<T>;
+  applyDesktopSyncPlan<T>(plan: Record<string, unknown>): Promise<T>;
+  resolveDesktopSyncConflict(
+    conflict: Record<string, unknown>,
+    resolution: 'desktop' | 'phone' | 'both' | 'merge',
+    mergedPlaylist: Record<string, unknown> | null
+  ): Promise<void>;
+  clearDesktopSyncBaselines(): Promise<void>;
+  getAlbumPage<T>(
+    sort: 'artist' | 'name' | 'recently_added' | 'year',
+    direction: 'asc' | 'desc',
+    includeSingles: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  /** Backward twin of `getAlbumPage`; see `getTrackPageBefore`. */
+  getAlbumPageBefore<T>(
+    sort: 'artist' | 'name',
+    direction: 'asc' | 'desc',
+    includeSingles: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  getArtistPage<T>(
+    sort: 'name' | 'track_count',
+    direction: 'asc' | 'desc',
+    groupingMode: 'astra' | 'fileTags',
+    includeCollaborations: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  /** Backward twin of `getArtistPage`; see `getTrackPageBefore`. */
+  getArtistPageBefore<T>(
+    sort: 'name',
+    direction: 'asc' | 'desc',
+    groupingMode: 'astra' | 'fileTags',
+    includeCollaborations: boolean,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T>>;
+  getAlbumDetail<T, S = Record<string, unknown>>(
+    albumKey: string,
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T> & { summary: S | null }>;
+  getArtistDetail<T, S = Record<string, unknown>>(
+    artistKey: string,
+    groupingMode: 'astra' | 'fileTags',
+    section: 'songs' | 'appearances' | 'all',
+    cursor: string | null,
+    limit: number
+  ): Promise<NativePage<T> & { summary: S | null }>;
+  getArtistAlbums<T>(
+    artistKey: string,
+    groupingMode: 'astra' | 'fileTags',
+    offset: number,
+    limit: number
+  ): Promise<{
+    items: T[];
+    nextOffset: number | null;
+    totalCount: number;
+    catalogRevision: string;
+  }>;
+  getPendingArtistImageLookups(
+    limit: number,
+    now: number
+  ): Promise<NativeArtistImageLookupTarget[]>;
+  /**
+   * Re-queues artists a provider previously had no match for, returning how many
+   * became pending. `not_found` is otherwise terminal.
+   */
+  clearArtistImageLookupFailures(): Promise<number>;
+  /**
+   * `pending` = distinct artists awaiting a lookup across both grouping modes
+   * (the denominator for sweep progress). `missing` = artists in `groupingMode`
+   * with no portrait at all, including ones already written off as not_found.
+   */
+  getArtistImageStats(
+    groupingMode: 'astra' | 'fileTags',
+    now: number
+  ): Promise<{ pending: number; missing: number }>;
+  getArtistImageState(
+    artistKey: string,
+    groupingMode: 'astra' | 'fileTags'
+  ): Promise<NativeArtistImageState>;
+  recordArtistImageLookup(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags',
+    values: {
+      status: 'found' | 'not_found' | 'transient_error';
+      automaticImageHash?: string | null;
+      provider?: 'deezer' | null;
+      sourceId?: string | null;
+      attemptedAt: number;
+      nextRetryAt?: number | null;
+      clearManual?: boolean;
+    }
+  ): Promise<void>;
+  setManualArtistImage(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags',
+    artworkHash: string
+  ): Promise<void>;
+  clearManualArtistImage(
+    artistKey: string,
+    artistName: string,
+    groupingMode: 'astra' | 'fileTags'
+  ): Promise<void>;
+  searchTracks<T>(query: string, limit: number): Promise<T[]>;
+  searchLibrary<TTrack, TAlbum, TArtist>(
+    query: string,
+    limit: number,
+    includeSingles: boolean,
+    groupingMode: 'astra' | 'fileTags',
+    includeCollaborations: boolean
+  ): Promise<{ tracks: TTrack[]; albums: TAlbum[]; artists: TArtist[] }>;
+  matchSignal<T>(
+    title: string,
+    artist: string,
+    durationSeconds: number | null
+  ): Promise<{
+    kind: 'match' | 'ambiguous' | 'none';
+    candidates: { track: T; match: 'exact' | 'normalized'; durationDeltaSec: number | null }[];
+  }>;
+  getSectionAnchors(
+    kind: 'tracks' | 'albums' | 'artists',
+    sort: 'artist' | 'title' | 'name',
+    direction: 'asc' | 'desc',
+    includeSingles: boolean,
+    groupingMode: 'astra' | 'fileTags',
+    includeCollaborations: boolean
+  ): Promise<LibrarySectionAnchor[]>;
+  flushUserSnapshot(): Promise<void>;
+}
+
+export const AstraLibraryData =
+  requireNativeModule<AstraLibraryDataModuleType>('AstraLibraryData');
+
+export {
+  AstraQueue,
+  AstraQueueView,
+  toNativeQueuePalette,
+} from './queue';
+export type {
+  AstraQueueViewProps,
+  NativeQueuePlaybackRequest,
+  NativeQueuePalette,
+  NativeQueuePresentationOptions,
+  NativeQueueRevisionEvent,
+} from './queue';

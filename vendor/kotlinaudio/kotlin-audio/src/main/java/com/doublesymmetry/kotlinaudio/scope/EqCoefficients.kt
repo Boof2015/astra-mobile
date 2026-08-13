@@ -7,7 +7,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Web Audio BiquadFilterNode coefficients, a0-normalized as b0,b1,b2,a1,a2.
+ * Audio EQ Cookbook coefficients, a0-normalized as b0,b1,b2,a1,a2.
  * Type ordinals match EQ_BAND_TYPE_ORDINAL in src/audio/eq.ts:
  * 0 lowshelf, 1 peaking, 2 highshelf, 3 highpass, 4 lowpass.
  */
@@ -34,7 +34,6 @@ internal object EqCoefficients {
     val a = 10.0.pow(gainDb / 40.0)
     val alphaQ = sinW0 / (2.0 * q.coerceAtLeast(MIN_FILTER_Q.toFloat()))
     val alphaQDb = sinW0 / (2.0 * 10.0.pow(q / 20.0))
-    val alphaShelf = (sinW0 / 2.0) * sqrt(2.0)
 
     var b0 = 1.0; var b1 = 0.0; var b2 = 0.0
     var a0 = 1.0; var a1 = 0.0; var a2 = 0.0
@@ -46,21 +45,21 @@ internal object EqCoefficients {
       }
       0 -> { // lowshelf
         val sqrtA = sqrt(a)
-        b0 = a * (a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alphaShelf)
+        b0 = a * (a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alphaQ)
         b1 = 2 * a * (a - 1 - (a + 1) * cosW0)
-        b2 = a * (a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alphaShelf)
-        a0 = a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alphaShelf
+        b2 = a * (a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alphaQ)
+        a0 = a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alphaQ
         a1 = -2 * (a - 1 + (a + 1) * cosW0)
-        a2 = a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alphaShelf
+        a2 = a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alphaQ
       }
       2 -> { // highshelf
         val sqrtA = sqrt(a)
-        b0 = a * (a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alphaShelf)
+        b0 = a * (a + 1 + (a - 1) * cosW0 + 2 * sqrtA * alphaQ)
         b1 = -2 * a * (a - 1 + (a + 1) * cosW0)
-        b2 = a * (a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alphaShelf)
-        a0 = a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alphaShelf
+        b2 = a * (a + 1 + (a - 1) * cosW0 - 2 * sqrtA * alphaQ)
+        a0 = a + 1 - (a - 1) * cosW0 + 2 * sqrtA * alphaQ
         a1 = 2 * (a - 1 - (a + 1) * cosW0)
-        a2 = a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alphaShelf
+        a2 = a + 1 - (a - 1) * cosW0 - 2 * sqrtA * alphaQ
       }
       4 -> { // lowpass
         b0 = (1 - cosW0) / 2; b1 = 1 - cosW0; b2 = (1 - cosW0) / 2

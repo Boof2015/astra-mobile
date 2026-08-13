@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -8,12 +8,11 @@ import { SignalResultCard } from '@/components/signal/SignalResultCard';
 import { decodeTrackSignalLink, SIGNAL_LINK_PREFIX } from '@/audio/signalShare';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { SignalPayload } from '@boof2015/astra-signal';
 
 export default function SignalImportScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { data } = useLocalSearchParams<{ data?: string }>();
@@ -32,12 +31,12 @@ export default function SignalImportScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={goToSignal} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={goToSignal} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Signal
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {payload ? (
@@ -46,11 +45,11 @@ export default function SignalImportScreen() {
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={28} color={colors.warning} />
           <Text variant="body">This link does not contain a valid Astra Signal.</Text>
-          <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={goToSignal}>
+          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={goToSignal}>
             <Text variant="body" color={colors.accentTextStrong}>
               Go to Signal
             </Text>
-          </Pressable>
+          </AppPressable>
         </View>
       )}
     </Screen>

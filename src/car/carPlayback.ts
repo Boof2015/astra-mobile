@@ -1,28 +1,26 @@
 import {
-  getAllTracks,
-  getRecentlyPlayedTracks,
-  getTracksByAlbumKey,
-} from '@/db/queries';
-import {
-  getFavoriteTracks,
-  getPlaylistEntries,
-  getPlaylists,
-  markPlaylistPlayed,
-} from '@/db/playlistQueries';
-import { openLibraryDb, type LibraryDatabase } from '@/db/database';
-import { buildAlbumList } from '@/library/albumSummary';
-import { buildArtistList, filterTracksByArtist } from '@/library/artistGrouping';
+  AstraLibraryData,
+  type LibraryQuery,
+} from '../../modules/astra-library-scanner';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { playForCar, playTracksForCar, pause, seekTo, skipToNext, skipToPrevious } from '@/audio/playbackController';
+import {
+  pause,
+  playForCar,
+  playLibraryQuery,
+  playTracksForCar,
+  seekTo,
+  skipToNext,
+  skipToPrevious,
+} from '@/audio/playbackController';
 import { syncCarNowPlayingFromTrackPlayer } from '@/audio/carSync';
 import { startAudioProcessingWarmup } from '@/audio/audioProcessingStartup';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { PlaybackSource } from '@/types/audio';
 import type { DbTrack } from '@/types/library';
+import type { Playlist } from '@/types/playlist';
 
 export interface CarMediaPayload {
   kind?: string;
@@ -53,8 +51,8 @@ let initPromise: Promise<void> | null = null;
 async function initializeForCar(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
+      await AstraLibraryData.initialize();
       await useSettingsStore.getState().load();
-      await useLibraryStore.getState().initialize();
       await usePlaylistStore.getState().refresh();
       await useRemoteSourcesStore.getState().init();
     })().catch((err) => {
@@ -123,57 +121,49 @@ function rntpTrackPath(track: RntpTrack | null | undefined): string | null {
 }
 
 async function playMedia(media: CarMediaPayload): Promise<void> {
-  const db = await openLibraryDb();
-  const resolved = await resolveMediaTracks(db, media);
-  if (!resolved || resolved.tracks.length === 0) return;
-  await playTracksForCar(resolved.tracks.map(dbTrackToTrack), {
-    startIndex: resolved.startIndex,
-    source: resolved.source,
-  });
+  const contextMedia = media.kind === 'track' ? contextFromTrack(media) : media;
+  const query = contextMedia ? queryForMedia(contextMedia) : null;
+  if (query) {
+    await playLibraryQuery(query, {
+      anchorPath: media.kind === 'track' ? media.path : null,
+      source: await sourceForContext(contextMedia!),
+      allowBackgroundSetup: true,
+    });
+  } else if (media.path) {
+    const track = await AstraLibraryData.getTrack<DbTrack>(media.path);
+    if (!track) return;
+    await playTracksForCar([dbTrackToTrack(track)], {
+      startIndex: 0,
+      source: { kind: 'android-auto', label: 'Android Auto' },
+    });
+  } else {
+    return;
+  }
   if (media.kind === 'playlist' && media.id != null) {
-    await markPlaylistPlayed(db, media.id);
+    await AstraLibraryData.markPlaylistPlayed(media.id);
   }
 }
 
-async function resolveMediaTracks(
-  db: LibraryDatabase,
-  media: CarMediaPayload,
-): Promise<{ tracks: DbTrack[]; startIndex: number; source: PlaybackSource } | null> {
-  if (media.kind === 'track') {
-    const context = contextFromTrack(media);
-    const contextTracks = context ? await tracksForContext(db, context) : [];
-    const startIndex = contextTracks.findIndex((track) => track.path === media.path);
-    if (context && contextTracks.length > 0 && startIndex >= 0) {
-      return {
-        tracks: contextTracks,
-        startIndex,
-        source: await sourceForContext(db, context, contextTracks),
-      };
-    }
-    const track = media.path ? await getTrackByPath(db, media.path) : null;
-    return track
-      ? {
-          tracks: [track],
-          startIndex: 0,
-          source: { kind: 'android-auto', label: 'Android Auto' },
-        }
-      : null;
+function queryForMedia(media: CarMediaPayload): LibraryQuery | null {
+  if (media.kind === 'section' && media.section === 'favorites') return { kind: 'favorites' };
+  if (media.kind === 'section' && media.section === 'recent') return { kind: 'recent' };
+  if (media.kind === 'playlist' && media.id != null) {
+    return { kind: 'playlist', playlistId: media.id };
   }
-
-  const tracks = await tracksForContext(db, media);
-  return tracks.length > 0
-    ? {
-        tracks,
-        startIndex: 0,
-        source: await sourceForContext(db, media, tracks),
-      }
-    : null;
+  if (media.kind === 'album' && media.key) return { kind: 'album', albumKey: media.key };
+  if (media.kind === 'artist' && media.key) {
+    return {
+      kind: 'artist',
+      artistKey: media.key,
+      groupingMode: useSettingsStore.getState().artistGroupingMode,
+      section: 'all',
+    };
+  }
+  return null;
 }
 
 async function sourceForContext(
-  db: LibraryDatabase,
   media: CarMediaPayload,
-  tracks: readonly DbTrack[],
 ): Promise<PlaybackSource> {
   if (media.kind === 'section' && media.section === 'favorites') {
     return { kind: 'favorites', label: 'Favorites' };
@@ -184,11 +174,14 @@ async function sourceForContext(
   if (media.kind === 'playlist') {
     const playlist = media.id == null
       ? null
-      : (await getPlaylists(db)).find((entry) => entry.id === media.id);
+      : (await AstraLibraryData.listPlaylists<Playlist>()).find((entry) => entry.id === media.id);
     return { kind: 'playlist', label: playlist?.name ?? 'Playlist' };
   }
   if (media.kind === 'album') {
-    return { kind: 'album', label: tracks[0]?.album?.trim() || 'Album' };
+    const detail = media.key
+      ? await AstraLibraryData.getAlbumDetail<DbTrack, { album: string }>(media.key, null, 1)
+      : null;
+    return { kind: 'album', label: detail?.summary?.album?.trim() || 'Album' };
   }
   if (media.kind === 'artist') {
     return { kind: 'artist', label: media.key?.trim() || 'Artist' };
@@ -206,62 +199,40 @@ function contextFromTrack(media: CarMediaPayload): CarMediaPayload | null {
   };
 }
 
-async function tracksForContext(db: LibraryDatabase, media: CarMediaPayload): Promise<DbTrack[]> {
-  switch (media.kind) {
-    case 'section':
-      if (media.section === 'recent') return getRecentlyPlayedTracks(db, 24);
-      if (media.section === 'favorites') return getFavoriteTracks(db);
-      return [];
-    case 'playlist':
-      if (media.id == null) return [];
-      return (await getPlaylistEntries(db, media.id))
-        .map((entry) => entry.track)
-        .filter((track): track is DbTrack => Boolean(track));
-    case 'album':
-      return media.key ? getTracksByAlbumKey(db, media.key) : [];
-    case 'artist': {
-      if (!media.key) return [];
-      const tracks = await getAllTracks(db);
-      return filterTracksByArtist(
-        tracks,
-        media.key,
-        useSettingsStore.getState().artistGroupingMode,
-      );
-    }
-    default:
-      return [];
-  }
-}
-
-async function getTrackByPath(db: LibraryDatabase, path: string): Promise<DbTrack | null> {
-  return (await db.get<DbTrack>('SELECT * FROM tracks WHERE path = ?', [path])) ?? null;
-}
-
 async function playSearch(payload: CarCommandPayload): Promise<void> {
-  const db = await openLibraryDb();
   const playlistTerm = cleanSearchTerm(payload.playlist) || focusedTerm(payload, 'playlist');
   if (playlistTerm) {
-    const playlist = bestMatch(await getPlaylists(db), playlistTerm, (entry) => [entry.name]);
+    const playlist = bestMatch(
+      await AstraLibraryData.listPlaylists<Playlist>(),
+      playlistTerm,
+      (entry) => [entry.name],
+    );
     if (playlist) return playMedia({ kind: 'playlist', id: playlist.id });
   }
 
   const albumTerm = cleanSearchTerm(payload.album) || focusedTerm(payload, 'album');
   if (albumTerm) {
-    // Voice search matches everything, including singles the browse grid hides.
-    const albums = buildAlbumList(await getAllTracks(db), { includeSingles: true });
+    const albums = albumsFromTracks(await AstraLibraryData.searchTracks<DbTrack>(albumTerm, 100));
     const album = bestMatch(albums, albumTerm, (entry) => [entry.album, entry.artist]);
-    if (album) return playMedia({ kind: 'album', key: album.identity_key });
+    if (album) return playMedia({ kind: 'album', key: album.key });
   }
 
   const artistTerm = cleanSearchTerm(payload.artist) || focusedTerm(payload, 'artist');
   if (artistTerm) {
-    const artistName = await bestArtistName(db, artistTerm);
+    const artistName = bestArtistName(
+      await AstraLibraryData.searchTracks<DbTrack>(artistTerm, 100),
+      artistTerm,
+    );
     if (artistName) return playMedia({ kind: 'artist', key: artistName });
   }
 
   const titleTerm = cleanSearchTerm(payload.title);
   if (titleTerm) {
-    const track = bestMatch(await getAllTracks(db), titleTerm, (entry) => [entry.title]);
+    const track = bestMatch(
+      await AstraLibraryData.searchTracks<DbTrack>(titleTerm, 100),
+      titleTerm,
+      (entry) => [entry.title],
+    );
     if (track) return playMedia({ kind: 'track', path: track.path });
   }
 
@@ -271,18 +242,20 @@ async function playSearch(payload: CarCommandPayload): Promise<void> {
     return;
   }
 
-  const candidate = await bestGeneralSearchCandidate(db, query, payload.focus);
+  const candidate = await bestGeneralSearchCandidate(query, payload.focus);
   if (candidate) await playMedia(candidate);
 }
 
 async function bestGeneralSearchCandidate(
-  db: LibraryDatabase,
   query: string,
   focus?: string,
 ): Promise<CarMediaPayload | null> {
-  const [tracks, playlists] = await Promise.all([getAllTracks(db), getPlaylists(db)]);
-  const albums = buildAlbumList(tracks, { includeSingles: true });
-  const artistName = await bestArtistName(db, query);
+  const [tracks, playlists] = await Promise.all([
+    AstraLibraryData.searchTracks<DbTrack>(query, 100),
+    AstraLibraryData.listPlaylists<Playlist>(),
+  ]);
+  const albums = albumsFromTracks(tracks);
+  const artistName = bestArtistName(tracks, query);
 
   const candidates: { media: CarMediaPayload; score: number }[] = [];
   const focused = cleanSearchTerm(focus);
@@ -291,7 +264,7 @@ async function bestGeneralSearchCandidate(
   if (track) candidates.push({ media: { kind: 'track', path: track.item.path }, score: track.score + categoryPenalty(focused, 'track') });
 
   const album = bestMatchWithScore(albums, query, (entry) => [entry.album, entry.artist]);
-  if (album) candidates.push({ media: { kind: 'album', key: album.item.identity_key }, score: album.score + categoryPenalty(focused, 'album') });
+  if (album) candidates.push({ media: { kind: 'album', key: album.item.key }, score: album.score + categoryPenalty(focused, 'album') });
 
   const playlist = bestMatchWithScore(playlists, query, (entry) => [entry.name]);
   if (playlist) candidates.push({ media: { kind: 'playlist', id: playlist.item.id }, score: playlist.score + categoryPenalty(focused, 'playlist') });
@@ -317,20 +290,31 @@ function categoryPenalty(focus: string | null, category: string): number {
   return focus === category ? -10 : 10;
 }
 
-async function bestArtistName(db: LibraryDatabase, query: string): Promise<string | null> {
-  const tracks = await getAllTracks(db);
-  const mode = useSettingsStore.getState().artistGroupingMode;
-  const artists = useLibraryStore.getState().artists.length
-    ? useLibraryStore.getState().artists
-    : buildArtistNamesFromTracks(tracks, mode);
-  return bestMatch(artists, query, (entry) => [entry.artist])?.artist ?? null;
+function albumsFromTracks(
+  tracks: readonly DbTrack[],
+): { key: string; album: string; artist: string }[] {
+  const albums = new Map<string, { key: string; album: string; artist: string }>();
+  for (const track of tracks) {
+    if (!albums.has(track.album_identity_key)) {
+      albums.set(track.album_identity_key, {
+        key: track.album_identity_key,
+        album: track.album,
+        artist: track.album_display_artist ?? track.album_artist ?? track.artist,
+      });
+    }
+  }
+  return [...albums.values()];
 }
 
-function buildArtistNamesFromTracks(
-  tracks: DbTrack[],
-  mode: ReturnType<typeof useSettingsStore.getState>['artistGroupingMode'],
-): { artist: string }[] {
-  return buildArtistList(tracks, mode).map((artist) => ({ artist: artist.artist }));
+function bestArtistName(tracks: readonly DbTrack[], query: string): string | null {
+  const names = new Map<string, { artist: string }>();
+  for (const track of tracks) {
+    for (const name of [track.album_artist, track.artist]) {
+      const trimmed = name?.trim();
+      if (trimmed) names.set(normalize(trimmed), { artist: trimmed });
+    }
+  }
+  return bestMatch([...names.values()], query, (entry) => [entry.artist])?.artist ?? null;
 }
 
 function focusedTerm(payload: CarCommandPayload, focus: string): string | null {

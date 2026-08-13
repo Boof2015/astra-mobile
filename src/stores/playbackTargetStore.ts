@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 
 const PLAYBACK_TARGET_KEY = 'playback_target';
 
@@ -23,15 +22,13 @@ export const usePlaybackTargetStore = create<PlaybackTargetStore>((set, get) => 
 
   load: async () => {
     if (get().loaded) return;
-    const db = await openLibraryDb();
-    const stored = await getSetting(db, PLAYBACK_TARGET_KEY);
+    const stored = await getNativeSetting(PLAYBACK_TARGET_KEY);
     set({ target: parsePlaybackTarget(stored), loaded: true });
   },
 
   setTarget: async (target) => {
     if (get().target === target && get().loaded) return;
     set({ target, loaded: true });
-    const db = await openLibraryDb();
-    await setSetting(db, PLAYBACK_TARGET_KEY, target);
+    await setNativeSetting(PLAYBACK_TARGET_KEY, target);
   },
 }));

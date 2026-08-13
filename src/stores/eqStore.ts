@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { AudioOutputRoute, EQBand, EQMode, EQPreset } from '@/types/audio';
-import { openLibraryDb } from '@/db/database';
-import { getSetting, setSetting } from '@/db/queries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
+import { getNativeSettings, setNativeSetting } from '@/db/nativeSettings';
 import {
   EQ_MAX_BANDS,
   clampEQFrequency,
@@ -188,19 +188,15 @@ export const useEQStore = create<EQStore>((set, get) => {
       assignments: devicePresetAssignments,
     };
     try {
-      const db = await openLibraryDb();
-      await Promise.all([
-        setSetting(db, ENABLED_KEY, enabled ? 'true' : 'false'),
-        setSetting(db, PREAMP_KEY, String(preamp)),
-        setSetting(db, BANDS_KEY, JSON.stringify(bands)),
-        setSetting(db, MODE_KEY, mode),
-        setSetting(db, GRAPHIC_GAINS_KEY, JSON.stringify(graphicGains)),
-        setSetting(db, ACTIVE_PRESET_KEY, activePresetId ?? ''),
-        setSetting(db, DEVICE_PRESETS_KEY, stringifyEQDevicePresetState(devicePresetState)),
-        setSetting(
-          db,
-          CUSTOM_PRESETS_KEY,
-          JSON.stringify(
+      await AstraLibraryData.setSettings({
+        [ENABLED_KEY]: enabled ? 'true' : 'false',
+        [PREAMP_KEY]: String(preamp),
+        [BANDS_KEY]: JSON.stringify(bands),
+        [MODE_KEY]: mode,
+        [GRAPHIC_GAINS_KEY]: JSON.stringify(graphicGains),
+        [ACTIVE_PRESET_KEY]: activePresetId ?? '',
+        [DEVICE_PRESETS_KEY]: stringifyEQDevicePresetState(devicePresetState),
+        [CUSTOM_PRESETS_KEY]: JSON.stringify(
             custom.map((p) => ({
               id: p.id,
               name: p.name,
@@ -208,9 +204,8 @@ export const useEQStore = create<EQStore>((set, get) => {
               bands: p.bands,
               ...(p.mode === 'graphic' ? { mode: p.mode, graphicGains: p.graphicGains } : {}),
             }))
-          )
-        ),
-      ]);
+          ),
+      });
     } catch {
       /* persistence failure is non-fatal */
     }
@@ -239,28 +234,26 @@ export const useEQStore = create<EQStore>((set, get) => {
 
     load: async () => {
       if (get().loaded) return;
-      const db = await openLibraryDb();
-      const [
-        enabledRaw,
-        preampRaw,
-        bandsRaw,
-        modeRaw,
-        gainsRaw,
-        activeRaw,
-        customRaw,
-        devicePresetsRaw,
-        routeProfilesRaw,
-      ] = await Promise.all([
-        getSetting(db, ENABLED_KEY),
-        getSetting(db, PREAMP_KEY),
-        getSetting(db, BANDS_KEY),
-        getSetting(db, MODE_KEY),
-        getSetting(db, GRAPHIC_GAINS_KEY),
-        getSetting(db, ACTIVE_PRESET_KEY),
-        getSetting(db, CUSTOM_PRESETS_KEY),
-        getSetting(db, DEVICE_PRESETS_KEY),
-        getSetting(db, ROUTE_PROFILES_KEY),
+      const values = await getNativeSettings([
+        ENABLED_KEY,
+        PREAMP_KEY,
+        BANDS_KEY,
+        MODE_KEY,
+        GRAPHIC_GAINS_KEY,
+        ACTIVE_PRESET_KEY,
+        CUSTOM_PRESETS_KEY,
+        DEVICE_PRESETS_KEY,
+        ROUTE_PROFILES_KEY,
       ]);
+      const enabledRaw = values[ENABLED_KEY];
+      const preampRaw = values[PREAMP_KEY];
+      const bandsRaw = values[BANDS_KEY];
+      const modeRaw = values[MODE_KEY];
+      const gainsRaw = values[GRAPHIC_GAINS_KEY];
+      const activeRaw = values[ACTIVE_PRESET_KEY];
+      const customRaw = values[CUSTOM_PRESETS_KEY];
+      const devicePresetsRaw = values[DEVICE_PRESETS_KEY];
+      const routeProfilesRaw = values[ROUTE_PROFILES_KEY];
 
       const bands = parseBands(bandsRaw) ?? createDefaultBands();
       const presets = [...createBuiltInPresets(), ...parseCustomPresets(customRaw)];
@@ -294,7 +287,7 @@ export const useEQStore = create<EQStore>((set, get) => {
       // snapshots remain unread after this write and can no longer affect EQ.
       if (devicePresetsRaw === null) {
         try {
-          await setSetting(db, DEVICE_PRESETS_KEY, stringifyEQDevicePresetState(deviceState));
+          await setNativeSetting(DEVICE_PRESETS_KEY, stringifyEQDevicePresetState(deviceState));
         } catch {
           /* migration persistence failure is non-fatal and safe to retry */
         }

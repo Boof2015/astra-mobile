@@ -6,29 +6,15 @@
 // registry (services/remoteConfig) so the library UI and playback can build URLs.
 
 import { create } from 'zustand';
-import { openLibraryDb } from '@/db/database';
-import { deleteRemoteTracksBySource } from '@/db/queries';
-import {
-  deleteFavoritesByPathPrefix,
-  deleteRemotePlaylistsBySource,
-} from '@/db/playlistQueries';
-import { recomputeAlbumIdentity } from '@/library/albumIdentity';
-import {
-  deleteRemoteSource,
-  getRemoteSource,
-  getRemoteSources,
-  insertRemoteSource,
-  setRemoteSourceArtAuth,
-  setRemoteSourceAuth,
-  setRemoteSourceStatus,
-  setRemoteSourceSynced,
-  updateRemoteSource,
-} from '@/db/remoteSourceQueries';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { buildCoverArtUrlTemplate } from '@/services/remoteUrls';
 import {
   deleteRemoteSecret,
   getRemoteSecret,
+  getRemoteSecureAuth,
+  setRemoteArtAuth,
   setRemoteSecret,
+  setRemoteSecureAuth,
 } from '@/services/remoteCredentials';
 import {
   clearResolvedRemoteConfig,
@@ -60,7 +46,10 @@ function errorMessage(error: unknown): string {
 
 /** Hydrate the synchronous URL-building registry for one source (loads its secret). */
 async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectionConfig | null> {
-  const password = await getRemoteSecret(source.id);
+  const [password, auth] = await Promise.all([
+    getRemoteSecret(source.id),
+    getRemoteSecureAuth(source.id),
+  ]);
   if (password == null) return null;
   setResolvedRemoteConfig({
     id: source.id,
@@ -68,8 +57,8 @@ async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectio
     baseUrl: source.base_url,
     username: source.username,
     password,
-    accessToken: source.access_token ?? undefined,
-    userId: source.user_id ?? undefined,
+    accessToken: auth.accessToken ?? undefined,
+    userId: auth.userId ?? undefined,
   });
   await persistArtAuthIfNeeded(source);
   return { baseUrl: source.base_url, username: source.username, password };
@@ -82,11 +71,10 @@ async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectio
  * Requires the source's config to already be in the registry.
  */
 async function persistArtAuthIfNeeded(source: RemoteSourceRow): Promise<void> {
-  if (source.art_auth) return;
+  if ((await getRemoteSecureAuth(source.id)).artAuth) return;
   const template = buildCoverArtUrlTemplate(source.id);
   if (!template) return;
-  const db = await openLibraryDb();
-  await setRemoteSourceArtAuth(db, source.id, template);
+  await setRemoteArtAuth(source.id, template);
 }
 
 /** Ensure a usable Jellyfin token, authenticating + persisting it if missing. */
@@ -94,12 +82,12 @@ async function ensureJellyfinAuth(
   source: RemoteSourceRow,
   config: RemoteConnectionConfig
 ): Promise<JellyfinAuthContext> {
-  if (source.access_token && source.user_id) {
-    return { accessToken: source.access_token, userId: source.user_id };
+  const cached = await getRemoteSecureAuth(source.id);
+  if (cached.accessToken && cached.userId) {
+    return { accessToken: cached.accessToken, userId: cached.userId };
   }
   const auth = await authenticateJellyfin(config);
-  const db = await openLibraryDb();
-  await setRemoteSourceAuth(db, source.id, {
+  await setRemoteSecureAuth(source.id, {
     accessToken: auth.accessToken,
     userId: auth.userId,
     deviceId: buildJellyfinDeviceId(config),
@@ -107,7 +95,7 @@ async function ensureJellyfinAuth(
   updateResolvedRemoteAuth(source.id, auth);
   // Token (re)issued — refresh the native Auto cover-art template so it isn't stale.
   const artTemplate = buildCoverArtUrlTemplate(source.id);
-  if (artTemplate) await setRemoteSourceArtAuth(db, source.id, artTemplate);
+  if (artTemplate) await setRemoteArtAuth(source.id, artTemplate);
   return auth;
 }
 
@@ -128,6 +116,7 @@ interface RemoteSourcesStore {
 }
 
 let initPromise: Promise<void> | null = null;
+let recoverySubscriptionInstalled = false;
 
 export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   sources: [],
@@ -138,11 +127,21 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
     if (get().initialized) return Promise.resolve();
     if (!initPromise) {
       initPromise = (async () => {
-        const db = await openLibraryDb();
-        const sources = await getRemoteSources(db);
+        const sources = await AstraLibraryData.listRemoteSources<RemoteSourceRow>();
         // Populate the URL registry from cached config/token (no network on launch).
         await Promise.all(sources.filter((s) => s.enabled).map((s) => hydrateRegistry(s)));
         set({ sources, initialized: true });
+        if (!recoverySubscriptionInstalled) {
+          recoverySubscriptionInstalled = true;
+          AstraLibraryData.addListener('onLibraryStatus', (status) => {
+            if (status.status === 'rebuilding') {
+              void get().syncAll();
+            }
+          });
+        }
+        if (AstraLibraryData.getCurrentStatus().status === 'rebuilding') {
+          void get().syncAll();
+        }
         // The library's initial refresh may have run before the registry was hydrated,
         // leaving remote artwork URLs unresolved — refresh once more now that it's ready.
         if (sources.length > 0) {
@@ -157,8 +156,7 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   },
 
   refresh: async () => {
-    const db = await openLibraryDb();
-    set({ sources: await getRemoteSources(db) });
+    set({ sources: await AstraLibraryData.listRemoteSources<RemoteSourceRow>() });
   },
 
   testSource: async (input) => {
@@ -180,7 +178,6 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   },
 
   createSource: async (input) => {
-    const db = await openLibraryDb();
     const config: RemoteConnectionConfig = {
       baseUrl: input.baseUrl,
       username: input.username,
@@ -195,17 +192,17 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
       auth = await authenticateJellyfin(config);
     }
 
-    const row = await insertRemoteSource(db, {
-      type: input.type,
-      name: input.name,
-      baseUrl: input.baseUrl,
-      username: input.username,
-      enabled: input.enabled,
-    });
+    const row = await AstraLibraryData.createRemoteSource<RemoteSourceRow>(
+      input.type,
+      input.name,
+      input.baseUrl,
+      input.username,
+      input.enabled
+    );
     await setRemoteSecret(row.id, input.password);
 
     if (auth) {
-      await setRemoteSourceAuth(db, row.id, {
+      await setRemoteSecureAuth(row.id, {
         accessToken: auth.accessToken,
         userId: auth.userId,
         deviceId: buildJellyfinDeviceId(config),
@@ -230,11 +227,10 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   },
 
   updateSource: async (id, input) => {
-    const db = await openLibraryDb();
-    const existing = await getRemoteSource(db, id);
+    const existing = await AstraLibraryData.getRemoteSource<RemoteSourceRow>(id);
     if (!existing) return;
 
-    await updateRemoteSource(db, id, {
+    await AstraLibraryData.updateRemoteSource(id, {
       name: input.name,
       base_url: input.baseUrl,
       username: input.username,
@@ -244,33 +240,26 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
       await setRemoteSecret(id, input.password);
     }
 
-    const updated = await getRemoteSource(db, id);
+    const updated = await AstraLibraryData.getRemoteSource<RemoteSourceRow>(id);
     if (updated) {
       // Connection details may have changed → drop cached token + cover-art template,
       // re-hydrate registry (which regenerates the template from the new credentials).
       if (input.baseUrl || input.username || input.password) {
-        await setRemoteSourceAuth(db, id, { accessToken: null, userId: null, deviceId: null });
-        await setRemoteSourceArtAuth(db, id, null);
+        await setRemoteSecureAuth(id, {
+          accessToken: null,
+          userId: null,
+          deviceId: null,
+        });
+        await setRemoteArtAuth(id, null);
       }
-      const fresh = (await getRemoteSource(db, id)) ?? updated;
+      const fresh = (await AstraLibraryData.getRemoteSource<RemoteSourceRow>(id)) ?? updated;
       await hydrateRegistry(fresh);
     }
     await get().refresh();
   },
 
   deleteSource: async (id, purgeTracks) => {
-    const db = await openLibraryDb();
-    const source = await getRemoteSource(db, id);
-    if (purgeTracks && source) {
-      await deleteRemoteTracksBySource(db, source.type, id);
-      // Drop this source's synced playlists + favorites (favorites key on the
-      // `${type}://${id}/` path prefix).
-      await deleteRemotePlaylistsBySource(db, id);
-      await deleteFavoritesByPathPrefix(db, `${source.type}://${id}/`);
-      // Removals can regroup albums (compilation heuristic is cross-track).
-      await recomputeAlbumIdentity(db);
-    }
-    await deleteRemoteSource(db, id);
+    await AstraLibraryData.deleteRemoteSource(id, purgeTracks);
     await deleteRemoteSecret(id);
     clearResolvedRemoteConfig(id);
     await get().refresh();
@@ -280,14 +269,13 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
   },
 
   syncSource: async (id) => {
-    const db = await openLibraryDb();
-    const source = await getRemoteSource(db, id);
+    const source = await AstraLibraryData.getRemoteSource<RemoteSourceRow>(id);
     if (!source) return;
     if (get().progressById[id]) return; // already syncing
 
     const config = await hydrateRegistry(source);
     if (!config) {
-      await setRemoteSourceStatus(db, id, 'error', 'Missing stored password.');
+      await AstraLibraryData.setRemoteSourceStatus(id, 'error', 'Missing stored password.');
       await get().refresh();
       return;
     }
@@ -304,11 +292,11 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
       if (source.type === 'jellyfin') {
         authContext = await ensureJellyfinAuth(source, config);
       }
-      await syncRemoteSource(db, source, config, { onProgress, authContext });
-      await setRemoteSourceSynced(db, id);
+      await syncRemoteSource(source, config, { onProgress, authContext });
+      await AstraLibraryData.setRemoteSourceStatus(id, 'ok', null);
       await useLibraryStore.getState().refresh();
     } catch (error) {
-      await setRemoteSourceStatus(db, id, 'error', errorMessage(error));
+      await AstraLibraryData.setRemoteSourceStatus(id, 'error', errorMessage(error));
     } finally {
       set((state) => ({ progressById: { ...state.progressById, [id]: null } }));
       await get().refresh();

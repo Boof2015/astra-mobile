@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent
@@ -12,14 +11,20 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated';
 import {
+  MAX_FONT_SCALE,
   fonts,
+  fontSize,
   radius,
+  variantLineHeight,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
+import { useSelectionSlide } from './selectionSlide.ts';
 
+/** The pill's breathing room inside the track. Now the track's own padding, so
+ * the pill can be positioned in the same box its segments are measured in. */
 const THUMB_INSET = 3;
 
 export interface Segment {
@@ -34,48 +39,43 @@ interface SegmentedControlProps {
 }
 
 /**
- * Equal-width segmented control on the TabBar "playhead" pattern: one glass
- * track, a thumb that glides to the active segment, labels cross-fading to the
- * accent via interpolateColor on Animated.Text. Spring-free per theme/motion.
+ * Segmented control whose selection pill slides to the chosen segment.
+ *
+ * The pill follows the segment's *measured* box rather than its index — see
+ * `selectionSlideMath` for why that distinction is the whole point. A `value`
+ * matching no segment leaves the pill hidden instead of parked on the first one,
+ * so it can never claim a selection the caller doesn't have. Labels still
+ * cross-fade via Animated.Text.
  */
 export function SegmentedControl({ segments, value, onChange }: SegmentedControlProps) {
   const styles = useStyles();
-  const count = segments.length;
-  const activeIndex = Math.max(
-    0,
-    segments.findIndex((segment) => segment.key === value),
+  const slide = useSelectionSlide(
+    segments.some((segment) => segment.key === value) ? value : null,
+    'horizontal'
   );
-
-  const trackWidth = useSharedValue(0);
-  const position = useSharedValue(activeIndex);
-
-  useEffect(() => {
-    position.value = withTiming(activeIndex, motion.snap);
-  }, [activeIndex, position]);
-
-  const thumbStyle = useAnimatedStyle(() => {
-    const segment = count > 0 ? (trackWidth.value - THUMB_INSET * 2) / count : 0;
-    return {
-      width: segment,
-      transform: [{ translateX: position.value * segment }],
-    };
-  });
-
-  const onTrackLayout = (e: LayoutChangeEvent) => {
-    trackWidth.value = e.nativeEvent.layout.width;
-  };
+  const { offset, extent, presence } = slide;
+  const thumbStyle = useAnimatedStyle(() => ({
+    opacity: presence.value,
+    width: extent.value,
+    transform: [{ translateX: offset.value }],
+  }));
 
   return (
-    <View style={styles.track} onLayout={onTrackLayout}>
-      <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
-      {segments.map((segment) => (
-        <SegmentButton
-          key={segment.key}
-          label={segment.label}
-          focused={segment.key === value}
-          onPress={() => onChange(segment.key)}
-        />
-      ))}
+    <View style={styles.track}>
+      {/* The track carries the pill's inset as padding, so this row is the box
+          both the pill and the segments are measured in. */}
+      <View style={styles.row}>
+        <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
+        {segments.map((segment) => (
+          <SegmentButton
+            key={segment.key}
+            label={segment.label}
+            focused={segment.key === value}
+            onLayout={slide.measure(segment.key)}
+            onPress={() => onChange(segment.key)}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -84,14 +84,15 @@ function SegmentButton({
   label,
   focused,
   onPress,
+  onLayout,
 }: {
   label: string;
   focused: boolean;
   onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   // 0 = inactive, 1 = active; drives the label colour cross-fade.
   const progress = useSharedValue(focused ? 1 : 0);
 
@@ -114,17 +115,25 @@ function SegmentButton({
   };
 
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       style={styles.segment}
       onPress={handlePress}
+      onLayout={onLayout}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
     >
-      <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+      <Animated.Text
+        style={[styles.label, labelStyle]}
+        numberOfLines={1}
+        // Without these the control's height is the font's business, and it
+        // grows without bound on a large system font setting. Library reserves a
+        // declared slot for this control, so its height has to be knowable.
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+      >
         {label}
       </Animated.Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -137,11 +146,20 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.pill,
     padding: THUMB_INSET,
   },
+  // `flex` because the segments inside share it out from a zero basis: without
+  // it this row sizes to their content, which is nothing, and the control
+  // collapses.
+  row: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  // Width and offset come from the focused segment's measurement; the vertical
+  // inset is the track's padding around this row.
   thumb: {
     position: 'absolute',
-    top: THUMB_INSET,
-    bottom: THUMB_INSET,
-    left: THUMB_INSET,
+    top: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: colors.glassHighlight,
     borderColor: colors.accent,
     borderWidth: StyleSheet.hairlineWidth,
@@ -154,7 +172,10 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: 7,
   },
   label: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
+    // Explicit, for the reason theme/typography.ts gives: without it the line box
+    // comes from the font's own metrics and differs by OEM.
+    lineHeight: variantLineHeight.label,
     fontFamily: fonts.sans.medium,
   },
 }));

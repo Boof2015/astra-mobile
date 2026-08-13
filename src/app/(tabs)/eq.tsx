@@ -1,8 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
-  Alert,
   InteractionManager,
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions
@@ -20,9 +18,12 @@ import {
 } from 'expo-file-system/legacy';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { EQGraph } from '@/components/eq/EQGraph';
 import { BandStrip } from '@/components/eq/BandStrip';
 import { BandDetailPanel, type EQEditableValue } from '@/components/eq/BandDetailPanel';
+import { BandConsole } from '@/components/eq/BandConsole';
+import { getEQLayout } from '@/components/eq/eqLayout';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { EqSheet, EqSheetItem } from '@/components/eq/EqSheet';
 import { EQModeSwitcher } from '@/components/eq/EQModeSwitcher';
@@ -41,11 +42,10 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { hapticForToggle } from '@/lib/hapticCatalog';
 import { playHaptic } from '@/lib/haptics';
 import { useAppForeground } from '@/lib/useAppForeground';
-import { isWideWindow } from '@/theme/adaptive';
 import { useEQStore } from '@/stores/eqStore';
 import { useScopeActive } from '@/scope/scopeStore';
 import { setActivePostEqNative } from '@/audio/eqNative';
@@ -58,8 +58,7 @@ import {
   EQ_MIN_FREQUENCY,
   EQ_MIN_PREAMP_DB,
   EQ_MIN_Q,
-  isPassEQBandType,
-  isShelfEQBandType
+  isPassEQBandType
 } from '@/audio/eq';
 import { parseAutoEQ } from '@/audio/autoEQParser';
 import { buildGraphicBands } from '@/audio/graphicEq';
@@ -73,6 +72,7 @@ import {
 } from '@/audio/eqShare';
 import { BAND_TYPE_LABEL, formatGain } from '@/components/eq/format';
 import type { EQBand, EQBandType, EQPreset } from '@/types/audio';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 type SheetKind =
   | 'none'
@@ -85,13 +85,18 @@ type SheetKind =
   | 'qr'
   | 'preview';
 type CurrentPresetAction = 'export' | 'share' | 'qr';
+/**
+ * What the exact-value sheet is editing. The band parameters belong to whichever
+ * band is active; the preamp belongs to the screen, so it is its own case rather
+ * than a fourth `EQEditableValue`.
+ */
+type EQEditTarget = EQEditableValue | 'preamp';
 type EQState = ReturnType<typeof useEQStore.getState>;
 
 const BAND_TYPES: EQBandType[] = ['lowshelf', 'peaking', 'highshelf', 'highpass', 'lowpass'];
 
 export default function EQScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
@@ -105,7 +110,7 @@ export default function EQScreen() {
     !foreground
   );
   const [sheet, setSheet] = useState<SheetKind>('none');
-  const [editingValue, setEditingValue] = useState<EQEditableValue | null>(null);
+  const [editingValue, setEditingValue] = useState<EQEditTarget | null>(null);
   const [pendingCurrentAction, setPendingCurrentAction] = useState<CurrentPresetAction | null>(null);
   const [pendingImportPreset, setPendingImportPreset] = useState<EQPreset | null>(null);
   const [qrPreset, setQrPreset] = useState<{ name: string; value: string } | null>(null);
@@ -113,11 +118,14 @@ export default function EQScreen() {
   const closeSheet = useCallback(() => setSheet('none'), []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const sceneBottomInset = useSceneBottomInset();
   const availableWidth = windowWidth - insets.left - insets.right;
-  const availableHeight = windowHeight - insets.top - insets.bottom;
-  const isWide = isWideWindow(availableWidth, availableHeight);
-  // Editing pane keeps a phone-ish width; the graph gets everything else.
-  const sidePaneWidth = Math.min(360, Math.max(280, Math.round(availableWidth * 0.4)));
+  // The floating chrome is the scene's bottom edge as far as this screen is
+  // concerned — it doesn't scroll, so anything below that line is unreachable.
+  const availableHeight = windowHeight - insets.top - insets.bottom - sceneBottomInset;
+  const eqLayout = getEQLayout(availableWidth, availableHeight);
+  const isWide = eqLayout.panes === 'split';
+  const isConsole = eqLayout.editor === 'console';
 
   // Gate the post-EQ tap to while this screen is visible.
   useFocusEffect(
@@ -154,7 +162,12 @@ export default function EQScreen() {
     ? eq.presets.find((preset) => preset.id === actionPresetId) ?? null
     : null;
   const defaultPresetName = `Preset ${eq.presets.filter((p) => p.isCustom).length + 1}`;
-  const valueEditConfig = activeBand && editingValue ? getValueEditConfig(editingValue, activeBand) : null;
+  const valueEditConfig =
+    editingValue === 'preamp'
+      ? getPreampEditConfig(eq.preamp)
+      : activeBand && editingValue
+        ? getValueEditConfig(editingValue, activeBand)
+        : null;
 
   const handleImportAutoEQ = async () => {
     closeSheet();
@@ -171,7 +184,7 @@ export default function EQScreen() {
   };
 
   const showPresetImportError = useCallback((message = 'That file is not an Astra EQ preset.') => {
-    Alert.alert('Could not import preset', message);
+    showAppDialog({ title: 'Could not import preset', message });
   }, []);
 
   const deletePreset = useCallback((preset: EQPreset) => {
@@ -188,14 +201,18 @@ export default function EQScreen() {
       finishDelete();
       return;
     }
-    Alert.alert(
-      `Delete ${preset.name}?`,
-      `This will also clear ${assignmentCount} device assignment${assignmentCount === 1 ? '' : 's'}. The current sound will not change.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: finishDelete },
-      ]
-    );
+    showAppDialog({
+      title: `Delete ${preset.name}?`,
+      message: `This will also clear ${assignmentCount} device assignment${assignmentCount === 1 ? '' : 's'}. The current sound will not change.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Delete',
+          role: 'destructive',
+          onPress: finishDelete,
+        },
+      ],
+    });
   }, []);
 
   const runCurrentPresetAction = useCallback(async (action: CurrentPresetAction, name: string) => {
@@ -211,18 +228,24 @@ export default function EQScreen() {
           EQ_PRESET_MIME_TYPE
         );
         await writeAsStringAsync(fileUri, stringifyEQPresetFileContents(preset));
-        Alert.alert('Preset exported', `Saved ${fileName}.`);
+        showAppDialog({ title: 'Preset exported', message: `Saved ${fileName}.` });
         return;
       }
 
       if (action === 'share') {
         const available = await Sharing.isAvailableAsync();
         if (!available) {
-          Alert.alert('Share unavailable', 'This device cannot open a share sheet right now.');
+          showAppDialog({
+            title: 'Share unavailable',
+            message: 'This device cannot open a share sheet right now.',
+          });
           return;
         }
         if (!cacheDirectory) {
-          Alert.alert('Share unavailable', 'Astra could not create a temporary preset file.');
+          showAppDialog({
+            title: 'Share unavailable',
+            message: 'Astra could not create a temporary preset file.',
+          });
           return;
         }
         const fileUri = `${cacheDirectory}${buildEQPresetFileName(preset.name)}`;
@@ -238,7 +261,10 @@ export default function EQScreen() {
       setQrPreset({ name: preset.name, value: encodeEQPresetQr(preset) });
       setSheet('qr');
     } catch {
-      Alert.alert('Preset sharing failed', 'Astra could not finish that preset sharing action.');
+      showAppDialog({
+        title: 'Preset sharing failed',
+        message: 'Astra could not finish that preset sharing action.',
+      });
     }
   }, []);
 
@@ -280,7 +306,7 @@ export default function EQScreen() {
   };
 
   const presetRowEl = (
-    <Pressable android_ripple={ripple.bounded}
+    <AppPressable
       style={[styles.presetRow, isWide && styles.sideItem]}
       onPress={() => setSheet('preset')}
     >
@@ -288,7 +314,7 @@ export default function EQScreen() {
         {presetName}
       </Text>
       <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-    </Pressable>
+    </AppPressable>
   );
 
   const modeSwitcherEl = (
@@ -316,7 +342,12 @@ export default function EQScreen() {
   // in the tracks' own coordinate space, so it stays glued to the thumbs.
   const graphicEditorEl = renderEqGraphics ? (
     <View style={styles.graphicEditor}>
-      <GraphicEQPanel gains={eq.graphicGains} enabled={eq.enabled} onChangeGain={eq.setGraphicGain} />
+      <GraphicEQPanel
+        gains={eq.graphicGains}
+        enabled={eq.enabled}
+        spectrumActive={scopeActive && focused}
+        onChangeGain={eq.setGraphicGain}
+      />
     </View>
   ) : null;
 
@@ -337,6 +368,37 @@ export default function EQScreen() {
     />
   );
 
+  // Wide-window editor: every band's parameters at once, so there is nothing to
+  // select before editing. Sheets are shared with the detail panel, and they read
+  // the *active* band — so a strip selects itself before opening one.
+  const consoleEl = (
+    <BandConsole
+      bands={eq.bands}
+      activeBandId={eq.activeBandId}
+      canAdd={eq.bands.length < EQ_MAX_BANDS}
+      stripWidth={eqLayout.stripWidth}
+      railHeight={eqLayout.railHeight}
+      onSelect={(id) => {
+        if (id === eq.activeBandId) return;
+        playHaptic('selection');
+        eq.selectBand(id);
+      }}
+      onAdd={() => {
+        playHaptic('action');
+        eq.addBand();
+      }}
+      onUpdate={(id, updates) => eq.updateBand(id, updates)}
+      onEditType={(id) => {
+        eq.selectBand(id);
+        setSheet('type');
+      }}
+      onEditValue={(id, value) => {
+        eq.selectBand(id);
+        setEditingValue(value);
+      }}
+    />
+  );
+
   const detailEl = (
     <BandDetailPanel
       band={activeBand}
@@ -348,7 +410,18 @@ export default function EQScreen() {
   );
 
   const bottomBarEl = (
-    <View style={[styles.bottomBar, !isWide && styles.bottomBarNarrow, isWide && styles.bottomBarWide]}>
+    <View
+      style={[
+        styles.bottomBar,
+        !isWide && styles.bottomBarNarrow,
+        isWide && styles.bottomBarWide,
+        // This screen doesn't scroll — the preamp row is pinned to the bottom of
+        // the scene, so it can't reserve the floating pill's space in a content
+        // inset the way every list does. `sceneBottomInset` is 0 in the shapes
+        // that seat the mini player in their own chrome.
+        sceneBottomInset > 0 ? { paddingBottom: spacing.sm + sceneBottomInset } : null,
+      ]}
+    >
       <View style={styles.preamp}>
         <EQSlider
           label="Preamp"
@@ -357,9 +430,10 @@ export default function EQScreen() {
           max={EQ_MAX_PREAMP_DB}
           format={(v) => `${formatGain(v)} dB`}
           onChange={eq.setPreamp}
+          onValuePress={() => setEditingValue('preamp')}
         />
       </View>
-      <Pressable android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
         style={[styles.eqToggle, eq.enabled && styles.eqToggleOn]}
         onPress={() => {
           playHaptic(hapticForToggle(!eq.enabled));
@@ -374,18 +448,13 @@ export default function EQScreen() {
         <Text variant="label" color={eq.enabled ? colors.accentTextStrong : colors.textSecondary}>
           {eq.enabled ? 'EQ on' : 'EQ off'}
         </Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 
   return (
     <Screen padded={false}>
-      <View
-        style={[
-          styles.header,
-          { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
-        ]}
-      >
+      <View style={styles.header}>
         <View style={styles.headerTitle}>
           <Text variant="heading">Equalizer</Text>
           <Text
@@ -398,12 +467,12 @@ export default function EQScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
+          <AppPressable feedback="control"  style={styles.iconButton} onPress={() => setSheet('save')} hitSlop={8}>
             <Ionicons name="save-outline" size={20} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable android_ripple={ripple.bounded} style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
+          </AppPressable>
+          <AppPressable feedback="control"  style={styles.iconButton} onPress={() => setSheet('overflow')} hitSlop={8}>
             <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-          </Pressable>
+          </AppPressable>
         </View>
       </View>
 
@@ -411,11 +480,15 @@ export default function EQScreen() {
         <View
           style={[
             styles.wideBody,
-            { paddingLeft: spacing.lg + insets.left, paddingRight: spacing.lg + insets.right },
+            // The graph pane is `flex: 1` inside this row, so it grows into the
+            // floating chrome unless the row itself gives that space back — and
+            // `EQGraph` draws its frequency axis at its own bottom edge, which
+            // is what ends up underneath the bar.
+            sceneBottomInset > 0 ? { paddingBottom: sceneBottomInset } : null,
           ]}
         >
           <View style={styles.wideGraphPane}>{isGraphic ? graphicEditorEl : graphEl}</View>
-          <View style={{ width: sidePaneWidth }}>
+          <View style={{ width: eqLayout.sidePaneWidth }}>
             {modeSwitcherEl}
             {presetRowEl}
             {isGraphic ? null : (
@@ -437,8 +510,16 @@ export default function EQScreen() {
           ) : (
             <>
               <View style={styles.graphWrap}>{graphEl}</View>
-              <View style={styles.section}>{stripEl}</View>
-              <View style={styles.section}>{detailEl}</View>
+              {isConsole ? (
+                <View style={[styles.section, { height: eqLayout.consoleHeight }]}>
+                  {consoleEl}
+                </View>
+              ) : (
+                <>
+                  <View style={styles.section}>{stripEl}</View>
+                  <View style={styles.section}>{detailEl}</View>
+                </>
+              )}
             </>
           )}
           {bottomBarEl}
@@ -587,7 +668,7 @@ export default function EQScreen() {
         </EqSheet>
       ) : null}
 
-      {valueEditConfig && activeBand && editingValue ? (
+      {valueEditConfig && editingValue ? (
         <EQValueEditSheet
           title={valueEditConfig.title}
           initialValue={valueEditConfig.initialValue}
@@ -596,12 +677,30 @@ export default function EQScreen() {
           placeholder={valueEditConfig.placeholder}
           keyboardType={valueEditConfig.keyboardType}
           parseValue={valueEditConfig.parseValue}
-          onApply={(value) => eq.updateBand(activeBand.id, createValueUpdate(editingValue, value))}
+          onApply={(value) => {
+            if (editingValue === 'preamp') {
+              eq.setPreamp(value);
+              return;
+            }
+            if (activeBand) eq.updateBand(activeBand.id, createValueUpdate(editingValue, value));
+          }}
           onClose={() => setEditingValue(null)}
         />
       ) : null}
     </Screen>
   );
+}
+
+function getPreampEditConfig(preamp: number) {
+  return {
+    title: 'Edit preamp',
+    initialValue: preamp.toFixed(1),
+    unit: 'dB',
+    rangeLabel: `${EQ_MIN_PREAMP_DB} to +${EQ_MAX_PREAMP_DB} dB`,
+    placeholder: '0.0',
+    keyboardType: 'numbers-and-punctuation' as const,
+    parseValue: parseDb,
+  };
 }
 
 function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
@@ -628,7 +727,6 @@ function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
         parseValue: parseDb,
       };
     case 'Q':
-      if (isShelfEQBandType(band.type)) return null;
       return {
         title: 'Edit Q',
         initialValue: band.Q.toFixed(2),
@@ -719,6 +817,8 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // Safe-area insets are `Screen`'s job; this is only the content gutter.
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     gap: spacing.md,
@@ -782,6 +882,8 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     flexDirection: 'row',
     gap: spacing.lg,
+    // Safe-area insets are `Screen`'s job; this is only the content gutter.
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
   wideGraphPane: {

@@ -5,6 +5,11 @@ import { AstraLibraryScanner } from '../../modules/astra-library-scanner';
 import { artworkUrlForTrack } from '@/services/remoteUrls';
 import type { Track } from '@/types/audio';
 import type { Album, DbTrack } from '@/types/library';
+import type {
+  RankedListeningAlbum,
+  RankedListeningArtist,
+  RankedListeningTrack,
+} from '@/types/listeningStats';
 
 let artworkDir: string | null = null;
 let artworkThumbDir: string | null = null;
@@ -123,6 +128,27 @@ export function albumArtworkSource(album: AlbumArtworkFields): string | null {
     });
   }
   return album.artwork_hash ? artworkUri(album.artwork_hash) : null;
+}
+
+type ListeningArtworkFields = Pick<
+  RankedListeningTrack | RankedListeningArtist | RankedListeningAlbum,
+  'sourceType' | 'sourceId' | 'artworkSourceId' | 'artworkHash'
+>;
+
+/** Artwork retained with a stats ranking, including remote-library covers. */
+export function listeningArtworkSource(
+  item: ListeningArtworkFields,
+  thumbnail = false,
+): string | null {
+  if (item.sourceType !== 'local') {
+    return artworkUrlForTrack({
+      sourceType: item.sourceType,
+      sourceId: item.sourceId ?? undefined,
+      artworkSourceId: item.artworkSourceId ?? undefined,
+    }, thumbnail ? { size: 256 } : undefined);
+  }
+  if (!item.artworkHash) return null;
+  return thumbnail ? artworkThumbUri(item.artworkHash) : artworkUri(item.artworkHash);
 }
 
 export async function ensureArtworkThumbnails(

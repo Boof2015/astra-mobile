@@ -19,8 +19,17 @@ export const radius = {
 } as const;
 
 export const layout = {
-  /** Persistent mini-player bar height (desktop now-playing bar is 112px; trimmed for phone). */
-  miniPlayerHeight: 64,
+  /** Persistent mini-player pill height (desktop now-playing bar is 112px; trimmed for phone). */
+  miniPlayerHeight: 60,
+  /**
+   * Vertical space the floating mini-player covers: its height plus the margins
+   * above and below it.
+   *
+   * The pill is positioned out of the tab bar's layout flow so content scrolls
+   * *behind* it rather than stopping above it — which means scrollable content
+   * has to reserve this much at its bottom, or the last row can never be read.
+   */
+  miniPlayerFloat: 60 + 8 * 2,
   /** Bottom tab bar content height (excludes safe-area inset, which is added on top). */
   tabBarHeight: 56,
 } as const;

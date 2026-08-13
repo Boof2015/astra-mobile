@@ -17,7 +17,7 @@ import {
   groupTracksByAlbumIdentity,
   normalizeDisplay,
 } from '../shared/library/albumGrouping.ts';
-import type { LibraryDatabase, SqlParams } from '../db/database';
+import { formatArtistNames, normalizeArtistNames } from '../shared/library/artistCredits.ts';
 
 export interface ProvisionalAlbumIdentity {
   key: string;
@@ -33,11 +33,23 @@ export interface ProvisionalAlbumIdentity {
 export function buildProvisionalAlbumIdentity(
   albumArtist: string | null,
   artist: string,
-  album: string
+  album: string,
+  artistNames?: readonly string[] | null,
+  albumArtistNames?: readonly string[] | null
 ): ProvisionalAlbumIdentity {
-  const key = buildAlbumIdentityKeyFromTrack({ album, artist, album_artist: albumArtist });
-  const normalizedAlbumArtist = normalizeDisplay(albumArtist ?? '');
-  const displayArtist = normalizedAlbumArtist || getPrimaryArtistFromTrackArtist(artist);
+  const key = buildAlbumIdentityKeyFromTrack({
+    album,
+    artist,
+    artist_names: artistNames,
+    album_artist: albumArtist,
+    album_artist_names: albumArtistNames,
+  });
+  const normalizedAlbumArtist =
+    normalizeDisplay(albumArtist ?? '') || formatArtistNames(albumArtistNames);
+  const displayArtist =
+    normalizedAlbumArtist ||
+    normalizeArtistNames(artistNames)[0] ||
+    getPrimaryArtistFromTrackArtist(artist);
   return { key, displayArtist };
 }
 
@@ -46,7 +58,9 @@ export interface AlbumIdentityRow {
   id: number;
   album: string;
   artist: string;
+  artist_names: string[];
   album_artist: string | null;
+  album_artist_names: string[];
   artwork_hash: string | null;
   source_type: string;
   artwork_source_id: string | null;
@@ -73,7 +87,9 @@ export function computeAlbumIdentityUpdates(
     row,
     album: row.album,
     artist: row.artist,
+    artist_names: row.artist_names,
     album_artist: row.album_artist,
+    album_artist_names: row.album_artist_names,
     base_artwork_hash:
       row.artwork_hash ?? (row.source_type !== 'local' ? row.artwork_source_id : null),
   }));
@@ -96,39 +112,6 @@ export function computeAlbumIdentityUpdates(
     }
   }
   return updates;
-}
-
-/**
- * Whole-library recompute: settle every track's album_identity_key and
- * album_display_artist. Runs after scans, folder/source removals, remote
- * syncs, and once at startup when the grouping algorithm version changes.
- * Returns the number of updated rows.
- */
-export async function recomputeAlbumIdentity(db: LibraryDatabase): Promise<number> {
-  const rows = await db.all<AlbumIdentityRow>(
-    `SELECT id, album, artist, album_artist, artwork_hash, source_type,
-            artwork_source_id, album_identity_key, album_display_artist
-     FROM tracks`
-  );
-  const updates = computeAlbumIdentityUpdates(rows);
-  if (updates.length === 0) return 0;
-
-  let changed = 0;
-  await db.transaction(async (tx) => {
-    for (const update of updates) {
-      for (let i = 0; i < update.ids.length; i += 500) {
-        const chunk = update.ids.slice(i, i + 500);
-        const placeholders = chunk.map(() => '?').join(', ');
-        await tx.run(
-          `UPDATE tracks SET album_identity_key = ?, album_display_artist = ?
-           WHERE id IN (${placeholders})`,
-          [update.identityKey, update.displayArtist, ...chunk] as SqlParams
-        );
-        changed += chunk.length;
-      }
-    }
-  });
-  return changed;
 }
 
 /**

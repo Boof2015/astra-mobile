@@ -2,7 +2,6 @@ import {
   filterTracksByArtist,
   normalizeKey,
   resolveCanonicalBrowseArtist,
-  splitAlbumArtistCollaborators,
   type ArtistGroupingMode,
 } from '@/library/artistGrouping';
 import type { DbTrack } from '@/types/library';
@@ -60,14 +59,16 @@ export function buildArtistDetail(
   };
 }
 
+/**
+ * "Main" means the album is theirs, so the test is the canonical primary artist
+ * and nothing else — the same rule the native read model uses to mark an index
+ * row 'song' rather than 'appearance'. Matching on the raw track artist as well
+ * made a Various Artists compilation count as a main album for every featured
+ * performer on it.
+ */
 function isMainArtistTrack(track: DbTrack, artistKey: string): boolean {
   if (!artistKey) return false;
-  if (normalizeKey(resolveCanonicalBrowseArtist(track)) === artistKey) return true;
-  if (normalizeKey(track.artist) === artistKey) return true;
-  if (normalizeKey(track.album_artist ?? '') === artistKey) return true;
-  return splitAlbumArtistCollaborators(track.album_artist ?? '').some(
-    (name) => normalizeKey(name) === artistKey
-  );
+  return normalizeKey(resolveCanonicalBrowseArtist(track)) === artistKey;
 }
 
 function buildArtistAlbums(tracks: readonly DbTrack[]): ArtistAlbum[] {

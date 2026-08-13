@@ -1,7 +1,6 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -12,9 +11,8 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeOutUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+  LinearTransition,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,21 +21,43 @@ import { Text } from '@/components/Text';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
 import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
+import { StepHeader } from '@/components/onboarding/StepHeader';
+import { NotificationStep } from '@/components/onboarding/NotificationStep';
+import { ArtistImageStep } from '@/components/onboarding/ArtistImageStep';
 import { formatFolderCount, formatTrackCount } from '@/components/settings/SettingsPanels';
 import { radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 import type { BaseThemeId } from '@/theme/resolve';
+import { useScanNotificationPermission } from '@/library/useScanNotificationPermission';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore, type NowPlayingScopeStyle } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
-type StepId = 'welcome' | 'library' | 'theme' | 'player' | 'done';
+type StepId =
+  | 'welcome'
+  | 'library'
+  | 'notifications'
+  | 'artistImages'
+  | 'theme'
+  | 'player'
+  | 'done';
 
-const STEP_ORDER: StepId[] = ['welcome', 'library', 'theme', 'player', 'done'];
+// Folders first so the notification ask lands with a visible reason ("your scan
+// is running"), then the Deezer consent. Each is its own page: they are three
+// unrelated decisions and stacking them made the library step's real action —
+// picking a folder — the third thing on screen.
+const STEP_ORDER: StepId[] = [
+  'welcome',
+  'library',
+  'notifications',
+  'artistImages',
+  'theme',
+  'player',
+  'done',
+];
 
 const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
   { id: 'system', title: 'System' },
@@ -48,6 +68,10 @@ const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
   { id: 'materialYou', title: 'Material You' },
 ];
 
+const DOT_TRANSITION = LinearTransition.duration(motion.snap.duration).reduceMotion(
+  ReduceMotion.System
+);
+
 /**
  * First-run wizard. Rendered by the root layout instead of the app tree while
  * `onboarding_complete` is unset. Purely presentational — it drives the existing
@@ -55,7 +79,6 @@ const WIZARD_THEME_OPTIONS: { id: BaseThemeId; title: string }[] = [
  */
 export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -63,6 +86,9 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   const step = STEP_ORDER[stepIndex];
   const foldersCount = useLibraryStore((s) => s.folders.length);
   const isScanning = useLibraryStore((s) => s.isScanning);
+  // Owned here so the footer label can distinguish "Continue" from "Skip for
+  // now" using the same state the notification step renders.
+  const notificationPermission = useScanNotificationPermission();
   // Deliberately unset until tapped: preselecting a card would bias the
   // pre-release style feedback. Skipping through keeps the store default.
   const [scopeStyleChoice, setScopeStyleChoice] = useState<NowPlayingScopeStyle | null>(null);
@@ -77,7 +103,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
   };
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
-  const canGoBack = step === 'library' || step === 'theme' || step === 'player';
+  const canGoBack = stepIndex > 0 && step !== 'done';
   const primaryLabel =
     step === 'welcome'
       ? 'Get started'
@@ -88,9 +114,14 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           foldersCount > 0 || isScanning
           ? 'Continue'
           : 'Skip for now'
-        : step === 'theme' || step === 'player'
-          ? 'Continue'
-          : 'Start listening';
+        : step === 'notifications'
+          ? // The grant is optional, so moving on without it really is skipping.
+            notificationPermission.granted
+            ? 'Continue'
+            : 'Skip for now'
+          : step === 'artistImages' || step === 'theme' || step === 'player'
+            ? 'Continue'
+            : 'Start listening';
 
   return (
     <View style={styles.root}>
@@ -123,6 +154,10 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           <Animated.View key={step} entering={FadeIn.duration(220)} style={styles.stepWrap}>
             {step === 'welcome' ? <WelcomeStep /> : null}
             {step === 'library' ? <LibraryStep /> : null}
+            {step === 'notifications' ? (
+              <NotificationStep permission={notificationPermission} />
+            ) : null}
+            {step === 'artistImages' ? <ArtistImageStep /> : null}
             {step === 'theme' ? <ThemeStep /> : null}
             {step === 'player' ? (
               <PlayerStep choice={scopeStyleChoice} onChoose={chooseScopeStyle} />
@@ -139,7 +174,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           </View>
           <View style={styles.navRow}>
             {canGoBack ? (
-              <Pressable android_ripple={ripple.bounded}
+              <AppPressable feedback="control"
                 onPress={goBack}
                 style={styles.secondaryButton}
                 accessibilityRole="button"
@@ -148,9 +183,9 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
                 <Text variant="label" color={colors.textSecondary}>
                   Back
                 </Text>
-              </Pressable>
+              </AppPressable>
             ) : null}
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable feedback="accent"
               onPress={goNext}
               style={styles.primaryButton}
               accessibilityRole="button"
@@ -159,7 +194,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
               <Text variant="label" color={colors.bgPrimary} style={styles.primaryButtonText}>
                 {primaryLabel}
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       </View>
@@ -189,7 +224,6 @@ function WelcomeStep() {
 
 function LibraryStep() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const folders = useLibraryStore((s) => s.folders);
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
@@ -203,7 +237,8 @@ function LibraryStep() {
         title="Add your music"
         subtitle="Point Astra at the folders where your music lives. It scans them into your library — files on disk are never modified."
       />
-      <Pressable android_ripple={ripple.bounded}
+
+      <AppPressable
         style={[styles.choiceButton, isScanning && styles.disabled]}
         disabled={isScanning}
         onPress={() => void addFolder()}
@@ -213,7 +248,7 @@ function LibraryStep() {
         <Text variant="body" color={colors.textPrimary}>
           {folders.length > 0 ? 'Add another folder' : 'Choose music folder'}
         </Text>
-      </Pressable>
+      </AppPressable>
 
       <ScanProgress />
 
@@ -240,14 +275,11 @@ function LibraryStep() {
 
 function ThemeStep() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const baseTheme = useThemeStore((s) => s.baseTheme);
   const materialYouAvailable = useThemeStore((s) => s.materialYouAvailable);
   const resolvedId = useThemeStore((s) => s.theme.id);
-  const accentId = useThemeStore((s) => s.accentId);
   const setBaseTheme = useThemeStore((s) => s.setBaseTheme);
-  const setAccent = useThemeStore((s) => s.setAccent);
 
   const options = WIZARD_THEME_OPTIONS.filter(
     (option) => option.id !== 'materialYou' || materialYouAvailable
@@ -265,7 +297,7 @@ function ThemeStep() {
         {options.map((option) => {
           const selected = option.id === baseTheme;
           return (
-            <Pressable android_ripple={ripple.bounded}
+            <AppPressable
               key={option.id}
               onPress={() => {
                 if (selected) return;
@@ -282,13 +314,13 @@ function ThemeStep() {
               >
                 {option.title}
               </Text>
-            </Pressable>
+            </AppPressable>
           );
         })}
       </View>
       {accentApplies ? (
         <View style={styles.accentBlock}>
-          <AccentSwatchRow value={accentId} onChange={(id) => void setAccent(id)} />
+          <AccentSwatchRow />
         </View>
       ) : null}
     </View>
@@ -338,38 +370,14 @@ function DoneStep() {
   );
 }
 
-function StepHeader({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: IoniconName;
-  title: string;
-  subtitle: string;
-}) {
-  const styles = useStyles();
-  const colors = useColors();
-  return (
-    <View style={styles.stepHeader}>
-      <View style={styles.stepIconWrap}>
-        <Ionicons name={icon} size={26} color={colors.accent} />
-      </View>
-      <Text variant="heading" style={styles.centeredTitle}>
-        {title}
-      </Text>
-      <Text variant="body" color={colors.textSecondary} style={styles.centeredSubtitle}>
-        {subtitle}
-      </Text>
-    </View>
-  );
-}
-
 /** Subtle "still scanning" pill shown at the top of steps after the library step. */
 function ScanBanner() {
   const styles = useStyles();
   const colors = useColors();
   const isScanning = useLibraryStore((s) => s.isScanning);
+  const isCancelling = useLibraryStore((s) => s.isCancelling);
   const progress = useLibraryStore((s) => s.scanProgress);
+  const cancelScan = useLibraryStore((s) => s.cancelScan);
   if (!isScanning) return null;
   const detail =
     (progress.phase === 'extracting' || progress.phase === 'analyzing') && progress.total > 0
@@ -388,8 +396,27 @@ function ScanBanner() {
         numberOfLines={1}
         style={styles.scanBannerText}
       >
-        Scanning your library{detail ? ` · ${detail}` : '…'}
+        {isCancelling
+          ? 'Cancelling library scan…'
+          : `Scanning your library${detail ? ` · ${detail}` : '…'}`}
       </Text>
+      <AppPressable feedback="control"
+
+        disabled={isCancelling}
+        onPress={cancelScan}
+        accessibilityRole="button"
+        accessibilityLabel={isCancelling ? 'Cancelling library scan' : 'Cancel library scan'}
+        accessibilityState={{ disabled: isCancelling, busy: isCancelling }}
+        hitSlop={6}
+        style={styles.scanBannerCancel}
+      >
+        <Text
+          variant="caption"
+          color={isCancelling ? colors.textTertiary : colors.warning}
+        >
+          {isCancelling ? 'Cancelling…' : 'Cancel'}
+        </Text>
+      </AppPressable>
     </Animated.View>
   );
 }
@@ -397,15 +424,12 @@ function ScanBanner() {
 /** Page indicator dot — widens + brightens when active. Animated View, not an icon. */
 function Dot({ active }: { active: boolean }) {
   const styles = useStyles();
-  const progress = useSharedValue(active ? 1 : 0);
-  useEffect(() => {
-    progress.value = withTiming(active ? 1 : 0, motion.snap);
-  }, [active, progress]);
-  const animatedStyle = useAnimatedStyle(() => ({
-    width: 8 + progress.value * 14,
-    opacity: 0.3 + progress.value * 0.7,
-  }));
-  return <Animated.View style={[styles.dot, animatedStyle]} />;
+  return (
+    <Animated.View
+      layout={DOT_TRANSITION}
+      style={[styles.dot, active ? styles.dotActive : styles.dotInactive]}
+    />
+  );
 }
 
 const useStyles = createThemedStyles((colors) => ({
@@ -431,7 +455,12 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
   },
   scanBannerText: {
-    maxWidth: 240,
+    flexShrink: 1,
+  },
+  scanBannerCancel: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   scroll: {
     flex: 1,
@@ -470,22 +499,6 @@ const useStyles = createThemedStyles((colors) => ({
   stepBody: {
     width: '100%',
     gap: spacing.lg,
-  },
-  stepHeader: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  stepIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.glassBg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   choiceButton: {
     flexDirection: 'row',
@@ -554,6 +567,14 @@ const useStyles = createThemedStyles((colors) => ({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.accent,
+  },
+  dotActive: {
+    width: 22,
+    opacity: 1,
+  },
+  dotInactive: {
+    width: 8,
+    opacity: 0.3,
   },
   navRow: {
     flexDirection: 'row',

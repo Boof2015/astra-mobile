@@ -1,6 +1,7 @@
 package com.doublesymmetry.kotlinaudio.scope
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EqCoefficientsTest {
@@ -29,15 +30,34 @@ class EqCoefficientsTest {
   }
 
   @Test
-  fun shelfFiltersIgnoreQ() {
+  fun shelfFiltersUseQ() {
+    val lowWide = coeffs(type = 0, freq = 100f, gainDb = 6f, q = 0.5f)
+    val lowNarrow = coeffs(type = 0, freq = 100f, gainDb = 6f, q = 2f)
+    val highWide = coeffs(type = 2, freq = 8000f, gainDb = -4f, q = 0.5f)
+    val highNarrow = coeffs(type = 2, freq = 8000f, gainDb = -4f, q = 2f)
+
     assertCoefficients(
-      coeffs(type = 0, freq = 100f, gainDb = 6f, q = 0.1f),
-      coeffs(type = 0, freq = 100f, gainDb = 6f, q = 18f)
+      lowWide,
+      doubleArrayOf(
+        1.004523905875,
+        -1.978032948597,
+        0.973748440145,
+        -1.978092655842,
+        0.978212638774
+      )
     )
     assertCoefficients(
-      coeffs(type = 2, freq = 8000f, gainDb = -4f, q = 0.1f),
-      coeffs(type = 2, freq = 8000f, gainDb = -4f, q = 18f)
+      highWide,
+      doubleArrayOf(
+        0.746848511923,
+        -0.319264680328,
+        0.034120017138,
+        -0.641024137473,
+        0.102727986206
+      )
     )
+    assertCoefficientsDiffer(lowWide, lowNarrow)
+    assertCoefficientsDiffer(highWide, highNarrow)
   }
 
   private fun coeffs(type: Int, freq: Float, gainDb: Float, q: Float): FloatArray {
@@ -58,5 +78,13 @@ class EqCoefficientsTest {
     for (i in expected.indices) {
       assertEquals("coefficient $i", expected[i].toDouble(), actual[i].toDouble(), 0.0)
     }
+  }
+
+  private fun assertCoefficientsDiffer(first: FloatArray, second: FloatArray) {
+    assertEquals("coefficient count", first.size, second.size)
+    assertTrue(
+      "expected at least one coefficient to change",
+      first.indices.any { i -> kotlin.math.abs(first[i] - second[i]) > 1e-6f }
+    )
   }
 }

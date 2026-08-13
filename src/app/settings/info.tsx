@@ -1,5 +1,4 @@
 import {
-  Alert,
   Linking,
   View,
 } from 'react-native';
@@ -11,6 +10,7 @@ import {
   SettingsSectionScreen,
 } from '@/components/settings/SettingsSectionScaffold';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { createBuildInfo } from '@/release/buildInfo';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -26,7 +26,10 @@ async function openExternalLink(url: string, label: string) {
   try {
     await Linking.openURL(url);
   } catch {
-    Alert.alert('Unable to open link', `Astra could not open ${label}.`);
+    showAppDialog({
+      title: 'Unable to open link',
+      message: `Astra could not open ${label}.`,
+    });
   }
 }
 

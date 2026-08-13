@@ -1,79 +1,74 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { playTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
-import { buildArtistDetail } from '@/library/artistDetail';
+import { playLibraryQuery } from '@/audio/playbackController';
+import { useNativeArtistDetail } from '@/library/nativePages';
 import type { DbTrack } from '@/types/library';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export default function ArtistAppearancesScreen() {
-  const colors = useColors();
-  const ripple = useRipple();
+  const sceneBottomInset = useSceneBottomInset();
+  const header = useScreenHeader({ hasSubtitle: true });
   const router = useRouter();
   const { name = 'Artist', credit } = useLocalSearchParams<{
     name: string;
     credit?: string;
   }>();
-  const allTracks = useLibraryStore((s) => s.tracks);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
 
-  const detail = useMemo(
-    () => buildArtistDetail(allTracks, name, detailGroupingMode),
-    [allTracks, name, detailGroupingMode]
+  const { items: tracks, totalCount, loadMore } = useNativeArtistDetail(
+    name,
+    detailGroupingMode,
+    'appearances'
   );
-  const tracks = detail.appearanceTracks;
 
   const playFrom = (index: number) => {
     if (tracks.length === 0) return;
-    void playTracks(tracks.map(dbTrackToTrack), {
-      startIndex: index,
+    void playLibraryQuery({
+      kind: 'artist',
+      artistKey: name,
+      groupingMode: detailGroupingMode,
+      section: 'appearances',
+    }, {
+      anchorPath: tracks[index]?.path,
       source: { kind: 'artist', label: name },
     });
   };
 
   return (
-    <Screen>
-      <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-        <Text variant="body" color={colors.textSecondary} numberOfLines={1}>
-          {name}
-        </Text>
-      </Pressable>
-
-      <View style={styles.heading}>
-        <Text variant="title" numberOfLines={1}>
-          Appears On
-        </Text>
-        <Text variant="label">{formatCount(tracks.length, 'track')}</Text>
-      </View>
-
-      <FlashList
+    // The header is an overlay the list scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the list itself.
+    <Screen padded={false} style={styles.screen}>
+      <ReanimatedFlashList
         data={tracks}
         keyExtractor={(track) => String(track.id)}
         showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={2}
         renderItem={({ item, index }) => (
           <TrackRow
             track={item}
             subtitle={`${item.artist} - ${item.album}`}
+            showFormat={false}
             active={item.path === currentPath}
             onPress={() => playFrom(index)}
             onLongPress={() => setActionTrack(item)}
@@ -81,7 +76,19 @@ export default function ArtistAppearancesScreen() {
           />
         )}
         ListEmptyComponent={<EmptyList label="No appearances found for this artist." />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{
+          paddingTop: header.contentPaddingTop,
+          paddingHorizontal: spacing.lg,
+          paddingBottom: sceneBottomInset,
+        }}
+      />
+
+      <ScreenHeader
+        header={header}
+        title="Appears On"
+        subtitle={formatCount(totalCount, 'track')}
+        backLabel={name}
+        onBack={() => router.back()}
       />
 
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
@@ -106,21 +113,9 @@ function formatCount(count: number, noun: string): string {
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  heading: {
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  listContent: {
-    paddingBottom: spacing.xxl,
+  // The header draws behind the status bar; the list pays the inset instead.
+  screen: {
+    paddingTop: 0,
   },
   emptyState: {
     alignItems: 'center',

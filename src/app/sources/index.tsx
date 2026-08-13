@@ -1,22 +1,26 @@
 import { useState } from 'react';
 import {
-  Alert,
-  Pressable,
-  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import {
+  ScreenHeader,
+  ScreenHeaderAction,
+  useScreenHeader,
+} from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
 import {
   radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import type { RemoteSourceRow, RemoteSyncProgress } from '@/types/remote';
 
@@ -40,10 +44,10 @@ function statusLine(
 
 export default function SourcesScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const sources = useRemoteSourcesStore((s) => s.sources);
+  const header = useScreenHeader({ actionCount: sources.length > 0 ? 2 : 1 });
   const progressById = useRemoteSourcesStore((s) => s.progressById);
   const syncSource = useRemoteSourcesStore((s) => s.syncSource);
   const syncAll = useRemoteSourcesStore((s) => s.syncAll);
@@ -52,18 +56,18 @@ export default function SourcesScreen() {
   const [actionFor, setActionFor] = useState<RemoteSourceRow | null>(null);
 
   const confirmRemove = (source: RemoteSourceRow) => {
-    Alert.alert(
-      `Remove ${source.name}?`,
-      'This removes the server and all of its tracks from your library. Favorites and playlist entries are kept but will show as missing.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAppDialog({
+      title: `Remove ${source.name}?`,
+      message: 'This removes the server and all of its tracks from your library. Favorites and playlist entries are kept but will show as missing.',
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
         {
-          text: 'Remove',
-          style: 'destructive',
+          label: 'Remove',
+          role: 'destructive',
           onPress: () => void deleteSource(source.id, true),
         },
-      ]
-    );
+      ],
+    });
   };
 
   const actionItems: ActionSheetItem[] = actionFor
@@ -103,35 +107,15 @@ export default function SourcesScreen() {
     : [];
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-          <Text variant="body" color={colors.textSecondary}>
-            Settings
-          </Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          {sources.length > 0 ? (
-            <Pressable android_ripple={ripple.bounded} onPress={() => void syncAll()} hitSlop={8} accessibilityLabel="Sync all">
-              <Ionicons name="sync" size={20} color={colors.textSecondary} />
-            </Pressable>
-          ) : null}
-          <Pressable android_ripple={ripple.bounded}
-            onPress={() => router.push('/sources/edit')}
-            hitSlop={8}
-            accessibilityLabel="Add server"
-          >
-            <Ionicons name="add" size={26} color={colors.accent} />
-          </Pressable>
-        </View>
-      </View>
-
-      <Text variant="title" style={styles.heading}>
-        Remote sources
-      </Text>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    // The header is an overlay the content scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the ScrollView.
+    <Screen padded={false} style={styles.screen}>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+      >
         {sources.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="server-outline" size={28} color={colors.textTertiary} />
@@ -139,18 +123,18 @@ export default function SourcesScreen() {
               No servers yet. Add a Subsonic or Jellyfin server to stream and browse your
               self-hosted library.
             </Text>
-            <Pressable android_ripple={ripple.bounded} style={styles.addButton} onPress={() => router.push('/sources/edit')}>
+            <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/sources/edit')}>
               <Ionicons name="add" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Add server
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         ) : (
           sources.map((source) => {
             const status = statusLine(source, progressById[source.id] ?? null);
             return (
-              <Pressable android_ripple={ripple.bounded}
+              <AppPressable
                 key={source.id}
                 style={styles.row}
                 onPress={() => setActionFor(source)}
@@ -184,11 +168,33 @@ export default function SourcesScreen() {
                   </Text>
                 </View>
                 <Ionicons name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
-              </Pressable>
+              </AppPressable>
             );
           })
         )}
-      </ScrollView>
+      </Animated.ScrollView>
+
+      <ScreenHeader
+        header={header}
+        title="Remote sources"
+        backLabel="Settings"
+        onBack={() => router.back()}
+        actions={
+          <>
+            {sources.length > 0 ? (
+              <ScreenHeaderAction onPress={() => void syncAll()} accessibilityLabel="Sync all">
+                <Ionicons name="sync" size={20} color={colors.textSecondary} />
+              </ScreenHeaderAction>
+            ) : null}
+            <ScreenHeaderAction
+              onPress={() => router.push('/sources/edit')}
+              accessibilityLabel="Add server"
+            >
+              <Ionicons name="add" size={26} color={colors.accent} />
+            </ScreenHeaderAction>
+          </>
+        }
+      />
 
       <ActionSheet
         visible={actionFor !== null}
@@ -201,27 +207,12 @@ export default function SourcesScreen() {
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  heading: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the ScrollView pays the inset.
+  screen: {
+    paddingTop: 0,
   },
   content: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },

@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -8,7 +8,7 @@ import type { DbTrack } from '@/types/library';
 import type { SignalPayload } from '@boof2015/astra-signal';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 
 export type SignalResultActionState = 'idle' | 'playing' | 'queueing' | 'queued';
 
@@ -37,12 +37,11 @@ export function SignalResolutionPanel({
 }: SignalResolutionPanelProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const actionBusy = actionState === 'playing' || actionState === 'queueing';
 
   const onlineAction = (primary = false) => (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable feedback={primary ? 'accent' : 'control'}
+
       style={[
         styles.onlineButton,
         primary ? styles.onlineButtonPrimary : styles.onlineButtonSecondary,
@@ -60,13 +59,13 @@ export function SignalResolutionPanel({
       <Text variant="body" color={primary ? colors.accentTextStrong : colors.textPrimary}>
         Find online
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 
   const footer = (
     <View style={styles.footerActions}>
-      <Pressable
-        android_ripple={ripple.bounded}
+      <AppPressable feedback="control"
+
         style={styles.footerButton}
         onPress={onScanAnother}
         disabled={actionBusy}
@@ -74,16 +73,16 @@ export function SignalResolutionPanel({
       >
         <Ionicons name="scan-outline" size={17} color={colors.textSecondary} />
         <Text variant="label">Scan another</Text>
-      </Pressable>
-      <Pressable
-        android_ripple={ripple.bounded}
+      </AppPressable>
+      <AppPressable feedback="control"
+
         style={styles.footerButton}
         onPress={onDone}
         disabled={actionBusy}
         accessibilityRole="button"
       >
         <Text variant="label">Done</Text>
-      </Pressable>
+      </AppPressable>
     </View>
   );
 
@@ -192,8 +191,8 @@ export function SignalResolutionPanel({
       />
 
       <View style={styles.playActions}>
-        <Pressable
-          android_ripple={ripple.bounded}
+        <AppPressable feedback="accent"
+
           style={[styles.primaryButton, actionBusy && styles.disabledButton]}
           onPress={() => onPlay(track)}
           disabled={actionBusy}
@@ -203,9 +202,9 @@ export function SignalResolutionPanel({
           <Text variant="body" color={colors.accentTextStrong}>
             {actionState === 'playing' ? 'Starting…' : 'Play now'}
           </Text>
-        </Pressable>
-        <Pressable
-          android_ripple={ripple.bounded}
+        </AppPressable>
+        <AppPressable feedback="control"
+
           style={[styles.secondaryButton, actionBusy && styles.disabledButton]}
           onPress={() => onQueue(track)}
           disabled={actionBusy || actionState === 'queued'}
@@ -223,7 +222,7 @@ export function SignalResolutionPanel({
                 ? 'Added'
                 : 'Add to queue'}
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       {onlineAction()}

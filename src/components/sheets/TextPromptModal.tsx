@@ -14,7 +14,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 
 interface TextPromptModalProps {
   visible: boolean;
@@ -42,7 +42,6 @@ function TextPromptModalInner({
   onClose,
 }: TextPromptModalProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [value, setValue] = useState(initialValue);
   const trimmed = value.trim();
@@ -71,12 +70,12 @@ function TextPromptModalInner({
             selectionColor={colors.accent}
           />
           <View style={styles.actions}>
-            <Pressable android_ripple={ripple.bounded} style={styles.action} onPress={onClose} accessibilityRole="button">
+            <AppPressable feedback="control"  style={styles.action} onPress={onClose} accessibilityRole="button">
               <Text variant="body" color={colors.textSecondary}>
                 Cancel
               </Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded}
+            </AppPressable>
+            <AppPressable feedback="control"
               style={[styles.action, !trimmed && styles.actionDisabled]}
               disabled={!trimmed}
               onPress={submit}
@@ -85,7 +84,7 @@ function TextPromptModalInner({
               <Text variant="body" color={colors.accent}>
                 {submitLabel}
               </Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </Pressable>
       </Pressable>

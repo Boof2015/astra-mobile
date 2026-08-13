@@ -5,16 +5,14 @@ import {
 } from 'react';
 import {
   View,
-  Pressable,
-  StyleSheet,
-  Alert
+  StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet, type TrackActionSheetItem } from '@/components/library/TrackActionsSheet';
@@ -24,20 +22,21 @@ import {
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import { TextPromptModal } from '@/components/sheets/TextPromptModal';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { playTracks, shuffleTracks } from '@/audio/playbackController';
-import { dbTrackToTrack } from '@/library/trackAdapter';
+import { playLibraryQuery } from '@/audio/playbackController';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -56,11 +55,10 @@ function basename(path: string): string {
 
 function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongPress: () => void }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   return (
-    <Pressable
-      android_ripple={ripple.bounded}
+    <AppPressable
+
       unstable_pressDelay={SCROLL_PRESS_DELAY}
       style={styles.missingRow}
       onLongPress={() => {
@@ -78,19 +76,19 @@ function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongP
         </Text>
       </View>
       <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-    </Pressable>
+    </AppPressable>
   );
 }
 
 type Prompt = { kind: 'rename'; playlist: Playlist } | null;
 
 export default function PlaylistScreen() {
+  const sceneBottomInset = useSceneBottomInset();
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const handleBack = useLibraryDetailBack();
+  const { goBack, backLabel } = useLibraryDetailBack();
   const isFavorites = id === 'favorites';
   const playlistId = isFavorites ? null : Number(id);
 
@@ -98,6 +96,7 @@ export default function PlaylistScreen() {
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
   const activeEntries = usePlaylistStore((s) => s.activeEntries);
   const openPlaylist = usePlaylistStore((s) => s.openPlaylist);
+  const loadNextEntries = usePlaylistStore((s) => s.loadNextEntries);
   const closePlaylist = usePlaylistStore((s) => s.closePlaylist);
   const moveTrack = usePlaylistStore((s) => s.moveTrack);
   const removeFromPlaylist = usePlaylistStore((s) => s.removeFromPlaylist);
@@ -164,8 +163,14 @@ export default function PlaylistScreen() {
 
   const startPlayback = (index: number) => {
     if (playable.length === 0) return;
-    void playTracks(playable.map(dbTrackToTrack), {
-      startIndex: index,
+    const query = isFavorites
+      ? { kind: 'favorites' as const }
+      : {
+          kind: isDynamic ? 'dynamicPlaylist' as const : 'playlist' as const,
+          playlistId: playlistId!,
+        };
+    void playLibraryQuery(query, {
+      anchorPath: playable[index]?.path,
       source: { kind: isFavorites ? 'favorites' : 'playlist', label: name },
     });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
@@ -173,9 +178,18 @@ export default function PlaylistScreen() {
 
   const startShuffle = () => {
     if (playable.length === 0) return;
-    void shuffleTracks(playable.map(dbTrackToTrack), {
-      kind: isFavorites ? 'favorites' : 'playlist',
-      label: name,
+    const query = isFavorites
+      ? { kind: 'favorites' as const }
+      : {
+          kind: isDynamic ? 'dynamicPlaylist' as const : 'playlist' as const,
+          playlistId: playlistId!,
+        };
+    void playLibraryQuery(query, {
+      shuffle: true,
+      source: {
+        kind: isFavorites ? 'favorites' : 'playlist',
+        label: name,
+      },
     });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
   };
@@ -184,34 +198,38 @@ export default function PlaylistScreen() {
     try {
       const result = await exportM3u(target);
       if (result) {
-        Alert.alert(
-          'Playlist exported',
-          `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`
-        );
+        showAppDialog({
+          title: 'Playlist exported',
+          message: `Wrote ${result.entryCount} ${result.entryCount === 1 ? 'entry' : 'entries'} to "${fileDisplayName(result.fileUri)}".`,
+        });
       }
     } catch (err) {
-      Alert.alert('Export failed', errorMessage(err));
+      showAppDialog({ title: 'Export failed', message: errorMessage(err) });
     }
   };
 
   const confirmDelete = (target: Playlist) => {
-    Alert.alert('Delete playlist?', `"${target.name}" will be deleted. Tracks are not touched.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            try {
-              await deletePlaylist(target.id);
-              handleBack();
-            } catch (err) {
-              Alert.alert('Delete failed', errorMessage(err));
-            }
-          })();
+    showAppDialog({
+      title: 'Delete playlist?',
+      message: `"${target.name}" will be deleted. Tracks are not touched.`,
+      actions: [
+        { label: 'Cancel', role: 'cancel' },
+        {
+          label: 'Delete',
+          role: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await deletePlaylist(target.id);
+                goBack();
+              } catch (err) {
+                showAppDialog({ title: 'Delete failed', message: errorMessage(err) });
+              }
+            })();
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   // Move/remove only exist on real playlists; favorites rows use the standard
@@ -260,21 +278,26 @@ export default function PlaylistScreen() {
 
   return (
     <Screen padded={false} style={styles.screen}>
-      <FlashList
+      <ReanimatedFlashList
         data={entries}
         keyExtractor={(entry) => String(entry.id)}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
+        onEndReached={() => {
+          if (!isFavorites) void loadNextEntries();
+        }}
+        onEndReachedThreshold={2}
         contentContainerStyle={{
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xxl,
+          paddingBottom: sceneBottomInset,
         }}
         renderItem={({ item }) =>
           item.track ? (
             <TrackRow
               track={item.track}
+              showFormat={false}
               active={item.track.path === currentPath}
               onPress={() => startPlayback(playableIndexByEntryId.get(item.id) ?? 0)}
               onLongPress={() => setActionEntry(item)}
@@ -302,7 +325,7 @@ export default function PlaylistScreen() {
         heroMeta={<Text variant="label">{meta}</Text>}
         heroExtra={
           isDynamic && playlistId != null ? (
-            <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+            <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
               style={styles.editRules}
               onPress={() =>
                 router.push({
@@ -317,11 +340,12 @@ export default function PlaylistScreen() {
               <Text variant="label" color={colors.accent}>
                 Rules
               </Text>
-            </Pressable>
+            </AppPressable>
           ) : null
         }
         disabled={playable.length === 0}
-        onBack={handleBack}
+        onBack={goBack}
+        backLabel={backLabel}
         onMore={() => setOptionsOpen(true)}
         onPlay={() => startPlayback(0)}
         onShuffle={startShuffle}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { Keyframe, ReduceMotion } from 'react-native-reanimated';
+import { Text } from '@/components/Text';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
@@ -8,8 +9,10 @@ import {
   getActiveSyncedLyricsLine,
   LYRICS_DISPLAY_LEAD_MS,
 } from '@/lyrics/presentation';
-import { fonts, spacing } from '@/theme';
+import { fonts } from '@/theme';
+import { NOW_PLAYING_LYRIC_LINE_HEIGHT } from '@/components/player/nowPlayingLayout';
 import { createThemedStyles } from '@/theme/themed';
+import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { LyricsLookupResult } from '@/lyrics/types';
@@ -29,25 +32,34 @@ const EXITING = new Keyframe({
   .duration(160)
   .reduceMotion(ReduceMotion.System);
 
+/** Matches what the deck reserves when a caller doesn't pass a height. */
+const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT * 2;
+
 interface CachedLyricPeekProps {
   track: Track;
   active: boolean;
   hidden?: boolean;
+  /** Row height the caller reserved for this slot. */
+  height?: number;
   onOpenLyrics: () => void;
 }
 
 /**
- * One-line synced lyric display. It consumes an existing in-memory result or a
- * cache-only SQLite read; it never initiates media scanning or provider work.
+ * Two-line synced lyric display. Online lookup opt-in uses the shared lyrics
+ * resolver; otherwise the passive preview remains a cache-only SQLite read.
  */
 export function CachedLyricPeek({
   track,
   active,
   hidden = false,
+  height = DEFAULT_ROW_HEIGHT,
   onOpenLyrics,
 }: CachedLyricPeekProps) {
   const styles = useStyles();
   const memoryResult = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
+  const loadForTrack = useLyricsStore((s) => s.loadForTrack);
+  const onlineLookupEnabled = useLyricsSettingsStore((s) => s.onlineLookupEnabled);
+  const lyricsSettingsLoaded = useLyricsSettingsStore((s) => s.loaded);
   const [cached, setCached] = useState<{
     path: string;
     result: LyricsLookupResult | null;
@@ -61,6 +73,12 @@ export function CachedLyricPeek({
 
   useEffect(() => {
     if (!active || memoryResult) return;
+
+    if (lyricsSettingsLoaded && onlineLookupEnabled) {
+      void loadForTrack(track);
+      return;
+    }
+
     let cancelled = false;
     void peekCachedLyricsForTrack(track)
       .then((result) => {
@@ -72,7 +90,14 @@ export function CachedLyricPeek({
     return () => {
       cancelled = true;
     };
-  }, [active, memoryResult, track]);
+  }, [
+    active,
+    loadForTrack,
+    lyricsSettingsLoaded,
+    memoryResult,
+    onlineLookupEnabled,
+    track,
+  ]);
 
   const storedResult = cached?.path === track.path ? cached.result : null;
   const result = memoryResult?.status === 'hit' ? memoryResult : storedResult;
@@ -90,7 +115,7 @@ export function CachedLyricPeek({
     : null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { height }]}>
       <TactilePressable
         style={styles.pressable}
         disabled={!text}
@@ -100,16 +125,21 @@ export function CachedLyricPeek({
         accessibilityLabel={text ? `Open lyrics: ${text}` : undefined}
       >
         {text && lineKey ? (
-          <Animated.Text
+          <Animated.View
             key={lineKey}
             entering={ENTERING}
             exiting={EXITING}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={styles.line}
+            pointerEvents="none"
+            style={styles.lineFrame}
           >
-            {text}
-          </Animated.Text>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={styles.line}
+            >
+              {text}
+            </Text>
+          </Animated.View>
         ) : null}
       </TactilePressable>
     </View>
@@ -118,22 +148,29 @@ export function CachedLyricPeek({
 
 const useStyles = createThemedStyles((colors) => ({
   wrap: {
-    height: 28,
-    marginBottom: spacing.sm,
+    // Height comes from the caller: the now-playing deck reserves this row so
+    // its own total stays exact. This used to be 48px with a -12px top margin
+    // to hide its footprint from the surrounding flow — the deck accounts for
+    // the row properly now, so the row occupies the space it actually takes.
     overflow: 'hidden',
   },
   pressable: {
     flex: 1,
-    justifyContent: 'center',
     overflow: 'hidden',
   },
-  line: {
+  lineFrame: {
     position: 'absolute',
+    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
+    justifyContent: 'center',
+  },
+  line: {
     color: colors.textSecondary,
     fontFamily: fonts.sans.medium,
     fontSize: 16,
-    lineHeight: 22,
+    // Must stay in step with the deck's reservation for this row.
+    lineHeight: NOW_PLAYING_LYRIC_LINE_HEIGHT,
   },
 }));

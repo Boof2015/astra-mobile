@@ -1,9 +1,15 @@
 // Vendored fork of com.github.doublesymmetry:kotlinaudio v2.1.0 (Apache-2.0).
 // Substituted in for the Jitpack binary so we can inject a PCM-tap AudioProcessor
-// into the ExoPlayer it builds (see players/BaseAudioPlayer.kt + scope/). The
-// ONLY source change vs upstream v2.1.0 is the single .setRenderersFactory(...)
-// line in BaseAudioPlayer's init and the new scope/ package. Keep that diff
-// minimal so re-vendoring on a kotlin-audio bump stays mechanical.
+// into the ExoPlayer it builds (see players/BaseAudioPlayer.kt + scope/).
+//
+// Source changes vs upstream v2.1.0 — keep this list accurate, it is what makes
+// re-vendoring on a kotlin-audio bump mechanical:
+//   1. .setRenderersFactory(buildScopeRenderersFactory(context)) in BaseAudioPlayer's init
+//   2. the new scope/ package (taps, EQ, normalization gain)
+//   3. GainBridge.activateFor(url) in onMediaItemTransition
+//   4. shared per-player media-source factories + the fast path in
+//      getMediaSourceFromAudioItem (perf: Util.getUserAgent was a PackageManager
+//      lookup per queue item, which stalled the main thread on large queues)
 
 plugins {
   id 'com.android.library'

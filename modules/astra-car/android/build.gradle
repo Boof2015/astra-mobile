@@ -19,5 +19,8 @@ android {
 
 dependencies {
   implementation "androidx.media:media:1.6.0"
+  implementation "androidx.room:room-runtime:2.8.4"
+  implementation "androidx.room:room-ktx:2.8.4"
   implementation "com.facebook.react:react-android"
+  implementation project(':astra-library-scanner')
 }

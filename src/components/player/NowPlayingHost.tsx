@@ -1,24 +1,20 @@
 import { NowPlayingOverlay } from '@/components/player/NowPlayingOverlay';
-import { useDelayedUnmountPresence } from '@/components/delayedPresence';
-import { NOW_PLAYING_CLOSE_UNMOUNT_MS } from '@/components/renderPresenceTiming';
-import { useAppForeground } from '@/lib/useAppForeground';
-import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { usePlayerMounted } from '@/stores/playerUiStore';
 
 /**
- * Presence gate for the heavyweight now-playing tree. It stays alive just past
- * the 200 ms close animation, but never remains hidden indefinitely. Android
- * backgrounding drops it immediately so TextureViews and decoded art release.
+ * Presence gate for the heavyweight now-playing tree. The store's `closing`
+ * phase is the linger that lets the exit animation finish, so this is a plain
+ * mirror of the phase — no second timer and no foreground gate.
+ *
+ * Backgrounding deliberately does NOT unmount here any more. Dropping the whole
+ * tree tore down the shared value mid-close, which stranded the phase and made
+ * the player permanently unopenable. The overlay releases its own TextureViews
+ * and decoded art instead, by folding `useAppForeground` into the `active` /
+ * `paused` props of the scope surfaces (the same thing MiniPlayer does).
  */
 export function NowPlayingHost() {
-  const playerOpen = usePlayerUiStore((s) => s.playerOpen);
-  const foreground = useAppForeground();
+  const mounted = usePlayerMounted();
 
-  const renderOverlay = useDelayedUnmountPresence(
-    playerOpen,
-    NOW_PLAYING_CLOSE_UNMOUNT_MS,
-    !foreground
-  );
-
-  if (!renderOverlay) return null;
+  if (!mounted) return null;
   return <NowPlayingOverlay />;
 }

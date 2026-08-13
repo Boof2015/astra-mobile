@@ -12,6 +12,7 @@ import {
   Skia,
   type SkPath
 } from '@shopify/react-native-skia';
+import { SpectrumCurve } from '@/components/SpectrumCurve';
 import { useColors } from '@/theme/themed';
 import type { EQBand } from '@/types/audio';
 import {
@@ -24,10 +25,12 @@ import { GRAPHIC_BANDS, buildGraphicBands } from '@/audio/graphicEq';
 import { GRAPH_SAMPLE_RATE, buildResponseFill } from './eqGraphMath';
 
 const SAMPLES = 96;
+const GRAPHIC_SPECTRUM_ANCHORS = GRAPHIC_BANDS.map((band) => band.frequency);
 
 interface GraphicResponseCurveProps {
   gains: number[];
   enabled: boolean;
+  spectrumActive: boolean;
 }
 
 /**
@@ -38,7 +41,11 @@ interface GraphicResponseCurveProps {
  * Rendered behind the sliders; transparent background (the editor card owns
  * the chrome).
  */
-export function GraphicResponseCurve({ gains, enabled }: GraphicResponseCurveProps) {
+export function GraphicResponseCurve({
+  gains,
+  enabled,
+  spectrumActive,
+}: GraphicResponseCurveProps) {
   const colors = useColors();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const width = size.width;
@@ -61,36 +68,53 @@ export function GraphicResponseCurve({ gains, enabled }: GraphicResponseCurvePro
   return (
     <View style={styles.container} onLayout={onLayout} pointerEvents="none">
       {width > 0 && height > 0 ? (
-        <Canvas style={StyleSheet.absoluteFill}>
-          {/* Grid: ±6 dB lines + dashed 0 dB midline (track coordinates). */}
-          <Group>
-            <Path
-              path={hLine(gainToTrackY(6, height), width)}
-              color={colors.glassBorder}
-              style="stroke"
-              strokeWidth={1}
+        <>
+          <View style={StyleSheet.absoluteFill}>
+            <SpectrumCurve
+              source="post"
+              active={spectrumActive}
+              width={width}
+              height={height}
+              frameMs={16}
+              frequencyAnchors={GRAPHIC_SPECTRUM_ANCHORS}
+              color={colors.accent}
+              lineOpacity={0.22}
+              fillOpacity={0.5}
+              glow={false}
             />
-            <Path
-              path={hLine(gainToTrackY(-6, height), width)}
-              color={colors.glassBorder}
-              style="stroke"
-              strokeWidth={1}
-            />
-            <Path path={hLine(height / 2, width)} color={colors.glassBorder} style="stroke" strokeWidth={1}>
-              <DashPathEffect intervals={[3, 5]} />
-            </Path>
-          </Group>
+          </View>
 
-          <Path path={fillPath} color={withAlpha(curveColor, 0.1)} style="fill" />
-          <Path
-            path={linePath}
-            color={curveColor}
-            style="stroke"
-            strokeWidth={2}
-            strokeJoin="round"
-            strokeCap="round"
-          />
-        </Canvas>
+          <Canvas style={StyleSheet.absoluteFill}>
+            {/* Grid: ±6 dB lines + dashed 0 dB midline (track coordinates). */}
+            <Group>
+              <Path
+                path={hLine(gainToTrackY(6, height), width)}
+                color={colors.glassBorder}
+                style="stroke"
+                strokeWidth={1}
+              />
+              <Path
+                path={hLine(gainToTrackY(-6, height), width)}
+                color={colors.glassBorder}
+                style="stroke"
+                strokeWidth={1}
+              />
+              <Path path={hLine(height / 2, width)} color={colors.glassBorder} style="stroke" strokeWidth={1}>
+                <DashPathEffect intervals={[3, 5]} />
+              </Path>
+            </Group>
+
+            <Path path={fillPath} color={withAlpha(curveColor, 0.1)} style="fill" />
+            <Path
+              path={linePath}
+              color={curveColor}
+              style="stroke"
+              strokeWidth={2}
+              strokeJoin="round"
+              strokeCap="round"
+            />
+          </Canvas>
+        </>
       ) : null}
     </View>
   );

@@ -1,6 +1,5 @@
 import {
   View,
-  Pressable,
   StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -11,16 +10,15 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { albumArtworkSource } from '@/library/artwork';
 import type { Album } from '@/types/library';
 
 export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () => void }) {
   const styles = useStyles();
-  const ripple = useRipple();
   const artUri = albumArtworkSource(album);
   return (
-    <Pressable android_ripple={ripple.tile} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.item} onPress={onPress} accessibilityRole="button">
+    <AppPressable feedback="tile" unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.item} onPress={onPress} accessibilityRole="button">
       <View style={styles.art}>
         {artUri ? (
           <Image
@@ -40,7 +38,7 @@ export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () =>
       <Text variant="label" numberOfLines={1}>
         {album.artist}
       </Text>
-    </Pressable>
+    </AppPressable>
   );
 }
 

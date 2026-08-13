@@ -1,14 +1,10 @@
 import { SegmentedControl } from '@/components/SegmentedControl';
+import {
+  LIBRARY_VIEW_MODES,
+  type LibraryViewMode,
+} from '@/library/libraryViewMode';
 
-export type LibraryViewMode = 'albums' | 'artists' | 'tracks' | 'playlists' | 'folders';
-
-const MODES: { key: LibraryViewMode; label: string }[] = [
-  { key: 'albums', label: 'Albums' },
-  { key: 'artists', label: 'Artists' },
-  { key: 'tracks', label: 'Tracks' },
-  { key: 'playlists', label: 'Playlists' },
-  { key: 'folders', label: 'Folders' },
-];
+export type { LibraryViewMode } from '@/library/libraryViewMode';
 
 export function ViewModeSwitcher({
   value,
@@ -19,7 +15,7 @@ export function ViewModeSwitcher({
 }) {
   return (
     <SegmentedControl
-      segments={MODES}
+      segments={[...LIBRARY_VIEW_MODES]}
       value={value}
       onChange={(key) => onChange(key as LibraryViewMode)}
     />

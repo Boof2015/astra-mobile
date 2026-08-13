@@ -1,5 +1,4 @@
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -11,7 +10,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { EQBand } from '@/types/audio';
 import {
   EQ_MAX_FREQUENCY,
@@ -19,8 +18,7 @@ import {
   EQ_MAX_Q,
   EQ_MIN_FREQUENCY,
   EQ_MIN_Q,
-  isPassEQBandType,
-  isShelfEQBandType
+  isPassEQBandType
 } from '@/audio/eq';
 import { EQSlider } from './EQSlider';
 import {
@@ -44,7 +42,6 @@ export type EQEditableValue = 'frequency' | 'gain' | 'Q';
 /** "Band N" + type dropdown + On toggle + audible parameter sliders. */
 export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEditValue }: BandDetailPanelProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   if (!band) {
     return (
@@ -57,18 +54,17 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
   }
 
   const isPass = isPassEQBandType(band.type);
-  const isShelf = isShelfEQBandType(band.type);
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <Text variant="heading">Band {bandNumber}</Text>
-        <Pressable android_ripple={ripple.bounded} style={styles.typeButton} onPress={onEditType}>
+        <AppPressable feedback="control"  style={styles.typeButton} onPress={onEditType}>
           <Text variant="label" color={colors.textPrimary}>
             {BAND_TYPE_LABEL[band.type]}
           </Text>
           <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-        </Pressable>
+        </AppPressable>
         <View style={styles.toggle}>
           <Text variant="label">{band.enabled ? 'On' : 'Off'}</Text>
           <HapticSwitch
@@ -100,18 +96,16 @@ export function BandDetailPanel({ band, bandNumber, onUpdate, onEditType, onEdit
         onValuePress={() => onEditValue('gain')}
         disabled={isPass}
       />
-      {!isShelf ? (
-        <EQSlider
-          label="Q"
-          value={band.Q}
-          min={EQ_MIN_Q}
-          max={EQ_MAX_Q}
-          log
-          format={(v) => v.toFixed(2)}
-          onChange={(v) => onUpdate({ Q: v })}
-          onValuePress={() => onEditValue('Q')}
-        />
-      ) : null}
+      <EQSlider
+        label="Q"
+        value={band.Q}
+        min={EQ_MIN_Q}
+        max={EQ_MAX_Q}
+        log
+        format={(v) => v.toFixed(2)}
+        onChange={(v) => onUpdate({ Q: v })}
+        onValuePress={() => onEditValue('Q')}
+      />
     </View>
   );
 }

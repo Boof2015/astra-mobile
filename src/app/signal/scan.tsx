@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,28 +15,26 @@ import {
   type SignalScanPhase,
 } from '@/components/signal/SignalScanTransition';
 import { decodeSignalFromUri } from '@/audio/signalDecodeImage';
-import { matchSignalToLibrary } from '@/audio/signalLocalMatch';
+import type { SignalLocalMatchResult } from '@/audio/signalLocalMatch';
 import { SIGNAL_SCAN_GUIDE } from '@/audio/signalScanGeometry';
 import { encodeSignalWebUrl } from '@/audio/signalShare';
 import { enqueueEnd, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import type { SignalPayload } from '@boof2015/astra-signal';
+import type { DbTrack } from '@/types/library';
+import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 
 const MIN_READING_MS = 300;
 const FAILURE_RETURN_MS = 480;
 
 export default function SignalScanScreen() {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const router = useRouter();
-  const libraryInitialized = useLibraryStore((state) => state.initialized);
-  const libraryTracks = useLibraryStore((state) => state.tracks);
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
@@ -47,10 +45,28 @@ export default function SignalScanScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const readingStartedAt = useRef(0);
-  const resolution = useMemo(
-    () => result && libraryInitialized ? matchSignalToLibrary(result, libraryTracks) : null,
-    [libraryInitialized, libraryTracks, result]
-  );
+  const [resolution, setResolution] = useState<SignalLocalMatchResult<DbTrack> | null>(null);
+
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    void AstraLibraryData.matchSignal<DbTrack>(
+      result.title,
+      result.artist,
+      result.durationSec > 0 ? result.durationSec : null
+    ).then((native) => {
+      if (cancelled) return;
+      if (native.kind === 'none') setResolution({ kind: 'none' });
+      else if (native.kind === 'match') {
+        setResolution({ kind: 'match', candidate: native.candidates[0] });
+      } else {
+        setResolution({ kind: 'ambiguous', candidates: native.candidates });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
 
   useEffect(() => {
     if (phase !== 'failure') return;
@@ -118,13 +134,14 @@ export default function SignalScanScreen() {
 
   const scanAnother = () => {
     setResult(null);
+    setResolution(null);
     setError(null);
     setActionState('idle');
     setActionError(null);
     setPhase('idle');
   };
 
-  const playMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+  const playMatchedTrack = async (track: DbTrack) => {
     if (actionState === 'playing' || actionState === 'queueing') return;
     playHaptic('confirm');
     setActionState('playing');
@@ -140,7 +157,7 @@ export default function SignalScanScreen() {
     }
   };
 
-  const queueMatchedTrack = async (track: (typeof libraryTracks)[number]) => {
+  const queueMatchedTrack = async (track: DbTrack) => {
     if (actionState !== 'idle') return;
     playHaptic('confirm');
     setActionState('queueing');
@@ -182,12 +199,12 @@ export default function SignalScanScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Back
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <Text variant="title" style={styles.heading}>
@@ -209,16 +226,16 @@ export default function SignalScanScreen() {
             <View style={styles.permissionCard}>
               <Ionicons name="camera-outline" size={28} color={colors.accent} />
               <Text variant="body">Camera access is needed to scan a Signal.</Text>
-              <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void requestPermission()}>
+              <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
                 <Text variant="body" color={colors.accentTextStrong}>
                   Allow camera
                 </Text>
-              </Pressable>
-              <Pressable android_ripple={ripple.bounded} style={styles.linkButton} onPress={() => void pickImage()}>
+              </AppPressable>
+              <AppPressable feedback="control"  style={styles.linkButton} onPress={() => void pickImage()}>
                 <Text variant="body" color={colors.accent}>
                   Or pick a Signal image
                 </Text>
-              </Pressable>
+              </AppPressable>
             </View>
           ) : (
             <View style={styles.scannerFrame}>
@@ -235,12 +252,12 @@ export default function SignalScanScreen() {
                 <View style={[styles.guideCorner, styles.guideBottomRight]} />
               </View>
               <View style={styles.controls}>
-                <Pressable android_ripple={ripple.icon(28)} style={styles.iconButton} onPress={() => void pickImage()} hitSlop={8}>
+                <AppPressable feedback="control" style={styles.iconButton} onPress={() => void pickImage()} hitSlop={8}>
                   <Ionicons name="image-outline" size={24} color={colors.textPrimary} />
-                </Pressable>
-                <Pressable android_ripple={ripple.bounded} style={styles.shutter} onPress={() => void capture()} hitSlop={8}>
+                </AppPressable>
+                <AppPressable feedback="accent"  style={styles.shutter} onPress={() => void capture()} hitSlop={8}>
                   <Ionicons name="pulse" size={26} color={colors.accentTextStrong} />
-                </Pressable>
+                </AppPressable>
                 <View style={styles.iconButton} />
               </View>
               <SignalScanTransition

@@ -6,6 +6,7 @@ import {
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useTopBleedInset } from '@/components/screenTopBleed';
 import { Text } from '@/components/Text';
 import {
   formatFolderCount,
@@ -29,12 +30,19 @@ import { createBuildInfo } from '@/release/buildInfo';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 
 function formatEnabled(value: boolean): string {
   return value ? 'On' : 'Off';
 }
 
 export default function SettingsScreen() {
+  const showScreenTitle = useShellShowsScreenTitle();
+  const sceneBottomInset = useSceneBottomInset();
+  // Re-paid by the content because `<Screen bleedTop>` stopped paying it, and
+  // zero in a window too short to bleed — see `screenTopBleed`.
+  const topBleed = useTopBleedInset();
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
@@ -53,6 +61,7 @@ export default function SettingsScreen() {
   const desktopSyncConflictCount = useDesktopSyncStore((s) => s.conflicts.length);
   const sleepTimer = useSleepTimerStore((s) => s.timer);
   const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
+  const listeningHistoryEnabled = useSettingsStore((s) => s.listeningHistoryEnabled);
   void sleepRemainingMs;
 
   useEffect(() => {
@@ -84,11 +93,15 @@ export default function SettingsScreen() {
         : desktopRemoteSubtitle;
 
   return (
-    <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Text variant="title" style={styles.heading}>
-          Settings
-        </Text>
+    <Screen bleedTop>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingTop: topBleed, paddingBottom: sceneBottomInset }]}>
+        {/* The rail names this destination itself; repeating it would just
+            spend a landscape window's scarce height on the same word. */}
+        {showScreenTitle ? (
+          <Text variant="title" style={styles.heading}>
+            Settings
+          </Text>
+        ) : null}
 
         <SettingsSectionLabel>SETTINGS</SettingsSectionLabel>
         <SettingsNavRow
@@ -112,7 +125,11 @@ export default function SettingsScreen() {
         <SettingsNavRow
           icon="play-circle-outline"
           title="Playback"
-          subtitle={sleepTimer ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}.` : 'Sleep timer and playback behavior.'}
+          subtitle={
+            sleepTimer
+              ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}. Listening history ${formatEnabled(listeningHistoryEnabled)}.`
+              : `Listening history ${formatEnabled(listeningHistoryEnabled)}. Sleep timer and playback behavior.`
+          }
           onPress={() => router.push('/settings/playback' as never)}
         />
         <SettingsNavRow
@@ -149,7 +166,6 @@ export default function SettingsScreen() {
 
 const useStyles = createThemedStyles(() => ({
   content: {
-    paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
   heading: {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { EqSheet } from '@/components/eq/EqSheet';
@@ -7,7 +7,7 @@ import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
 
 interface PresetDeviceAssignmentSheetProps {
@@ -49,7 +49,6 @@ export function PresetDeviceAssignmentSheet({
 }: PresetDeviceAssignmentSheetProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(devices.filter((device) => assignments[device.key] === preset.id).map((device) => device.key))
   );
@@ -101,9 +100,9 @@ export function PresetDeviceAssignmentSheet({
                 ? `Currently assigned to ${assignedPresetName}`
                 : kindLabel(device);
             return (
-              <Pressable
+              <AppPressable
                 key={device.key}
-                android_ripple={ripple.bounded}
+
                 unstable_pressDelay={SCROLL_PRESS_DELAY}
                 style={styles.deviceRow}
                 onPress={() => toggleDevice(device.key)}
@@ -131,18 +130,18 @@ export function PresetDeviceAssignmentSheet({
                   size={22}
                   color={checked ? colors.accent : colors.textTertiary}
                 />
-              </Pressable>
+              </AppPressable>
             );
           })}
         </View>
       )}
 
       <View style={styles.actions}>
-        <Pressable android_ripple={ripple.bounded} style={[styles.button, styles.cancel]} onPress={onClose}>
+        <AppPressable feedback="control"  style={[styles.button, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          android_ripple={ripple.bounded}
+        </AppPressable>
+        <AppPressable feedback="accent"
+
           style={[styles.button, styles.save]}
           onPress={() => {
             onSave([...selected]);
@@ -150,7 +149,7 @@ export function PresetDeviceAssignmentSheet({
           }}
         >
           <Text variant="label" color={colors.accentTextStrong}>Save assignments</Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </EqSheet>
   );

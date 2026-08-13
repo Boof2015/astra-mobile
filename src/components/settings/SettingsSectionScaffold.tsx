@@ -1,19 +1,19 @@
 import type { ReactNode } from 'react';
 import {
-  Pressable,
-  ScrollView,
   StyleSheet,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { HapticSwitch } from '@/components/HapticSwitch';
 
 export type SettingsIconName = keyof typeof Ionicons.glyphMap;
@@ -26,33 +26,28 @@ export function SettingsSectionScreen({
   children: ReactNode;
 }) {
   const styles = useStyles();
-  const colors = useColors();
-  const ripple = useRipple();
   const router = useRouter();
+  const header = useScreenHeader({});
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable
-          android_ripple={ripple.bounded}
-          style={styles.back}
-          onPress={() => router.back()}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-          <Text variant="body" color={colors.textSecondary}>
-            Settings
-          </Text>
-        </Pressable>
-      </View>
-
-      <Text variant="title" style={styles.heading}>
-        {title}
-      </Text>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    // The header is an overlay the content scrolls under, so the screen keeps
+    // neither the top inset nor the gutter — both move into the ScrollView.
+    <Screen padded={false} style={styles.screen}>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={header.onScroll}
+        scrollEventThrottle={header.scrollEventThrottle}
+        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+      >
         {children}
-      </ScrollView>
+      </Animated.ScrollView>
+
+      <ScreenHeader
+        header={header}
+        title={title}
+        backLabel="Settings"
+        onBack={() => router.back()}
+      />
     </Screen>
   );
 }
@@ -105,9 +100,8 @@ export function SettingsNavRow({
 }) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   return (
-    <Pressable android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
+    <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={styles.rowIcon}>
         <Ionicons name={icon} size={20} color={colors.accent} />
       </View>
@@ -123,7 +117,7 @@ export function SettingsNavRow({
         </Text>
       </View>
       <Ionicons name={rightIcon} size={18} color={colors.textTertiary} />
-    </Pressable>
+    </AppPressable>
   );
 }
 
@@ -159,22 +153,12 @@ export function SettingsToggleRow({
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  heading: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+  // The header draws behind the status bar; the ScrollView pays the inset.
+  screen: {
+    paddingTop: 0,
   },
   content: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },

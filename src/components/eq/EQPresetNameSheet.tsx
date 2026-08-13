@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   View
 } from 'react-native';
@@ -12,7 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQPresetNameSheetProps {
@@ -29,7 +28,6 @@ export function EQPresetNameSheet({
   onClose,
 }: EQPresetNameSheetProps) {
   const styles = useStyles();
-  const ripple = useRipple();
   const colors = useColors();
   const [name, setName] = useState(defaultName);
   const trimmed = name.trim();
@@ -58,16 +56,16 @@ export function EQPresetNameSheet({
         onSubmitEditing={submit}
       />
       <View style={styles.actions}>
-        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.cancel]} onPress={onClose}>
+        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
           <Text variant="label" color={colors.textSecondary}>
             Cancel
           </Text>
-        </Pressable>
-        <Pressable android_ripple={ripple.bounded} style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
+        </AppPressable>
+        <AppPressable feedback="accent"  style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
           <Text variant="label" color={colors.accentTextStrong}>
             {actionLabel}
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
     </EqSheet>
   );

@@ -1,26 +1,33 @@
 // Read-only queue sheet for the Desktop Remote: the desktop's current +
-// upcoming tracks, tap-to-play. Deliberately NOT QueueTray — that component is
-// welded to the local RNTP queue store (drag-reorder, swipe-remove,
-// multi-select), none of which applies to a remote snapshot. Uses an INLINE
-// BottomSheet like QueueTray does — BottomSheetModal's portal does not work in
-// this app's screen setups (see queue-tray-sheet gotcha).
+// upcoming tracks, tap-to-play. Deliberately NOT the native queue — that reads
+// the local playback session straight out of Room (drag-reorder, swipe-remove,
+// multi-select), none of which applies to a remote snapshot. This is the only
+// remaining React Native queue surface. It uses an INLINE BottomSheet because
+// BottomSheetModal's portal does not work in this app's screen setups (see
+// queue-tray-sheet gotcha).
 
 import { useCallback, useEffect, useMemo } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  type BottomSheetHandleProps,
   useBottomSheetScrollableCreator,
 } from '@gorhom/bottom-sheet';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { SCROLL_PRESS_DELAY, useRipple } from '@/theme/ripple';
+import {
+  AppPressable,
+  AppPressableGestureScope,
+  SCROLL_PRESS_DELAY,
+} from '@/components/AppPressable';
 import { formatDuration } from '@/lib/format';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import type { DesktopRemoteQueueItem } from '@/types/desktopRemote';
+import { QueueSheetHandle } from './QueueSheetHandle';
 
 interface RemoteQueueSheetProps {
   onClose: () => void;
@@ -30,7 +37,6 @@ interface RemoteQueueSheetProps {
 export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheetProps) {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const queue = useDesktopRemoteStore((s) => s.queue);
   const snapPoints = useMemo(() => ['58%', '100%'], []);
   const renderFlashListScrollComponent = useBottomSheetScrollableCreator();
@@ -68,8 +74,8 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<DesktopRemoteQueueItem>) => (
-      <Pressable
-        android_ripple={ripple.bounded} unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <AppPressable
+         unstable_pressDelay={SCROLL_PRESS_DELAY}
         style={styles.row}
         onPress={() => playItem(item)}
         disabled={item.isCurrent}
@@ -97,39 +103,57 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
             {formatDuration(item.durationSeconds)}
           </Text>
         ) : null}
-      </Pressable>
+      </AppPressable>
     ),
-    [playItem, colors, styles, ripple]
+    [playItem, colors, styles]
   );
 
-  const body = (
-    <>
+  const topSection = useMemo(
+    () => (
       <View style={styles.headerRow}>
         <Text variant="heading">Desktop queue</Text>
         <Text variant="label" color={colors.textTertiary}>
           {upcomingCount === 1 ? '1 song up next' : `${upcomingCount} songs up next`}
         </Text>
       </View>
-      <FlashList
-        data={items}
-        keyExtractor={(item) => item.queueId}
-        renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text variant="body" color={colors.textSecondary}>
-              The desktop queue is empty.
-            </Text>
-          </View>
-        }
-      />
-    </>
+    ),
+    [colors.textTertiary, styles.headerRow, upcomingCount]
+  );
+
+  const content = (
+    <FlashList
+      data={items}
+      keyExtractor={(item) => item.queueId}
+      renderScrollComponent={embedded ? undefined : renderFlashListScrollComponent}
+      renderItem={renderItem}
+      contentContainerStyle={styles.listContent}
+      showsVerticalScrollIndicator={false}
+      ListEmptyComponent={
+        <View style={styles.empty}>
+          <Text variant="body" color={colors.textSecondary}>
+            The desktop queue is empty.
+          </Text>
+        </View>
+      }
+    />
+  );
+
+  const renderSheetHandle = useCallback(
+    (props: BottomSheetHandleProps) => (
+      <QueueSheetHandle {...props}>
+        {topSection}
+      </QueueSheetHandle>
+    ),
+    [topSection]
   );
 
   if (embedded) {
-    return <View style={styles.embeddedRoot}>{body}</View>;
+    return (
+      <View style={styles.embeddedRoot}>
+        {topSection}
+        {content}
+      </View>
+    );
   }
 
   return (
@@ -141,9 +165,10 @@ export function RemoteQueueSheet({ onClose, embedded = false }: RemoteQueueSheet
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBg}
+      handleComponent={renderSheetHandle}
       handleIndicatorStyle={styles.handle}
     >
-      {body}
+      <AppPressableGestureScope>{content}</AppPressableGestureScope>
     </BottomSheet>
   );
 }

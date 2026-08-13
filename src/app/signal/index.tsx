@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import { Pressable, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-system/legacy';
@@ -13,7 +13,7 @@ import { playerBackdropArtworkSource } from '@/library/artwork';
 import { usePlayerStore } from '@/stores/playerStore';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { useRipple } from '@/theme/ripple';
+import { AppPressable } from '@/components/AppPressable';
 
 // Keep the device presentation identical to the canonical shared PNG. The
 // near-white isolation field is part of the proven phone-to-phone geometry.
@@ -23,7 +23,6 @@ const CODE_BG = '#f4f4f6';
 export default function SignalScreen() {
   const styles = useStyles();
   const colors = useColors();
-  const ripple = useRipple();
   const router = useRouter();
   const track = usePlayerStore((s) => s.currentTrack);
   const codeRef = useRef<SignalCodeHandle>(null);
@@ -65,12 +64,12 @@ export default function SignalScreen() {
         offset={{ top: 0, left: -spacing.lg, right: -spacing.lg }}
       />
       <View style={styles.header}>
-        <Pressable android_ripple={ripple.bounded} style={styles.back} onPress={() => router.back()} hitSlop={8}>
+        <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
           <Text variant="body" color={colors.textSecondary}>
             Back
           </Text>
-        </Pressable>
+        </AppPressable>
       </View>
 
       <Text variant="title" style={styles.heading}>
@@ -116,16 +115,16 @@ export default function SignalScreen() {
           </Text>
 
           <View style={styles.actions}>
-            <Pressable android_ripple={ripple.bounded} style={styles.primaryButton} onPress={() => void shareImage()}>
+            <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void shareImage()}>
               <Ionicons name="share-outline" size={18} color={colors.accentTextStrong} />
               <Text variant="body" color={colors.accentTextStrong}>
                 Share image
               </Text>
-            </Pressable>
-            <Pressable android_ripple={ripple.bounded} style={styles.secondaryButton} onPress={() => void shareLink()}>
+            </AppPressable>
+            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void shareLink()}>
               <Ionicons name="link-outline" size={18} color={colors.textPrimary} />
               <Text variant="body">Share link</Text>
-            </Pressable>
+            </AppPressable>
           </View>
         </View>
       )}
