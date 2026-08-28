@@ -25,7 +25,7 @@ import { formatDuration } from '@/lib/format';
 import {
   downsampleWaveform,
   getWaveform,
-  mergeProgressiveWaveform,
+  normalizeProgressiveWaveform,
   subscribeWaveformProgress,
 } from '@/scope/waveform';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
@@ -42,8 +42,8 @@ const BAR_WIDTH = 3;
 const BAR_GAP = 2;
 const MIN_BAR = 0.05; // floor so silent/idle sections still show a sliver
 const PLAYHEAD_WIDTH = 2;
-/** Ascending confidence — a lower quality never overwrites a higher one for the same track. */
-type WaveformQuality = 'preview' | 'partial' | 'accurate';
+/** Ascending confidence — a partial result never overwrites an accurate cache hit. */
+type WaveformQuality = 'partial' | 'accurate';
 
 interface WaveformSeekBarProps {
   onSeek: (seconds: number) => void;
@@ -115,15 +115,6 @@ export function WaveformSeekBar({
     trackKey: trackPath,
     overrideFraction: scrubFraction ?? heldFraction,
   });
-  // The coarse preview is kept aside as well as rendered: it's the amplitude reference the
-  // partially-decoded prefix is scaled against, and it supplies the not-yet-decoded tail.
-  const previewRef = useRef<{ path: string; peaks: Float32Array } | null>(null);
-  // Whether progressive fill has already begun for the current track. A preview that shows
-  // up after that point is worse than useless: adopting it mid-fill rescales every bar at
-  // once (the prefix is scaled against the preview's amplitude), which reads as two
-  // different waveforms fighting. Once we're filling, the preview is dropped.
-  const progressStartedRef = useRef(false);
-
   // Load (cache-first) the offline peaks whenever the track changes, and follow the decode
   // as it runs so the bars resolve left-to-right rather than snapping in at the end. The
   // progress subscription is independent of who started the decode — usually the queue
@@ -131,40 +122,22 @@ export function WaveformSeekBar({
   useEffect(() => {
     if (!trackPath) return;
     let cancelled = false;
-    previewRef.current = null;
-    progressStartedRef.current = false;
 
     const unsubscribe = subscribeWaveformProgress(trackPath, ({ peaks, totalBins }) => {
       if (cancelled) return;
-      progressStartedRef.current = true;
-      const preview = previewRef.current?.path === trackPath ? previewRef.current.peaks : null;
-      const merged = mergeProgressiveWaveform(peaks, totalBins, preview);
+      const progressive = normalizeProgressiveWaveform(peaks, totalBins);
       setLoaded((current) => {
         if (current?.path === trackPath && current.quality === 'accurate' && current.peaks) {
           return current;
         }
-        return { path: trackPath, peaks: merged, quality: 'partial' };
+        return { path: trackPath, peaks: progressive, quality: 'partial' };
       });
     });
 
-    void getWaveform(trackPath, {
-      onPreview: (peaks) => {
-        if (cancelled) return;
-        // Lost the race — the real decode is already painting. Adopting the preview now
-        // would rescale the whole bar in one frame.
-        if (progressStartedRef.current) return;
-        previewRef.current = { path: trackPath, peaks };
-        setLoaded((current) => {
-          if (current?.path === trackPath && current.quality !== 'preview' && current.peaks) {
-            return current;
-          }
-          return { path: trackPath, peaks, quality: 'preview' };
-        });
-      },
-    }).then((peaks) => {
+    void getWaveform(trackPath).then((peaks) => {
       if (cancelled) return;
       setLoaded((current) => {
-        // A failed decode must not wipe a good preview or partial fill.
+        // A failed decode must not wipe a good partial fill.
         if (!peaks && current?.path === trackPath && current.peaks) return current;
         return { path: trackPath, peaks, quality: 'accurate' };
       });

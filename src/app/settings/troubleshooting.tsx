@@ -220,17 +220,16 @@ function AnalysisTimingPanel() {
       {timings.map((timing) => (
         <View key={`${timing.path}-${timing.at}`} style={styles.timingRow}>
           <Text variant="mono" color={colors.textPrimary}>
-            {timing.kind === 'preview'
-              ? `preview · ${Math.round(timing.decodeMs)}ms`
-              : `${(timing.mime ?? 'audio/?').replace('audio/', '')} · ${Math.round(timing.decodeMs)}ms` +
-                (timing.realtimeFactor ? ` · ${Math.round(timing.realtimeFactor)}× realtime` : '')}
+            {`${(timing.mime ?? 'audio/?').replace('audio/', '')} · ${Math.round(timing.decodeMs)}ms` +
+              (timing.realtimeFactor ? ` · ${Math.round(timing.realtimeFactor)}× realtime` : '')}
           </Text>
           <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-            {timing.kind === 'preview'
-              ? 'sparse first-paint pass'
-              : `${timing.decoderName ?? 'unknown decoder'}${
-                  timing.withLoudness ? ' · loudness folded in' : ''
-                }`}
+            {`${timing.decoderName ?? 'unknown decoder'}${
+              timing.withLoudness ? ' · loudness folded in' : ''
+            } · wait ${Math.round(timing.nativeQueueWaitMs ?? 0)}ms`}
+          </Text>
+          <Text variant="caption" color={colors.textTertiary} numberOfLines={2}>
+            prep {Math.round(timing.preparationMs ?? 0)} · setup {Math.round(timing.setupMs ?? 0)} · first PCM {Math.round(timing.firstPcmMs ?? 0)} · first fill {timing.firstProgressEndToEndMs == null ? '—' : Math.round(timing.firstProgressEndToEndMs)} · persist {Math.round(timing.persistenceMs ?? 0)} · total {Math.round(timing.endToEndMs)}ms
           </Text>
         </View>
       ))}

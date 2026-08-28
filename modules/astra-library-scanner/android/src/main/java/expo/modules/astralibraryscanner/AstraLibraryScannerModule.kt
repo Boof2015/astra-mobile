@@ -64,6 +64,8 @@ import kotlin.math.roundToInt
 
 private const val LIBRARY_SCAN_LOG_TAG = "AstraLibraryScan"
 
+private fun nanosToDoubleMs(nanos: Long): Double = nanos / 1_000_000.0
+
 private data class MetadataStageTiming(
   val androidMetadataNanos: Long,
   val multiArtistNanos: Long,
@@ -170,6 +172,24 @@ class AudioAnalysis : Record {
   @Field var mime: String? = null
   /** Whether the loudness meter rode along on this pass. */
   @Field var withLoudness: Boolean = false
+  /** Time spent waiting for one of the two shared native analysis lanes. */
+  @Field var queueWaitMs: Double = 0.0
+  /** Extractor discovery + codec creation/configuration/start. */
+  @Field var setupMs: Double? = null
+  /** Active-pass time until the first non-empty PCM output buffer. */
+  @Field var firstPcmMs: Double? = null
+  /** Active-pass time when the first progressive waveform could be emitted. */
+  @Field var firstProgressMs: Double? = null
+  /** Codec-start through end-of-stream, including the selected PCM workload. */
+  @Field var decodeToEosMs: Double? = null
+  /** Final RMS normalization and/or LUFS gate resolution. */
+  @Field var finalizeMs: Double? = null
+  /** Handler/codec/extractor teardown after the result was finalized. */
+  @Field var cleanupMs: Double? = null
+  /** Whole native request including semaphore wait and teardown. */
+  @Field var endToEndMs: Double? = null
+  @Field var sampleRate: Int? = null
+  @Field var channelCount: Int? = null
 }
 
 /** ReplayGain tags read from the container (no audio decode). Null = tag absent. */
@@ -293,12 +313,26 @@ class AstraLibraryScannerModule : Module() {
     AsyncFunction("analyzeTrack") Coroutine { uri: String, bins: Int, withLoudness: Boolean ->
       val flag = AtomicBoolean(false)
       activeAnalyses[uri] = flag
+      val requestedNanos = System.nanoTime()
       try {
         waveformSemaphore.withPermit {
+          val queueWaitMs = nanosToDoubleMs(System.nanoTime() - requestedNanos)
           // Cancelled while queued behind another decode — don't start at all.
-          if (flag.get()) AudioAnalysis().apply { cancelled = true }
+          if (flag.get()) AudioAnalysis().apply {
+            cancelled = true
+            this.queueWaitMs = queueWaitMs
+            endToEndMs = nanosToDoubleMs(System.nanoTime() - requestedNanos)
+          }
           else withContext(Dispatchers.IO) {
-            runAnalysis(uri, if (bins > 0) bins else 512, withLoudness, flag)
+            runAnalysis(
+              uriStr = uri,
+              bins = if (bins > 0) bins else 512,
+              withLoudness = withLoudness,
+              cancelFlag = flag,
+            ).also { analysis ->
+              analysis.queueWaitMs = queueWaitMs
+              analysis.endToEndMs = nanosToDoubleMs(System.nanoTime() - requestedNanos)
+            }
           }
         }
       } finally {
@@ -310,15 +344,6 @@ class AstraLibraryScannerModule : Module() {
     // with no analysis running. The decode bails at the next buffer boundary.
     AsyncFunction("cancelAnalysis") Coroutine { uri: String ->
       activeAnalyses[uri]?.set(true)
-    }
-
-    // Fast waveform preview for first paint: sparse short-window decode across
-    // the file. The JS side shows this immediately as the coarse full-width shape
-    // that the progressive accurate pass then fills over; only analyzeTrack persists.
-    AsyncFunction("extractWaveformPreview") Coroutine { uri: String, bins: Int ->
-      waveformSemaphore.withPermit {
-        withContext(Dispatchers.IO) { decodeWaveformPreview(uri, if (bins > 0) bins else 96) }
-      }
     }
 
     // ReplayGain tags (M4): reads container metadata only (no PCM decode), so it is
@@ -914,6 +939,8 @@ class AstraLibraryScannerModule : Module() {
     var codec: MediaCodec? = null
     var handlerThread: HandlerThread? = null
     val startNanos = System.nanoTime()
+    var codecStartNanos = 0L
+    var finalizedNanos = 0L
 
     try {
       extractor.setDataSource(context, uri, null)
@@ -934,15 +961,19 @@ class AstraLibraryScannerModule : Module() {
 
       val sampleRate =
         if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+      result.sampleRate = sampleRate
       val durationUs =
         if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
       result.durationMs = durationUs / 1000.0
       val totalFrames = max(1L, (durationUs / 1_000_000.0 * sampleRate).toLong())
 
-      val acc = AnalyzeAccumulator(bins, totalFrames, withLoudness)
-      acc.sampleRate = sampleRate
-      acc.channelCount =
+      val initialChannels =
         if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+      result.channelCount = initialChannels
+      val acc = AnalyzeAccumulator(bins, totalFrames, withLoudness).also {
+        it.sampleRate = sampleRate
+        it.channelCount = initialChannels
+      }
 
       val decoder = createAnalysisDecoder(mime)
       codec = decoder
@@ -992,6 +1023,9 @@ class AstraLibraryScannerModule : Module() {
                 return
               }
               if (info.size > 0) {
+                if (result.firstPcmMs == null) {
+                  result.firstPcmMs = nanosToDoubleMs(System.nanoTime() - startNanos)
+                }
                 val out = mc.getOutputBuffer(index)
                 if (out != null) {
                   out.position(info.offset)
@@ -1007,12 +1041,22 @@ class AstraLibraryScannerModule : Module() {
               // in at the end. Skipped on the EOS buffer — the promise carries the final,
               // globally-normalized result a moment later.
               val now = System.nanoTime()
-              if (!eos && acc.filledBins > lastEmitBin && now - lastEmitNanos >= progressEmitNanos) {
+              if (
+                !eos &&
+                acc.filledBins > lastEmitBin &&
+                now - lastEmitNanos >= progressEmitNanos
+              ) {
                 lastEmitNanos = now
                 lastEmitBin = acc.filledBins
+                if (result.firstProgressMs == null) {
+                  result.firstProgressMs = nanosToDoubleMs(now - startNanos)
+                }
                 emitWaveformProgress(uriStr, acc, lastEmitBin)
               }
-              if (eos) done.complete(Unit)
+              if (eos) {
+                result.decodeToEosMs = nanosToDoubleMs(now - codecStartNanos)
+                done.complete(Unit)
+              }
             } catch (_: Throwable) {
               done.complete(Unit)
             }
@@ -1020,10 +1064,14 @@ class AstraLibraryScannerModule : Module() {
 
           override fun onOutputFormatChanged(mc: MediaCodec, fmt: MediaFormat) {
             if (fmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
-              acc.channelCount = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+              val channels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+              result.channelCount = channels
+              acc.channelCount = channels
             }
             if (fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
-              acc.sampleRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+              val rate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+              result.sampleRate = rate
+              acc.sampleRate = rate
             }
             if (fmt.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
               acc.pcmFloat =
@@ -1039,7 +1087,9 @@ class AstraLibraryScannerModule : Module() {
       )
 
       codec.configure(format, null, null, 0)
+      codecStartNanos = System.nanoTime()
       codec.start()
+      result.setupMs = nanosToDoubleMs(System.nanoTime() - startNanos)
 
       if (withTimeoutOrNull(analysisTimeoutMs) { done.await() } == null) {
         // Timed out: peaks are partial, so treat it as a cancellation rather than caching
@@ -1048,12 +1098,15 @@ class AstraLibraryScannerModule : Module() {
       }
       if (result.cancelled) return result
 
+      val finalizeStartNanos = System.nanoTime()
       result.peaks = acc.finalPeaks()
       if (withLoudness) {
         result.lufs = acc.loudness
         result.peak = acc.samplePeak
       }
-      val decodeMs = (System.nanoTime() - startNanos) / 1_000_000.0
+      finalizedNanos = System.nanoTime()
+      result.finalizeMs = nanosToDoubleMs(finalizedNanos - finalizeStartNanos)
+      val decodeMs = nanosToDoubleMs(finalizedNanos - startNanos)
       result.decodeMs = decodeMs
       val dur = result.durationMs
       if (dur != null && dur > 0 && decodeMs > 0) result.realtimeFactor = dur / decodeMs
@@ -1061,6 +1114,7 @@ class AstraLibraryScannerModule : Module() {
     } catch (_: Throwable) {
       return result
     } finally {
+      val cleanupStartNanos = System.nanoTime()
       // Order matters: stopping the codec while a callback is mid-flight on the handler
       // thread can crash. Quit the looper and wait for the in-flight callback to drain
       // first, THEN tear the codec down.
@@ -1071,6 +1125,12 @@ class AstraLibraryScannerModule : Module() {
       try { codec?.stop() } catch (_: Throwable) {}
       try { codec?.release() } catch (_: Throwable) {}
       try { extractor.release() } catch (_: Throwable) {}
+      val finishedNanos = System.nanoTime()
+      result.cleanupMs = nanosToDoubleMs(finishedNanos - cleanupStartNanos)
+      if (result.decodeMs == null && finalizedNanos == 0L) {
+        result.decodeMs = nanosToDoubleMs(cleanupStartNanos - startNanos)
+      }
+      result.endToEndMs = result.queueWaitMs + nanosToDoubleMs(finishedNanos - startNanos)
     }
   }
 
@@ -1097,7 +1157,9 @@ class AstraLibraryScannerModule : Module() {
   // realtime playback, not bulk decode, and the instance is a scarce global resource shared
   // with the track that is actually playing — so prefer a software decoder and fall back to
   // the platform's default pick.
-  private fun createAnalysisDecoder(mime: String): MediaCodec {
+  private fun createAnalysisDecoder(
+    mime: String,
+  ): MediaCodec {
     try {
       val info = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { c ->
         !c.isEncoder &&
@@ -1242,172 +1304,6 @@ class AstraLibraryScannerModule : Module() {
       }
       return peaks
     }
-  }
-
-  private data class PcmEnergy(
-    val sumSquares: Double,
-    val sampleCount: Long,
-    val frameCount: Long
-  )
-
-  // Sparse preview waveform: seek to a bounded number of points, decode a very
-  // short audio window at each point, and normalize those RMS samples. This is
-  // intentionally approximate; runAnalysis remains the accurate cache fill.
-  private fun decodeWaveformPreview(uriStr: String, bins: Int): FloatArray {
-    val context = requireContext()
-    val previewBins = bins.coerceIn(16, 128)
-    val uri = Uri.parse(uriStr)
-    val extractor = MediaExtractor()
-    var codec: MediaCodec? = null
-    try {
-      extractor.setDataSource(context, uri, null)
-
-      var trackFormat: MediaFormat? = null
-      var trackIndex = -1
-      for (i in 0 until extractor.trackCount) {
-        val f = extractor.getTrackFormat(i)
-        if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-          trackFormat = f; trackIndex = i; break
-        }
-      }
-      val format = trackFormat ?: return FloatArray(0)
-      extractor.selectTrack(trackIndex)
-
-      val mime = format.getString(MediaFormat.KEY_MIME) ?: return FloatArray(0)
-      val durationUs =
-        if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
-      if (durationUs <= 0L) return FloatArray(0)
-
-      val sampleRate =
-        if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
-      var channelCount =
-        if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
-      var pcmFloat = false
-      val windowFrames = max(512L, (sampleRate * 0.018).roundToInt().toLong())
-      val peaks = FloatArray(previewBins)
-
-      codec = MediaCodec.createDecoderByType(mime)
-      codec.configure(format, null, null, 0)
-      codec.start()
-      val info = MediaCodec.BufferInfo()
-
-      for (bin in 0 until previewBins) {
-        val targetUs = ((durationUs.toDouble() * bin) / previewBins).toLong()
-          .coerceIn(0L, max(0L, durationUs - 1))
-        try {
-          extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-          codec.flush()
-        } catch (_: Throwable) {
-          continue
-        }
-
-        var sawInputEOS = false
-        var frames = 0L
-        var sumSquares = 0.0
-        var sampleCount = 0L
-        var safety = 0
-
-        while (frames < windowFrames && safety++ < 180) {
-          if (!sawInputEOS) {
-            val inIndex = codec.dequeueInputBuffer(2_000)
-            if (inIndex >= 0) {
-              val inBuf = codec.getInputBuffer(inIndex)!!
-              val size = extractor.readSampleData(inBuf, 0)
-              if (size < 0) {
-                codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                sawInputEOS = true
-              } else {
-                codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
-                extractor.advance()
-              }
-            }
-          }
-
-          when (val outIndex = codec.dequeueOutputBuffer(info, 2_000)) {
-            MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-              val nf = codec.outputFormat
-              if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channelCount = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-              if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
-                pcmFloat = nf.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
-              }
-            }
-            MediaCodec.INFO_TRY_AGAIN_LATER -> {
-              if (sawInputEOS) break
-            }
-            else -> if (outIndex >= 0) {
-              if (info.size > 0) {
-                val out = codec.getOutputBuffer(outIndex)!!
-                out.position(info.offset)
-                out.limit(info.offset + info.size)
-                out.order(ByteOrder.nativeOrder())
-                val energy = collectEnergy(out, pcmFloat, channelCount, windowFrames - frames)
-                frames += energy.frameCount
-                sumSquares += energy.sumSquares
-                sampleCount += energy.sampleCount
-              }
-              val ended = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-              codec.releaseOutputBuffer(outIndex, false)
-              if (ended) break
-            }
-          }
-        }
-
-        if (sampleCount > 0) {
-          peaks[bin] = sqrt(sumSquares / sampleCount).toFloat()
-        }
-      }
-
-      var globalMax = 0f
-      for (value in peaks) if (value > globalMax) globalMax = value
-      if (globalMax > 0f) {
-        for (i in peaks.indices) peaks[i] /= globalMax
-      }
-      return peaks
-    } catch (_: Throwable) {
-      return FloatArray(0)
-    } finally {
-      try { codec?.stop() } catch (_: Throwable) {}
-      try { codec?.release() } catch (_: Throwable) {}
-      try { extractor.release() } catch (_: Throwable) {}
-    }
-  }
-
-  private fun collectEnergy(
-    out: java.nio.ByteBuffer,
-    pcmFloat: Boolean,
-    channelCount: Int,
-    maxFrames: Long
-  ): PcmEnergy {
-    if (maxFrames <= 0) return PcmEnergy(0.0, 0L, 0L)
-    var sumSquares = 0.0
-    var sampleCount = 0L
-    var frameCount = 0L
-    if (pcmFloat) {
-      val fb = out.asFloatBuffer()
-      while (fb.hasRemaining() && frameCount < maxFrames) {
-        var c = 0
-        while (c < channelCount && fb.hasRemaining()) {
-          val s = fb.get().toDouble()
-          sumSquares += s * s
-          sampleCount++
-          c++
-        }
-        frameCount++
-      }
-    } else {
-      val sb = out.asShortBuffer()
-      while (sb.hasRemaining() && frameCount < maxFrames) {
-        var c = 0
-        while (c < channelCount && sb.hasRemaining()) {
-          val s = sb.get() / 32768.0
-          sumSquares += s * s
-          sampleCount++
-          c++
-        }
-        frameCount++
-      }
-    }
-    return PcmEnergy(sumSquares, sampleCount, frameCount)
   }
 
   // Gated integrated K-weighted loudness per ITU-R BS.1770 + absolute sample peak.

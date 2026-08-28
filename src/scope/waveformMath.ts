@@ -1,32 +1,13 @@
 // Pure waveform shaping — no native imports, so it stays unit-testable under `node --test`
 // (see waveformMath.test.mts). waveform.ts re-exports these.
 
-/**
- * Splice a partially-decoded raw RMS prefix over the coarse preview, so the bar fills
- * left-to-right with no visible seam.
- *
- * The prefix is raw — mid-decode the native side can't know the track's global max — while
- * the preview is already normalized against the whole track. So the prefix is rescaled to
- * the preview's amplitude over the region it covers rather than to its own max; normalizing
- * it independently would make the decoded part read far louder than the rest until a loud
- * section happened to arrive.
- */
-export function mergeProgressiveWaveform(
+/** Normalize the raw RMS prefix emitted mid-decode and leave the unfinished tail empty. */
+export function normalizeProgressiveWaveform(
   prefix: Float32Array,
-  totalBins: number,
-  preview: Float32Array | null
+  totalBins: number
 ): Float32Array {
   const out = new Float32Array(Math.max(0, totalBins));
   if (totalBins <= 0) return out;
-
-  // Stretch the (much coarser) preview across the full width first.
-  const hasPreview = !!preview && preview.length > 0;
-  if (preview && hasPreview) {
-    for (let i = 0; i < totalBins; i++) {
-      const p = Math.min(preview.length - 1, Math.floor((i / totalBins) * preview.length));
-      out[i] = preview[p];
-    }
-  }
 
   const filled = Math.min(prefix.length, totalBins);
   if (filled === 0) return out;
@@ -35,12 +16,7 @@ export function mergeProgressiveWaveform(
   for (let i = 0; i < filled; i++) if (prefix[i] > prefixMax) prefixMax = prefix[i];
   if (prefixMax <= 0) return out;
 
-  // Match the preview's scale over the decoded region so the seam is continuous.
-  let reference = 0;
-  if (hasPreview) {
-    for (let i = 0; i < filled; i++) if (out[i] > reference) reference = out[i];
-  }
-  const scale = (reference > 0 ? reference : 1) / prefixMax;
+  const scale = 1 / prefixMax;
   for (let i = 0; i < filled; i++) out[i] = Math.min(1, prefix[i] * scale);
   return out;
 }

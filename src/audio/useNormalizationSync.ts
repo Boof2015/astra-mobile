@@ -57,6 +57,16 @@ export function useNormalizationSync(): void {
         return;
       }
 
+      // Disabled means unity immediately and no metadata/decode work. The seek bar owns
+      // waveform-on-demand independently, so normalization must not precompute it here.
+      if (!settings.enabled) {
+        setNormalizationGainNative(1);
+        setTrackGainNative(path, 1);
+        activateTrackGainNative(path);
+        useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
+        return;
+      }
+
       // Remote tracks have no local file to decode and no synced loudness/RG facts,
       // so normalization is unity. Skip analysis (it would try to download the stream).
       if (current?.sourceType && current.sourceType !== 'local') {
@@ -111,6 +121,15 @@ export function useNormalizationSync(): void {
       const { tracks, activeIndex } = useQueueStore.getState();
       if (activeIndex < 0) return;
       const settings = useAudioSettingsStore.getState().asNormalizationSettings();
+      if (!settings.enabled) {
+        // A settings change may land while decode-ahead is already running. Preserve the
+        // current track (the visible seek bar may be awaiting it), but release queue work.
+        const currentPath = usePlayerStore.getState().currentTrack?.path;
+        for (const path of activeAnalysisPaths()) {
+          if (path !== currentPath) cancelTrackAnalysis(path);
+        }
+        return;
+      }
 
       // The set of tracks worth spending a decode on right now. Everything else that is
       // still decoding has been skipped past.

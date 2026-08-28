@@ -43,6 +43,12 @@ export async function applyNormalizationForActiveTrack(): Promise<void> {
 
   await useAudioSettingsStore.getState().load();
   const settings = useAudioSettingsStore.getState().asNormalizationSettings();
+  if (!settings.enabled) {
+    setNormalizationGainNative(1);
+    setTrackGainNative(url, 1);
+    activateTrackGainNative(url);
+    return;
+  }
 
   let facts = EMPTY_FACTS;
   try {

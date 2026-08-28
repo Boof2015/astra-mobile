@@ -95,22 +95,30 @@ function start(path: string, wantPeaks: boolean): Promise<TrackAnalysisResult> {
 }
 
 async function run(path: string, wantPeaks: boolean): Promise<TrackAnalysisResult> {
+  const startedAt = Date.now();
   const generation = cacheGate.capture();
 
+  const lookupStartedAt = Date.now();
   const [row, cachedPeaks] = await Promise.all([
     AstraLibraryData.getTrackLoudness([path])
       .then((rows) => rows[0] ?? null)
       .catch(() => null),
     AstraLibraryData.getWaveform(path).catch(() => null),
   ]);
+  const cacheLookupMs = Date.now() - lookupStartedAt;
 
   let facts = factsFromRow(row);
   let peaks = cachedPeaks && cachedPeaks.length > 0 ? Float32Array.from(cachedPeaks) : null;
+  const waveformCacheHit = peaks !== null;
+  const loudnessCacheHit = facts.loudnessLufs !== null;
+  let replayGainMs = 0;
+  const settings = useAudioSettingsStore.getState().asNormalizationSettings();
 
   // ReplayGain tags: container-only, no decode. Decoupled from loudness so a track measured
   // before ReplayGain was enabled still picks up its tags; rg_scanned stays unset on failure
   // so it retries next touch.
-  if (!row || row.rg_scanned !== 1) {
+  if (settings.enabled && (!row || row.rg_scanned !== 1)) {
+    const replayGainStartedAt = Date.now();
     try {
       const rg = await AstraLibraryScanner.readReplayGain(path);
       await AstraLibraryData.setTrackReplayGain(
@@ -129,27 +137,41 @@ async function run(path: string, wantPeaks: boolean): Promise<TrackAnalysisResul
       };
     } catch {
       /* tag read failed — fall through to a loudness measure */
+    } finally {
+      replayGainMs = Date.now() - replayGainStartedAt;
     }
   }
 
   // Loudness only needs measuring when it's unknown AND ReplayGain can't cover the track.
-  const settings = useAudioSettingsStore.getState().asNormalizationSettings();
-  const needLoudness = facts.loudnessLufs == null && !hasUsableReplayGain(facts, settings);
+  const needLoudness =
+    settings.enabled && facts.loudnessLufs == null && !hasUsableReplayGain(facts, settings);
   const needPeaks = wantPeaks && !peaks;
   if (!needLoudness && !needPeaks) return { peaks, facts };
   // Skipped past while we were reading the DB — don't start the decode at all.
   if (cancelledPaths.has(path)) return { peaks, facts };
 
+  const preparationMs = Date.now() - startedAt;
   let analysis: TrackAnalysis;
   try {
     analysis = await AstraLibraryScanner.analyzeTrack(path, WAVEFORM_BINS, needLoudness);
   } catch {
     return { peaks, facts };
   }
-  recordTiming(path, analysis);
   // Skipped past / timed out: peaks are truncated and loudness is partial. Cache neither.
-  if (analysis.cancelled) return { peaks, facts };
+  if (analysis.cancelled) {
+    recordTiming(path, analysis, {
+      cacheLookupMs,
+      replayGainMs,
+      preparationMs,
+      persistenceMs: 0,
+      endToEndMs: Date.now() - startedAt,
+      waveformCacheHit,
+      loudnessCacheHit,
+    });
+    return { peaks, facts };
+  }
 
+  const persistenceStartedAt = Date.now();
   if (analysis.peaks && analysis.peaks.length > 0) {
     peaks = Float32Array.from(analysis.peaks);
     await persistPeaks(path, peaks, generation);
@@ -158,6 +180,15 @@ async function run(path: string, wantPeaks: boolean): Promise<TrackAnalysisResul
     await AstraLibraryData.setTrackLoudness(path, analysis.lufs, analysis.peak).catch(() => {});
     facts = { ...facts, loudnessLufs: analysis.lufs, samplePeak: analysis.peak };
   }
+  recordTiming(path, analysis, {
+    cacheLookupMs,
+    replayGainMs,
+    preparationMs,
+    persistenceMs: Date.now() - persistenceStartedAt,
+    endToEndMs: Date.now() - startedAt,
+    waveformCacheHit,
+    loudnessCacheHit,
+  });
   return { peaks, facts };
 }
 
@@ -200,15 +231,6 @@ export function activeAnalysisPaths(): string[] {
   return Array.from(inflight.keys());
 }
 
-/**
- * Whether a decode for this path is already under way — i.e. progress events are about to
- * start arriving, so a second "fast preview" decode would only land late and cause a
- * visible rescale rather than buying a faster first paint.
- */
-export function isAnalysisRunning(path: string): boolean {
-  return inflight.has(path);
-}
-
 /** Drops cached waveform rows and stops in-flight decodes from writing them back. */
 export async function clearWaveformCache(): Promise<void> {
   inflight.clear();
@@ -224,8 +246,7 @@ export async function clearWaveformCache(): Promise<void> {
 
 export interface AnalysisTiming {
   path: string;
-  /** 'preview' entries are the sparse first-paint decode, 'analysis' the real pass. */
-  kind: 'analysis' | 'preview';
+  kind: 'analysis';
   decodeMs: number;
   durationMs: number | null;
   /** durationMs / decodeMs — how many times faster than realtime the decode ran. */
@@ -233,7 +254,33 @@ export interface AnalysisTiming {
   decoderName: string | null;
   mime: string | null;
   withLoudness: boolean;
+  cancelled: boolean;
+  cacheLookupMs: number | null;
+  replayGainMs: number | null;
+  preparationMs: number | null;
+  nativeQueueWaitMs: number | null;
+  setupMs: number | null;
+  firstPcmMs: number | null;
+  firstProgressMs: number | null;
+  firstProgressEndToEndMs: number | null;
+  decodeToEosMs: number | null;
+  finalizeMs: number | null;
+  persistenceMs: number | null;
+  cleanupMs: number | null;
+  endToEndMs: number;
+  waveformCacheHit: boolean | null;
+  loudnessCacheHit: boolean | null;
   at: number;
+}
+
+interface AnalysisJsTiming {
+  cacheLookupMs: number;
+  replayGainMs: number;
+  preparationMs: number;
+  persistenceMs: number;
+  endToEndMs: number;
+  waveformCacheHit: boolean;
+  loudnessCacheHit: boolean;
 }
 
 const MAX_TIMINGS = 20;
@@ -244,43 +291,45 @@ function push(timing: AnalysisTiming): void {
   if (recentTimings.length > MAX_TIMINGS) recentTimings.length = MAX_TIMINGS;
 }
 
-/**
- * Record how long the sparse preview decode took, measured end to end from JS (so it
- * includes the wait for a native permit — which is the number that decides whether the
- * preview can still beat the real decode's first progress event to the screen).
- */
-export function recordPreviewTiming(path: string, elapsedMs: number): void {
-  push({
-    path,
-    kind: 'preview',
-    decodeMs: elapsedMs,
-    durationMs: null,
-    realtimeFactor: null,
-    decoderName: null,
-    mime: null,
-    withLoudness: false,
-    at: Date.now(),
-  });
-  if (__DEV__) console.log(`[analysis] preview ${elapsedMs.toFixed(0)}ms`);
-}
-
-function recordTiming(path: string, analysis: TrackAnalysis): void {
-  if (analysis.cancelled || analysis.decodeMs == null) return;
+function recordTiming(path: string, analysis: TrackAnalysis, js: AnalysisJsTiming): void {
+  if (analysis.decodeMs == null && analysis.endToEndMs == null) return;
+  const nativeQueueWaitMs = analysis.queueWaitMs ?? null;
+  const firstProgressMs = analysis.firstProgressMs ?? null;
   push({
     path,
     kind: 'analysis',
-    decodeMs: analysis.decodeMs,
+    decodeMs: analysis.decodeMs ?? analysis.endToEndMs ?? 0,
     durationMs: analysis.durationMs,
     realtimeFactor: analysis.realtimeFactor,
     decoderName: analysis.decoderName,
     mime: analysis.mime,
     withLoudness: analysis.withLoudness,
+    cancelled: analysis.cancelled,
+    cacheLookupMs: js.cacheLookupMs,
+    replayGainMs: js.replayGainMs,
+    preparationMs: js.preparationMs,
+    nativeQueueWaitMs,
+    setupMs: analysis.setupMs,
+    firstPcmMs: analysis.firstPcmMs,
+    firstProgressMs,
+    firstProgressEndToEndMs:
+      firstProgressMs == null
+        ? null
+        : js.preparationMs + (nativeQueueWaitMs ?? 0) + firstProgressMs,
+    decodeToEosMs: analysis.decodeToEosMs,
+    finalizeMs: analysis.finalizeMs,
+    persistenceMs: js.persistenceMs,
+    cleanupMs: analysis.cleanupMs,
+    endToEndMs: js.endToEndMs,
+    waveformCacheHit: js.waveformCacheHit,
+    loudnessCacheHit: js.loudnessCacheHit,
     at: Date.now(),
   });
-  if (__DEV__) {
+  if (__DEV__ && !analysis.cancelled) {
     const rt = analysis.realtimeFactor;
+    const decodeMs = analysis.decodeMs ?? analysis.endToEndMs ?? 0;
     console.log(
-      `[analysis] ${analysis.mime ?? '?'} ${analysis.decodeMs.toFixed(0)}ms` +
+      `[analysis] ${analysis.mime ?? '?'} ${decodeMs.toFixed(0)}ms` +
         `${rt ? ` (${rt.toFixed(0)}x realtime)` : ''}` +
         ` via ${analysis.decoderName ?? '?'}${analysis.withLoudness ? ' +loudness' : ''}`
     );

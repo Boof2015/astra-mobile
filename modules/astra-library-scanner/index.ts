@@ -130,6 +130,16 @@ export interface TrackAnalysis {
   decoderName: string | null;
   mime: string | null;
   withLoudness: boolean;
+  queueWaitMs: number;
+  setupMs: number | null;
+  firstPcmMs: number | null;
+  firstProgressMs: number | null;
+  decodeToEosMs: number | null;
+  finalizeMs: number | null;
+  cleanupMs: number | null;
+  endToEndMs: number | null;
+  sampleRate: number | null;
+  channelCount: number | null;
 }
 
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
@@ -155,11 +165,6 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    * track stops burning CPU. Safe to call when nothing is running.
    */
   cancelAnalysis(uri: string): Promise<void>;
-  /**
-   * Decode short windows across the file and return approximate RMS peaks for
-   * immediate seek-bar paint. Cheap preview only; callers should not persist it.
-   */
-  extractWaveformPreview(uri: string, bins: number): Promise<number[]>;
   /**
    * Read ReplayGain track/album gain (dB) + peak (linear) from container tags
    * (ID3 TXXX / Vorbis comments / MP4 freeform) without decoding audio. All fields
