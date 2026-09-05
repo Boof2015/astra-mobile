@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are mutable gesture state. */
 import { useMemo, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
@@ -9,12 +9,13 @@ import { createThemedStyles } from '@/theme/themed';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { playHaptic } from '@/lib/haptics';
 import { usePullSearchGestureRef } from '@/components/search/PullSearchGesture';
-import { RAIL_LETTERS, railLettersForDirection } from '@/lib/letterIndex';
+import { railLettersForDirection } from '@/lib/letterIndex';
 import type { SortDirection } from '@/lib/sortDirection';
-
-const CELL_HEIGHT = 17;
-const RAIL_PAD = spacing.xs;
-const RAIL_HEIGHT = RAIL_LETTERS.length * CELL_HEIGHT + RAIL_PAD * 2;
+import {
+  ALPHABET_LETTER_LINE_HEIGHT,
+  alphabetRailIndexAt,
+  getAlphabetRailLayout,
+} from './alphabetRailLayout';
 const BUBBLE_SIZE = 52;
 
 interface AlphabetRailProps {
@@ -31,9 +32,9 @@ interface AlphabetRailProps {
 }
 
 /**
- * A-Z scrubber overlaid on the right edge of a library list. Fixed cell
- * geometry (full #A-Z always rendered) keeps the pointer math trivial; one
- * haptic tick per letter crossed. The magnified letter bubble tracks the
+ * A-Z scrubber overlaid on the right edge of a library list. Short viewports
+ * show intermediate letters as dots; every letter remains reachable by scrubbing.
+ * One haptic tick per letter crossed. The magnified letter bubble tracks the
  * finger's vertical position (Y driven on the UI thread; the letter text only
  * changes on a letter-cross). Blocks the pull-to-search gesture so a scrub at
  * scroll-top never arms the search indicator.
@@ -47,6 +48,12 @@ export function AlphabetRail({
   const styles = useStyles();
   const pullSearchRef = usePullSearchGestureRef();
   const [scrubLetter, setScrubLetter] = useState<string | null>(null);
+  const [availableHeight, setAvailableHeight] = useState(0);
+  const { fontScale } = useWindowDimensions();
+  const layout = useMemo(
+    () => getAlphabetRailLayout(availableHeight, fontScale),
+    [availableHeight, fontScale],
+  );
   const railLetters = railLettersForDirection(direction);
   const lastLetter = useSharedValue('');
   // Rail's top offset inside the (vertically-centered) wrap + the finger's Y
@@ -70,30 +77,27 @@ export function AlphabetRail({
 
   const pan = useMemo(() => {
     const gesture = Gesture.Pan()
+      .enabled(layout !== null)
       .minDistance(0)
       .onBegin((event) => {
         'worklet';
+        if (!layout) return;
         lastLetter.value = '';
-        const y = Math.max(0, Math.min(RAIL_HEIGHT, event.y));
+        const y = Math.max(0, Math.min(layout.height, event.y));
         bubbleY.value = railTop.value + y;
-        const index = Math.max(
-          0,
-          Math.min(RAIL_LETTERS.length - 1, Math.floor((y - RAIL_PAD) / CELL_HEIGHT))
-        );
+        const index = alphabetRailIndexAt(y, layout);
         const letter = railLetters[index];
         lastLetter.value = letter;
         runOnJS(scrubTo)(letter);
       })
       .onUpdate((event) => {
         'worklet';
-        const y = Math.max(0, Math.min(RAIL_HEIGHT, event.y));
+        if (!layout) return;
+        const y = Math.max(0, Math.min(layout.height, event.y));
         // Track the finger every frame for a smooth bubble; the letter/haptic
         // below only fire when the letter actually changes.
         bubbleY.value = railTop.value + y;
-        const index = Math.max(
-          0,
-          Math.min(RAIL_LETTERS.length - 1, Math.floor((y - RAIL_PAD) / CELL_HEIGHT))
-        );
+        const index = alphabetRailIndexAt(y, layout);
         const letter = railLetters[index];
         if (letter === lastLetter.value) return;
         lastLetter.value = letter;
@@ -106,10 +110,13 @@ export function AlphabetRail({
       });
     return pullSearchRef ? gesture.blocksExternalGesture(pullSearchRef) : gesture;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest props via render closure
-  }, [lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, railLetters, onJumpToLetter, onScrubEnd]);
+  }, [layout, lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, railLetters, onJumpToLetter, onScrubEnd]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: bubbleY.value - BUBBLE_SIZE / 2 }],
+    transform: [{ translateY: Math.max(0, Math.min(
+      availableHeight - BUBBLE_SIZE,
+      bubbleY.value - BUBBLE_SIZE / 2,
+    )) }],
   }));
 
   const onRailLayout = (e: LayoutChangeEvent) => {
@@ -117,36 +124,61 @@ export function AlphabetRail({
   };
 
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
-      {scrubLetter ? (
+    <View
+      style={styles.wrap}
+      pointerEvents="box-none"
+      onLayout={(event) => setAvailableHeight(event.nativeEvent.layout.height)}
+    >
+      {layout && scrubLetter ? (
         <Animated.View style={[styles.bubble, bubbleStyle]} pointerEvents="none">
           <Text variant="mono" style={styles.bubbleLetter}>
             {scrubLetter}
           </Text>
         </Animated.View>
       ) : null}
-      <GestureDetector gesture={pan}>
-        <View style={styles.rail} hitSlop={{ left: 12, right: 8 }} onLayout={onRailLayout}>
-          {railLetters.map((letter) => {
-            const present = activeLetters.has(letter);
-            const scrubbing = letter === scrubLetter;
-            return (
-              <View key={letter} style={styles.cell}>
-                <Text
-                  variant="mono"
+      {layout ? (
+        <GestureDetector gesture={pan}>
+          <View style={[styles.rail, { height: layout.height }]} hitSlop={{ left: 12, right: 8 }} onLayout={onRailLayout}>
+            {railLetters.map((letter, index) => {
+              const present = activeLetters.has(letter);
+              const scrubbing = letter === scrubLetter;
+              return (
+                <View
+                  key={letter}
                   style={[
-                    styles.letter,
-                    present ? styles.letterPresent : styles.letterAbsent,
-                    scrubbing && styles.letterScrubbing,
+                    styles.cell,
+                    {
+                      top: layout.firstCenter + index * layout.step - layout.labelHeight / 2,
+                      height: layout.labelHeight,
+                    },
                   ]}
                 >
-                  {letter}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </GestureDetector>
+                  {layout.labelIndices.includes(index) ? (
+                    <Text
+                      variant="mono"
+                      style={[
+                        styles.letter,
+                        present ? styles.letterPresent : styles.letterAbsent,
+                        scrubbing && styles.letterScrubbing,
+                      ]}
+                    >
+                      {letter}
+                    </Text>
+                  ) : (
+                    <View
+                      style={[
+                        styles.dot,
+                        !present && styles.dotAbsent,
+                        scrubbing && styles.dotScrubbing,
+                      ]}
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </GestureDetector>
+      ) : null}
     </View>
   );
 }
@@ -165,19 +197,20 @@ const useStyles = createThemedStyles((colors) => ({
   // feel like an overlay, dark enough to keep the letters legible over bright art.
   rail: {
     width: 16,
-    paddingVertical: RAIL_PAD,
     alignItems: 'center',
     backgroundColor: rgbaFromHex(colors.bgPrimary, 0.35),
     borderRadius: radius.pill,
   },
   cell: {
-    height: CELL_HEIGHT,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   letter: {
     fontSize: 10,
-    lineHeight: CELL_HEIGHT,
+    lineHeight: ALPHABET_LETTER_LINE_HEIGHT,
   },
   letterPresent: {
     color: colors.textSecondary,
@@ -188,6 +221,19 @@ const useStyles = createThemedStyles((colors) => ({
   },
   letterScrubbing: {
     color: colors.accentTextStrong,
+  },
+  dot: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.textSecondary,
+  },
+  dotAbsent: {
+    backgroundColor: colors.textTertiary,
+    opacity: 0.4,
+  },
+  dotScrubbing: {
+    backgroundColor: colors.accentTextStrong,
   },
   bubble: {
     position: 'absolute',

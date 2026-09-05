@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   ReduceMotion,
@@ -228,6 +229,7 @@ export default function LibraryScreen() {
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const shell = useShellLayout();
+  const insets = useSafeAreaInsets();
   const phoneContextBar = shell.mode === 'tabs';
   const showScreenTitle = shell.mode !== 'rail';
   const sceneBottomInset = shell.sceneBottomInset;
@@ -730,7 +732,7 @@ export default function LibraryScreen() {
   // Wide windows can afford the pinned segmented deck. Phones deliberately
   // leave `chromeHeight` at zero and use the thumb-reachable bar below.
   const chrome = showLibraryStatus || phoneContextBar ? null : (
-    <>
+    <View style={styles.chromeContent}>
       <View
         style={[
           styles.switcher,
@@ -851,7 +853,7 @@ export default function LibraryScreen() {
           ) : null}
         </View>
       ) : null}
-    </>
+    </View>
   );
 
   return (
@@ -1059,8 +1061,12 @@ export default function LibraryScreen() {
                   style={[
                     styles.railArea,
                     {
-                      top: header.contentPaddingTop,
-                      bottom: libraryRailBottomClearance(phoneContextBar, contextOverlayHeight),
+                      top: header.contentPaddingTop + spacing.sm,
+                      bottom: libraryRailBottomClearance(
+                        phoneContextBar,
+                        contextOverlayHeight,
+                        Math.max(sceneBottomInset, insets.bottom),
+                      ) + spacing.sm,
                     },
                   ]}
                   pointerEvents="box-none"
@@ -1296,6 +1302,9 @@ const styles = StyleSheet.create({
   inlineStatus: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
+  },
+  chromeContent: {
+    paddingHorizontal: spacing.lg,
   },
   // Each chrome block fills the slot `libraryChromeHeight` reserved for it, so
   // the reservation is enforced rather than predicted. Margins are gone: the

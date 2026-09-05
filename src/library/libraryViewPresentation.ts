@@ -118,12 +118,13 @@ export function libraryContextOverlayHeight(bottomClearance: number): number {
     LIBRARY_CONTEXT_BAR_HEIGHT;
 }
 
-/** Keep the A-Z gesture surface above phone-only floating Library chrome. */
+/** Keep the A-Z gesture surface above floating chrome and the bottom safe area. */
 export function libraryRailBottomClearance(
   phoneContextBar: boolean,
   contextOverlayHeight: number,
+  sceneBottomClearance = 0,
 ): number {
-  return phoneContextBar ? Math.max(0, contextOverlayHeight) : 0;
+  return Math.max(0, phoneContextBar ? contextOverlayHeight : sceneBottomClearance);
 }
 
 /**
