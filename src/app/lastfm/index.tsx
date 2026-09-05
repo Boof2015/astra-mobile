@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useEffect } from 'react';
 import {
   StyleSheet,
@@ -149,8 +150,8 @@ export default function LastFmScreen() {
             onPress={() => connectOfficial(profile)}
             accessibilityRole="button"
           >
-            <Ionicons name="link" size={16} color={colors.accentTextStrong} />
-            <Text variant="label" color={colors.accentTextStrong}>
+            <Ionicons name="link" size={16} color={actionButtonForeground(colors)} />
+            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
               Connect
             </Text>
           </AppPressable>
@@ -247,8 +248,8 @@ export default function LastFmScreen() {
 
         {status && status.pendingScrobbles > 0 ? (
           <AppPressable feedback="control"  style={styles.retryButton} onPress={() => requestLastFmFlush()}>
-            <Ionicons name="sync" size={16} color={colors.accentText} />
-            <Text variant="label" color={colors.accentText}>
+            <Ionicons name="sync" size={16} color={colors.textSecondary} />
+            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
               Retry {status.pendingScrobbles} queued now
             </Text>
           </AppPressable>
@@ -269,8 +270,8 @@ export default function LastFmScreen() {
         </View>
 
         <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
-          <Ionicons name="add" size={18} color={colors.accentTextStrong} />
-          <Text variant="body" color={colors.accentTextStrong}>
+          <Ionicons name="add" size={18} color={actionButtonForeground(colors)} />
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
             Add destination
           </Text>
         </AppPressable>
@@ -332,16 +333,8 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 18,
   },
   retryButton: {
-    flexDirection: 'row',
+    ...actionButtonStyle(colors, 'secondary'),
     alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
     marginTop: spacing.md,
   },
   sectionLabel: {
@@ -395,25 +388,11 @@ const useStyles = createThemedStyles((colors) => ({
     flexShrink: 1,
   },
   connectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   addButton: {
-    flexDirection: 'row',
+    ...actionButtonStyle(colors, 'primary'),
     alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
     marginTop: spacing.lg,
   },
   footnote: {

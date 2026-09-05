@@ -1,8 +1,9 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { useArtistImageStore } from '@/stores/artistImageStore';
@@ -81,11 +82,11 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
         accessibilityLabel="Look for missing artist images now"
       >
         {retrying ? (
-          <ActivityIndicator size="small" color={colors.accentTextStrong} />
+          <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
         ) : (
-          <Ionicons name="refresh" size={16} color={colors.accentTextStrong} />
+          <Ionicons name="refresh" size={16} color={actionButtonForeground(colors)} />
         )}
-        <Text variant="label" color={colors.accentTextStrong}>
+        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
           Look for missing images
         </Text>
       </AppPressable>
@@ -113,16 +114,7 @@ const useStyles = createThemedStyles((colors) => ({
     opacity: 0.35,
   },
   button: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.accentGlow,
+    ...actionButtonStyle(colors, 'primary'),
     overflow: 'hidden',
   },
 }));

@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -138,7 +139,7 @@ export function PresetDeviceAssignmentSheet({
 
       <View style={styles.actions}>
         <AppPressable feedback="control"  style={[styles.button, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>Cancel</Text>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Cancel</Text>
         </AppPressable>
         <AppPressable feedback="accent"
 
@@ -148,7 +149,7 @@ export function PresetDeviceAssignmentSheet({
             onClose();
           }}
         >
-          <Text variant="label" color={colors.accentTextStrong}>Save assignments</Text>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Save assignments</Text>
         </AppPressable>
       </View>
     </EqSheet>
@@ -207,18 +208,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   button: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
+    ...actionButtonBase,
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   save: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
 }));
 

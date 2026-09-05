@@ -114,8 +114,8 @@ const useStyles = createThemedStyles((colors) => ({
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    borderColor: 'transparent',
+    backgroundColor: colors.bgSecondary,
     padding: spacing.lg,
     gap: spacing.xs,
   },
@@ -133,8 +133,8 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    borderColor: 'transparent',
+    backgroundColor: colors.bgTertiary,
   },
   toggle: {
     marginLeft: 'auto',

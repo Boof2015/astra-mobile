@@ -1,5 +1,6 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useMemo, useRef } from 'react';
-import { Share, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Share, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-system/legacy';
@@ -116,14 +117,14 @@ export default function SignalScreen() {
 
           <View style={styles.actions}>
             <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void shareImage()}>
-              <Ionicons name="share-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
+              <Ionicons name="share-outline" size={18} color={actionButtonForeground(colors)} />
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                 Share image
               </Text>
             </AppPressable>
             <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void shareLink()}>
-              <Ionicons name="link-outline" size={18} color={colors.textPrimary} />
-              <Text variant="body">Share link</Text>
+              <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
+              <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">Share link</Text>
             </AppPressable>
           </View>
         </View>
@@ -187,25 +188,9 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.xl,
   },
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
+    ...actionButtonStyle(colors, 'primary'),
   },
   secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSecondary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
+    ...actionButtonStyle(colors, 'secondary'),
   },
 }));

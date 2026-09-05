@@ -1,18 +1,12 @@
-// Lyrics mode for now-playing — a lyrics-first takeover that replaces the whole
-// art/controls body (and the standard header). Lyrics fill the screen over the
-// blurred-art wash; a slim strip on top (dismiss + track) and a minimal control
-// bar below (favorite + prev/play/next + exit) stay permanently visible so you
-// never lose control to go fully immersive. The lyrics toggle exits back to the
-// art view; swipe-down still closes the player.
+// Phone lyrics takeover. The compact track header stays; the shared lyrics
+// toggle belongs to the player shell so its position never changes with mode.
 
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { MarqueeText } from '@/components/MarqueeText';
 import { AstraLogo } from '@/components/AstraLogo';
-import { SeekBar } from '@/components/SeekBar';
-import { TactilePressable } from '@/components/player/TactilePressable';
 import {
   getNowPlayingTrackTransitionKey,
   NowPlayingTrackFadeThrough,
@@ -31,14 +25,7 @@ interface LyricsViewProps {
   /** False while mounted but hidden (closed now-playing overlay): pins progress, stops rAF loops. */
   active?: boolean;
   isPlaying: boolean;
-  isLoading: boolean;
-  isFavorite: boolean;
   onSeek: (seconds: number) => void;
-  onPlayPause: () => void;
-  onNext: () => void;
-  onPrev: () => void;
-  onToggleFavorite: () => void;
-  onExitLyrics: () => void;
   onDismiss: () => void;
 }
 
@@ -46,14 +33,7 @@ export function LyricsView({
   track,
   active = true,
   isPlaying,
-  isLoading,
-  isFavorite,
   onSeek,
-  onPlayPause,
-  onNext,
-  onPrev,
-  onToggleFavorite,
-  onExitLyrics,
   onDismiss,
 }: LyricsViewProps) {
   const styles = useStyles();
@@ -93,11 +73,11 @@ export function LyricsView({
                 {track.title}
               </MarqueeText>
               <View style={styles.stripSubRow}>
-                <Text variant="caption" numberOfLines={1} color={colors.textTertiary} style={styles.stripArtist}>
+                <Text variant="caption" numberOfLines={1} color={colors.textSecondary} style={styles.stripArtist}>
                   {track.artist}
                 </Text>
                 {sourceLabel ? (
-                  <Text variant="mono" numberOfLines={1} color={colors.textTertiary} style={styles.sourceTag}>
+                  <Text variant="mono" numberOfLines={1} color={colors.textSecondary} style={styles.sourceTag}>
                     {sourceLabel}
                   </Text>
                 ) : null}
@@ -120,50 +100,6 @@ export function LyricsView({
           onSeek={onSeek}
         />
       </NowPlayingTrackFadeThrough>
-
-      <View style={styles.controls}>
-        <SeekBar currentTime={currentTime} duration={duration} trackKey={track.id} onSeek={onSeek} />
-        <View style={styles.transport}>
-          <TactilePressable
-            onPress={onToggleFavorite}
-            haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
-            confirmationScale={1.08}
-            hitSlop={10}
-            style={styles.transportBtn}
-            accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            accessibilityState={{ selected: isFavorite }}
-          >
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={22}
-              color={isFavorite ? colors.accent : colors.textTertiary}
-            />
-          </TactilePressable>
-          <TactilePressable  onPress={onPrev} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Previous">
-            <Ionicons name="play-skip-back" size={28} color={colors.textPrimary} />
-          </TactilePressable>
-          <TactilePressable  onPress={onPlayPause} haptic="action" pressedScale={0.97} hitSlop={12} style={styles.playButton} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
-            <Ionicons
-              name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-              size={28}
-              color={colors.bgPrimary}
-            />
-          </TactilePressable>
-          <TactilePressable  onPress={onNext} haptic="action" hitSlop={12} style={styles.transportBtn} accessibilityLabel="Next">
-            <Ionicons name="play-skip-forward" size={28} color={colors.textPrimary} />
-          </TactilePressable>
-          <TactilePressable
-            onPress={onExitLyrics}
-            haptic="selection"
-            hitSlop={10}
-            style={styles.transportBtn}
-            accessibilityLabel="Hide lyrics"
-            accessibilityState={{ selected: true }}
-          >
-            <MaterialCommunityIcons name="comment-quote-outline" size={22} color={colors.accent} />
-          </TactilePressable>
-        </View>
-      </View>
     </View>
   );
 }
@@ -238,29 +174,6 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 9,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: colors.textTertiary,
-  },
-  controls: {
-    paddingTop: spacing.sm,
-  },
-  transport: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
-  },
-  transportBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: colors.textSecondary,
   },
 }));

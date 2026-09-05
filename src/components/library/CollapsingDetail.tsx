@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's UI-thread scroll state. */
 import {
   useCallback,
@@ -31,10 +32,7 @@ import {
   vec
 } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
@@ -366,8 +364,8 @@ export function CollapsingHeader({
             disabled={disabled}
             accessibilityRole="button"
           >
-            <Ionicons name="play" size={17} color={colors.bgPrimary} />
-            <Text variant="body" style={styles.primaryActionText}>
+            <Ionicons name="play" size={17} color={actionButtonForeground(colors)} />
+            <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
               Play
             </Text>
           </AppPressable>
@@ -377,8 +375,8 @@ export function CollapsingHeader({
             disabled={disabled}
             accessibilityRole="button"
           >
-            <Ionicons name="shuffle" size={17} color={colors.accent} />
-            <Text variant="body" color={colors.accent} style={styles.secondaryActionText}>
+            <Ionicons name="shuffle" size={17} color={colors.textSecondary} />
+            <Text variant="body" style={actionButtonTextStyle(colors, 'secondary')}>
               Shuffle
             </Text>
           </AppPressable>
@@ -542,32 +540,19 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   actionButton: {
+    ...actionButtonBase,
     flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
   },
   primaryAction: {
-    backgroundColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   secondaryAction: {
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.glassBg,
+    ...actionButtonStyle(colors, 'secondary'),
+    flex: 0,
+    minWidth: 116,
   },
   disabledAction: {
     opacity: 0.45,
-  },
-  primaryActionText: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
-  },
-  secondaryActionText: {
-    fontWeight: '600',
   },
   chevron: {
     position: 'absolute',

@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -227,7 +228,7 @@ export default function SignalScanScreen() {
               <Ionicons name="camera-outline" size={28} color={colors.accent} />
               <Text variant="body">Camera access is needed to scan a Signal.</Text>
               <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
-                <Text variant="body" color={colors.accentTextStrong}>
+                <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                   Allow camera
                 </Text>
               </AppPressable>
@@ -312,14 +313,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'primary'),
   },
   linkButton: {
     alignItems: 'center',

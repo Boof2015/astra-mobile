@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/refs -- HSV refs are read only by RNGH callbacks after render; keeping the gesture identity stable prevents an active color drag from being replaced mid-gesture. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -248,7 +249,7 @@ export function AccentColorSheet({
           style={[styles.button, styles.cancel]}
           onPress={onClose}
         >
-          <Text variant="label" color={colors.textSecondary}>Cancel</Text>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Cancel</Text>
         </AppPressable>
         <AppPressable
           feedback="accent"
@@ -256,7 +257,7 @@ export function AccentColorSheet({
           disabled={!validInput}
           onPress={apply}
         >
-          <Text variant="label" color={colors.bgPrimary}>Apply</Text>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Apply</Text>
         </AppPressable>
       </View>
       </AppSheet>
@@ -347,18 +348,14 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   button: {
+    ...actionButtonBase,
     minWidth: 92,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-    alignItems: 'center',
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   apply: {
-    backgroundColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   disabled: {
     opacity: 0.4,

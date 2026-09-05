@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useEffect, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
@@ -90,7 +91,7 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
             style={({ pressed }) => [styles.preset, !available && styles.disabled, pressed && available && styles.pressed]}
             accessibilityRole="button"
           >
-            <Text variant="label" color={colors.textPrimary}>{minutes} min</Text>
+            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">{minutes} min</Text>
           </AppPressable>
         ))}
       </View>
@@ -114,7 +115,7 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
           onPress={startCustom}
           style={({ pressed }) => [styles.action, !available && styles.disabled, pressed && available && styles.pressed]}
         >
-          <Text variant="label" color={colors.accentTextStrong}>Set custom</Text>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Set custom</Text>
         </AppPressable>
       </View>
 
@@ -136,7 +137,7 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
 
       {timer ? (
         <AppPressable feedback="control"  onPress={() => void run(cancel, 'Sleep timer canceled.')} style={styles.cancel}>
-          <Text variant="label" color={colors.warning}>Cancel sleep timer</Text>
+          <Text style={actionButtonTextStyle(colors, 'danger')} variant="label">Cancel sleep timer</Text>
         </AppPressable>
       ) : null}
 
@@ -150,9 +151,9 @@ const useStyles = createThemedStyles((colors) => ({
   statusBlock: { gap: 3 },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   preset: {
-    flexGrow: 1, minWidth: 66, alignItems: 'center', paddingVertical: spacing.sm,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: colors.glassBorder,
-    backgroundColor: colors.bgTertiary,
+    ...actionButtonStyle(colors, 'secondary'),
+    flexGrow: 1,
+    minWidth: 66,
   },
   customRow: { flexDirection: 'row', gap: spacing.sm },
   input: {
@@ -161,14 +162,16 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 16,
   },
   action: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.bgTertiary,
+    ...actionButtonStyle(colors, 'primary'),
+    flex: 1,
   },
   fullAction: {
-    gap: 2, padding: spacing.md, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.glassBorder, backgroundColor: colors.bgTertiary,
+    ...actionButtonStyle(colors, 'secondary'),
+    flexDirection: 'column', alignItems: 'flex-start', gap: 2,
   },
-  cancel: { alignItems: 'center', paddingVertical: spacing.sm },
+  cancel: {
+    ...actionButtonStyle(colors, 'danger'),
+  },
   disabled: { opacity: 0.42 },
   pressed: { opacity: 0.72 },
 }));

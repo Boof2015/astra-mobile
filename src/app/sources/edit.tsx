@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -282,7 +283,7 @@ export default function SourceEditScreen() {
                 {busy === 'test' ? (
                   <ActivityIndicator size="small" color={colors.textSecondary} />
                 ) : (
-                  <Text variant="body" color={colors.textSecondary}>
+                  <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
                     Test connection
                   </Text>
                 )}
@@ -297,9 +298,9 @@ export default function SourceEditScreen() {
                 disabled={!canSubmit || !!busy}
               >
                 {busy === 'save' ? (
-                  <ActivityIndicator size="small" color={colors.accentTextStrong} />
+                  <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
                 ) : (
-                  <Text variant="body" color={colors.accentTextStrong}>
+                  <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                     {editing ? 'Save' : 'Add server'}
                   </Text>
                 )}
@@ -389,20 +390,14 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.xl,
   },
   button: {
+    ...actionButtonBase,
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + 2,
-    borderRadius: radius.md,
-    minHeight: 48,
   },
   secondaryButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   primaryButton: {
-    backgroundColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   buttonDisabled: {
     opacity: 0.5,

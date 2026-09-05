@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -299,9 +300,9 @@ export default function LastFmEditScreen() {
               disabled={!canSubmit || busy}
             >
               {busy ? (
-                <ActivityIndicator size="small" color={colors.accentTextStrong} />
+                <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
               ) : (
-                <Text variant="body" color={colors.accentTextStrong}>
+                <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                   {editing ? 'Save' : 'Add destination'}
                 </Text>
               )}
@@ -394,13 +395,8 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 18,
   },
   saveButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + 2,
-    borderRadius: radius.md,
-    minHeight: 48,
+    ...actionButtonStyle(colors, 'primary'),
     marginTop: spacing.xl,
-    backgroundColor: colors.accent,
   },
   buttonDisabled: {
     opacity: 0.5,

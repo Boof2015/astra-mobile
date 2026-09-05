@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -83,7 +84,7 @@ export function PlaylistPickerSheet({
         />
         <View style={styles.actions}>
           <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={() => setStep('pick')}>
-            <Text variant="label" color={colors.textSecondary}>
+            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
               Back
             </Text>
           </AppPressable>
@@ -92,7 +93,7 @@ export function PlaylistPickerSheet({
             disabled={!trimmedPlaylistName}
             onPress={addToNewPlaylist}
           >
-            <Text variant="label" color={colors.accentTextStrong}>
+            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
               Create
             </Text>
           </AppPressable>
@@ -147,18 +148,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   btn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
+    ...actionButtonBase,
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   create: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   createDisabled: {
     opacity: 0.4,

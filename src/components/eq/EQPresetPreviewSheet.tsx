@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   StyleSheet,
   View
@@ -69,7 +70,7 @@ export function EQPresetPreviewSheet({
       </View>
       <View style={styles.actions}>
         <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
             Cancel
           </Text>
         </AppPressable>
@@ -80,7 +81,7 @@ export function EQPresetPreviewSheet({
             onClose();
           }}
         >
-          <Text variant="label" color={colors.accentTextStrong}>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
             {confirmLabel}
           </Text>
         </AppPressable>
@@ -115,18 +116,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   btn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
+    ...actionButtonBase,
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   primary: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
 }));
 

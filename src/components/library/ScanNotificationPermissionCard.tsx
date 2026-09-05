@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -59,15 +60,15 @@ export function ScanNotificationPermissionCard({
         accessibilityRole="button"
       >
         {working ? (
-          <ActivityIndicator size="small" color={colors.accentTextStrong} />
+          <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
         ) : (
           <Ionicons
             name={denied ? 'settings-outline' : 'notifications-outline'}
             size={18}
-            color={colors.accentTextStrong}
+            color={actionButtonForeground(colors)}
           />
         )}
-        <Text variant="label" color={colors.accentTextStrong}>
+        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
           {denied ? 'Open Settings' : 'Allow scan notifications'}
         </Text>
       </AppPressable>
@@ -108,14 +109,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 4,
   },
   button: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentGlow,
+    ...actionButtonStyle(colors, 'primary'),
     overflow: 'hidden',
   },
 }));

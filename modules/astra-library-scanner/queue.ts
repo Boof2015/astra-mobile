@@ -5,6 +5,7 @@ import {
 } from 'expo-modules-core';
 import { processColor, type ViewProps } from 'react-native';
 import type { Palette } from '../../src/theme/palettes';
+import { actionButtonForeground } from '../../src/theme/actionButtons';
 
 export interface NativeQueuePalette {
   background: number;
@@ -18,6 +19,7 @@ export interface NativeQueuePalette {
   textSecondary: number;
   textTertiary: number;
   accent: number;
+  accentForeground: number;
   accentText: number;
   accentTextStrong: number;
   warning: number;
@@ -98,11 +100,10 @@ export function toNativeQueuePalette(colors: Palette): NativeQueuePalette {
     textSecondary: nativeColor(colors.textSecondary),
     textTertiary: nativeColor(colors.textTertiary),
     accent: nativeColor(colors.accent),
+    accentForeground: nativeColor(actionButtonForeground(colors)),
     accentText: nativeColor(colors.accentText),
     accentTextStrong: nativeColor(colors.accentTextStrong),
-    // Destructive queue actions are semantically different from Astra's amber
-    // warning token. Keep remove affordances unmistakably red in every theme.
-    warning: nativeColor('#ef5350'),
+    warning: nativeColor(colors.warning),
   };
 }
 

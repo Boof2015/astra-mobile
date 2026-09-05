@@ -9,6 +9,7 @@ import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   dismissActiveDialog,
   EMPTY_DIALOG_QUEUE,
@@ -110,25 +111,17 @@ export function AppDialogHost() {
           <View style={styles.actions}>
             {active.actions.map((action, index) => {
               const destructive = action.role === 'destructive';
-              const secondary = action.role === 'cancel';
-              const color = destructive
-                ? colors.warning
-                : secondary
-                  ? colors.textSecondary
-                  : colors.accent;
+              const secondary = action.role === 'cancel' || index < active.actions.length - 1;
+              const variant = destructive ? 'danger' : secondary ? 'secondary' : 'primary';
               return (
-                <AppPressable feedback="none"
+                <AppPressable feedback={variant === 'primary' ? 'accent' : 'control'}
                   key={`${action.label}-${index}`}
-
-                  style={({ pressed }) => [
-                    styles.action,
-                    pressed ? styles.actionPressed : null,
-                  ]}
+                  style={[actionButtonStyle(colors, variant), styles.action]}
                   onPress={() => selectAction(index)}
                   accessibilityRole="button"
                   accessibilityLabel={action.label}
                 >
-                  <Text variant="body" color={color}>
+                  <Text variant="body" style={actionButtonTextStyle(colors, variant)}>
                     {action.label}
                   </Text>
                 </AppPressable>
@@ -183,14 +176,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   action: {
     minWidth: 72,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  actionPressed: {
-    backgroundColor: colors.glassHighlight,
+    flexShrink: 1,
   },
 }));

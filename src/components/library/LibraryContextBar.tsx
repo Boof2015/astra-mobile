@@ -16,8 +16,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { useSelectionSlide } from '@/components/selectionSlide';
-import { radius, spacing } from '@/theme';
+import { fonts, radius, spacing } from '@/theme';
 import { motion } from '@/theme/motion';
+import { selectionSurface } from '@/theme/actionButtons';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { playHaptic } from '@/lib/haptics';
@@ -89,7 +90,7 @@ export function LibraryContextBar({
   const pendingSwipeDirection = useSharedValue<LibraryDockSwipeDirection | 0>(0);
   const selectionStyle = useAnimatedStyle(() => ({
     opacity: slide.presence.value,
-    width: slide.extent.value,
+    width: Math.max(0, slide.extent.value - spacing.sm),
     transform: [
       { translateX: slide.offset.value + dragX.value },
       { scaleX: 1 + primeProgress.value * 0.05 },
@@ -268,7 +269,7 @@ export function LibraryContextBar({
                       <Ionicons
                         name={MODE_ICONS[entry.key]}
                         size={19}
-                        color={selected ? colors.accent : colors.textSecondary}
+                        color={selected ? colors.accentTextStrong : colors.textSecondary}
                       />
                       {showActiveLabel && selected ? (
                         <Text
@@ -363,11 +364,9 @@ const useStyles = createThemedStyles((colors) => ({
     position: 'absolute',
     top: spacing.xs,
     bottom: spacing.xs,
-    left: 0,
-    backgroundColor: colors.glassHighlight,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
+    left: spacing.xs,
+    backgroundColor: selectionSurface(colors),
+    borderRadius: 12,
   },
   section: {
     height: '100%',
@@ -389,6 +388,7 @@ const useStyles = createThemedStyles((colors) => ({
   sectionLabel: {
     flexShrink: 1,
     minWidth: 0,
+    fontFamily: fonts.sans.semibold,
   },
   selectionCount: {
     flex: 1,

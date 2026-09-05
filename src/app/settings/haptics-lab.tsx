@@ -1,12 +1,13 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import {
   SettingsCard,
   SettingsSectionLabel,
   SettingsSectionScreen,
 } from '@/components/settings/SettingsSectionScaffold';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { playHaptic, type HapticEvent } from '@/lib/haptics';
@@ -102,7 +103,7 @@ export default function HapticsLabScreen() {
           onPress={refresh}
           accessibilityRole="button"
         >
-          <Text variant="label" color={colors.accentTextStrong}>Refresh capabilities</Text>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Refresh capabilities</Text>
         </AppPressable>
       </SettingsCard>
 
@@ -269,7 +270,7 @@ function AuditionButton({
       accessibilityRole="button"
       accessibilityState={{ disabled }}
     >
-      <Text variant="label" color={disabled ? colors.textTertiary : colors.accentTextStrong}>
+      <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
         {label}
       </Text>
     </AppPressable>
@@ -291,14 +292,9 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.xs,
   },
   refreshButton: {
+    ...actionButtonStyle(colors, 'secondary'),
     alignSelf: 'flex-start',
     marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.glassHighlight,
   },
   auditionRow: {
     flexDirection: 'row',
@@ -325,15 +321,8 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   auditionButton: {
+    ...actionButtonStyle(colors, 'secondary'),
     minWidth: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.glassHighlight,
   },
   wideButton: {
     alignSelf: 'stretch',

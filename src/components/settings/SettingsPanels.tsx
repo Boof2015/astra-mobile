@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   StyleSheet,
   View,
@@ -328,8 +329,8 @@ function LibraryFoldersSettings() {
           onPress={() => void addFolder()}
           accessibilityRole="button"
         >
-          <Ionicons name="add" size={17} color={colors.bgPrimary} />
-          <Text variant="label" style={styles.folderPrimaryActionText}>
+          <Ionicons name="add" size={17} color={actionButtonForeground(colors)} />
+          <Text variant="label" style={actionButtonTextStyle(colors, 'primary')}>
             Add
           </Text>
         </AppPressable>
@@ -344,7 +345,7 @@ function LibraryFoldersSettings() {
             accessibilityRole="button"
           >
             <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-            <Text variant="label" color={colors.textSecondary}>
+            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
               Rescan all
             </Text>
           </AppPressable>
@@ -620,31 +621,14 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 2,
   },
   folderPrimaryAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  folderPrimaryActionText: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
+    ...actionButtonStyle(colors, 'primary'),
   },
   folderSettingsActions: {
     flexDirection: 'row',
     marginTop: spacing.md,
   },
   folderSecondaryAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   folderSettingsNotice: {
     marginTop: spacing.sm,

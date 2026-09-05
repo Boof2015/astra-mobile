@@ -1,13 +1,11 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -54,8 +52,8 @@ export function EmptyLibrary() {
         onPress={() => router.push(fatal ? '/settings/troubleshooting' : '/settings')}
         accessibilityRole="button"
       >
-        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={colors.bgPrimary} />
-        <Text variant="body" style={styles.ctaLabel}>
+        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={actionButtonForeground(colors)} />
+        <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
           {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
       </AppPressable>
@@ -79,17 +77,7 @@ const useStyles = createThemedStyles((colors) => ({
     maxWidth: 280,
   },
   cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    ...actionButtonStyle(colors, 'primary'),
     marginTop: spacing.lg,
-  },
-  ctaLabel: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
   },
 }));

@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AppState,
@@ -26,11 +27,7 @@ import {
   PullSearchScrollView,
   useScrollTopGate
 } from '@/components/search/PullSearchGesture';
-import {
-  fonts,
-  radius,
-  spacing,
-} from '@/theme';
+import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -517,8 +514,8 @@ function EmptyHomeCard({
         onPress={onManageFolders}
         accessibilityRole="button"
       >
-        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={colors.bgPrimary} />
-        <Text variant="body" style={styles.primaryButtonText}>
+        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={actionButtonForeground(colors)} />
+        <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
           {fatal ? 'Troubleshooting' : 'Folder settings'}
         </Text>
       </AppPressable>
@@ -1066,19 +1063,7 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassHighlight,
   },
   primaryButton: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  primaryButtonText: {
-    color: colors.bgPrimary,
-    fontFamily: fonts.sans.semibold,
+    ...actionButtonStyle(colors, 'primary'),
   },
   buttonDisabled: {
     opacity: 0.45,

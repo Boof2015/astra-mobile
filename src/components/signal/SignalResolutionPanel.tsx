@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
@@ -54,9 +55,9 @@ export function SignalResolutionPanel({
       <Ionicons
         name="open-outline"
         size={18}
-        color={primary ? colors.accentTextStrong : colors.textPrimary}
+        color={primary ? actionButtonForeground(colors) : colors.textSecondary}
       />
-      <Text variant="body" color={primary ? colors.accentTextStrong : colors.textPrimary}>
+      <Text variant="body" style={actionButtonTextStyle(colors, primary ? 'primary' : 'secondary')}>
         Find online
       </Text>
     </AppPressable>
@@ -72,7 +73,7 @@ export function SignalResolutionPanel({
         accessibilityRole="button"
       >
         <Ionicons name="scan-outline" size={17} color={colors.textSecondary} />
-        <Text variant="label">Scan another</Text>
+        <Text variant="label" style={actionButtonTextStyle(colors, 'secondary')}>Scan another</Text>
       </AppPressable>
       <AppPressable feedback="control"
 
@@ -81,7 +82,7 @@ export function SignalResolutionPanel({
         disabled={actionBusy}
         accessibilityRole="button"
       >
-        <Text variant="label">Done</Text>
+        <Text variant="label" style={actionButtonTextStyle(colors, 'secondary')}>Done</Text>
       </AppPressable>
     </View>
   );
@@ -198,8 +199,8 @@ export function SignalResolutionPanel({
           disabled={actionBusy}
           accessibilityRole="button"
         >
-          <Ionicons name="play" size={18} color={colors.accentTextStrong} />
-          <Text variant="body" color={colors.accentTextStrong}>
+          <Ionicons name="play" size={18} color={actionButtonForeground(colors)} />
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
             {actionState === 'playing' ? 'Starting…' : 'Play now'}
           </Text>
         </AppPressable>
@@ -213,9 +214,9 @@ export function SignalResolutionPanel({
           <Ionicons
             name={actionState === 'queued' ? 'checkmark' : 'list-outline'}
             size={18}
-            color={colors.textPrimary}
+            color={colors.textSecondary}
           />
-          <Text variant="body">
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
             {actionState === 'queueing'
               ? 'Adding…'
               : actionState === 'queued'
@@ -298,45 +299,21 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   onlineButton: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   onlineButtonPrimary: {
-    backgroundColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   onlineButtonSecondary: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgSecondary,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   primaryButton: {
-    minHeight: 48,
+    ...actionButtonStyle(colors, 'primary'),
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
   },
   secondaryButton: {
-    minHeight: 48,
-    flex: 1.15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgSecondary,
+    ...actionButtonStyle(colors, 'secondary'),
+    flex: 1,
   },
   disabledButton: {
     opacity: 0.6,
@@ -346,12 +323,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   footerButton: {
-    minHeight: 40,
+    ...actionButtonStyle(colors, 'secondary'),
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.sm,
   },
 }));

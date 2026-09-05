@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { View } from 'react-native';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
@@ -51,9 +52,8 @@ export function ScanProgress() {
           hitSlop={6}
           style={styles.cancelButton}
         >
-          <Text
+          <Text style={actionButtonTextStyle(colors, 'secondary')}
             variant="caption"
-            color={isCancelling ? colors.textTertiary : colors.warning}
           >
             {isCancelling ? 'Cancelling…' : 'Cancel'}
           </Text>
@@ -87,9 +87,7 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   cancelButton: {
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   track: {
     height: 2,

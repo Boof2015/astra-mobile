@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -180,7 +181,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
                 accessibilityRole="button"
                 accessibilityLabel="Go back"
               >
-                <Text variant="label" color={colors.textSecondary}>
+                <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
                   Back
                 </Text>
               </AppPressable>
@@ -191,7 +192,7 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
               accessibilityRole="button"
               accessibilityLabel={primaryLabel}
             >
-              <Text variant="label" color={colors.bgPrimary} style={styles.primaryButtonText}>
+              <Text variant="label" style={actionButtonTextStyle(colors, 'primary')}>
                 {primaryLabel}
               </Text>
             </AppPressable>
@@ -244,8 +245,8 @@ function LibraryStep() {
         onPress={() => void addFolder()}
         accessibilityRole="button"
       >
-        <Ionicons name="folder-open-outline" size={20} color={colors.accent} />
-        <Text variant="body" color={colors.textPrimary}>
+        <Ionicons name="folder-open-outline" size={20} color={colors.textSecondary} />
+        <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
           {folders.length > 0 ? 'Add another folder' : 'Choose music folder'}
         </Text>
       </AppPressable>
@@ -501,17 +502,8 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.lg,
   },
   choiceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'secondary'),
     minHeight: 52,
-    paddingVertical: spacing.md + 2,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
   },
   disabled: {
     opacity: 0.5,
@@ -582,24 +574,13 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.md,
   },
   secondaryButton: {
+    ...actionButtonStyle(colors, 'secondary'),
     minHeight: 52,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
   },
   primaryButton: {
+    ...actionButtonStyle(colors, 'primary'),
     flex: 1,
     minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  primaryButtonText: {
-    fontSize: 15,
   },
 }));
 

@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,9 +80,9 @@ function ArtistImageDisclosureContent({
             accessibilityRole="button"
           >
             {saving ? (
-              <ActivityIndicator size="small" color={colors.bgPrimary} />
+              <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
             ) : (
-              <Text variant="label" color={colors.bgPrimary}>Continue</Text>
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Continue</Text>
             )}
           </AppPressable>
         </View>
@@ -117,11 +118,8 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   button: {
+    ...actionButtonStyle(colors, 'primary'),
     minHeight: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
     overflow: 'hidden',
   },
 }));

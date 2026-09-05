@@ -15,6 +15,7 @@ import {
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 
 interface TextPromptModalProps {
   visible: boolean;
@@ -70,18 +71,18 @@ function TextPromptModalInner({
             selectionColor={colors.accent}
           />
           <View style={styles.actions}>
-            <AppPressable feedback="control"  style={styles.action} onPress={onClose} accessibilityRole="button">
-              <Text variant="body" color={colors.textSecondary}>
+            <AppPressable feedback="control" style={styles.cancelAction} onPress={onClose} accessibilityRole="button">
+              <Text variant="body" style={actionButtonTextStyle(colors, 'secondary')}>
                 Cancel
               </Text>
             </AppPressable>
-            <AppPressable feedback="control"
-              style={[styles.action, !trimmed && styles.actionDisabled]}
+            <AppPressable feedback="accent"
+              style={[styles.submitAction, !trimmed && styles.actionDisabled]}
               disabled={!trimmed}
               onPress={submit}
               accessibilityRole="button"
             >
-              <Text variant="body" color={colors.accent}>
+              <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
                 {submitLabel}
               </Text>
             </AppPressable>
@@ -126,9 +127,13 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
   },
-  action: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  cancelAction: {
+    ...actionButtonStyle(colors, 'secondary'),
+    flexShrink: 1,
+  },
+  submitAction: {
+    ...actionButtonStyle(colors, 'primary'),
+    flexShrink: 1,
   },
   actionDisabled: {
     opacity: 0.4,

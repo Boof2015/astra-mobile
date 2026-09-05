@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   StyleSheet,
   View
@@ -34,7 +35,7 @@ export function EQPresetQrSheet({ presetName, value, onClose }: EQPresetQrSheetP
         {presetName}
       </Text>
       <AppPressable feedback="accent"  style={styles.done} onPress={onClose}>
-        <Text variant="label" color={colors.accentTextStrong}>
+        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
           Done
         </Text>
       </AppPressable>
@@ -61,14 +62,9 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.md,
   },
   done: {
+    ...actionButtonStyle(colors, 'primary'),
     alignSelf: 'flex-end',
     marginTop: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
   },
 }));
 

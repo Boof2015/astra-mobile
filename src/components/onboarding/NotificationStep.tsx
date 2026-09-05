@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
@@ -60,15 +61,15 @@ export function NotificationStep({
           accessibilityLabel={denied ? 'Open Android settings' : 'Allow scan notifications'}
         >
           {working ? (
-            <ActivityIndicator size="small" color={colors.accentTextStrong} />
+            <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
           ) : (
             <Ionicons
               name={denied ? 'settings-outline' : 'notifications-outline'}
               size={19}
-              color={colors.accentTextStrong}
+              color={actionButtonForeground(colors)}
             />
           )}
-          <Text variant="label" color={colors.accentTextStrong}>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
             {denied ? 'Open Android settings' : 'Allow notifications'}
           </Text>
         </AppPressable>
@@ -164,14 +165,8 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.accent,
   },
   button: {
+    ...actionButtonStyle(colors, 'primary'),
     minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentGlow,
     overflow: 'hidden',
   },
   grantedRow: {

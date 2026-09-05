@@ -6,12 +6,13 @@
 // (react-native-svg — no native rebuild). Plain (unsynced) hits render as a
 // static scroll; loading/not-found/error states get a centered message.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
+import { mixHex } from '@/theme/colorUtils';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
@@ -129,40 +130,64 @@ export function LyricsBand({
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef<number[]>([]);
   const heights = useRef<number[]>([]);
-  const [followPaused, setFollowPaused] = useState(false);
+  const followContext = useMemo(() => ({
+    trackPath: track.path, displayLines, furiganaEnabled, translationsEnabled,
+    translationPriority, voiceLabelsEnabled, wordTimingEnabled,
+  }), [track.path, displayLines, furiganaEnabled,
+    translationsEnabled, translationPriority, voiceLabelsEnabled, wordTimingEnabled]);
+  const [pausedContext, setPausedContext] = useState<typeof followContext | null>(null);
+  const followPaused = pausedContext === followContext;
+  const initialCenterPending = useRef(true);
+  const layoutFrame = useRef<number | null>(null);
+  const centerAfterLayout = useRef<() => void>(() => {});
 
   const centerOn = useCallback(
     (displayIndex: number, animated: boolean) => {
       if (displayIndex < 0 || size.h <= 0) return;
       const y = offsets.current[displayIndex];
       const h = heights.current[displayIndex];
-      if (y == null || h == null) return;
+      if (y == null || h == null || !scrollRef.current) return;
       const target = Math.max(0, y + h / 2 - size.h * ANCHOR_RATIO);
-      scrollRef.current?.scrollTo({ y: target, animated });
+      scrollRef.current.scrollTo({ y: target, animated });
+      initialCenterPending.current = false;
     },
     [size.h]
   );
 
-  // Reset follow + jump to the focus line when the track (or its lyrics) changes.
-  useEffect(() => {
-    offsets.current = [];
-    heights.current = [];
-    const timer = setTimeout(() => {
-      setFollowPaused(false);
-      centerOn(timing.focusLineIndex, false);
-    }, 90);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.path, displayLines.length, furiganaEnabled, translationsEnabled, voiceLabelsEnabled, wordTimingEnabled]);
+  // Row measurements can arrive after the container (or vice versa). Retry
+  // after the layout batch, using the latest clock and viewport. A fixed delay
+  // could miss that first layout and leave lyrics at the top until the next line.
+  const scheduleLayoutCenter = useCallback(() => {
+    if (layoutFrame.current !== null) return;
+    layoutFrame.current = requestAnimationFrame(() => {
+      layoutFrame.current = null;
+      centerAfterLayout.current();
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    centerAfterLayout.current = () => {
+      if (!followPaused) centerOn(focusIndex, false);
+    };
+  }, [centerOn, focusIndex, followPaused]);
+
+  useLayoutEffect(() => {
+    initialCenterPending.current = true;
+    scheduleLayoutCenter();
+  }, [followContext, scheduleLayoutCenter]);
+
+  useEffect(() => () => {
+    if (layoutFrame.current !== null) cancelAnimationFrame(layoutFrame.current);
+  }, []);
 
   // Follow the active/focus line as playback advances.
   useEffect(() => {
     if (followPaused) return;
-    centerOn(focusIndex, true);
+    centerOn(focusIndex, !initialCenterPending.current);
   }, [focusIndex, followPaused, centerOn]);
 
   const recenter = useCallback(() => {
-    setFollowPaused(false);
+    setPausedContext(null);
     centerOn(focusIndex, true);
   }, [centerOn, focusIndex]);
 
@@ -244,7 +269,8 @@ export function LyricsBand({
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScrollBeginDrag={() => setFollowPaused(true)}
+        onScrollBeginDrag={() => setPausedContext(followContext)}
+        onContentSizeChange={scheduleLayoutCenter}
         contentContainerStyle={{
           paddingVertical: size.h > 0 ? Math.round(size.h * ANCHOR_RATIO) : 120,
           paddingHorizontal: hPadding,
@@ -255,6 +281,7 @@ export function LyricsBand({
           const onLayout = (event: LayoutChangeEvent) => {
             offsets.current[displayLine.displayIndex] = event.nativeEvent.layout.y;
             heights.current[displayLine.displayIndex] = event.nativeEvent.layout.height;
+            scheduleLayoutCenter();
           };
 
           if (displayLine.kind === 'gap') {
@@ -293,6 +320,8 @@ export function LyricsBand({
               line={displayLine.line}
               tier={tier}
               baseSize={baseSize}
+              roomy={surface === 'band'}
+              browsing={surface === 'band' && followPaused}
               activeTimeSeconds={isActive && wordTimingEnabled ? lyricsTime : null}
               wordTimingEnabled={wordTimingEnabled}
               furiganaEnabled={furiganaEnabled}
@@ -311,6 +340,8 @@ export function LyricsBand({
       {followPaused ? (
         <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={recenter}
+          accessibilityRole="button"
+          accessibilityLabel="Recenter lyrics on the current line"
           hitSlop={10}
           style={{
             position: 'absolute',
@@ -322,9 +353,23 @@ export function LyricsBand({
             borderWidth: 1,
             borderColor: colors.accent,
             backgroundColor: colors.glassBg,
+            ...(surface === 'band' ? {
+              minHeight: 44,
+              justifyContent: 'center' as const,
+              paddingHorizontal: spacing.lg,
+              borderRadius: radius.md,
+              borderWidth: 0,
+              backgroundColor: mixHex(colors.bgSecondary, colors.accent, 0.22),
+            } : {}),
           }}
         >
-          <Text variant="mono" color={colors.accentText} style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' }}>
+          <Text
+            variant={surface === 'band' ? 'label' : 'mono'}
+            color={surface === 'band' ? colors.accentTextStrong : colors.accentText}
+            style={surface === 'band'
+              ? { fontSize: 12 }
+              : { fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' }}
+          >
             Recenter
           </Text>
         </AppPressable>

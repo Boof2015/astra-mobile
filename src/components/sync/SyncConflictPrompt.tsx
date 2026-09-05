@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 // Root-mounted popup for desktop-sync conflicts: fires the moment a sync run
 // detects NEW conflicts (auto or manual) instead of waiting for the user to
 // wander into Settings. The once-per-session bookkeeping lives in
@@ -193,7 +194,7 @@ export function SyncConflictPrompt() {
           </ScrollView>
           <View style={styles.actions}>
             <AppPressable feedback="control"  style={styles.secondaryButton} onPress={dismissConflictPrompt}>
-              <Text variant="body" color={colors.textSecondary}>
+              <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
                 Not now
               </Text>
             </AppPressable>
@@ -202,7 +203,7 @@ export function SyncConflictPrompt() {
               disabled={!selectedResolution || busy}
               onPress={confirm}
             >
-              <Text variant="body" color={colors.accentTextStrong}>
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                 Confirm
               </Text>
             </AppPressable>
@@ -298,19 +299,10 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.xs,
   },
   secondaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...actionButtonStyle(colors, 'secondary'),
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...actionButtonStyle(colors, 'primary'),
   },
   disabled: {
     opacity: 0.5,

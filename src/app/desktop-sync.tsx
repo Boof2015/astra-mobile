@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 // Desktop Sync — favorites/playlists library sync with the paired desktop.
 // Separate surface from the Desktop Remote controller: it shares the pairing
 // (one paired desktop serves both features) but nothing else. Conflict
@@ -119,7 +120,7 @@ function ConflictCard({
           disabled={!selectedResolution || busy}
           onPress={() => selectedResolution ? onResolve(selectedResolution) : undefined}
         >
-          <Text variant="body" color={colors.accentTextStrong}>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
             Confirm
           </Text>
         </AppPressable>
@@ -205,8 +206,8 @@ export default function DesktopSyncScreen() {
               style={styles.primaryButton}
               onPress={() => router.push('/desktop-remote' as never)}
             >
-              <Ionicons name="link-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
+              <Ionicons name="link-outline" size={18} color={actionButtonForeground(colors)} />
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                 Pair with a desktop
               </Text>
             </AppPressable>
@@ -232,11 +233,11 @@ export default function DesktopSyncScreen() {
                   accessibilityLabel="Sync favorites and playlists now"
                 >
                   {syncing ? (
-                    <ActivityIndicator size="small" color={colors.accentTextStrong} />
+                    <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
                   ) : (
-                    <Ionicons name="sync-outline" size={18} color={colors.accentTextStrong} />
+                    <Ionicons name="sync-outline" size={18} color={actionButtonForeground(colors)} />
                   )}
-                  <Text variant="body" color={colors.accentTextStrong}>
+                  <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                     Sync now
                   </Text>
                 </AppPressable>
@@ -349,14 +350,7 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 19,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'primary'),
   },
   toggleRow: {
     flexDirection: 'row',

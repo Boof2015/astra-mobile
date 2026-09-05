@@ -1,3 +1,4 @@
+import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -33,6 +34,7 @@ import { SeekBar } from '@/components/SeekBar';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
 import { LyricsView } from '@/components/lyrics/LyricsView';
+import { useLyricsModeTransition } from '@/components/player/useLyricsModeTransition';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { PlaybackTargetPicker } from '@/components/PlaybackTargetPicker';
 import { RemoteQueueSheet } from '@/components/queue/RemoteQueueSheet';
@@ -78,6 +80,7 @@ import { paletteWithAccent } from '@/theme/scopedAccent';
 import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
 import {
   getNowPlayingLayout,
+  getNowPlayingLyricsToggleLayout,
   getTabletCompanionLayout,
   NOW_PLAYING_CONTENT_BOTTOM_PADDING,
   NOW_PLAYING_CONTENT_TOP_PADDING,
@@ -221,7 +224,6 @@ export function NowPlayingOverlay({
   const foreground = useAppForeground();
   const surfacesLive = playerOpen && foreground;
   const [queueOpen, setQueueOpen] = useState(false);
-  const [lyricsBodySwitching, setLyricsBodySwitching] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
@@ -387,8 +389,15 @@ export function NowPlayingOverlay({
   // Gated on *capable*, not open: a window that can seat the pane never shows
   // the phone's full-body lyrics takeover, even while the pane is closed. Lyrics
   // there is a pane, and `lyricsVisible` only pre-selects which tab it opens on.
-  const lyricsMode =
-    !companionCapable && !isDesktopTarget && !!track && lyricsVisible;
+  const phoneLyricsCapable = !companionCapable && !isDesktopTarget && !!track;
+  const lyricsTransition = useLyricsModeTransition(
+    phoneLyricsCapable && lyricsVisible,
+    phoneLyricsCapable && phase === 'open' && foreground,
+  );
+  const lyricsMode = phoneLyricsCapable && lyricsTransition.displayed;
+  const lyricsBodySwitching = phoneLyricsCapable && lyricsTransition.switching;
+  const { lyricsBottomClearance, ...lyricsToggleLayout } =
+    getNowPlayingLyricsToggleLayout(layout, availableHeight);
   const source = activePresentation.sourceLabel;
   const shellRight =
     insets.right +
@@ -599,14 +608,13 @@ export function NowPlayingOverlay({
 
   /**
    * Swapping the phone player body unmounts every normal control underneath the
-   * parent pan detector. Suspend that pan for the commit frame and synchronously
+   * parent pan detector. Suspend that pan through the mode transition and synchronously
    * restore its anchor first, so a cancelled child gesture cannot carry a stale
    * translateY into the lyrics tree (or back into the standard player).
    */
   const setPhoneLyricsVisible = (visible: boolean) => {
     if (!playerOpen) return;
     suspendPanForChildTransition();
-    setLyricsBodySwitching(true);
     void setLyricsVisible(visible);
   };
 
@@ -617,12 +625,6 @@ export function NowPlayingOverlay({
     }
     setPhoneLyricsVisible(!lyricsVisible);
   };
-
-  useEffect(() => {
-    if (!lyricsBodySwitching) return undefined;
-    const frame = requestAnimationFrame(() => setLyricsBodySwitching(false));
-    return () => cancelAnimationFrame(frame);
-  }, [lyricsBodySwitching, lyricsMode]);
 
   useEffect(() => {
     panEnabled.value = shouldEnableNowPlayingPan(
@@ -1091,6 +1093,12 @@ export function NowPlayingOverlay({
             }}
           />
           <View style={[styles.shell, { width: shellWidth }]}>
+            <Animated.View
+              style={[styles.shell, lyricsTransition.style]}
+              pointerEvents={lyricsBodySwitching ? 'none' : 'auto'}
+              accessibilityElementsHidden={lyricsBodySwitching}
+              importantForAccessibility={lyricsBodySwitching ? 'no-hide-descendants' : 'auto'}
+            >
             {!lyricsMode && (
               <View style={styles.header}>
                 <View style={styles.headerSide}>
@@ -1157,20 +1165,15 @@ export function NowPlayingOverlay({
               <Animated.View style={[styles.playerRegion, playerShiftStyle]}>
                 <View style={[styles.playerCanvas, { width: layout.contentWidth }]}>
             {lyricsMode && track ? (
-              <LyricsView
-                track={track}
-                active={surfacesLive}
-                isPlaying={isPlaying}
-                isLoading={isLoading}
-                isFavorite={isFavorite}
-                onSeek={(seconds) => void seekTo(seconds)}
-                onPlayPause={togglePlay}
-                onNext={skipToNext}
-                onPrev={skipToPrevious}
-                onToggleFavorite={() => void toggleFavorite(track)}
-                onExitLyrics={() => setPhoneLyricsVisible(false)}
-                onDismiss={() => dismissSheet()}
-              />
+              <View style={{ flex: 1, paddingBottom: lyricsBottomClearance }}>
+                <LyricsView
+                  track={track}
+                  active={surfacesLive}
+                  isPlaying={isPlaying}
+                  onSeek={(seconds) => void seekTo(seconds)}
+                  onDismiss={() => dismissSheet()}
+                />
+              </View>
             ) : isDesktopTarget ? (
               activeTrack ? (
                 <View style={[styles.player, layout.isWide && styles.playerWide]}>
@@ -1448,7 +1451,7 @@ export function NowPlayingOverlay({
                       router.push('/desktop-remote' as never);
                     }}
                   >
-                    <Text variant="label" color={colors.accentTextStrong}>
+                    <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
                       {desktopConnection ? 'Reconnect' : 'Pair desktop'}
                     </Text>
                   </AppPressable>
@@ -1804,7 +1807,9 @@ export function NowPlayingOverlay({
                           color={colors.textTertiary}
                         />
                       </TactilePressable>
-                      <TactilePressable
+                      {phoneLyricsCapable ? (
+                        <View style={subButtonSizing} />
+                      ) : <TactilePressable
                         hitSlop={10}
                         style={[styles.subBtn, subButtonSizing]}
 
@@ -1846,7 +1851,7 @@ export function NowPlayingOverlay({
                             />
                           }
                         />
-                      </TactilePressable>
+                      </TactilePressable>}
                     </View>
                   </View>
                 </View>
@@ -1877,6 +1882,29 @@ export function NowPlayingOverlay({
                 </Animated.View>
               ) : null}
             </View>
+            </Animated.View>
+            {phoneLyricsCapable ? (
+              <TactilePressable
+                style={[styles.subBtn, styles.lyricsToggle, lyricsToggleLayout]}
+                hitSlop={10}
+                haptic="selection"
+                onPress={showLyrics}
+                accessibilityRole="button"
+                accessibilityLabel={lyricsVisible ? 'Hide lyrics' : 'Show lyrics'}
+                accessibilityState={{ selected: lyricsVisible }}
+              >
+                <PlayerStateIcon
+                  selected={lyricsVisible}
+                  size={SUB_ICON_SIZE + 2}
+                  inactive={
+                    <MaterialCommunityIcons name="comment-quote-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                  }
+                  active={
+                    <MaterialCommunityIcons name="comment-quote-outline" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                  }
+                />
+              </TactilePressable>
+            ) : null}
           </View>
           </AppPressableGestureScope>
         </Animated.View>
@@ -2350,6 +2378,9 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  lyricsToggle: {
+    position: 'absolute',
+  },
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -2359,12 +2390,7 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   emptyAction: {
+    ...actionButtonStyle(colors, 'primary'),
     marginTop: spacing.lg,
-    minHeight: 42,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.glassBg,
   },
 }));

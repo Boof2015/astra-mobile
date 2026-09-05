@@ -34,6 +34,10 @@ import {
 
 const HIT_RADIUS = 34;
 const NODE_R = 13;
+// Enough room for three glyphs at the app's supported text scale. Clamp the
+// end ticks into the graph so widening their labels cannot clip them instead.
+const FREQ_LABEL_WIDTH = 40;
+const FREQ_LABEL_INSET = 4;
 
 interface EQGraphProps {
   bands: EQBand[];
@@ -254,7 +258,16 @@ export function EQGraph({
               key={tick.label}
               variant="caption"
               pointerEvents="none"
-              style={[styles.freqLabel, { left: freqToX(tick.freq, width) - 10 }]}
+              numberOfLines={1}
+              style={[
+                styles.freqLabel,
+                {
+                  left: Math.max(FREQ_LABEL_INSET, Math.min(
+                    width - FREQ_LABEL_WIDTH - FREQ_LABEL_INSET,
+                    freqToX(tick.freq, width) - FREQ_LABEL_WIDTH / 2,
+                  )),
+                },
+              ]}
             >
               {tick.label}
             </Text>
@@ -327,7 +340,7 @@ const useStyles = createThemedStyles((colors) => ({
   freqLabel: {
     position: 'absolute',
     bottom: 4,
-    width: 20,
+    width: FREQ_LABEL_WIDTH,
     textAlign: 'center',
     color: colors.textTertiary,
   },

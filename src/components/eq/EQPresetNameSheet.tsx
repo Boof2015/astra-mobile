@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -57,12 +58,12 @@ export function EQPresetNameSheet({
       />
       <View style={styles.actions}>
         <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
             Cancel
           </Text>
         </AppPressable>
         <AppPressable feedback="accent"  style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
-          <Text variant="label" color={colors.accentTextStrong}>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
             {actionLabel}
           </Text>
         </AppPressable>
@@ -94,18 +95,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   btn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
+    ...actionButtonBase,
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   primary: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   disabled: {
     opacity: 0.4,

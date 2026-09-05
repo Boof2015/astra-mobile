@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -81,7 +82,7 @@ export function EQValueEditSheet({
       </Text>
       <View style={styles.actions}>
         <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
             Cancel
           </Text>
         </AppPressable>
@@ -90,7 +91,7 @@ export function EQValueEditSheet({
           disabled={!valid}
           onPress={apply}
         >
-          <Text variant="label" color={colors.accentTextStrong}>
+          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
             Apply
           </Text>
         </AppPressable>
@@ -142,18 +143,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   btn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
+    ...actionButtonBase,
   },
   cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   apply: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
+    ...actionButtonStyle(colors, 'primary'),
   },
   applyDisabled: {
     opacity: 0.4,

@@ -1,3 +1,4 @@
+import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   useEffect,
   useMemo,
@@ -441,8 +442,8 @@ export default function DesktopRemoteScreen() {
               disabled={normalizedPinInput.length !== 6 || isBusy || !pinPairingActive}
               onPress={submitPin}
             >
-              <Ionicons name="checkmark" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
+              <Ionicons name="checkmark" size={18} color={actionButtonForeground(colors)} />
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                 Confirm PIN
               </Text>
             </AppPressable>
@@ -460,8 +461,8 @@ export default function DesktopRemoteScreen() {
         </Text>
         <View style={styles.actionRow}>
           <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
-            <Ionicons name="scan" size={18} color={colors.accentTextStrong} />
-            <Text variant="body" color={colors.accentTextStrong}>
+            <Ionicons name="scan" size={18} color={actionButtonForeground(colors)} />
+            <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
               Scan QR
             </Text>
           </AppPressable>
@@ -481,7 +482,7 @@ export default function DesktopRemoteScreen() {
           disabled={!pairingLink.trim()}
           onPress={() => void pairFromInput(pairingLink)}
         >
-          <Text variant="body" color={pairingLink.trim() ? colors.textPrimary : colors.textTertiary}>
+          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
             Pair from link
           </Text>
         </AppPressable>
@@ -512,9 +513,8 @@ export default function DesktopRemoteScreen() {
           disabled={!manualBaseUrl.trim()}
           onPress={() => void pairManual(manualBaseUrl)}
         >
-          <Text
+          <Text style={actionButtonTextStyle(colors, 'secondary')}
             variant="body"
-            color={manualBaseUrl.trim() ? colors.textPrimary : colors.textTertiary}
           >
             Request secure PIN
           </Text>
@@ -626,18 +626,18 @@ export default function DesktopRemoteScreen() {
                 else returnToTabs('/');
               }}
             >
-              <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
+              <Ionicons name="musical-notes-outline" size={18} color={actionButtonForeground(colors)} />
+              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
                 Open Now Playing
               </Text>
             </AppPressable>
             <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void reconnect()}>
-              <Ionicons name="refresh" size={18} color={colors.textPrimary} />
-              <Text variant="body">Reconnect</Text>
+              <Ionicons name="refresh" size={18} color={colors.textSecondary} />
+              <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">Reconnect</Text>
             </AppPressable>
             <AppPressable feedback="control"  style={styles.dangerButton} onPress={confirmForget}>
               <Ionicons name="trash-outline" size={18} color={colors.warning} />
-              <Text variant="body" color={colors.warning}>
+              <Text style={actionButtonTextStyle(colors, 'danger')} variant="body">
                 Forget desktop
               </Text>
             </AppPressable>
@@ -740,38 +740,13 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'primary'),
   },
   secondaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgTertiary,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   dangerButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.warning,
-    backgroundColor: colors.bgTertiary,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
+    ...actionButtonStyle(colors, 'danger'),
   },
   buttonDisabled: {
     opacity: 0.55,

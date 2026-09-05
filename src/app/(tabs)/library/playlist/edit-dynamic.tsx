@@ -1,3 +1,4 @@
+import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   useEffect,
   useMemo,
@@ -332,7 +333,7 @@ function DraftActions({
   return (
     <View style={styles.sheetActions}>
       <AppPressable feedback="control"  style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
-        <Text variant="label" color={colors.textSecondary}>
+        <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
           Cancel
         </Text>
       </AppPressable>
@@ -342,7 +343,7 @@ function DraftActions({
         onPress={onApply}
         accessibilityRole="button"
       >
-        <Text variant="label" color={colors.accentTextStrong}>
+        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
           Apply
         </Text>
       </AppPressable>
@@ -1182,7 +1183,7 @@ export default function DynamicPlaylistEditorScreen() {
             accessibilityRole="button"
           >
             <Ionicons name="eye-outline" size={18} color={colors.textSecondary} />
-            <Text variant="label" color={colors.textSecondary}>
+            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
               Preview
             </Text>
           </AppPressable>
@@ -1192,7 +1193,7 @@ export default function DynamicPlaylistEditorScreen() {
             onPress={save}
             accessibilityRole="button"
           >
-            <Text variant="label" color={colors.accentTextStrong}>
+            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
               {isSaving ? 'Saving' : 'Save'}
             </Text>
           </AppPressable>
@@ -1354,26 +1355,11 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 1,
   },
   previewButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: spacing.md,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   saveButton: {
-    minHeight: 42,
+    ...actionButtonStyle(colors, 'primary'),
     minWidth: 76,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.accentGlow,
   },
   disabled: {
     opacity: 0.45,
@@ -1434,20 +1420,13 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   sheetButton: {
-    minHeight: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.xl,
+    ...actionButtonBase,
   },
   cancelButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    ...actionButtonStyle(colors, 'secondary'),
   },
   applyButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
+    ...actionButtonStyle(colors, 'primary'),
   },
   applyDisabled: {
     opacity: 0.4,

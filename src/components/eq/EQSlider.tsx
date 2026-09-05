@@ -11,6 +11,7 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
+import { mixHex } from '@/theme/colorUtils';
 import { AppPressable } from '@/components/AppPressable';
 
 const THUMB = 16;
@@ -185,14 +186,14 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'flex-end',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    borderColor: 'transparent',
+    backgroundColor: colors.bgTertiary,
   },
   valueButtonPressed: {
     borderColor: colors.accent,
-    backgroundColor: colors.glassHighlight,
+    backgroundColor: mixHex(colors.bgTertiary, colors.accent, 0.12),
   },
   value: {
     width: 64,
