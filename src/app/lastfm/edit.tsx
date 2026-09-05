@@ -1,13 +1,6 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -293,27 +286,24 @@ export default function LastFmEditScreen() {
               </Text>
             ) : null}
 
-            <AppPressable feedback="accent"
-              style={[styles.saveButton, !canSubmit || busy ? styles.buttonDisabled : null]}
+            <ActionButton
+              style={styles.saveButton}
               onPress={() => void onSave()}
               disabled={!canSubmit || busy}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={colors.accentTextStrong} />
-              ) : (
-                <Text variant="body" color={colors.accentTextStrong}>
-                  {editing ? 'Save' : 'Add destination'}
-                </Text>
-              )}
-            </AppPressable>
+              variant="primary"
+              label={editing ? 'Save' : 'Add destination'}
+              loading={busy}
+            />
 
             {editing ? (
-              <AppPressable feedback="control"  style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
-                <Ionicons name="trash-outline" size={18} color={colors.warning} />
-                <Text variant="body" color={colors.warning}>
-                  Remove destination
-                </Text>
-              </AppPressable>
+              <ActionButton
+                onPress={onRemove}
+                variant="danger"
+                label="Remove destination"
+                style={{ alignSelf: 'center', marginTop: spacing.lg }}
+                icon="trash-outline"
+                iconSize={18}
+              />
             ) : null}
           </ScrollView>
         )}
@@ -394,23 +384,6 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 18,
   },
   saveButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + 2,
-    borderRadius: radius.md,
-    minHeight: 48,
     marginTop: spacing.xl,
-    backgroundColor: colors.accent,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  removeButton: {
-    flexDirection: 'row',
-    alignSelf: 'center',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    marginTop: spacing.lg,
   },
 }));

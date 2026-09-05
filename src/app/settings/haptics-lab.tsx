@@ -1,14 +1,14 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import {
   SettingsCard,
   SettingsSectionLabel,
   SettingsSectionScreen,
 } from '@/components/settings/SettingsSectionScaffold';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { playHaptic, type HapticEvent } from '@/lib/haptics';
 import {
   HAPTIC_RECIPE_SECTIONS,
@@ -96,14 +96,12 @@ export default function HapticsLabScreen() {
           label="Touch feedback enabled"
           value={yesNo(capabilities.touchFeedbackEnabled)}
         />
-        <AppPressable feedback="control"
-
+        <ActionButton
           style={styles.refreshButton}
           onPress={refresh}
-          accessibilityRole="button"
-        >
-          <Text variant="label" color={colors.accentTextStrong}>Refresh capabilities</Text>
-        </AppPressable>
+          variant="secondary"
+          label="Refresh capabilities"
+        />
       </SettingsCard>
 
       <SettingsSectionLabel spaced>SEMANTIC VOCABULARY</SettingsSectionLabel>
@@ -257,22 +255,17 @@ function AuditionButton({
   onLongPress?: () => void;
 }) {
   const styles = useStyles();
-  const colors = useColors();
   return (
-    <AppPressable feedback="control"
-
+    <ActionButton
       disabled={disabled}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={500}
-      style={[styles.auditionButton, wide && styles.wideButton, disabled && styles.disabled]}
-      accessibilityRole="button"
+      style={[styles.auditionButton, wide && styles.wideButton]}
       accessibilityState={{ disabled }}
-    >
-      <Text variant="label" color={disabled ? colors.textTertiary : colors.accentTextStrong}>
-        {label}
-      </Text>
-    </AppPressable>
+      variant="secondary"
+      label={label}
+    />
   );
 }
 
@@ -293,12 +286,6 @@ const useStyles = createThemedStyles((colors) => ({
   refreshButton: {
     alignSelf: 'flex-start',
     marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.glassHighlight,
   },
   auditionRow: {
     flexDirection: 'row',
@@ -326,22 +313,9 @@ const useStyles = createThemedStyles((colors) => ({
   },
   auditionButton: {
     minWidth: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.glassHighlight,
   },
   wideButton: {
     alignSelf: 'stretch',
-  },
-  disabled: {
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgTertiary,
-    opacity: 0.65,
   },
   recipeCard: {
     gap: spacing.sm,

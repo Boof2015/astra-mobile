@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -174,27 +175,21 @@ export function OnboardingFlow({ onDone }: { onDone: () => void }) {
           </View>
           <View style={styles.navRow}>
             {canGoBack ? (
-              <AppPressable feedback="control"
+              <ActionButton
                 onPress={goBack}
                 style={styles.secondaryButton}
-                accessibilityRole="button"
                 accessibilityLabel="Go back"
-              >
-                <Text variant="label" color={colors.textSecondary}>
-                  Back
-                </Text>
-              </AppPressable>
+                variant="secondary"
+                label="Back"
+              />
             ) : null}
-            <AppPressable feedback="accent"
+            <ActionButton
               onPress={goNext}
               style={styles.primaryButton}
-              accessibilityRole="button"
               accessibilityLabel={primaryLabel}
-            >
-              <Text variant="label" color={colors.bgPrimary} style={styles.primaryButtonText}>
-                {primaryLabel}
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label={primaryLabel}
+            />
           </View>
         </View>
       </View>
@@ -238,17 +233,15 @@ function LibraryStep() {
         subtitle="Point Astra at the folders where your music lives. It scans them into your library — files on disk are never modified."
       />
 
-      <AppPressable
-        style={[styles.choiceButton, isScanning && styles.disabled]}
+      <ActionButton
+        style={styles.choiceButton}
         disabled={isScanning}
         onPress={() => void addFolder()}
-        accessibilityRole="button"
-      >
-        <Ionicons name="folder-open-outline" size={20} color={colors.accent} />
-        <Text variant="body" color={colors.textPrimary}>
-          {folders.length > 0 ? 'Add another folder' : 'Choose music folder'}
-        </Text>
-      </AppPressable>
+        variant="secondary"
+        label={folders.length > 0 ? 'Add another folder' : 'Choose music folder'}
+        icon="folder-open-outline"
+        iconSize={20}
+      />
 
       <ScanProgress />
 
@@ -400,23 +393,15 @@ function ScanBanner() {
           ? 'Cancelling library scan…'
           : `Scanning your library${detail ? ` · ${detail}` : '…'}`}
       </Text>
-      <AppPressable feedback="control"
-
+      <ActionButton
         disabled={isCancelling}
         onPress={cancelScan}
-        accessibilityRole="button"
         accessibilityLabel={isCancelling ? 'Cancelling library scan' : 'Cancel library scan'}
         accessibilityState={{ disabled: isCancelling, busy: isCancelling }}
         hitSlop={6}
-        style={styles.scanBannerCancel}
-      >
-        <Text
-          variant="caption"
-          color={isCancelling ? colors.textTertiary : colors.warning}
-        >
-          {isCancelling ? 'Cancelling…' : 'Cancel'}
-        </Text>
-      </AppPressable>
+        variant="secondary"
+        label={isCancelling ? 'Cancelling…' : 'Cancel'}
+      />
     </Animated.View>
   );
 }
@@ -457,11 +442,6 @@ const useStyles = createThemedStyles((colors) => ({
   scanBannerText: {
     flexShrink: 1,
   },
-  scanBannerCancel: {
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
   scroll: {
     flex: 1,
   },
@@ -501,20 +481,7 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.lg,
   },
   choiceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
     minHeight: 52,
-    paddingVertical: spacing.md + 2,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
-  },
-  disabled: {
-    opacity: 0.5,
   },
   summaryCard: {
     flexDirection: 'row',
@@ -583,23 +550,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   secondaryButton: {
     minHeight: 52,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
   },
   primaryButton: {
     flex: 1,
     minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  primaryButtonText: {
-    fontSize: 15,
   },
 }));
 

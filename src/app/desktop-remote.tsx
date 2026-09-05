@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import {
   useEffect,
   useMemo,
@@ -433,19 +434,14 @@ export default function DesktopRemoteScreen() {
               maxLength={6}
               textContentType="oneTimeCode"
             />
-            <AppPressable feedback="accent"
-              style={[
-                styles.primaryButton,
-                (normalizedPinInput.length !== 6 || !pinPairingActive) && styles.buttonDisabled,
-              ]}
+            <ActionButton
               disabled={normalizedPinInput.length !== 6 || isBusy || !pinPairingActive}
               onPress={submitPin}
-            >
-              <Ionicons name="checkmark" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Confirm PIN
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label="Confirm PIN"
+              icon="checkmark"
+              iconSize={18}
+            />
           </View>
         ) : null}
       </View>
@@ -459,12 +455,13 @@ export default function DesktopRemoteScreen() {
           Open Astra Desktop settings, enable Phone Remote, then scan or paste the pairing link.
         </Text>
         <View style={styles.actionRow}>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => router.push('/desktop-remote/scan' as never)}>
-            <Ionicons name="scan" size={18} color={colors.accentTextStrong} />
-            <Text variant="body" color={colors.accentTextStrong}>
-              Scan QR
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={() => router.push('/desktop-remote/scan' as never)}
+            variant="primary"
+            label="Scan QR"
+            icon="scan"
+            iconSize={18}
+          />
         </View>
         <TextInput
           style={styles.input}
@@ -476,15 +473,12 @@ export default function DesktopRemoteScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <AppPressable feedback="control"
-          style={[styles.secondaryButton, !pairingLink.trim() && styles.buttonDisabled]}
+        <ActionButton
           disabled={!pairingLink.trim()}
           onPress={() => void pairFromInput(pairingLink)}
-        >
-          <Text variant="body" color={pairingLink.trim() ? colors.textPrimary : colors.textTertiary}>
-            Pair from link
-          </Text>
-        </AppPressable>
+          variant="secondary"
+          label="Pair from link"
+        />
       </View>
 
       <View style={styles.card}>
@@ -504,21 +498,12 @@ export default function DesktopRemoteScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <AppPressable feedback="control"
-          style={[
-            styles.secondaryButton,
-            !manualBaseUrl.trim() && styles.buttonDisabled,
-          ]}
+        <ActionButton
           disabled={!manualBaseUrl.trim()}
           onPress={() => void pairManual(manualBaseUrl)}
-        >
-          <Text
-            variant="body"
-            color={manualBaseUrl.trim() ? colors.textPrimary : colors.textTertiary}
-          >
-            Request secure PIN
-          </Text>
-        </AppPressable>
+          variant="secondary"
+          label="Request secure PIN"
+        />
       </View>
 
       {pinPairing ? (
@@ -616,8 +601,7 @@ export default function DesktopRemoteScreen() {
           </View>
 
           <View style={styles.manageActions}>
-            <AppPressable feedback="accent"
-              style={styles.primaryButton}
+            <ActionButton
               onPress={() => {
                 // The player is an overlay, not a route: open it and pop this
                 // screen so it slides in above wherever the user came from.
@@ -625,22 +609,25 @@ export default function DesktopRemoteScreen() {
                 if (router.canGoBack()) router.back();
                 else returnToTabs('/');
               }}
-            >
-              <Ionicons name="musical-notes-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Open Now Playing
-              </Text>
-            </AppPressable>
-            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void reconnect()}>
-              <Ionicons name="refresh" size={18} color={colors.textPrimary} />
-              <Text variant="body">Reconnect</Text>
-            </AppPressable>
-            <AppPressable feedback="control"  style={styles.dangerButton} onPress={confirmForget}>
-              <Ionicons name="trash-outline" size={18} color={colors.warning} />
-              <Text variant="body" color={colors.warning}>
-                Forget desktop
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label="Open Now Playing"
+              icon="musical-notes-outline"
+              iconSize={18}
+            />
+            <ActionButton
+              onPress={() => void reconnect()}
+              variant="secondary"
+              label="Reconnect"
+              icon="refresh"
+              iconSize={18}
+            />
+            <ActionButton
+              onPress={confirmForget}
+              variant="danger"
+              label="Forget desktop"
+              icon="trash-outline"
+              iconSize={18}
+            />
           </View>
         </View>
       </View>
@@ -738,40 +725,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   actionRow: {
     flexDirection: 'row',
-  },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  secondaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgTertiary,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  dangerButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.warning,
-    backgroundColor: colors.bgTertiary,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
   },
   buttonDisabled: {
     opacity: 0.55,

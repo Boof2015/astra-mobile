@@ -13,6 +13,7 @@ import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
+import { actionButtonForeground, actionButtonStyle } from '@/theme/actionButtons';
 import { searchArtistImageCandidates } from '@/library/artistImageLookup';
 import type { DeezerArtistCandidate } from '@/types/artistImages';
 
@@ -107,9 +108,9 @@ export function ArtistImageSearchSheet({
           accessibilityLabel="Search Deezer"
         >
           {loading ? (
-            <ActivityIndicator size="small" color={colors.accentTextStrong} />
+            <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
           ) : (
-            <Ionicons name="search" size={20} color={colors.accentTextStrong} />
+            <Ionicons name="search" size={20} color={actionButtonForeground(colors)} />
           )}
         </AppPressable>
       </View>
@@ -202,12 +203,10 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 16,
   },
   searchButton: {
+    ...actionButtonStyle(colors, 'primary'),
     width: 48,
     height: 48,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accentGlow,
+    paddingHorizontal: 0,
     overflow: 'hidden',
   },
   message: {

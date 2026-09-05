@@ -1,22 +1,22 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
-import {
-  StyleSheet,
-  View
-} from 'react-native';
+import { StyleSheet } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import {
   AppSheet,
+  AppSheetBody,
+  AppSheetDivider,
+  AppSheetField,
+  AppSheetFooter,
   AppSheetItem,
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import {
   fonts,
-  radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { DbTrack } from '@/types/library';
 
@@ -68,41 +68,43 @@ export function PlaylistPickerSheet({
 
   if (step === 'create') {
     return (
-      <AppSheet onClose={onClose}>
+      <AppSheet onClose={onClose} scrollable>
         <AppSheetTitle title="New playlist" subtitle={subtitle} />
-        <BottomSheetTextInput
-          value={playlistName}
-          onChangeText={setPlaylistName}
-          placeholder="Playlist name"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.input}
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={addToNewPlaylist}
-          selectionColor={colors.accent}
-        />
-        <View style={styles.actions}>
-          <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={() => setStep('pick')}>
-            <Text variant="label" color={colors.textSecondary}>
-              Back
-            </Text>
-          </AppPressable>
-          <AppPressable feedback="accent"
-            style={[styles.btn, styles.create, !trimmedPlaylistName && styles.createDisabled]}
+        <AppSheetBody>
+          <AppSheetField label="Playlist name">
+            <BottomSheetTextInput
+              value={playlistName}
+              onChangeText={setPlaylistName}
+              placeholder="Playlist name"
+              accessibilityLabel="Playlist name"
+              placeholderTextColor={colors.textTertiary}
+              style={styles.input}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={addToNewPlaylist}
+              selectionColor={colors.accent}
+            />
+          </AppSheetField>
+        </AppSheetBody>
+        <AppSheetFooter>
+          <ActionButton
+            onPress={() => setStep('pick')}
+            variant="secondary"
+            label="Back"
+          />
+          <ActionButton
             disabled={!trimmedPlaylistName}
             onPress={addToNewPlaylist}
-          >
-            <Text variant="label" color={colors.accentTextStrong}>
-              Create
-            </Text>
-          </AppPressable>
-        </View>
+            variant="primary"
+            label="Create"
+          />
+        </AppSheetFooter>
       </AppSheet>
     );
   }
 
   return (
-    <AppSheet onClose={onClose}>
+    <AppSheet onClose={onClose} scrollable>
       <AppSheetTitle title="Add to playlist" subtitle={subtitle} />
       {onBackToMenu ? (
         <AppSheetItem label="Track actions" icon="arrow-back" onPress={onBackToMenu} />
@@ -120,6 +122,7 @@ export function PlaylistPickerSheet({
           onPress={() => addToExisting(playlist.id)}
         />
       ))}
+      <AppSheetDivider />
       <AppSheetItem label="New playlist..." icon="add" onPress={() => setStep('create')} />
     </AppSheet>
   );
@@ -127,6 +130,7 @@ export function PlaylistPickerSheet({
 
 const useStyles = createThemedStyles((colors) => ({
   empty: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   input: {
@@ -135,32 +139,9 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 16,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  btn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-  },
-  cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  create: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-  },
-  createDisabled: {
-    opacity: 0.4,
   },
 }));

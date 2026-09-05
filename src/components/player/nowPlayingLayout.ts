@@ -349,6 +349,25 @@ export interface TabletCompanionLayout {
   playerLayout: NowPlayingLayout;
 }
 
+/** Relative to the padded shell, which includes the normal player's header.
+ * This slot is shared by both phone bodies, including a cold open into lyrics.
+ * Landscape centres the deck vertically; portrait pins it to the bottom.
+ */
+export function getNowPlayingLyricsToggleLayout(layout: NowPlayingLayout, availableHeight: number) {
+  const { deck } = layout;
+  const bodyHeight = availableHeight - NOW_PLAYING_CONTENT_TOP_PADDING -
+    NOW_PLAYING_CONTENT_BOTTOM_PADDING - NOW_PLAYING_HEADER_HEIGHT;
+  const deckBottom = layout.isWide ? (bodyHeight - deck.height) / 2 : 0;
+  return {
+    right: spacing.sm,
+    bottom: deckBottom + (deck.utilityRowHeight - deck.subButtonSize) / 2,
+    width: deck.subButtonSize,
+    height: deck.subButtonSize,
+    // Keep the lyrics list and its Recenter button above the persistent toggle.
+    lyricsBottomClearance: Math.max(deck.utilityRowHeight, deckBottom + deck.utilityRowHeight),
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

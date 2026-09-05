@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useEffect } from 'react';
 import {
   StyleSheet,
@@ -144,16 +145,13 @@ export default function LastFmScreen() {
             </AppPressable>
           </View>
         ) : (
-          <AppPressable feedback="accent"
-            style={styles.connectButton}
+          <ActionButton
             onPress={() => connectOfficial(profile)}
-            accessibilityRole="button"
-          >
-            <Ionicons name="link" size={16} color={colors.accentTextStrong} />
-            <Text variant="label" color={colors.accentTextStrong}>
-              Connect
-            </Text>
-          </AppPressable>
+            variant="primary"
+            label="Connect"
+            icon="link"
+            iconSize={16}
+          />
         )}
       </View>
     );
@@ -246,12 +244,14 @@ export default function LastFmScreen() {
         ) : null}
 
         {status && status.pendingScrobbles > 0 ? (
-          <AppPressable feedback="control"  style={styles.retryButton} onPress={() => requestLastFmFlush()}>
-            <Ionicons name="sync" size={16} color={colors.accentText} />
-            <Text variant="label" color={colors.accentText}>
-              Retry {status.pendingScrobbles} queued now
-            </Text>
-          </AppPressable>
+          <ActionButton
+            style={styles.retryButton}
+            onPress={() => requestLastFmFlush()}
+            variant="secondary"
+            label={`Retry ${status.pendingScrobbles} queued now`}
+            icon="sync"
+            iconSize={16}
+          />
         ) : null}
 
         <Text
@@ -268,12 +268,14 @@ export default function LastFmScreen() {
           )}
         </View>
 
-        <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
-          <Ionicons name="add" size={18} color={colors.accentTextStrong} />
-          <Text variant="body" color={colors.accentTextStrong}>
-            Add destination
-          </Text>
-        </AppPressable>
+        <ActionButton
+          style={styles.addButton}
+          onPress={() => router.push('/lastfm/edit')}
+          variant="primary"
+          label="Add destination"
+          icon="add"
+          iconSize={18}
+        />
 
         <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
           A scrobble is sent once a track plays past half its length (or 4 minutes). Tracks under 30
@@ -332,16 +334,7 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 18,
   },
   retryButton: {
-    flexDirection: 'row',
     alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
     marginTop: spacing.md,
   },
   sectionLabel: {
@@ -394,26 +387,8 @@ const useStyles = createThemedStyles((colors) => ({
   linkedUser: {
     flexShrink: 1,
   },
-  connectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
   addButton: {
-    flexDirection: 'row',
     alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
     marginTop: spacing.lg,
   },
   footnote: {

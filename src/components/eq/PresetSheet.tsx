@@ -1,9 +1,11 @@
+import { ActionButton } from '@/components/ActionButton';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import { AppSheetDivider, AppSheetTitle } from '@/components/sheets/AppSheet';
 import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import {
@@ -65,35 +67,32 @@ export function PresetSheet({
         subtitle={assignmentSubtitle}
         icon={preset.isCustom ? modeIcon(preset) : undefined}
         selected={preset.id === activePresetId}
+        stackActionsOnCompact={preset.isCustom}
         onPress={() => {
           onApply(preset.id);
           onClose();
         }}
         trailing={
           <View style={styles.trailingActions}>
-            <AppPressable feedback="control"
-
+            <ActionButton
               unstable_pressDelay={SCROLL_PRESS_DELAY}
-              hitSlop={6}
               onPress={() => onAssign(preset)}
-              style={styles.assignButton}
               accessibilityLabel={`Assign devices to ${preset.name}`}
-            >
-              <Text variant="label" color={colors.textSecondary}>
-                Assign
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            </AppPressable>
+              variant="secondary"
+              label="Assign"
+              icon="chevron-forward"
+              iconPosition="end"
+              iconSize={14}
+            />
             {preset.isCustom ? (
               <AppPressable feedback="control"
 
                 unstable_pressDelay={SCROLL_PRESS_DELAY}
-                hitSlop={8}
                 onPress={() => onDelete(preset)}
                 style={styles.deleteButton}
                 accessibilityLabel={`Delete preset ${preset.name}`}
               >
-                <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
+                <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
               </AppPressable>
             ) : null}
           </View>
@@ -104,11 +103,9 @@ export function PresetSheet({
 
   return (
     <EqSheet onClose={onClose} scrollable>
-      <Text variant="heading" style={styles.title}>
-        Presets
-      </Text>
+      <AppSheetTitle title="Presets" />
 
-      <EqSheetSection label="BUILT-IN" />
+      <EqSheetSection label="BUILT-IN" first />
       {builtIn.map(renderPreset)}
 
       <EqSheetSection label="CUSTOM" />
@@ -120,6 +117,7 @@ export function PresetSheet({
         custom.map(renderPreset)
       )}
 
+      <AppSheetDivider />
       <EqSheetItem
         label="Save current as preset…"
         icon="bookmark-outline"
@@ -133,10 +131,8 @@ export function PresetSheet({
 }
 
 const styles = StyleSheet.create({
-  title: {
-    marginTop: spacing.xs,
-  },
   empty: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   trailingActions: {
@@ -144,18 +140,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  assignButton: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
   deleteButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
   },
 });
 

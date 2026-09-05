@@ -1,8 +1,10 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { EqSheet } from '@/components/eq/EqSheet';
+import { AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import { radius, spacing } from '@/theme';
@@ -77,93 +79,85 @@ export function PresetDeviceAssignmentSheet({
 
   return (
     <EqSheet onClose={onClose} scrollable>
-      <Text variant="heading" style={styles.title}>
-        Assign {preset.name}
-      </Text>
-      <Text variant="caption" color={colors.textSecondary} style={styles.description}>
-        This preset will load automatically when a selected output becomes active.
-      </Text>
+      <AppSheetTitle
+        title={`Assign ${preset.name}`}
+        subtitle="This preset will load automatically when a selected output becomes active."
+      />
 
-      {sortedDevices.length === 0 ? (
-        <Text variant="body" color={colors.textTertiary} style={styles.empty}>
-          No audio outputs have been observed yet.
-        </Text>
-      ) : (
-        <View style={styles.list}>
-          {sortedDevices.map((device) => {
-            const checked = selected.has(device.key);
-            const assignedPresetId = assignments[device.key];
-            const assignedPresetName = assignedPresetId ? presetNames.get(assignedPresetId) : null;
-            const subtitle = assignedPresetId === preset.id
-              ? 'Assigned to this preset'
-              : assignedPresetName
-                ? `Currently assigned to ${assignedPresetName}`
-                : kindLabel(device);
-            return (
-              <AppPressable
-                key={device.key}
+      <AppSheetBody>
+        {sortedDevices.length === 0 ? (
+          <Text variant="body" color={colors.textTertiary} style={styles.empty}>
+            No audio outputs have been observed yet.
+          </Text>
+        ) : (
+          <View style={styles.list}>
+            {sortedDevices.map((device) => {
+              const checked = selected.has(device.key);
+              const assignedPresetId = assignments[device.key];
+              const assignedPresetName = assignedPresetId ? presetNames.get(assignedPresetId) : null;
+              const subtitle = assignedPresetId === preset.id
+                ? 'Assigned to this preset'
+                : assignedPresetName
+                  ? `Currently assigned to ${assignedPresetName}`
+                  : kindLabel(device);
+              return (
+                <AppPressable
+                  key={device.key}
 
-                unstable_pressDelay={SCROLL_PRESS_DELAY}
-                style={styles.deviceRow}
-                onPress={() => toggleDevice(device.key)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked }}
-                accessibilityLabel={`${device.label}${device.key === currentDeviceKey ? ', current output' : ''}`}
-              >
-                <View style={styles.deviceMeta}>
-                  <View style={styles.deviceTitleRow}>
-                    <Text variant="body" numberOfLines={1} style={styles.deviceTitle}>
-                      {device.label}
-                    </Text>
-                    {device.key === currentDeviceKey ? (
-                      <Text variant="caption" color={colors.accentTextStrong} style={styles.currentBadge}>
-                        CURRENT
+                  unstable_pressDelay={SCROLL_PRESS_DELAY}
+                  style={styles.deviceRow}
+                  onPress={() => toggleDevice(device.key)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked }}
+                  accessibilityLabel={`${device.label}${device.key === currentDeviceKey ? ', current output' : ''}`}
+                >
+                  <View style={styles.deviceMeta}>
+                    <View style={styles.deviceTitleRow}>
+                      <Text variant="body" numberOfLines={1} style={styles.deviceTitle}>
+                        {device.label}
                       </Text>
-                    ) : null}
+                      {device.key === currentDeviceKey ? (
+                        <Text variant="caption" color={colors.accentTextStrong} style={styles.currentBadge}>
+                          CURRENT
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
+                      {subtitle}
+                    </Text>
                   </View>
-                  <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-                    {subtitle}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={checked ? 'checkbox' : 'square-outline'}
-                  size={22}
-                  color={checked ? colors.accent : colors.textTertiary}
-                />
-              </AppPressable>
-            );
-          })}
-        </View>
-      )}
+                  <Ionicons
+                    name={checked ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={checked ? colors.accent : colors.textTertiary}
+                  />
+                </AppPressable>
+              );
+            })}
+          </View>
+        )}
 
-      <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.button, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>Cancel</Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-
-          style={[styles.button, styles.save]}
+      </AppSheetBody>
+      <AppSheetFooter>
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           onPress={() => {
             onSave([...selected]);
             onClose();
           }}
-        >
-          <Text variant="label" color={colors.accentTextStrong}>Save assignments</Text>
-        </AppPressable>
-      </View>
+          variant="primary"
+          label="Save assignments"
+        />
+      </AppSheetFooter>
     </EqSheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  title: {
-    marginTop: spacing.xs,
-  },
-  description: {
-    lineHeight: 17,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   empty: {
     paddingVertical: spacing.xl,
   },
@@ -199,26 +193,6 @@ const useStyles = createThemedStyles((colors) => ({
   currentBadge: {
     fontSize: 10,
     letterSpacing: 0.7,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  button: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-  },
-  cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  save: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
   },
 }));
 

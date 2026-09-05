@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -123,12 +124,14 @@ export default function SourcesScreen() {
               No servers yet. Add a Subsonic or Jellyfin server to stream and browse your
               self-hosted library.
             </Text>
-            <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/sources/edit')}>
-              <Ionicons name="add" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Add server
-              </Text>
-            </AppPressable>
+            <ActionButton
+              style={styles.addButton}
+              onPress={() => router.push('/sources/edit')}
+              variant="primary"
+              label="Add server"
+              icon="add"
+              iconSize={18}
+            />
           </View>
         ) : (
           sources.map((source) => {
@@ -227,15 +230,6 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 20,
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
     marginTop: spacing.sm,
   },
   row: {

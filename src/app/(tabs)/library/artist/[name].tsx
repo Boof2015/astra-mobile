@@ -20,7 +20,12 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { TrackRow } from '@/components/library/TrackRow';
 import { TrackActionsSheet } from '@/components/library/TrackActionsSheet';
 import { ArtistImageSearchSheet } from '@/components/library/ArtistImageSearchSheet';
-import { ActionSheet, type ActionSheetItem } from '@/components/sheets/ActionSheet';
+import {
+  AppSheet,
+  AppSheetItem,
+  AppSheetTitle,
+  type AppSheetItemProps,
+} from '@/components/sheets/AppSheet';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { CollapsingHeader, useDetailCollapse } from '@/components/library/CollapsingDetail';
 import {
@@ -280,7 +285,7 @@ export default function ArtistScreen() {
     }
   };
 
-  const imageActions: ActionSheetItem[] = [
+  const imageActions: (AppSheetItemProps & { key: string })[] = [
     {
       key: 'search-deezer',
       label: 'Search Deezer',
@@ -365,12 +370,14 @@ export default function ArtistScreen() {
         onHeroBlockLayout={onHeroBlockLayout}
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
-      <ActionSheet
-        visible={imageMenuOpen}
-        title={`${name} image`}
-        items={imageActions}
-        onClose={() => setImageMenuOpen(false)}
-      />
+      {imageMenuOpen ? (
+        <AppSheet onClose={() => setImageMenuOpen(false)} scrollable>
+          <AppSheetTitle title={`${name} image`} />
+          {imageActions.map(({ key, ...item }) => (
+            <AppSheetItem key={key} {...item} />
+          ))}
+        </AppSheet>
+      ) : null}
       {imageSearchOpen ? (
         <ArtistImageSearchSheet
           artistName={name}

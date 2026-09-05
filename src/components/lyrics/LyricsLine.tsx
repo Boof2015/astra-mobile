@@ -5,20 +5,12 @@ import { Text } from '@/components/Text';
 import { useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { getPreferredLyricsTranslation, resolveLyricsWordTiming } from '@/lyrics/presentation';
-import type { LyricsFurigana, LyricsLine as LyricsLineData, LyricsWord } from '@/lyrics/types';
+import type { LyricsFurigana, LyricsWord } from '@/lyrics/types';
+import { sameLyricsLinePresentation, type LyricsLinePresentation, type LyricsLineTier } from './lyricsLinePresentation';
 
-export type LyricsLineTier = 'active' | 'near' | 'far' | 'distant';
+export type { LyricsLineTier } from './lyricsLinePresentation';
 
-interface LyricsLineProps {
-  line: LyricsLineData;
-  tier: LyricsLineTier;
-  baseSize: number;
-  activeTimeSeconds: number | null;
-  wordTimingEnabled: boolean;
-  furiganaEnabled: boolean;
-  translationsEnabled: boolean;
-  translationPriority: string[];
-  voiceLabelsEnabled: boolean;
+interface LyricsLineProps extends LyricsLinePresentation {
   onSeek: () => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 }
@@ -173,6 +165,8 @@ function LyricsLineComponent({
   line,
   tier,
   baseSize,
+  roomy = false,
+  browsing = false,
   activeTimeSeconds,
   wordTimingEnabled,
   furiganaEnabled,
@@ -183,7 +177,9 @@ function LyricsLineComponent({
   onLayout,
 }: LyricsLineProps) {
   const colors = useColors();
-  const target = TIER[tier];
+  const target = browsing && tier !== 'active'
+    ? { scale: 1, opacity: 0.72 }
+    : TIER[tier];
   const size = baseSize;
   const lineHeight = Math.round(size * 1.2);
   const readingSize = Math.max(9, Math.round(size * 0.5));
@@ -217,7 +213,7 @@ function LyricsLineComponent({
 
   return (
     <Animated.View onLayout={onLayout} style={[{ width: '100%', transformOrigin: 'left center' }, animatedStyle]}>
-      <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: 7 }}>
+      <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: roomy ? 9 : 7 }}>
         <View style={{ alignItems: 'flex-start' }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
             {voiceLabelsEnabled && line.voice?.trim() ? (
@@ -272,16 +268,4 @@ function LyricsLineComponent({
   );
 }
 
-function sameLyricsLineProps(previous: LyricsLineProps, next: LyricsLineProps): boolean {
-  return previous.line === next.line
-    && previous.tier === next.tier
-    && previous.baseSize === next.baseSize
-    && previous.activeTimeSeconds === next.activeTimeSeconds
-    && previous.wordTimingEnabled === next.wordTimingEnabled
-    && previous.furiganaEnabled === next.furiganaEnabled
-    && previous.translationsEnabled === next.translationsEnabled
-    && previous.translationPriority === next.translationPriority
-    && previous.voiceLabelsEnabled === next.voiceLabelsEnabled;
-}
-
-export const LyricsLine = memo(LyricsLineComponent, sameLyricsLineProps);
+export const LyricsLine = memo(LyricsLineComponent, sameLyricsLinePresentation);

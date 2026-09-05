@@ -1,15 +1,9 @@
-import {
-  ActivityIndicator,
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { ActionButton } from '@/components/ActionButton';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { useScanNotificationPermission } from '@/library/useScanNotificationPermission';
 
 /**
@@ -51,26 +45,16 @@ export function ScanNotificationPermissionCard({
         </View>
       </View>
 
-      <AppPressable feedback="accent"
-
+      <ActionButton
         style={styles.button}
         disabled={working}
         onPress={resolve}
-        accessibilityRole="button"
-      >
-        {working ? (
-          <ActivityIndicator size="small" color={colors.accentTextStrong} />
-        ) : (
-          <Ionicons
-            name={denied ? 'settings-outline' : 'notifications-outline'}
-            size={18}
-            color={colors.accentTextStrong}
-          />
-        )}
-        <Text variant="label" color={colors.accentTextStrong}>
-          {denied ? 'Open Settings' : 'Allow scan notifications'}
-        </Text>
-      </AppPressable>
+        variant="primary"
+        label={denied ? 'Open Settings' : 'Allow scan notifications'}
+        icon={denied ? 'settings-outline' : 'notifications-outline'}
+        iconSize={18}
+        loading={working}
+      />
 
       {denied ? (
         <Text variant="caption" color={colors.textTertiary}>
@@ -108,14 +92,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 4,
   },
   button: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentGlow,
     overflow: 'hidden',
   },
 }));

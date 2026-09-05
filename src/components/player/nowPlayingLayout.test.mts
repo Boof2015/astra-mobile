@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getNowPlayingLayout,
+  getNowPlayingLyricsToggleLayout,
   getScopeHeight,
   getTabletCompanionLayout,
   NOW_PLAYING_ART_COMFORT_MIN,
@@ -32,6 +33,29 @@ const DEVICES = [
 ] as const;
 
 const FONT_SCALES = [1, 1.15, 1.3] as const;
+
+test('the shared lyrics toggle occupies the normal utility slot without measuring either body', () => {
+  const windows = [...DEVICES, { name: 'landscape', width: 780, height: 360 },
+    { name: 'short landscape', width: 720, height: 320 }];
+  for (const device of windows) {
+    for (const scale of FONT_SCALES) {
+      for (const scope of [false, true]) {
+        const layout = getNowPlayingLayout(device.width, device.height, scope, false, scale);
+        const slot = getNowPlayingLyricsToggleLayout(layout, device.height);
+        const shellHeight = device.height - NOW_PLAYING_CONTENT_TOP_PADDING - NOW_PLAYING_CONTENT_BOTTOM_PADDING;
+        const bodyHeight = shellHeight - NOW_PLAYING_HEADER_HEIGHT;
+        const deckTop = NOW_PLAYING_HEADER_HEIGHT + (layout.isWide
+          ? (bodyHeight - layout.deck.height) / 2 : layout.stageHeight);
+        const utilityCenter = deckTop + layout.deck.height - layout.deck.utilityRowHeight / 2;
+        assert.equal(shellHeight - slot.bottom - slot.height / 2, utilityCenter,
+          `${device.name} @${scale}: lyrics button must match the normal utility row`);
+        assert.equal(slot.right, 8);
+        assert.equal(slot.width, layout.deck.subButtonSize);
+        assert.ok(slot.lyricsBottomClearance >= slot.bottom + slot.height);
+      }
+    }
+  }
+});
 
 const WIDE_WINDOWS = [
   [600, 840],

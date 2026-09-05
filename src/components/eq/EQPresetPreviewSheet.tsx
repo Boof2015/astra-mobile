@@ -1,14 +1,15 @@
+import { ActionButton } from '@/components/ActionButton';
 import {
   StyleSheet,
   View
 } from 'react-native';
 import { Text } from '@/components/Text';
+import { AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import type { EQPreset } from '@/types/audio';
 import { EqSheet } from './EqSheet';
 import { formatGain } from './format';
@@ -34,66 +35,59 @@ export function EQPresetPreviewSheet({
   const modeLabel = preset.mode === 'graphic' ? 'Graphic' : 'Parametric';
 
   return (
-    <EqSheet onClose={onClose}>
-      <Text variant="heading" style={styles.title}>
-        {title}
-      </Text>
-      <View style={styles.preview}>
-        <Text variant="body" numberOfLines={1} color={colors.textPrimary}>
-          {preset.name}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text variant="caption" color={colors.textTertiary}>
-            Mode
+    <EqSheet onClose={onClose} scrollable>
+      <AppSheetTitle title={title} />
+      <AppSheetBody>
+        <View style={styles.preview}>
+          <Text variant="body" color={colors.textPrimary}>
+            {preset.name}
           </Text>
-          <Text variant="label" color={colors.textSecondary}>
-            {modeLabel}
-          </Text>
+          <View style={styles.metaRow}>
+            <Text variant="caption" color={colors.textTertiary}>
+              Mode
+            </Text>
+            <Text variant="label" color={colors.textSecondary}>
+              {modeLabel}
+            </Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Text variant="caption" color={colors.textTertiary}>
+              Preamp
+            </Text>
+            <Text variant="label" color={colors.textSecondary}>
+              {formatGain(preset.preamp)} dB
+            </Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Text variant="caption" color={colors.textTertiary}>
+              Bands
+            </Text>
+            <Text variant="label" color={colors.textSecondary}>
+              {enabledBands}/{preset.bands.length}
+            </Text>
+          </View>
         </View>
-        <View style={styles.metaRow}>
-          <Text variant="caption" color={colors.textTertiary}>
-            Preamp
-          </Text>
-          <Text variant="label" color={colors.textSecondary}>
-            {formatGain(preset.preamp)} dB
-          </Text>
-        </View>
-        <View style={styles.metaRow}>
-          <Text variant="caption" color={colors.textTertiary}>
-            Bands
-          </Text>
-          <Text variant="label" color={colors.textSecondary}>
-            {enabledBands}/{preset.bands.length}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>
-            Cancel
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-          style={[styles.btn, styles.primary]}
+      </AppSheetBody>
+      <AppSheetFooter>
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           onPress={() => {
             onConfirm();
             onClose();
           }}
-        >
-          <Text variant="label" color={colors.accentTextStrong}>
-            {confirmLabel}
-          </Text>
-        </AppPressable>
-      </View>
+          variant="primary"
+          label={confirmLabel}
+        />
+      </AppSheetFooter>
     </EqSheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  title: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   preview: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -107,26 +101,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  btn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-  },
-  cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  primary: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
   },
 }));
 

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import {
   useEffect,
   useMemo,
@@ -325,22 +326,21 @@ export default function PlaylistScreen() {
         heroMeta={<Text variant="label">{meta}</Text>}
         heroExtra={
           isDynamic && playlistId != null ? (
-            <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-              style={styles.editRules}
+            <ActionButton
+              unstable_pressDelay={SCROLL_PRESS_DELAY}
               onPress={() =>
                 router.push({
                   pathname: '/library/playlist/edit-dynamic' as never,
                   params: { id: String(playlistId) },
                 })
               }
-              accessibilityRole="button"
               accessibilityLabel="Edit dynamic playlist rules"
-            >
-              <Ionicons name="sparkles" size={14} color={colors.accent} />
-              <Text variant="label" color={colors.accent}>
-                Rules
-              </Text>
-            </AppPressable>
+              variant="secondary"
+              label="Rules"
+              style={{ alignSelf: 'flex-start', marginTop: spacing.sm }}
+              icon="sparkles"
+              iconSize={14}
+            />
           ) : null
         }
         disabled={playable.length === 0}
@@ -362,7 +362,7 @@ export default function PlaylistScreen() {
         extraItems={extraItems}
       />
       {missingEntry !== null ? (
-        <AppSheet onClose={() => setMissingEntry(null)}>
+        <AppSheet onClose={() => setMissingEntry(null)} scrollable>
           <AppSheetTitle
             title={missingEntry.fallback_title ?? 'Missing track'}
             subtitle={missingEntry.fallback_artist ?? 'Track not in library'}
@@ -381,7 +381,7 @@ export default function PlaylistScreen() {
         </AppSheet>
       ) : null}
       {optionsOpen ? (
-        <AppSheet onClose={() => setOptionsOpen(false)}>
+        <AppSheet onClose={() => setOptionsOpen(false)} scrollable>
           <AppSheetTitle title={name} />
           {isFavorites ? (
             <AppSheetItem
@@ -473,17 +473,5 @@ const useStyles = createThemedStyles((colors) => ({
   missingMeta: {
     flex: 1,
     gap: 2,
-  },
-  editRules: {
-    minHeight: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginTop: spacing.sm,
   },
 }));

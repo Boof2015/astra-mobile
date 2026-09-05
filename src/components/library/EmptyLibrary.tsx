@@ -1,15 +1,12 @@
+import { ActionButton } from '@/components/ActionButton';
 import {
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 
 export function EmptyLibrary() {
@@ -48,17 +45,14 @@ export function EmptyLibrary() {
               : recoveryNotice ??
                 'Pick a folder on this device and Astra will scan it into your library.'}
       </Text>
-      <AppPressable feedback="accent"
-
+      <ActionButton
         style={styles.cta}
         onPress={() => router.push(fatal ? '/settings/troubleshooting' : '/settings')}
-        accessibilityRole="button"
-      >
-        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={colors.bgPrimary} />
-        <Text variant="body" style={styles.ctaLabel}>
-          {fatal ? 'Troubleshooting' : 'Folder settings'}
-        </Text>
-      </AppPressable>
+        variant="primary"
+        label={fatal ? 'Troubleshooting' : 'Folder settings'}
+        icon={fatal ? 'build-outline' : 'folder-open-outline'}
+        iconSize={18}
+      />
     </View>
   );
 }
@@ -79,17 +73,6 @@ const useStyles = createThemedStyles((colors) => ({
     maxWidth: 280,
   },
   cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
     marginTop: spacing.lg,
-  },
-  ctaLabel: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
   },
 }));

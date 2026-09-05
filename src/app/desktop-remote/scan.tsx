@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -62,11 +63,11 @@ export default function DesktopRemoteScanScreen() {
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan the desktop pairing QR.</Text>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
-            <Text variant="body" color={colors.accentTextStrong}>
-              Allow camera
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={() => void requestPermission()}
+            variant="primary"
+            label="Allow camera"
+          />
         </View>
       ) : (
         <View style={styles.scannerFrame}>
@@ -116,14 +117,6 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   scannerFrame: {
     flex: 1,

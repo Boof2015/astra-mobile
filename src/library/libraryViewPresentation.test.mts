@@ -115,10 +115,14 @@ test('the floating bar reserves its end-of-list runway while the fade starts abo
   assert.equal(libraryContextScrimHeight(8), 116);
 });
 
-test('the alphabet rail clears phone Library chrome but keeps the wide-screen boundary', () => {
+test('the alphabet rail clears phone chrome, landscape safe area, and tablet controls', () => {
   assert.equal(libraryRailBottomClearance(true, 136), 136);
   assert.equal(libraryRailBottomClearance(true, -1), 0);
   assert.equal(libraryRailBottomClearance(false, 136), 0);
+  assert.equal(libraryRailBottomClearance(false, 136, 24), 24);
+  assert.equal(libraryRailBottomClearance(false, 136, 112), 112);
+  assert.equal(libraryRailBottomClearance(true, 136, 24), 136);
+  assert.equal(libraryRailBottomClearance(false, 136, -1), 0);
 });
 
 test('mini-player visibility mirrors target fallback semantics', () => {

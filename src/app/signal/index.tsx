@@ -1,5 +1,6 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useRef } from 'react';
-import { Share, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Share, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-system/legacy';
@@ -115,16 +116,20 @@ export default function SignalScreen() {
           </Text>
 
           <View style={styles.actions}>
-            <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void shareImage()}>
-              <Ionicons name="share-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Share image
-              </Text>
-            </AppPressable>
-            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void shareLink()}>
-              <Ionicons name="link-outline" size={18} color={colors.textPrimary} />
-              <Text variant="body">Share link</Text>
-            </AppPressable>
+            <ActionButton
+              onPress={() => void shareImage()}
+              variant="primary"
+              label="Share image"
+              icon="share-outline"
+              iconSize={18}
+            />
+            <ActionButton
+              onPress={() => void shareLink()}
+              variant="secondary"
+              label="Share link"
+              icon="link-outline"
+              iconSize={18}
+            />
           </View>
         </View>
       )}
@@ -185,27 +190,5 @@ const useStyles = createThemedStyles((colors) => ({
     width: '100%',
     gap: spacing.md,
     marginTop: spacing.xl,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSecondary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
   },
 }));

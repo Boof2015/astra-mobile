@@ -1,4 +1,5 @@
 /* eslint-disable react-hooks/refs -- HSV refs are read only by RNGH callbacks after render; keeping the gesture identity stable prevents an active color drag from being replaced mid-gesture. */
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -18,11 +19,10 @@ import {
   Rect,
   vec,
 } from '@shopify/react-native-skia';
-import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
+import { AppSheet, AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import { Text } from '@/components/Text';
 import { fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import {
   hexToHsv,
   hsvToHex,
@@ -154,111 +154,111 @@ export function AccentColorSheet({
         subtitle="Drag to choose a color or enter an exact hex value."
       />
 
-      <GestureDetector gesture={svGesture}>
-        <View
-          style={styles.sv}
-          onLayout={onPickerLayout}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Accent saturation and brightness"
-        >
-          <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT} color={hueColor} />
-            <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT}>
-              <LinearGradient
-                start={vec(0, 0)}
-                end={vec(pickerWidth, 0)}
-                colors={['#ffffff', '#ffffff00']}
-              />
-            </Rect>
-            <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT}>
-              <LinearGradient
-                start={vec(0, 0)}
-                end={vec(0, SV_HEIGHT)}
-                colors={['#00000000', '#000000']}
-              />
-            </Rect>
-          </Canvas>
+      <AppSheetBody>
+        <GestureDetector gesture={svGesture}>
           <View
-            pointerEvents="none"
-            style={[
-              styles.handle,
-              {
-                backgroundColor: previewHex,
-                left: hsv.s * pickerWidth - HANDLE_SIZE / 2,
-                top: (1 - hsv.v) * SV_HEIGHT - HANDLE_SIZE / 2,
-              },
-            ]}
+            style={styles.sv}
+            onLayout={onPickerLayout}
+            accessibilityRole="adjustable"
+            accessibilityLabel="Accent saturation and brightness"
+          >
+            <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT} color={hueColor} />
+              <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT}>
+                <LinearGradient
+                  start={vec(0, 0)}
+                  end={vec(pickerWidth, 0)}
+                  colors={['#ffffff', '#ffffff00']}
+                />
+              </Rect>
+              <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT}>
+                <LinearGradient
+                  start={vec(0, 0)}
+                  end={vec(0, SV_HEIGHT)}
+                  colors={['#00000000', '#000000']}
+                />
+              </Rect>
+            </Canvas>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.handle,
+                {
+                  backgroundColor: previewHex,
+                  left: hsv.s * pickerWidth - HANDLE_SIZE / 2,
+                  top: (1 - hsv.v) * SV_HEIGHT - HANDLE_SIZE / 2,
+                },
+              ]}
+            />
+          </View>
+        </GestureDetector>
+
+        <GestureDetector gesture={hueGesture}>
+          <View
+            style={styles.hue}
+            accessibilityRole="adjustable"
+            accessibilityLabel="Accent hue"
+          >
+            <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Rect x={0} y={0} width={pickerWidth} height={HUE_HEIGHT}>
+                <LinearGradient
+                  start={vec(0, 0)}
+                  end={vec(pickerWidth, 0)}
+                  colors={HUE_COLORS}
+                />
+              </Rect>
+            </Canvas>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.hueHandle,
+                { left: (hsv.h / 360) * pickerWidth - HANDLE_SIZE / 2 },
+              ]}
+            />
+          </View>
+        </GestureDetector>
+
+        <View style={styles.inputRow}>
+          <View style={[styles.preview, { backgroundColor: validInput ?? previewHex }]} />
+          <BottomSheetTextInput
+            value={input}
+            onChangeText={changeInput}
+            placeholder="#5B8AFF"
+            placeholderTextColor={colors.textTertiary}
+            style={[styles.input, input.length > 0 && !validInput && styles.inputInvalid]}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={7}
+            returnKeyType="done"
+            selectionColor={colors.accent}
+            onSubmitEditing={apply}
+            accessibilityLabel="Accent hex color"
           />
         </View>
-      </GestureDetector>
-
-      <GestureDetector gesture={hueGesture}>
-        <View
-          style={styles.hue}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Accent hue"
+        <Text
+          variant="caption"
+          color={validInput ? colors.textTertiary : colors.warning}
+          style={styles.validation}
         >
-          <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Rect x={0} y={0} width={pickerWidth} height={HUE_HEIGHT}>
-              <LinearGradient
-                start={vec(0, 0)}
-                end={vec(pickerWidth, 0)}
-                colors={HUE_COLORS}
-              />
-            </Rect>
-          </Canvas>
-          <View
-            pointerEvents="none"
-            style={[
-              styles.hueHandle,
-              { left: (hsv.h / 360) * pickerWidth - HANDLE_SIZE / 2 },
-            ]}
-          />
-        </View>
-      </GestureDetector>
+          {validInput ? 'Use three or six hexadecimal digits.' : 'Enter a valid hex color.'}
+        </Text>
 
-      <View style={styles.inputRow}>
-        <View style={[styles.preview, { backgroundColor: validInput ?? previewHex }]} />
-        <BottomSheetTextInput
-          value={input}
-          onChangeText={changeInput}
-          placeholder="#5B8AFF"
-          placeholderTextColor={colors.textTertiary}
-          style={[styles.input, input.length > 0 && !validInput && styles.inputInvalid]}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={7}
-          returnKeyType="done"
-          selectionColor={colors.accent}
-          onSubmitEditing={apply}
-          accessibilityLabel="Accent hex color"
-        />
-      </View>
-      <Text
-        variant="caption"
-        color={validInput ? colors.textTertiary : colors.warning}
-        style={styles.validation}
-      >
-        {validInput ? 'Use three or six hexadecimal digits.' : 'Enter a valid hex color.'}
-      </Text>
-
-      <View style={styles.actions}>
-        <AppPressable feedback="control"
-
-          style={[styles.button, styles.cancel]}
+      </AppSheetBody>
+      <AppSheetFooter>
+        <ActionButton
+          style={styles.button}
           onPress={onClose}
-        >
-          <Text variant="label" color={colors.textSecondary}>Cancel</Text>
-        </AppPressable>
-        <AppPressable
-          feedback="accent"
-          style={[styles.button, styles.apply, !validInput && styles.disabled]}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
+          style={styles.button}
           disabled={!validInput}
           onPress={apply}
-        >
-          <Text variant="label" color={colors.bgPrimary}>Apply</Text>
-        </AppPressable>
-      </View>
+          variant="primary"
+          label="Apply"
+        />
+      </AppSheetFooter>
       </AppSheet>
       </GestureHandlerRootView>
     </Modal>
@@ -340,28 +340,8 @@ const useStyles = createThemedStyles((colors) => ({
   validation: {
     marginTop: spacing.xs,
   },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
   button: {
     minWidth: 92,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-  },
-  cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  apply: {
-    backgroundColor: colors.accent,
-  },
-  disabled: {
-    opacity: 0.4,
   },
 }));
 

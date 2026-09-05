@@ -11,6 +11,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -20,6 +21,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -71,7 +73,7 @@ class QueueContentView(
   private val sheetHandle = View(context)
   private val titleView = label("Queue", 20f, semiboldTypeface)
   private val countView = label("No songs next", 12f, mediumTypeface)
-  private val editButton = label("Edit", 12f, mediumTypeface)
+  private val editButton = actionLabel("Edit")
   private val playingNowLabel = label("PLAYING NOW", 11f, regularTypeface)
   private val upNextLabel = label("UP NEXT", 11f, regularTypeface)
   private val nowArtwork = ImageView(context)
@@ -80,8 +82,8 @@ class QueueContentView(
   private val nowIndicator = ImageView(context)
   private val nowCard = LinearLayout(context)
   private val actionBar = LinearLayout(context)
-  private val playNextButton = label("Play next", 12f, mediumTypeface)
-  private val removeButton = label("Remove", 12f, mediumTypeface)
+  private val playNextButton = actionLabel("Play next", primary = true)
+  private val removeButton = actionLabel("Remove")
   private val emptyView = label("Nothing queued", 14f, regularTypeface)
   private val swipePaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val swipeIconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -334,7 +336,7 @@ class QueueContentView(
     val header = LinearLayout(context).apply {
       orientation = HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      setPadding(dp(16), 0, dp(8), dp(12))
+      setPadding(dp(16), 0, dp(16), dp(12))
     }
     val headerText = LinearLayout(context).apply {
       orientation = VERTICAL
@@ -343,15 +345,25 @@ class QueueContentView(
     }
     header.addView(headerText, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
     editButton.apply {
-      gravity = Gravity.CENTER
-      setPadding(dp(16), dp(8), dp(16), dp(8))
       isClickable = true
-      isFocusable = true
       contentDescription = "Edit queue"
       setOnClickListener { setEditMode(!editMode) }
     }
     header.addView(editButton)
     addView(header)
+
+    // Selection actions belong to the visible header, not the bottom of the
+    // full-height content that extends offscreen while the sheet is collapsed.
+    actionBar.orientation = HORIZONTAL
+    actionBar.gravity = Gravity.CENTER
+    actionBar.setPadding(dp(16), dp(8), dp(16), dp(12))
+    actionBar.addView(playNextButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+    removeButton.minimumWidth = dp(116)
+    actionBar.addView(removeButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
+      marginStart = dp(8)
+    })
+    actionBar.visibility = GONE
+    addView(actionBar)
 
     addView(playingNowLabel.apply {
       setPadding(dp(16), 0, dp(16), dp(4))
@@ -401,20 +413,10 @@ class QueueContentView(
     emptyView.visibility = GONE
     addView(emptyView, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
 
-    actionBar.orientation = HORIZONTAL
-    actionBar.gravity = Gravity.CENTER
-    actionBar.setPadding(dp(12), dp(8), dp(12), dp(12))
-    playNextButton.gravity = Gravity.CENTER
-    removeButton.gravity = Gravity.CENTER
-    actionBar.addView(playNextButton, LayoutParams(0, dp(48), 1f))
-    actionBar.addView(removeButton, LayoutParams(0, dp(48), 1f))
-    actionBar.visibility = GONE
-    addView(actionBar)
     ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
       val bottomInset =
         insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
       recycler.setPadding(0, 0, 0, dp(30) + bottomInset)
-      actionBar.setPadding(dp(12), dp(8), dp(12), dp(12) + bottomInset)
       insets
     }
 
@@ -530,6 +532,10 @@ class QueueContentView(
   private fun setEditMode(enabled: Boolean) {
     editMode = enabled
     if (!enabled) selectedIds.clear()
+    // Editing tools replace the now-playing summary, keeping upcoming rows in
+    // view even at the collapsed sheet height on a short landscape window.
+    playingNowLabel.visibility = if (enabled) GONE else VISIBLE
+    nowCard.visibility = if (enabled) GONE else VISIBLE
     haptics.selection(editButton)
     editButton.text = if (enabled) "Cancel" else "Edit"
     editButton.contentDescription = if (enabled) "Cancel queue editing" else "Edit queue"
@@ -552,7 +558,11 @@ class QueueContentView(
 
   private fun updateActionBar() {
     val count = selectedIds.size
-    actionBar.visibility = if (editMode && count > 0) VISIBLE else GONE
+    // Reserve the row when editing starts, so selecting or clearing tracks
+    // doesn't move the list underneath the user's finger.
+    actionBar.visibility = if (editMode) VISIBLE else GONE
+    playNextButton.isEnabled = count > 0
+    removeButton.isEnabled = count > 0
     playNextButton.text = "Play next ($count)"
     removeButton.text = "Remove ($count)"
   }
@@ -588,23 +598,58 @@ class QueueContentView(
     sheetHandle.background = rounded(palette.divider, 999f)
     titleView.setTextColor(palette.text)
     countView.setTextColor(palette.textTertiary)
-    editButton.setTextColor(palette.accent)
+    editButton.setTextColor(palette.textSecondary)
+    editButton.background = actionBackground(palette.elevatedSurface)
     playingNowLabel.setTextColor(palette.textTertiary)
     upNextLabel.setTextColor(palette.textTertiary)
     nowTitle.setTextColor(palette.accentTextStrong)
     nowArtist.setTextColor(palette.accentText)
     nowIndicator.imageTintList = ColorStateList.valueOf(palette.accent)
     emptyView.setTextColor(palette.textSecondary)
-    playNextButton.setTextColor(palette.accent)
+    playNextButton.setTextColor(palette.accentForeground)
+    playNextButton.background = actionBackground(palette.accent)
     removeButton.setTextColor(palette.warning)
+    removeButton.background = actionBackground(
+      ColorUtils.blendARGB(palette.elevatedSurface, palette.warning, 0.12f),
+    )
     nowCard.background = roundedWithBorder(
       palette.nowPlayingSurface,
       palette.divider,
       6f,
     )
-    actionBar.setBackgroundColor(palette.elevatedSurface)
     adapter.palette = palette
   }
+
+  /** Native counterpart of theme/actionButtons: 44dp minimum, 14dp corners, semibold labels. */
+  private fun actionLabel(text: String, primary: Boolean = false): TextView =
+    object : TextView(context) {
+      override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        alpha = when {
+          !isEnabled -> 0.45f
+          isPressed -> if (primary) 0.88f else 0.74f
+          else -> 1f
+        }
+      }
+
+      override fun getAccessibilityClassName(): CharSequence = android.widget.Button::class.java.name
+    }.apply {
+      this.text = text
+      typeface = semiboldTypeface
+      includeFontPadding = false
+      val fontScale = min(resources.configuration.fontScale, 1.2f)
+      setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f * fontScale)
+      androidx.core.widget.TextViewCompat.setLineHeight(
+        this,
+        (20f * fontScale * resources.displayMetrics.density).toInt(),
+      )
+      gravity = Gravity.CENTER
+      minimumHeight = dp(44)
+      setPadding(dp(16), dp(8), dp(16), dp(8))
+      isFocusable = true
+    }
+
+  private fun actionBackground(fill: Int): GradientDrawable = rounded(fill, 14f)
 
   private fun label(text: String, sizeSp: Float, font: Typeface): TextView =
     TextView(context).apply {
@@ -945,7 +990,7 @@ class QueueContentView(
         row.handle.tint = palette.textTertiary
         row.checkbox.tint = palette.accent
         row.checkbox.uncheckedTint = palette.textTertiary
-        row.checkbox.checkColor = palette.background
+        row.checkbox.checkColor = palette.accentForeground
         row.checkbox.checked = item.entryId in selected
         row.checkbox.visibility = if (editing) VISIBLE else GONE
         row.artwork.visibility = if (editing) GONE else VISIBLE
@@ -1093,7 +1138,7 @@ class QueueContentView(
         field = value
         invalidate()
       }
-    var checkColor: Int = palette.background
+    var checkColor: Int = palette.accentForeground
       set(value) {
         field = value
         invalidate()

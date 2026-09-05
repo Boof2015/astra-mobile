@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -226,16 +227,17 @@ export default function SignalScanScreen() {
             <View style={styles.permissionCard}>
               <Ionicons name="camera-outline" size={28} color={colors.accent} />
               <Text variant="body">Camera access is needed to scan a Signal.</Text>
-              <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
-                <Text variant="body" color={colors.accentTextStrong}>
-                  Allow camera
-                </Text>
-              </AppPressable>
-              <AppPressable feedback="control"  style={styles.linkButton} onPress={() => void pickImage()}>
-                <Text variant="body" color={colors.accent}>
-                  Or pick a Signal image
-                </Text>
-              </AppPressable>
+              <ActionButton
+                onPress={() => void requestPermission()}
+                variant="primary"
+                label="Allow camera"
+              />
+              <ActionButton
+                onPress={() => void pickImage()}
+                variant="secondary"
+                label="Or pick a Signal image"
+                style={{ alignSelf: 'center', marginTop: spacing.sm }}
+              />
             </View>
           ) : (
             <View style={styles.scannerFrame}>
@@ -310,20 +312,6 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  linkButton: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
   },
   scannerFrame: {
     flex: 1,

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { usePathname } from 'expo-router';
 import { useReturnToTabs } from '@/navigation/returnToTabs';
 import {
   AppSheet,
+  AppSheetDivider,
   AppSheetItem,
   AppSheetSection,
   AppSheetTitle,
@@ -130,10 +131,13 @@ function TrackActionsSheetInner({
   }
 
   return (
-    <AppSheet onClose={onClose}>
+    <AppSheet onClose={onClose} scrollable>
       <AppSheetTitle title={track.title} subtitle={track.artist} />
       {menuItems.map(({ key, ...item }) => (
-        <AppSheetItem key={key} {...item} />
+        <Fragment key={key}>
+          {key === 'view-album' ? <AppSheetDivider /> : null}
+          <AppSheetItem {...item} />
+        </Fragment>
       ))}
       {extraItems.length > 0 ? (
         <>

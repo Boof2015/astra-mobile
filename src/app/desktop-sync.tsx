@@ -3,7 +3,7 @@
 // (one paired desktop serves both features) but nothing else. Conflict
 // resolution (Steam-Cloud style) lives inline here; the desktop mirrors the
 // same conflicts in its own settings and either side may resolve them.
-
+import { ActionButton } from '@/components/ActionButton';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -114,15 +114,12 @@ function ConflictCard({
         previewResolution={selectedResolution}
       />
       <View style={styles.conflictConfirmRow}>
-        <AppPressable feedback="accent"
-          style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
+        <ActionButton
           disabled={!selectedResolution || busy}
           onPress={() => selectedResolution ? onResolve(selectedResolution) : undefined}
-        >
-          <Text variant="body" color={colors.accentTextStrong}>
-            Confirm
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label="Confirm"
+        />
       </View>
     </View>
   );
@@ -201,15 +198,13 @@ export default function DesktopSyncScreen() {
               Sync uses the same pairing as the Desktop Remote. Pair this phone with Astra Desktop
               once and both features work.
             </Text>
-            <AppPressable feedback="accent"
-              style={styles.primaryButton}
+            <ActionButton
               onPress={() => router.push('/desktop-remote' as never)}
-            >
-              <Ionicons name="link-outline" size={18} color={colors.accentTextStrong} />
-              <Text variant="body" color={colors.accentTextStrong}>
-                Pair with a desktop
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label="Pair with a desktop"
+              icon="link-outline"
+              iconSize={18}
+            />
           </View>
         ) : (
           <>
@@ -225,21 +220,16 @@ export default function DesktopSyncScreen() {
                         : 'Not synced yet'}
                   </Text>
                 </View>
-                <AppPressable feedback="accent"
-                  style={[styles.primaryButton, (syncing || !desktopSyncEnabled) && styles.disabled]}
+                <ActionButton
                   disabled={syncing || !desktopSyncEnabled}
                   onPress={() => void syncNow()}
                   accessibilityLabel="Sync favorites and playlists now"
-                >
-                  {syncing ? (
-                    <ActivityIndicator size="small" color={colors.accentTextStrong} />
-                  ) : (
-                    <Ionicons name="sync-outline" size={18} color={colors.accentTextStrong} />
-                  )}
-                  <Text variant="body" color={colors.accentTextStrong}>
-                    Sync now
-                  </Text>
-                </AppPressable>
+                  variant="primary"
+                  label="Sync now"
+                  icon="sync-outline"
+                  iconSize={18}
+                  loading={syncing}
+                />
               </View>
               {summaryLine ? (
                 <Text variant="caption" color={colors.textTertiary}>
@@ -347,16 +337,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   cardCopy: {
     lineHeight: 19,
-  },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
   },
   toggleRow: {
     flexDirection: 'row',

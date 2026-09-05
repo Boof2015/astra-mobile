@@ -1,12 +1,11 @@
+import { ActionButton } from '@/components/ActionButton';
 import {
   StyleSheet,
   View
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
-import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
+import { createThemedStyles } from '@/theme/themed';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 interface SelectionActionBarProps {
@@ -32,6 +31,7 @@ export function SelectionActionBar({
   return (
     <View style={[styles.bar, { paddingBottom: sceneBottomInset }]}>
       <BarButton
+        primary
         icon="play-skip-forward"
         label={`Play next (${count})`}
         accessibilityLabel={`Play ${count} selected tracks next`}
@@ -57,12 +57,14 @@ export function SelectionActionBar({
 }
 
 function BarButton({
+  primary = false,
   icon,
   label,
   accessibilityLabel,
   disabled,
   onPress,
 }: {
+  primary?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   accessibilityLabel: string;
@@ -70,21 +72,17 @@ function BarButton({
   onPress: () => void;
 }) {
   const styles = useStyles();
-  const colors = useColors();
   return (
-    <AppPressable feedback="control"
-
-      style={[styles.button, disabled && styles.buttonDisabled]}
+    <ActionButton
+      variant={primary ? 'primary' : 'secondary'}
+      icon={icon}
+      label={label}
+      style={styles.button}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-    >
-      <Ionicons name={icon} size={18} color={colors.accent} />
-      <Text variant="label" style={styles.label} numberOfLines={1}>
-        {label}
-      </Text>
-    </AppPressable>
+    />
   );
 }
 
@@ -93,20 +91,14 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     borderTopColor: colors.glassBorder,
     borderTopWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: colors.bgPrimary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   button: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-  },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  label: {
-    color: colors.accent,
+    minWidth: 132,
   },
 }));

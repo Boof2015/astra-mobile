@@ -1,7 +1,7 @@
+import { ActionButton } from '@/components/ActionButton';
 import { View } from 'react-native';
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
-import { AppPressable } from '@/components/AppPressable';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
 
@@ -41,23 +41,15 @@ export function ScanProgress() {
         >
           {label}
         </Text>
-        <AppPressable feedback="control"
-
+        <ActionButton
           disabled={isCancelling}
           onPress={cancelScan}
-          accessibilityRole="button"
           accessibilityLabel={isCancelling ? 'Cancelling library scan' : 'Cancel library scan'}
           accessibilityState={{ disabled: isCancelling, busy: isCancelling }}
           hitSlop={6}
-          style={styles.cancelButton}
-        >
-          <Text
-            variant="caption"
-            color={isCancelling ? colors.textTertiary : colors.warning}
-          >
-            {isCancelling ? 'Cancelling…' : 'Cancel'}
-          </Text>
-        </AppPressable>
+          variant="secondary"
+          label={isCancelling ? 'Cancelling…' : 'Cancel'}
+        />
       </View>
       <View style={styles.track}>
         <View
@@ -85,11 +77,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   label: {
     flex: 1,
-  },
-  cancelButton: {
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
   },
   track: {
     height: 2,

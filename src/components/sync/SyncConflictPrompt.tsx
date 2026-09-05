@@ -5,7 +5,7 @@
 // derivation of store state — no set-state-in-effect (React Compiler rule).
 // Suppressed while the user is already on the sync screen; if they leave it
 // without resolving, the one pending reminder still shows.
-
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -192,20 +192,17 @@ export function SyncConflictPrompt() {
             ) : null}
           </ScrollView>
           <View style={styles.actions}>
-            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={dismissConflictPrompt}>
-              <Text variant="body" color={colors.textSecondary}>
-                Not now
-              </Text>
-            </AppPressable>
-            <AppPressable feedback="accent"
-              style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
+            <ActionButton
+              onPress={dismissConflictPrompt}
+              variant="secondary"
+              label="Not now"
+            />
+            <ActionButton
               disabled={!selectedResolution || busy}
               onPress={confirm}
-            >
-              <Text variant="body" color={colors.accentTextStrong}>
-                Confirm
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label="Confirm"
+            />
           </View>
         </View>
       </View>
@@ -296,21 +293,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.xs,
-  },
-  secondaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   disabled: {
     opacity: 0.5,

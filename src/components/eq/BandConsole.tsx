@@ -214,7 +214,7 @@ function Readout({
     <AppPressable feedback="control"
 
       unstable_pressDelay={SCROLL_PRESS_DELAY}
-      style={styles.readout}
+      style={[styles.readout, styles.readoutButton]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${value} ${label}`}
@@ -235,7 +235,7 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.glassBg,
+    backgroundColor: colors.bgSecondary,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'transparent',
   },
@@ -263,9 +263,10 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    borderColor: 'transparent',
+    backgroundColor: colors.bgTertiary,
   },
   rail: {
     alignSelf: 'stretch',
@@ -280,8 +281,11 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'baseline',
     justifyContent: 'center',
     gap: spacing.xs,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     paddingVertical: 1,
+  },
+  readoutButton: {
+    backgroundColor: colors.bgTertiary,
   },
   readoutValue: {
     fontVariant: ['tabular-nums'],

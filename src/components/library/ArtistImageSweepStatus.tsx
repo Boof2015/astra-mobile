@@ -1,10 +1,9 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { useArtistImageStore } from '@/stores/artistImageStore';
 import { requeueMissingArtistImages } from '@/library/artistImageLookup';
 
@@ -72,23 +71,17 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
       <Text variant="caption" color={colors.textSecondary}>
         {missing === 1 ? '1 artist has no image' : `${n(missing)} artists have no image`}
       </Text>
-      <AppPressable feedback="accent"
-
+      <ActionButton
         style={styles.button}
         disabled={retrying}
         onPress={() => void retry()}
-        accessibilityRole="button"
         accessibilityLabel="Look for missing artist images now"
-      >
-        {retrying ? (
-          <ActivityIndicator size="small" color={colors.accentTextStrong} />
-        ) : (
-          <Ionicons name="refresh" size={16} color={colors.accentTextStrong} />
-        )}
-        <Text variant="label" color={colors.accentTextStrong}>
-          Look for missing images
-        </Text>
-      </AppPressable>
+        variant="primary"
+        label="Look for missing images"
+        icon="refresh"
+        iconSize={16}
+        loading={retrying}
+      />
     </View>
   );
 }
@@ -113,16 +106,6 @@ const useStyles = createThemedStyles((colors) => ({
     opacity: 0.35,
   },
   button: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.accentGlow,
     overflow: 'hidden',
   },
 }));

@@ -18,6 +18,7 @@ import {
   variantLineHeight,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
+import { selectionSurface } from '@/theme/actionButtons';
 import { AppPressable } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { playHaptic } from '@/lib/haptics';
@@ -140,10 +141,10 @@ function SegmentButton({
 const useStyles = createThemedStyles((colors) => ({
   track: {
     flexDirection: 'row',
-    backgroundColor: colors.glassBg,
+    backgroundColor: colors.bgTertiary,
     borderColor: colors.glassBorder,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
+    borderRadius: radius.lg,
     padding: THUMB_INSET,
   },
   // `flex` because the segments inside share it out from a zero basis: without
@@ -160,10 +161,8 @@ const useStyles = createThemedStyles((colors) => ({
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: colors.glassHighlight,
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.pill,
+    backgroundColor: selectionSurface(colors),
+    borderRadius: 12,
   },
   segment: {
     flex: 1,
@@ -176,7 +175,7 @@ const useStyles = createThemedStyles((colors) => ({
     // Explicit, for the reason theme/typography.ts gives: without it the line box
     // comes from the font's own metrics and differs by OEM.
     lineHeight: variantLineHeight.label,
-    fontFamily: fonts.sans.medium,
+    fontFamily: fonts.sans.semibold,
   },
 }));
 

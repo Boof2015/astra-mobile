@@ -1,18 +1,18 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
-  StyleSheet,
   View,
   type KeyboardTypeOptions
 } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
+import { AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   fonts,
-  radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQValueEditSheetProps {
@@ -20,6 +20,7 @@ interface EQValueEditSheetProps {
   initialValue: string;
   unit: string;
   rangeLabel: string;
+  invalidMessage: string;
   placeholder?: string;
   keyboardType?: KeyboardTypeOptions;
   parseValue: (value: string) => number | null;
@@ -33,6 +34,7 @@ export function EQValueEditSheet({
   initialValue,
   unit,
   rangeLabel,
+  invalidMessage,
   placeholder,
   keyboardType = 'numbers-and-punctuation',
   parseValue,
@@ -42,9 +44,11 @@ export function EQValueEditSheet({
   const styles = useStyles();
   const colors = useColors();
   const [value, setValue] = useState(initialValue);
+  const [focused, setFocused] = useState(false);
   const trimmed = value.trim();
   const parsed = trimmed.length > 0 ? parseValue(trimmed) : null;
   const valid = parsed !== null;
+  const invalid = trimmed.length > 0 && !valid;
 
   const apply = () => {
     if (parsed === null) return;
@@ -53,110 +57,106 @@ export function EQValueEditSheet({
   };
 
   return (
-    <EqSheet onClose={onClose}>
-      <Text variant="heading" style={styles.title}>
-        {title}
-      </Text>
-      <View style={styles.inputRow}>
-        <BottomSheetTextInput
-          value={value}
-          onChangeText={setValue}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textTertiary}
-          keyboardType={keyboardType}
-          style={[styles.input, trimmed.length > 0 && !valid && styles.inputInvalid]}
-          autoFocus
-          selectTextOnFocus
-          maxLength={16}
-          returnKeyType="done"
-          onSubmitEditing={apply}
-          selectionColor={colors.accent}
-        />
-        <Text variant="label" style={styles.unit}>
-          {unit}
-        </Text>
-      </View>
-      <Text variant="caption" style={[styles.range, trimmed.length > 0 && !valid && styles.invalidText]}>
-        {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
-      </Text>
-      <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text variant="label" color={colors.textSecondary}>
-            Cancel
+    <EqSheet onClose={onClose} scrollable>
+      <AppSheetTitle title={title} />
+      <AppSheetBody>
+        <View style={[styles.inputRow, focused && styles.inputFocused, invalid && styles.inputInvalid]}>
+          <BottomSheetTextInput
+            value={value}
+            accessibilityLabel={title}
+            accessibilityHint={invalid ? invalidMessage : rangeLabel}
+            onChangeText={setValue}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={placeholder}
+            placeholderTextColor={colors.textSecondary}
+            keyboardType={keyboardType}
+            style={styles.input}
+            autoFocus
+            selectTextOnFocus
+            maxLength={16}
+            returnKeyType="done"
+            onSubmitEditing={apply}
+            selectionColor={colors.accent}
+          />
+          <Text variant="label" style={styles.unit}>
+            {unit}
           </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-          style={[styles.btn, styles.apply, !valid && styles.applyDisabled]}
+        </View>
+        <View style={styles.hintRow}>
+          {invalid ? (
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} accessible={false} />
+          ) : null}
+          <Text
+            variant="caption"
+            style={[styles.range, invalid && styles.invalidText]}
+            accessibilityLiveRegion="polite"
+          >
+            {invalid ? invalidMessage : rangeLabel}
+          </Text>
+        </View>
+      </AppSheetBody>
+      <AppSheetFooter>
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           disabled={!valid}
           onPress={apply}
-        >
-          <Text variant="label" color={colors.accentTextStrong}>
-            Apply
-          </Text>
-        </AppPressable>
-      </View>
+          variant="primary"
+          label="Apply"
+        />
+      </AppSheetFooter>
     </EqSheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  title: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.bgTertiary,
   },
   input: {
     flex: 1,
+    minWidth: 0,
     color: colors.textPrimary,
     fontFamily: fonts.mono.regular,
     fontSize: 18,
+    lineHeight: 24,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    paddingVertical: spacing.sm + 2,
+  },
+  inputFocused: {
+    borderColor: colors.accent,
   },
   inputInvalid: {
     borderColor: colors.warning,
   },
   unit: {
-    minWidth: 34,
+    paddingRight: spacing.md,
     color: colors.textSecondary,
   },
-  range: {
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs + 2,
     marginTop: spacing.sm,
-    color: colors.textTertiary,
+  },
+  range: {
+    flex: 1,
+    lineHeight: 16,
+    color: colors.textSecondary,
   },
   invalidText: {
     color: colors.warning,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  btn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-  },
-  cancel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  apply: {
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-  },
-  applyDisabled: {
-    opacity: 0.4,
   },
 }));
 

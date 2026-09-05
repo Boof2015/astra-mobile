@@ -1,4 +1,5 @@
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's UI-thread scroll state. */
+import { ActionButton } from '@/components/ActionButton';
 import {
   useCallback,
   useEffect,
@@ -31,10 +32,7 @@ import {
   vec
 } from '@shopify/react-native-skia';
 import { Text } from '@/components/Text';
-import {
-  radius,
-  spacing,
-} from '@/theme';
+import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import {
@@ -360,28 +358,26 @@ export function CollapsingHeader({
         {heroMeta}
         {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
-          <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-            style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
+          <ActionButton
+            unstable_pressDelay={SCROLL_PRESS_DELAY}
+            style={styles.actionButton}
             onPress={onPlay}
             disabled={disabled}
-            accessibilityRole="button"
-          >
-            <Ionicons name="play" size={17} color={colors.bgPrimary} />
-            <Text variant="body" style={styles.primaryActionText}>
-              Play
-            </Text>
-          </AppPressable>
-          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-            style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
+            variant="primary"
+            label="Play"
+            icon="play"
+            iconSize={17}
+          />
+          <ActionButton
+            unstable_pressDelay={SCROLL_PRESS_DELAY}
+            style={[styles.actionButton, styles.secondaryAction]}
             onPress={onShuffle}
             disabled={disabled}
-            accessibilityRole="button"
-          >
-            <Ionicons name="shuffle" size={17} color={colors.accent} />
-            <Text variant="body" color={colors.accent} style={styles.secondaryActionText}>
-              Shuffle
-            </Text>
-          </AppPressable>
+            variant="secondary"
+            label="Shuffle"
+            icon="shuffle"
+            iconSize={17}
+          />
         </Animated.View>
       </Animated.View>
 
@@ -543,31 +539,10 @@ const useStyles = createThemedStyles((colors) => ({
   },
   actionButton: {
     flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-  },
-  primaryAction: {
-    backgroundColor: colors.accent,
   },
   secondaryAction: {
-    borderColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.glassBg,
-  },
-  disabledAction: {
-    opacity: 0.45,
-  },
-  primaryActionText: {
-    color: colors.bgPrimary,
-    fontWeight: '600',
-  },
-  secondaryActionText: {
-    fontWeight: '600',
+    flex: 0,
+    minWidth: 116,
   },
   chevron: {
     position: 'absolute',

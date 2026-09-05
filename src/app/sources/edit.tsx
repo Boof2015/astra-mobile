@@ -1,13 +1,6 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -274,36 +267,22 @@ export default function SourceEditScreen() {
             ) : null}
 
             <View style={styles.actions}>
-              <AppPressable feedback="control"
-                style={[styles.button, styles.secondaryButton, busy ? styles.buttonDisabled : null]}
+              <ActionButton
+                style={styles.button}
                 onPress={() => void onTest()}
                 disabled={!!busy}
-              >
-                {busy === 'test' ? (
-                  <ActivityIndicator size="small" color={colors.textSecondary} />
-                ) : (
-                  <Text variant="body" color={colors.textSecondary}>
-                    Test connection
-                  </Text>
-                )}
-              </AppPressable>
-              <AppPressable feedback="accent"
-                style={[
-                  styles.button,
-                  styles.primaryButton,
-                  !canSubmit || busy ? styles.buttonDisabled : null,
-                ]}
+                variant="secondary"
+                label="Test connection"
+                loading={busy === 'test'}
+              />
+              <ActionButton
+                style={styles.button}
                 onPress={() => void onSave()}
                 disabled={!canSubmit || !!busy}
-              >
-                {busy === 'save' ? (
-                  <ActivityIndicator size="small" color={colors.accentTextStrong} />
-                ) : (
-                  <Text variant="body" color={colors.accentTextStrong}>
-                    {editing ? 'Save' : 'Add server'}
-                  </Text>
-                )}
-              </AppPressable>
+                variant="primary"
+                label={editing ? 'Save' : 'Add server'}
+                loading={busy === 'save'}
+              />
             </View>
           </ScrollView>
         )}
@@ -390,21 +369,5 @@ const useStyles = createThemedStyles((colors) => ({
   },
   button: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md + 2,
-    borderRadius: radius.md,
-    minHeight: 48,
-  },
-  secondaryButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
-  },
-  primaryButton: {
-    backgroundColor: colors.accent,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 }));

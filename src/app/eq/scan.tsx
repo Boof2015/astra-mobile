@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -69,11 +70,11 @@ export default function EQPresetScanScreen() {
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan EQ preset QR codes.</Text>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
-            <Text variant="body" color={colors.accentTextStrong}>
-              Allow camera
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={() => void requestPermission()}
+            variant="primary"
+            label="Allow camera"
+          />
         </View>
       ) : (
         <View style={styles.scannerFrame}>
@@ -92,11 +93,12 @@ export default function EQPresetScanScreen() {
                   {error}
                 </Text>
               </View>
-              <AppPressable feedback="control"  style={styles.retryButton} onPress={() => setError(null)}>
-                <Text variant="label" color={colors.accentTextStrong}>
-                  Scan again
-                </Text>
-              </AppPressable>
+              <ActionButton
+                style={styles.retryButton}
+                onPress={() => setError(null)}
+                variant="secondary"
+                label="Scan again"
+              />
             </View>
           ) : null}
         </View>
@@ -143,14 +145,6 @@ const useStyles = createThemedStyles((colors) => ({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   scannerFrame: {
     flex: 1,
     borderRadius: radius.md,
@@ -193,11 +187,5 @@ const useStyles = createThemedStyles((colors) => ({
   },
   retryButton: {
     alignSelf: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentGlow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
   },
 }));
