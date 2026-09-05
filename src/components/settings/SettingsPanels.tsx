@@ -1,4 +1,4 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import {
   StyleSheet,
   View,
@@ -25,11 +25,11 @@ import type { BaseThemeId, PreferredDark } from '@/theme/resolve';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { useLibraryStore, type FolderWithCount } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useThemeStore } from '@/stores/themeStore';
 import type {
   CoverArtAccentMethod,
   NowPlayingAccentSource,
 } from '@/stores/themeStore';
+import { useThemeStore } from '@/stores/themeStore';
 import type { LastFmStatus } from '@/types/lastFm';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
@@ -323,32 +323,28 @@ function LibraryFoldersSettings() {
               : `${formatFolderCount(folders.length)} / ${formatTrackCount(totalTracks)}`}
           </Text>
         </View>
-        <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-          style={[styles.folderPrimaryAction, isScanning && styles.actionDisabled]}
+        <ActionButton
+          unstable_pressDelay={SCROLL_PRESS_DELAY}
           disabled={isScanning}
           onPress={() => void addFolder()}
-          accessibilityRole="button"
-        >
-          <Ionicons name="add" size={17} color={actionButtonForeground(colors)} />
-          <Text variant="label" style={actionButtonTextStyle(colors, 'primary')}>
-            Add
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label="Add"
+          icon="add"
+          iconSize={17}
+        />
       </View>
 
       {folders.length > 0 ? (
         <View style={styles.folderSettingsActions}>
-          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-            style={[styles.folderSecondaryAction, isScanning && styles.actionDisabled]}
+          <ActionButton
+            unstable_pressDelay={SCROLL_PRESS_DELAY}
             disabled={isScanning}
             onPress={() => void rescan()}
-            accessibilityRole="button"
-          >
-            <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-              Rescan all
-            </Text>
-          </AppPressable>
+            variant="secondary"
+            label="Rescan all"
+            icon="refresh"
+            iconSize={16}
+          />
         </View>
       ) : null}
 
@@ -620,15 +616,9 @@ const useStyles = createThemedStyles((colors) => ({
     minWidth: 0,
     gap: 2,
   },
-  folderPrimaryAction: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
   folderSettingsActions: {
     flexDirection: 'row',
     marginTop: spacing.md,
-  },
-  folderSecondaryAction: {
-    ...actionButtonStyle(colors, 'secondary'),
   },
   folderSettingsNotice: {
     marginTop: spacing.sm,

@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,11 +46,11 @@ export default function SignalImportScreen() {
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={28} color={colors.warning} />
           <Text variant="body">This link does not contain a valid Astra Signal.</Text>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={goToSignal}>
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-              Go to Signal
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={goToSignal}
+            variant="primary"
+            label="Go to Signal"
+          />
         </View>
       )}
     </Screen>
@@ -74,8 +74,5 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
   },
 }));

@@ -1,4 +1,4 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useEffect } from 'react';
 import {
   StyleSheet,
@@ -145,16 +145,13 @@ export default function LastFmScreen() {
             </AppPressable>
           </View>
         ) : (
-          <AppPressable feedback="accent"
-            style={styles.connectButton}
+          <ActionButton
             onPress={() => connectOfficial(profile)}
-            accessibilityRole="button"
-          >
-            <Ionicons name="link" size={16} color={actionButtonForeground(colors)} />
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-              Connect
-            </Text>
-          </AppPressable>
+            variant="primary"
+            label="Connect"
+            icon="link"
+            iconSize={16}
+          />
         )}
       </View>
     );
@@ -247,12 +244,14 @@ export default function LastFmScreen() {
         ) : null}
 
         {status && status.pendingScrobbles > 0 ? (
-          <AppPressable feedback="control"  style={styles.retryButton} onPress={() => requestLastFmFlush()}>
-            <Ionicons name="sync" size={16} color={colors.textSecondary} />
-            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-              Retry {status.pendingScrobbles} queued now
-            </Text>
-          </AppPressable>
+          <ActionButton
+            style={styles.retryButton}
+            onPress={() => requestLastFmFlush()}
+            variant="secondary"
+            label={`Retry ${status.pendingScrobbles} queued now`}
+            icon="sync"
+            iconSize={16}
+          />
         ) : null}
 
         <Text
@@ -269,12 +268,14 @@ export default function LastFmScreen() {
           )}
         </View>
 
-        <AppPressable feedback="accent"  style={styles.addButton} onPress={() => router.push('/lastfm/edit')}>
-          <Ionicons name="add" size={18} color={actionButtonForeground(colors)} />
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-            Add destination
-          </Text>
-        </AppPressable>
+        <ActionButton
+          style={styles.addButton}
+          onPress={() => router.push('/lastfm/edit')}
+          variant="primary"
+          label="Add destination"
+          icon="add"
+          iconSize={18}
+        />
 
         <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
           A scrobble is sent once a track plays past half its length (or 4 minutes). Tracks under 30
@@ -333,7 +334,6 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 18,
   },
   retryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     alignSelf: 'flex-start',
     marginTop: spacing.md,
   },
@@ -387,11 +387,7 @@ const useStyles = createThemedStyles((colors) => ({
   linkedUser: {
     flexShrink: 1,
   },
-  connectButton: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
   addButton: {
-    ...actionButtonStyle(colors, 'primary'),
     alignSelf: 'flex-start',
     marginTop: spacing.lg,
   },

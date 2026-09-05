@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useMemo } from 'react';
 import {
   AppState,
@@ -212,9 +212,12 @@ function EmptyState({
       <Text variant="heading">{title}</Text>
       <Text variant="body" color={colors.textSecondary} style={styles.emptyBody}>{body}</Text>
       {action && onAction ? (
-        <AppPressable style={styles.primaryButton} feedback="accent" onPress={onAction}>
-          <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>{action}</Text>
-        </AppPressable>
+        <ActionButton
+          style={styles.primaryButton}
+          onPress={onAction}
+          variant="primary"
+          label={action}
+        />
       ) : null}
     </View>
   );
@@ -583,7 +586,6 @@ const useStyles = createThemedStyles((colors) => ({
     lineHeight: 21,
   },
   primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
     marginTop: spacing.sm,
     overflow: 'hidden',
   },

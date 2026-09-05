@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -138,19 +138,19 @@ export function PresetDeviceAssignmentSheet({
       )}
 
       <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.button, styles.cancel]} onPress={onClose}>
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Cancel</Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-
-          style={[styles.button, styles.save]}
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           onPress={() => {
             onSave([...selected]);
             onClose();
           }}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Save assignments</Text>
-        </AppPressable>
+          variant="primary"
+          label="Save assignments"
+        />
       </View>
     </EqSheet>
   );
@@ -206,15 +206,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  button: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  save: {
-    ...actionButtonStyle(colors, 'primary'),
   },
 }));
 

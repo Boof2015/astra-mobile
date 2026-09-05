@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -17,7 +17,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { DbTrack } from '@/types/library';
 
@@ -83,20 +82,17 @@ export function PlaylistPickerSheet({
           selectionColor={colors.accent}
         />
         <View style={styles.actions}>
-          <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={() => setStep('pick')}>
-            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-              Back
-            </Text>
-          </AppPressable>
-          <AppPressable feedback="accent"
-            style={[styles.btn, styles.create, !trimmedPlaylistName && styles.createDisabled]}
+          <ActionButton
+            onPress={() => setStep('pick')}
+            variant="secondary"
+            label="Back"
+          />
+          <ActionButton
             disabled={!trimmedPlaylistName}
             onPress={addToNewPlaylist}
-          >
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-              Create
-            </Text>
-          </AppPressable>
+            variant="primary"
+            label="Create"
+          />
         </View>
       </AppSheet>
     );
@@ -146,17 +142,5 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  btn: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  create: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  createDisabled: {
-    opacity: 0.4,
   },
 }));

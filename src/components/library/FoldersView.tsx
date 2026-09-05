@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -596,14 +597,13 @@ export function FoldersView({
           }
           if (item.type === 'more') {
             return (
-              <AppPressable
+              <ActionButton
                 unstable_pressDelay={SCROLL_PRESS_DELAY}
-                style={styles.browserMoreRow}
                 onPress={() => void loadNode(item.nodeId, true)}
-                accessibilityRole="button"
-              >
-                <Text variant="label" color={colors.accent}>Load more tracks</Text>
-              </AppPressable>
+                variant="secondary"
+                label="Load more tracks"
+                style={{ marginHorizontal: spacing.lg, marginVertical: spacing.sm }}
+              />
             );
           }
           if (!browserState) return null;
@@ -788,13 +788,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 22,
-  },
-  browserMoreRow: {
-    minHeight: 52,
-    justifyContent: 'center',
-    paddingLeft: 36,
-    borderBottomColor: colors.glassBorder,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   browserEmpty: {
     minHeight: 96,

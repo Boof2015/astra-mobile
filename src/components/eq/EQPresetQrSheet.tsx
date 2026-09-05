@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import {
   StyleSheet,
   View
@@ -10,7 +10,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQPresetQrSheetProps {
@@ -34,11 +33,12 @@ export function EQPresetQrSheet({ presetName, value, onClose }: EQPresetQrSheetP
       <Text variant="label" numberOfLines={1} color={colors.textSecondary} style={styles.name}>
         {presetName}
       </Text>
-      <AppPressable feedback="accent"  style={styles.done} onPress={onClose}>
-        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-          Done
-        </Text>
-      </AppPressable>
+      <ActionButton
+        style={styles.done}
+        onPress={onClose}
+        variant="primary"
+        label="Done"
+      />
     </EqSheet>
   );
 }
@@ -62,7 +62,6 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.md,
   },
   done: {
-    ...actionButtonStyle(colors, 'primary'),
     alignSelf: 'flex-end',
     marginTop: spacing.lg,
   },

@@ -1,5 +1,5 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/refs -- HSV refs are read only by RNGH callbacks after render; keeping the gesture identity stable prevents an active color drag from being replaced mid-gesture. */
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -23,7 +23,6 @@ import { AppSheet, AppSheetTitle } from '@/components/sheets/AppSheet';
 import { Text } from '@/components/Text';
 import { fonts, radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import {
   hexToHsv,
   hsvToHex,
@@ -244,21 +243,19 @@ export function AccentColorSheet({
       </Text>
 
       <View style={styles.actions}>
-        <AppPressable feedback="control"
-
-          style={[styles.button, styles.cancel]}
+        <ActionButton
+          style={styles.button}
           onPress={onClose}
-        >
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Cancel</Text>
-        </AppPressable>
-        <AppPressable
-          feedback="accent"
-          style={[styles.button, styles.apply, !validInput && styles.disabled]}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
+          style={styles.button}
           disabled={!validInput}
           onPress={apply}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Apply</Text>
-        </AppPressable>
+          variant="primary"
+          label="Apply"
+        />
       </View>
       </AppSheet>
       </GestureHandlerRootView>
@@ -348,17 +345,7 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   button: {
-    ...actionButtonBase,
     minWidth: 92,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  apply: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  disabled: {
-    opacity: 0.4,
   },
 }));
 

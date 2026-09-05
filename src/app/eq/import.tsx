@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,11 +49,11 @@ export default function EQPresetImportScreen() {
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={28} color={colors.warning} />
           <Text variant="body">This link does not contain a valid Astra EQ preset.</Text>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={goToEq}>
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-              Go to Equalizer
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={goToEq}
+            variant="primary"
+            label="Go to Equalizer"
+          />
         </View>
       </Screen>
     );
@@ -88,8 +88,5 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.glassBg,
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
   },
 }));

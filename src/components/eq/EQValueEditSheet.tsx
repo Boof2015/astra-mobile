@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -13,7 +13,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQValueEditSheetProps {
@@ -81,20 +80,17 @@ export function EQValueEditSheet({
         {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
       </Text>
       <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-            Cancel
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-          style={[styles.btn, styles.apply, !valid && styles.applyDisabled]}
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           disabled={!valid}
           onPress={apply}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-            Apply
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label="Apply"
+        />
       </View>
     </EqSheet>
   );
@@ -141,18 +137,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  btn: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  apply: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  applyDisabled: {
-    opacity: 0.4,
   },
 }));
 

@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import {
   StyleSheet,
   View
@@ -9,7 +9,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import type { EQPreset } from '@/types/audio';
 import { EqSheet } from './EqSheet';
 import { formatGain } from './format';
@@ -69,22 +68,19 @@ export function EQPresetPreviewSheet({
         </View>
       </View>
       <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-            Cancel
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-          style={[styles.btn, styles.primary]}
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           onPress={() => {
             onConfirm();
             onClose();
           }}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-            {confirmLabel}
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label={confirmLabel}
+        />
       </View>
     </EqSheet>
   );
@@ -114,15 +110,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  btn: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  primary: {
-    ...actionButtonStyle(colors, 'primary'),
   },
 }));
 

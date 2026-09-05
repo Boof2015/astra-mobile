@@ -1,4 +1,4 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
@@ -9,7 +9,6 @@ import type { DbTrack } from '@/types/library';
 import type { SignalPayload } from '@boof2015/astra-signal';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 
 export type SignalResultActionState = 'idle' | 'playing' | 'queueing' | 'queued';
 
@@ -41,49 +40,34 @@ export function SignalResolutionPanel({
   const actionBusy = actionState === 'playing' || actionState === 'queueing';
 
   const onlineAction = (primary = false) => (
-    <AppPressable feedback={primary ? 'accent' : 'control'}
-
-      style={[
-        styles.onlineButton,
-        primary ? styles.onlineButtonPrimary : styles.onlineButtonSecondary,
-        actionBusy && styles.disabledButton,
-      ]}
+    <ActionButton
       onPress={onFindOnline}
       disabled={actionBusy}
-      accessibilityRole="button"
-    >
-      <Ionicons
-        name="open-outline"
-        size={18}
-        color={primary ? actionButtonForeground(colors) : colors.textSecondary}
-      />
-      <Text variant="body" style={actionButtonTextStyle(colors, primary ? 'primary' : 'secondary')}>
-        Find online
-      </Text>
-    </AppPressable>
+      variant={primary ? 'primary' : 'secondary'}
+      label="Find online"
+      icon="open-outline"
+      iconSize={18}
+    />
   );
 
   const footer = (
     <View style={styles.footerActions}>
-      <AppPressable feedback="control"
-
+      <ActionButton
         style={styles.footerButton}
         onPress={onScanAnother}
         disabled={actionBusy}
-        accessibilityRole="button"
-      >
-        <Ionicons name="scan-outline" size={17} color={colors.textSecondary} />
-        <Text variant="label" style={actionButtonTextStyle(colors, 'secondary')}>Scan another</Text>
-      </AppPressable>
-      <AppPressable feedback="control"
-
+        variant="secondary"
+        label="Scan another"
+        icon="scan-outline"
+        iconSize={17}
+      />
+      <ActionButton
         style={styles.footerButton}
         onPress={onDone}
         disabled={actionBusy}
-        accessibilityRole="button"
-      >
-        <Text variant="label" style={actionButtonTextStyle(colors, 'secondary')}>Done</Text>
-      </AppPressable>
+        variant="secondary"
+        label="Done"
+      />
     </View>
   );
 
@@ -192,38 +176,28 @@ export function SignalResolutionPanel({
       />
 
       <View style={styles.playActions}>
-        <AppPressable feedback="accent"
-
-          style={[styles.primaryButton, actionBusy && styles.disabledButton]}
+        <ActionButton
+          style={styles.primaryButton}
           onPress={() => onPlay(track)}
           disabled={actionBusy}
-          accessibilityRole="button"
-        >
-          <Ionicons name="play" size={18} color={actionButtonForeground(colors)} />
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-            {actionState === 'playing' ? 'Starting…' : 'Play now'}
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="control"
-
-          style={[styles.secondaryButton, actionBusy && styles.disabledButton]}
+          variant="primary"
+          label={actionState === 'playing' ? 'Starting…' : 'Play now'}
+          icon="play"
+          iconSize={18}
+        />
+        <ActionButton
+          style={styles.secondaryButton}
           onPress={() => onQueue(track)}
           disabled={actionBusy || actionState === 'queued'}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={actionState === 'queued' ? 'checkmark' : 'list-outline'}
-            size={18}
-            color={colors.textSecondary}
-          />
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
-            {actionState === 'queueing'
+          variant="secondary"
+          label={actionState === 'queueing'
               ? 'Adding…'
               : actionState === 'queued'
                 ? 'Added'
                 : 'Add to queue'}
-          </Text>
-        </AppPressable>
+          icon={actionState === 'queued' ? 'checkmark' : 'list-outline'}
+          iconSize={18}
+        />
       </View>
 
       {onlineAction()}
@@ -298,32 +272,17 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  onlineButton: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  onlineButtonPrimary: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  onlineButtonSecondary: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
   primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
     flex: 1,
   },
   secondaryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     flex: 1,
-  },
-  disabledButton: {
-    opacity: 0.6,
   },
   footerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
   footerButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     flex: 1,
   },
 }));

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ActionButton';
 import { useSyncExternalStore } from 'react';
 import {
   Modal,
@@ -8,8 +9,6 @@ import {
 import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 import {
   dismissActiveDialog,
   EMPTY_DIALOG_QUEUE,
@@ -114,17 +113,14 @@ export function AppDialogHost() {
               const secondary = action.role === 'cancel' || index < active.actions.length - 1;
               const variant = destructive ? 'danger' : secondary ? 'secondary' : 'primary';
               return (
-                <AppPressable feedback={variant === 'primary' ? 'accent' : 'control'}
+                <ActionButton
                   key={`${action.label}-${index}`}
-                  style={[actionButtonStyle(colors, variant), styles.action]}
+                  style={styles.action}
                   onPress={() => selectAction(index)}
-                  accessibilityRole="button"
                   accessibilityLabel={action.label}
-                >
-                  <Text variant="body" style={actionButtonTextStyle(colors, variant)}>
-                    {action.label}
-                  </Text>
-                </AppPressable>
+                  variant={variant}
+                  label={action.label}
+                />
               );
             })}
           </View>

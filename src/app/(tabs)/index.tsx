@@ -1,4 +1,4 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AppState,
@@ -508,17 +508,14 @@ function EmptyHomeCard({
           </Text>
         ) : null}
       </View>
-      <AppPressable
-        feedback="accent" unstable_pressDelay={SCROLL_PRESS_DELAY}
-        style={styles.primaryButton}
+      <ActionButton
+        unstable_pressDelay={SCROLL_PRESS_DELAY}
         onPress={onManageFolders}
-        accessibilityRole="button"
-      >
-        <Ionicons name={fatal ? 'build-outline' : 'folder-open-outline'} size={18} color={actionButtonForeground(colors)} />
-        <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
-          {fatal ? 'Troubleshooting' : 'Folder settings'}
-        </Text>
-      </AppPressable>
+        variant="primary"
+        label={fatal ? 'Troubleshooting' : 'Folder settings'}
+        icon={fatal ? 'build-outline' : 'folder-open-outline'}
+        iconSize={18}
+      />
     </View>
   );
 }
@@ -1061,9 +1058,6 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.glassHighlight,
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
   },
   buttonDisabled: {
     opacity: 0.45,

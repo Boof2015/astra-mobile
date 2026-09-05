@@ -11,6 +11,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -81,7 +82,7 @@ class QueueContentView(
   private val nowIndicator = ImageView(context)
   private val nowCard = LinearLayout(context)
   private val actionBar = LinearLayout(context)
-  private val playNextButton = actionLabel("Play next")
+  private val playNextButton = actionLabel("Play next", primary = true)
   private val removeButton = actionLabel("Remove")
   private val emptyView = label("Nothing queued", 14f, regularTypeface)
   private val swipePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -358,7 +359,7 @@ class QueueContentView(
     actionBar.setPadding(dp(16), dp(8), dp(16), dp(12))
     actionBar.addView(playNextButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
     removeButton.minimumWidth = dp(116)
-    actionBar.addView(removeButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+    actionBar.addView(removeButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
       marginStart = dp(8)
     })
     actionBar.visibility = GONE
@@ -562,8 +563,6 @@ class QueueContentView(
     actionBar.visibility = if (editMode) VISIBLE else GONE
     playNextButton.isEnabled = count > 0
     removeButton.isEnabled = count > 0
-    playNextButton.alpha = if (count > 0) 1f else 0.45f
-    removeButton.alpha = if (count > 0) 1f else 0.45f
     playNextButton.text = "Play next ($count)"
     removeButton.text = "Remove ($count)"
   }
@@ -622,22 +621,35 @@ class QueueContentView(
   }
 
   /** Native counterpart of theme/actionButtons: 44dp minimum, 14dp corners, semibold labels. */
-  private fun actionLabel(text: String): TextView =
-    label(text, 14f, semiboldTypeface).apply {
+  private fun actionLabel(text: String, primary: Boolean = false): TextView =
+    object : TextView(context) {
+      override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        alpha = when {
+          !isEnabled -> 0.45f
+          isPressed -> if (primary) 0.88f else 0.74f
+          else -> 1f
+        }
+      }
+
+      override fun getAccessibilityClassName(): CharSequence = android.widget.Button::class.java.name
+    }.apply {
+      this.text = text
+      typeface = semiboldTypeface
+      includeFontPadding = false
+      val fontScale = min(resources.configuration.fontScale, 1.2f)
+      setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f * fontScale)
+      androidx.core.widget.TextViewCompat.setLineHeight(
+        this,
+        (20f * fontScale * resources.displayMetrics.density).toInt(),
+      )
       gravity = Gravity.CENTER
       minimumHeight = dp(44)
       setPadding(dp(16), dp(8), dp(16), dp(8))
       isFocusable = true
     }
 
-  private fun actionBackground(fill: Int): StateListDrawable =
-    StateListDrawable().apply {
-      addState(
-        intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
-        rounded(ColorUtils.compositeColors(palette.pressOverlay, fill), 14f),
-      )
-      addState(intArrayOf(), rounded(fill, 14f))
-    }
+  private fun actionBackground(fill: Int): GradientDrawable = rounded(fill, 14f)
 
   private fun label(text: String, sizeSp: Float, font: Typeface): TextView =
     TextView(context).apply {

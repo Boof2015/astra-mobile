@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import { View } from 'react-native';
 import {
@@ -9,7 +9,6 @@ import {
 import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { playHaptic, type HapticEvent } from '@/lib/haptics';
 import {
   HAPTIC_RECIPE_SECTIONS,
@@ -97,14 +96,12 @@ export default function HapticsLabScreen() {
           label="Touch feedback enabled"
           value={yesNo(capabilities.touchFeedbackEnabled)}
         />
-        <AppPressable feedback="control"
-
+        <ActionButton
           style={styles.refreshButton}
           onPress={refresh}
-          accessibilityRole="button"
-        >
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">Refresh capabilities</Text>
-        </AppPressable>
+          variant="secondary"
+          label="Refresh capabilities"
+        />
       </SettingsCard>
 
       <SettingsSectionLabel spaced>SEMANTIC VOCABULARY</SettingsSectionLabel>
@@ -258,22 +255,17 @@ function AuditionButton({
   onLongPress?: () => void;
 }) {
   const styles = useStyles();
-  const colors = useColors();
   return (
-    <AppPressable feedback="control"
-
+    <ActionButton
       disabled={disabled}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={500}
-      style={[styles.auditionButton, wide && styles.wideButton, disabled && styles.disabled]}
-      accessibilityRole="button"
+      style={[styles.auditionButton, wide && styles.wideButton]}
       accessibilityState={{ disabled }}
-    >
-      <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-        {label}
-      </Text>
-    </AppPressable>
+      variant="secondary"
+      label={label}
+    />
   );
 }
 
@@ -292,7 +284,6 @@ const useStyles = createThemedStyles((colors) => ({
     paddingVertical: spacing.xs,
   },
   refreshButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     alignSelf: 'flex-start',
     marginTop: spacing.md,
   },
@@ -321,16 +312,10 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   auditionButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     minWidth: 62,
   },
   wideButton: {
     alignSelf: 'stretch',
-  },
-  disabled: {
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.bgTertiary,
-    opacity: 0.65,
   },
   recipeCard: {
     gap: spacing.sm,

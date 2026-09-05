@@ -1,5 +1,5 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BackHandler,
@@ -1439,7 +1439,7 @@ export function NowPlayingOverlay({
                       ? desktopConnectionLabel(desktopConnectionState)
                       : 'Pair with Astra Desktop to control it here.'}
                   </Text>
-                  <AppPressable feedback="control"
+                  <ActionButton
                     style={styles.emptyAction}
                     onPress={() => {
                       if (desktopConnection) {
@@ -1450,11 +1450,9 @@ export function NowPlayingOverlay({
                       dismissSheet();
                       router.push('/desktop-remote' as never);
                     }}
-                  >
-                    <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-                      {desktopConnection ? 'Reconnect' : 'Pair desktop'}
-                    </Text>
-                  </AppPressable>
+                    variant="primary"
+                    label={desktopConnection ? 'Reconnect' : 'Pair desktop'}
+                  />
                 </View>
               )
             ) : track ? (
@@ -2390,7 +2388,6 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   emptyAction: {
-    ...actionButtonStyle(colors, 'primary'),
     marginTop: spacing.lg,
   },
 }));

@@ -1,4 +1,5 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
+import { actionButtonStyle } from '@/theme/actionButtons';
 import { useEffect, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
@@ -82,17 +83,15 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
 
       <View style={styles.presets}>
         {SLEEP_TIMER_PRESETS.map((minutes) => (
-          <AppPressable feedback="none"
+          <ActionButton
             key={minutes}
             disabled={!available}
-
             unstable_pressDelay={SCROLL_PRESS_DELAY}
             onPress={() => void run(() => startMinutes(minutes), `Timer set for ${minutes} minutes.`)}
-            style={({ pressed }) => [styles.preset, !available && styles.disabled, pressed && available && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">{minutes} min</Text>
-          </AppPressable>
+            style={styles.preset}
+            variant="secondary"
+            label={`${minutes} min`}
+          />
         ))}
       </View>
 
@@ -109,14 +108,13 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
           style={[styles.input, !available && styles.disabled]}
           accessibilityLabel="Custom sleep timer minutes"
         />
-        <AppPressable feedback="none"
+        <ActionButton
           disabled={!available}
-
           onPress={startCustom}
-          style={({ pressed }) => [styles.action, !available && styles.disabled, pressed && available && styles.pressed]}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Set custom</Text>
-        </AppPressable>
+          style={styles.action}
+          variant="primary"
+          label="Set custom"
+        />
       </View>
 
       <AppPressable feedback="none"
@@ -136,9 +134,11 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
       </AppPressable>
 
       {timer ? (
-        <AppPressable feedback="control"  onPress={() => void run(cancel, 'Sleep timer canceled.')} style={styles.cancel}>
-          <Text style={actionButtonTextStyle(colors, 'danger')} variant="label">Cancel sleep timer</Text>
-        </AppPressable>
+        <ActionButton
+          onPress={() => void run(cancel, 'Sleep timer canceled.')}
+          variant="danger"
+          label="Cancel sleep timer"
+        />
       ) : null}
 
       {feedback ? <Text variant="caption" color={colors.textSecondary}>{feedback}</Text> : null}
@@ -151,7 +151,6 @@ const useStyles = createThemedStyles((colors) => ({
   statusBlock: { gap: 3 },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   preset: {
-    ...actionButtonStyle(colors, 'secondary'),
     flexGrow: 1,
     minWidth: 66,
   },
@@ -162,15 +161,11 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 16,
   },
   action: {
-    ...actionButtonStyle(colors, 'primary'),
     flex: 1,
   },
   fullAction: {
     ...actionButtonStyle(colors, 'secondary'),
     flexDirection: 'column', alignItems: 'flex-start', gap: 2,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'danger'),
   },
   disabled: { opacity: 0.42 },
   pressed: { opacity: 0.72 },

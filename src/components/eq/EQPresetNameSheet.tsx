@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -12,7 +12,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface EQPresetNameSheetProps {
@@ -57,16 +56,17 @@ export function EQPresetNameSheet({
         onSubmitEditing={submit}
       />
       <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-            Cancel
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"  style={[styles.btn, styles.primary, !trimmed && styles.disabled]} disabled={!trimmed} onPress={submit}>
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-            {actionLabel}
-          </Text>
-        </AppPressable>
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
+          disabled={!trimmed}
+          onPress={submit}
+          variant="primary"
+          label={actionLabel}
+        />
       </View>
     </EqSheet>
   );
@@ -93,18 +93,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  btn: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  primary: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  disabled: {
-    opacity: 0.4,
   },
 }));
 

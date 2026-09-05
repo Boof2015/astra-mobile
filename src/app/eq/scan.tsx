@@ -1,4 +1,4 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -70,11 +70,11 @@ export default function EQPresetScanScreen() {
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan EQ preset QR codes.</Text>
-          <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void requestPermission()}>
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-              Allow camera
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={() => void requestPermission()}
+            variant="primary"
+            label="Allow camera"
+          />
         </View>
       ) : (
         <View style={styles.scannerFrame}>
@@ -93,11 +93,12 @@ export default function EQPresetScanScreen() {
                   {error}
                 </Text>
               </View>
-              <AppPressable feedback="control"  style={styles.retryButton} onPress={() => setError(null)}>
-                <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-                  Scan again
-                </Text>
-              </AppPressable>
+              <ActionButton
+                style={styles.retryButton}
+                onPress={() => setError(null)}
+                variant="secondary"
+                label="Scan again"
+              />
             </View>
           ) : null}
         </View>
@@ -144,9 +145,6 @@ const useStyles = createThemedStyles((colors) => ({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
   scannerFrame: {
     flex: 1,
     borderRadius: radius.md,
@@ -188,7 +186,6 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   retryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
     alignSelf: 'flex-end',
   },
 }));

@@ -1,12 +1,11 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ArtistImageAutoPolicy } from '@/types/artistImages';
 
@@ -72,19 +71,14 @@ function ArtistImageDisclosureContent({
             Ethernet is included in Wi-Fi mode. You can change this later in Settings › Library,
             and manual searches work while automatic downloads are off.
           </Text>
-          <AppPressable feedback="accent"
-
+          <ActionButton
             style={styles.button}
             onPress={() => void continueSetup()}
             disabled={saving}
-            accessibilityRole="button"
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
-            ) : (
-              <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">Continue</Text>
-            )}
-          </AppPressable>
+            variant="primary"
+            label="Continue"
+            loading={saving}
+          />
         </View>
       </View>
     </Modal>
@@ -118,7 +112,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
   },
   button: {
-    ...actionButtonStyle(colors, 'primary'),
     minHeight: 50,
     overflow: 'hidden',
   },

@@ -1,4 +1,4 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useRef } from 'react';
 import { Share, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -116,16 +116,20 @@ export default function SignalScreen() {
           </Text>
 
           <View style={styles.actions}>
-            <AppPressable feedback="accent"  style={styles.primaryButton} onPress={() => void shareImage()}>
-              <Ionicons name="share-outline" size={18} color={actionButtonForeground(colors)} />
-              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-                Share image
-              </Text>
-            </AppPressable>
-            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={() => void shareLink()}>
-              <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
-              <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">Share link</Text>
-            </AppPressable>
+            <ActionButton
+              onPress={() => void shareImage()}
+              variant="primary"
+              label="Share image"
+              icon="share-outline"
+              iconSize={18}
+            />
+            <ActionButton
+              onPress={() => void shareLink()}
+              variant="secondary"
+              label="Share link"
+              icon="link-outline"
+              iconSize={18}
+            />
           </View>
         </View>
       )}
@@ -186,11 +190,5 @@ const useStyles = createThemedStyles((colors) => ({
     width: '100%',
     gap: spacing.md,
     marginTop: spacing.xl,
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  secondaryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
   },
 }));

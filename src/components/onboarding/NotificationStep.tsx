@@ -1,11 +1,10 @@
-import { actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { StepHeader } from '@/components/onboarding/StepHeader';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { useLibraryStore } from '@/stores/libraryStore';
 import type { ScanNotificationPermission } from '@/library/useScanNotificationPermission';
 
@@ -52,27 +51,17 @@ export function NotificationStep({
           </Text>
         </View>
       ) : (
-        <AppPressable feedback="accent"
-
+        <ActionButton
           style={styles.button}
           disabled={working}
           onPress={resolve}
-          accessibilityRole="button"
           accessibilityLabel={denied ? 'Open Android settings' : 'Allow scan notifications'}
-        >
-          {working ? (
-            <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
-          ) : (
-            <Ionicons
-              name={denied ? 'settings-outline' : 'notifications-outline'}
-              size={19}
-              color={actionButtonForeground(colors)}
-            />
-          )}
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-            {denied ? 'Open Android settings' : 'Allow notifications'}
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label={denied ? 'Open Android settings' : 'Allow notifications'}
+          icon={denied ? 'settings-outline' : 'notifications-outline'}
+          iconSize={19}
+          loading={working}
+        />
       )}
 
       <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
@@ -165,7 +154,6 @@ const useStyles = createThemedStyles((colors) => ({
     backgroundColor: colors.accent,
   },
   button: {
-    ...actionButtonStyle(colors, 'primary'),
     minHeight: 52,
     overflow: 'hidden',
   },

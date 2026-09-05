@@ -5,15 +5,13 @@
 // Recenter pill. Top/bottom gradient overlays soften the edges into the chrome
 // (react-native-svg — no native rebuild). Plain (unsynced) hits render as a
 // static scroll; loading/not-found/error states get a centered message.
-
+import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View, type LayoutChangeEvent } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/Text';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
-import { mixHex } from '@/theme/colorUtils';
-import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import { SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
@@ -225,38 +223,17 @@ export function LyricsBand({
           {emptyState.message}
         </Text>
         {emptyState.retryable ? (
-          <AppPressable feedback="none"
-
+          <ActionButton
             disabled={isLoading}
             onPress={() => void loadForTrack(track, { force: true })}
-            accessibilityRole="button"
             accessibilityLabel="Retry lyrics lookup"
             accessibilityState={{ disabled: isLoading, busy: isLoading }}
-            style={({ pressed }) => ({
-              minHeight: 40,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: spacing.sm,
-              paddingHorizontal: spacing.lg,
-              paddingVertical: spacing.sm,
-              borderRadius: radius.pill,
-              borderWidth: 1,
-              borderColor: colors.glassBorder,
-              backgroundColor: colors.accentGlow,
-              overflow: 'hidden',
-              opacity: isLoading ? 0.65 : pressed ? 0.82 : 1,
-            })}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={colors.accentTextStrong} />
-            ) : (
-              <Ionicons name="refresh" size={16} color={colors.accentTextStrong} />
-            )}
-            <Text variant="label" color={colors.accentTextStrong}>
-              {isLoading ? 'Retrying…' : 'Retry'}
-            </Text>
-          </AppPressable>
+            variant="secondary"
+            label={isLoading ? 'Retrying…' : 'Retry'}
+            icon="refresh"
+            iconSize={16}
+            loading={isLoading}
+          />
         ) : null}
       </View>
     );
@@ -338,41 +315,15 @@ export function LyricsBand({
       </ScrollView>
 
       {followPaused ? (
-        <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <ActionButton
+          unstable_pressDelay={SCROLL_PRESS_DELAY}
           onPress={recenter}
-          accessibilityRole="button"
           accessibilityLabel="Recenter lyrics on the current line"
           hitSlop={10}
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            alignSelf: 'center',
-            paddingHorizontal: 14,
-            paddingVertical: 5,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: colors.accent,
-            backgroundColor: colors.glassBg,
-            ...(surface === 'band' ? {
-              minHeight: 44,
-              justifyContent: 'center' as const,
-              paddingHorizontal: spacing.lg,
-              borderRadius: radius.md,
-              borderWidth: 0,
-              backgroundColor: mixHex(colors.bgSecondary, colors.accent, 0.22),
-            } : {}),
-          }}
-        >
-          <Text
-            variant={surface === 'band' ? 'label' : 'mono'}
-            color={surface === 'band' ? colors.accentTextStrong : colors.accentText}
-            style={surface === 'band'
-              ? { fontSize: 12 }
-              : { fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' }}
-          >
-            Recenter
-          </Text>
-        </AppPressable>
+          variant="secondary"
+          label="Recenter"
+          style={{ position: 'absolute', bottom: 8, alignSelf: 'center' }}
+        />
       ) : null}
     </View>
   );

@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import {
   useEffect,
   useMemo,
@@ -329,24 +329,19 @@ function DraftActions({
   onApply: () => void;
 }) {
   const styles = useStyles();
-  const colors = useColors();
   return (
     <View style={styles.sheetActions}>
-      <AppPressable feedback="control"  style={[styles.sheetButton, styles.cancelButton]} onPress={onCancel} accessibilityRole="button">
-        <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-          Cancel
-        </Text>
-      </AppPressable>
-      <AppPressable feedback="accent"
-        style={[styles.sheetButton, styles.applyButton, disabled && styles.applyDisabled]}
+      <ActionButton
+        onPress={onCancel}
+        variant="secondary"
+        label="Cancel"
+      />
+      <ActionButton
         disabled={disabled}
         onPress={onApply}
-        accessibilityRole="button"
-      >
-        <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-          Apply
-        </Text>
-      </AppPressable>
+        variant="primary"
+        label="Apply"
+      />
     </View>
   );
 }
@@ -570,12 +565,13 @@ function ConditionEditorSheet({
 
       <View style={styles.conditionSheetFooter}>
         {target.mode === 'edit' ? (
-          <AppPressable feedback="control"  style={styles.removeButton} onPress={onRemove} accessibilityRole="button">
-            <Ionicons name="trash-outline" size={17} color={colors.warning} />
-            <Text variant="label" color={colors.warning}>
-              Remove
-            </Text>
-          </AppPressable>
+          <ActionButton
+            onPress={onRemove}
+            variant="danger"
+            label="Remove"
+            icon="trash-outline"
+            iconSize={17}
+          />
         ) : (
           <View />
         )}
@@ -1113,12 +1109,14 @@ export default function DynamicPlaylistEditorScreen() {
               <Text variant="caption" style={styles.sectionLabel}>
                 FILTERS
               </Text>
-              <AppPressable feedback="control"  style={styles.inlineAction} onPress={() => openFieldPicker('new')} accessibilityRole="button">
-                <Ionicons name="add" size={16} color={colors.accent} />
-                <Text variant="label" color={colors.accent}>
-                  Add filter
-                </Text>
-              </AppPressable>
+              <ActionButton
+                onPress={() => openFieldPicker('new')}
+                variant="secondary"
+                label="Add filter"
+                style={{ alignSelf: 'flex-start' }}
+                icon="add"
+                iconSize={16}
+              />
             </View>
 
             {rules.conditions.length === 0 ? (
@@ -1176,27 +1174,21 @@ export default function DynamicPlaylistEditorScreen() {
               {status.label}
             </Text>
           </View>
-          <AppPressable feedback="control"
-            style={[styles.previewButton, normalizedRulesError !== null && styles.disabled]}
+          <ActionButton
             disabled={normalizedRulesError !== null}
             onPress={() => setSheet({ kind: 'preview' })}
-            accessibilityRole="button"
-          >
-            <Ionicons name="eye-outline" size={18} color={colors.textSecondary} />
-            <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-              Preview
-            </Text>
-          </AppPressable>
-          <AppPressable feedback="accent"
-            style={[styles.saveButton, saveDisabled && styles.disabled]}
+            variant="secondary"
+            label="Preview"
+            icon="eye-outline"
+            iconSize={18}
+          />
+          <ActionButton
+            style={styles.saveButton}
             disabled={saveDisabled}
             onPress={save}
-            accessibilityRole="button"
-          >
-            <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-              {isSaving ? 'Saving' : 'Save'}
-            </Text>
-          </AppPressable>
+            variant="primary"
+            label={isSaving ? 'Saving' : 'Save'}
+          />
         </View>
 
         {renderSheet()}
@@ -1248,13 +1240,6 @@ const useStyles = createThemedStyles((colors) => ({
   sectionLabel: {
     color: colors.textTertiary,
     letterSpacing: 1,
-  },
-  inlineAction: {
-    minHeight: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
   },
   nameInput: {
     minHeight: 48,
@@ -1354,15 +1339,8 @@ const useStyles = createThemedStyles((colors) => ({
     minWidth: 0,
     gap: 1,
   },
-  previewButton: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
   saveButton: {
-    ...actionButtonStyle(colors, 'primary'),
     minWidth: 76,
-  },
-  disabled: {
-    opacity: 0.45,
   },
   sheetSelectRow: {
     minHeight: 58,
@@ -1419,31 +1397,11 @@ const useStyles = createThemedStyles((colors) => ({
     gap: spacing.sm,
     marginTop: spacing.lg,
   },
-  sheetButton: {
-    ...actionButtonBase,
-  },
-  cancelButton: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  applyButton: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  applyDisabled: {
-    opacity: 0.4,
-  },
   conditionSheetFooter: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: spacing.md,
-  },
-  removeButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    marginTop: spacing.lg,
   },
   previewSheetList: {
     maxHeight: 360,

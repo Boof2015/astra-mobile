@@ -1,5 +1,5 @@
-import { actionButtonBase, actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 /* eslint-disable react-hooks/immutability -- Reanimated shared values are the header's UI-thread scroll state. */
+import { ActionButton } from '@/components/ActionButton';
 import {
   useCallback,
   useEffect,
@@ -358,28 +358,26 @@ export function CollapsingHeader({
         {heroMeta}
         {heroExtra}
         <Animated.View style={[styles.actionRow, heroButtonsStyle]}>
-          <AppPressable feedback="accent"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-            style={[styles.actionButton, styles.primaryAction, disabled && styles.disabledAction]}
+          <ActionButton
+            unstable_pressDelay={SCROLL_PRESS_DELAY}
+            style={styles.actionButton}
             onPress={onPlay}
             disabled={disabled}
-            accessibilityRole="button"
-          >
-            <Ionicons name="play" size={17} color={actionButtonForeground(colors)} />
-            <Text variant="body" style={actionButtonTextStyle(colors, 'primary')}>
-              Play
-            </Text>
-          </AppPressable>
-          <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
-            style={[styles.actionButton, styles.secondaryAction, disabled && styles.disabledAction]}
+            variant="primary"
+            label="Play"
+            icon="play"
+            iconSize={17}
+          />
+          <ActionButton
+            unstable_pressDelay={SCROLL_PRESS_DELAY}
+            style={[styles.actionButton, styles.secondaryAction]}
             onPress={onShuffle}
             disabled={disabled}
-            accessibilityRole="button"
-          >
-            <Ionicons name="shuffle" size={17} color={colors.textSecondary} />
-            <Text variant="body" style={actionButtonTextStyle(colors, 'secondary')}>
-              Shuffle
-            </Text>
-          </AppPressable>
+            variant="secondary"
+            label="Shuffle"
+            icon="shuffle"
+            iconSize={17}
+          />
         </Animated.View>
       </Animated.View>
 
@@ -540,19 +538,11 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.lg,
   },
   actionButton: {
-    ...actionButtonBase,
     flex: 1,
   },
-  primaryAction: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
   secondaryAction: {
-    ...actionButtonStyle(colors, 'secondary'),
     flex: 0,
     minWidth: 116,
-  },
-  disabledAction: {
-    opacity: 0.45,
   },
   chevron: {
     position: 'absolute',

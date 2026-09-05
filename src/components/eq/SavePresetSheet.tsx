@@ -1,4 +1,4 @@
-import { actionButtonBase, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
   StyleSheet,
@@ -13,7 +13,6 @@ import {
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
-import { AppPressable } from '@/components/AppPressable';
 import { EqSheet } from './EqSheet';
 
 interface SavePresetSheetProps {
@@ -75,23 +74,20 @@ export function SavePresetSheet({
         </View>
       ) : null}
       <View style={styles.actions}>
-        <AppPressable feedback="control"  style={[styles.btn, styles.cancel]} onPress={onClose}>
-          <Text style={actionButtonTextStyle(colors, 'secondary')} variant="label">
-            Cancel
-          </Text>
-        </AppPressable>
-        <AppPressable feedback="accent"
-          style={[styles.btn, styles.save, !trimmed && styles.saveDisabled]}
+        <ActionButton
+          onPress={onClose}
+          variant="secondary"
+          label="Cancel"
+        />
+        <ActionButton
           disabled={!trimmed}
           onPress={() => {
             onSave(trimmed, assignToCurrentDevice);
             onClose();
           }}
-        >
-          <Text style={actionButtonTextStyle(colors, 'primary')} variant="label">
-            Save
-          </Text>
-        </AppPressable>
+          variant="primary"
+          label="Save"
+        />
       </View>
     </EqSheet>
   );
@@ -134,18 +130,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
-  },
-  btn: {
-    ...actionButtonBase,
-  },
-  cancel: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  save: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  saveDisabled: {
-    opacity: 0.4,
   },
 }));
 

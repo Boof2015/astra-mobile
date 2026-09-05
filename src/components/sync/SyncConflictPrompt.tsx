@@ -1,4 +1,3 @@
-import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
 // Root-mounted popup for desktop-sync conflicts: fires the moment a sync run
 // detects NEW conflicts (auto or manual) instead of waiting for the user to
 // wander into Settings. The once-per-session bookkeeping lives in
@@ -6,7 +5,7 @@ import { actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons'
 // derivation of store state — no set-state-in-effect (React Compiler rule).
 // Suppressed while the user is already on the sync screen; if they leave it
 // without resolving, the one pending reminder still shows.
-
+import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -193,20 +192,17 @@ export function SyncConflictPrompt() {
             ) : null}
           </ScrollView>
           <View style={styles.actions}>
-            <AppPressable feedback="control"  style={styles.secondaryButton} onPress={dismissConflictPrompt}>
-              <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
-                Not now
-              </Text>
-            </AppPressable>
-            <AppPressable feedback="accent"
-              style={[styles.primaryButton, (!selectedResolution || busy) && styles.disabled]}
+            <ActionButton
+              onPress={dismissConflictPrompt}
+              variant="secondary"
+              label="Not now"
+            />
+            <ActionButton
               disabled={!selectedResolution || busy}
               onPress={confirm}
-            >
-              <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-                Confirm
-              </Text>
-            </AppPressable>
+              variant="primary"
+              label="Confirm"
+            />
           </View>
         </View>
       </View>
@@ -297,12 +293,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.xs,
-  },
-  secondaryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
   },
   disabled: {
     opacity: 0.5,

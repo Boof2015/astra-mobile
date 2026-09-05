@@ -1,14 +1,6 @@
-import { actionButtonBase, actionButtonForeground, actionButtonStyle, actionButtonTextStyle } from '@/theme/actionButtons';
+import { ActionButton } from '@/components/ActionButton';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -275,36 +267,22 @@ export default function SourceEditScreen() {
             ) : null}
 
             <View style={styles.actions}>
-              <AppPressable feedback="control"
-                style={[styles.button, styles.secondaryButton, busy ? styles.buttonDisabled : null]}
+              <ActionButton
+                style={styles.button}
                 onPress={() => void onTest()}
                 disabled={!!busy}
-              >
-                {busy === 'test' ? (
-                  <ActivityIndicator size="small" color={colors.textSecondary} />
-                ) : (
-                  <Text style={actionButtonTextStyle(colors, 'secondary')} variant="body">
-                    Test connection
-                  </Text>
-                )}
-              </AppPressable>
-              <AppPressable feedback="accent"
-                style={[
-                  styles.button,
-                  styles.primaryButton,
-                  !canSubmit || busy ? styles.buttonDisabled : null,
-                ]}
+                variant="secondary"
+                label="Test connection"
+                loading={busy === 'test'}
+              />
+              <ActionButton
+                style={styles.button}
                 onPress={() => void onSave()}
                 disabled={!canSubmit || !!busy}
-              >
-                {busy === 'save' ? (
-                  <ActivityIndicator size="small" color={actionButtonForeground(colors)} />
-                ) : (
-                  <Text style={actionButtonTextStyle(colors, 'primary')} variant="body">
-                    {editing ? 'Save' : 'Add server'}
-                  </Text>
-                )}
-              </AppPressable>
+                variant="primary"
+                label={editing ? 'Save' : 'Add server'}
+                loading={busy === 'save'}
+              />
             </View>
           </ScrollView>
         )}
@@ -390,16 +368,6 @@ const useStyles = createThemedStyles((colors) => ({
     marginTop: spacing.xl,
   },
   button: {
-    ...actionButtonBase,
     flex: 1,
-  },
-  secondaryButton: {
-    ...actionButtonStyle(colors, 'secondary'),
-  },
-  primaryButton: {
-    ...actionButtonStyle(colors, 'primary'),
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 }));
