@@ -96,10 +96,10 @@ const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; descri
   },
 ];
 
-const REPLAYGAIN_MODES: { mode: ReplayGainMode; label: string }[] = [
-  { mode: 'auto', label: 'Auto' },
-  { mode: 'track', label: 'Track' },
-  { mode: 'album', label: 'Album' },
+const REPLAYGAIN_SEGMENTS: { key: ReplayGainMode; label: string }[] = [
+  { key: 'auto', label: 'Auto' },
+  { key: 'track', label: 'Track' },
+  { key: 'album', label: 'Album' },
 ];
 
 export function themeOptionTitle(id: BaseThemeId): string {
@@ -498,7 +498,6 @@ export function LibrarySettingsPanel() {
 
 export function AudioSettingsPanel() {
   const styles = useStyles();
-  const colors = useColors();
   const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
   const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
   const replayGainEnabled = useAudioSettingsStore((s) => s.replayGainEnabled);
@@ -541,25 +540,12 @@ export function AudioSettingsPanel() {
           onValueChange={(v) => void setReplayGainEnabled(v)}
         />
         {replayGainEnabled ? (
-          <View style={styles.modeRow}>
-            {REPLAYGAIN_MODES.map((m) => {
-              const selected = m.mode === replayGainMode;
-              return (
-                <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
-                  key={m.mode}
-                  style={[styles.modePill, selected && styles.modePillSelected]}
-                  onPress={() => {
-                    if (selected) return;
-                    playHaptic('selection');
-                    void setReplayGainMode(m.mode);
-                  }}
-                >
-                  <Text variant="label" color={selected ? colors.accentTextStrong : colors.textSecondary}>
-                    {m.label}
-                  </Text>
-                </AppPressable>
-              );
-            })}
+          <View style={styles.appearanceBlock}>
+            <SegmentedControl
+              segments={REPLAYGAIN_SEGMENTS}
+              value={replayGainMode}
+              onChange={(key) => void setReplayGainMode(key as ReplayGainMode)}
+            />
           </View>
         ) : null}
       </SettingsCard>
@@ -653,22 +639,5 @@ const useStyles = createThemedStyles((colors) => ({
   },
   indent: {
     marginTop: spacing.sm,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  modePill: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-  },
-  modePillSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentGlow,
   },
 }));
