@@ -7,6 +7,7 @@ import {
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
+import { AppSheetBody, AppSheetField, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   fonts,
   radius,
@@ -36,44 +37,47 @@ export function SavePresetSheet({
   const trimmed = name.trim();
 
   return (
-    <EqSheet onClose={onClose}>
-      <Text variant="heading" style={styles.title}>
-        Save preset
-      </Text>
-      <BottomSheetTextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Preset name"
-        placeholderTextColor={colors.textTertiary}
-        style={styles.input}
-        autoFocus
-        selectTextOnFocus
-        maxLength={40}
-        returnKeyType="done"
-        onSubmitEditing={() => {
-          if (trimmed) {
-            onSave(trimmed, assignToCurrentDevice);
-            onClose();
-          }
-        }}
-      />
-      {currentDeviceLabel ? (
-        <View style={styles.assignmentRow}>
-          <View style={styles.assignmentText}>
-            <Text variant="body">Assign to current output</Text>
-            <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-              {currentDeviceLabel}
-            </Text>
-          </View>
-          <HapticSwitch
-            value={assignToCurrentDevice}
-            onValueChange={setAssignToCurrentDevice}
-            trackColor={{ false: colors.glassBorder, true: colors.accent }}
-            thumbColor={colors.textPrimary}
+    <EqSheet onClose={onClose} scrollable>
+      <AppSheetTitle title="Save preset" />
+      <AppSheetBody>
+        <AppSheetField label="Preset name">
+          <BottomSheetTextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Preset name"
+            accessibilityLabel="Preset name"
+            placeholderTextColor={colors.textTertiary}
+            style={styles.input}
+            autoFocus
+            selectTextOnFocus
+            maxLength={40}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (trimmed) {
+                onSave(trimmed, assignToCurrentDevice);
+                onClose();
+              }
+            }}
           />
-        </View>
-      ) : null}
-      <View style={styles.actions}>
+        </AppSheetField>
+        {currentDeviceLabel ? (
+          <View style={styles.assignmentRow}>
+            <View style={styles.assignmentText}>
+              <Text variant="body">Assign to current output</Text>
+              <Text variant="caption" color={colors.textSecondary}>
+                {currentDeviceLabel}
+              </Text>
+            </View>
+            <HapticSwitch
+              value={assignToCurrentDevice}
+              onValueChange={setAssignToCurrentDevice}
+              trackColor={{ false: colors.glassBorder, true: colors.accent }}
+              thumbColor={colors.textPrimary}
+            />
+          </View>
+        ) : null}
+      </AppSheetBody>
+      <AppSheetFooter>
         <ActionButton
           onPress={onClose}
           variant="secondary"
@@ -88,23 +92,19 @@ export function SavePresetSheet({
           variant="primary"
           label="Save"
         />
-      </View>
+      </AppSheetFooter>
     </EqSheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  title: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   input: {
     color: colors.textPrimary,
     fontFamily: fonts.sans.regular,
     fontSize: 16,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
@@ -124,12 +124,6 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     minWidth: 0,
     gap: 2,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
   },
 }));
 

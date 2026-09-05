@@ -7,9 +7,9 @@ import {
 } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
+import { AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
   fonts,
-  radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -53,33 +53,34 @@ export function EQValueEditSheet({
   };
 
   return (
-    <EqSheet onClose={onClose}>
-      <Text variant="heading" style={styles.title}>
-        {title}
-      </Text>
-      <View style={styles.inputRow}>
-        <BottomSheetTextInput
-          value={value}
-          onChangeText={setValue}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textTertiary}
-          keyboardType={keyboardType}
-          style={[styles.input, trimmed.length > 0 && !valid && styles.inputInvalid]}
-          autoFocus
-          selectTextOnFocus
-          maxLength={16}
-          returnKeyType="done"
-          onSubmitEditing={apply}
-          selectionColor={colors.accent}
-        />
-        <Text variant="label" style={styles.unit}>
-          {unit}
+    <EqSheet onClose={onClose} scrollable>
+      <AppSheetTitle title={title} />
+      <AppSheetBody>
+        <View style={styles.inputRow}>
+          <BottomSheetTextInput
+            value={value}
+            accessibilityLabel={title}
+            onChangeText={setValue}
+            placeholder={placeholder}
+            placeholderTextColor={colors.textTertiary}
+            keyboardType={keyboardType}
+            style={[styles.input, trimmed.length > 0 && !valid && styles.inputInvalid]}
+            autoFocus
+            selectTextOnFocus
+            maxLength={16}
+            returnKeyType="done"
+            onSubmitEditing={apply}
+            selectionColor={colors.accent}
+          />
+          <Text variant="label" style={styles.unit}>
+            {unit}
+          </Text>
+        </View>
+        <Text variant="caption" style={[styles.range, trimmed.length > 0 && !valid && styles.invalidText]}>
+          {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
         </Text>
-      </View>
-      <Text variant="caption" style={[styles.range, trimmed.length > 0 && !valid && styles.invalidText]}>
-        {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
-      </Text>
-      <View style={styles.actions}>
+      </AppSheetBody>
+      <AppSheetFooter>
         <ActionButton
           onPress={onClose}
           variant="secondary"
@@ -91,16 +92,12 @@ export function EQValueEditSheet({
           variant="primary"
           label="Apply"
         />
-      </View>
+      </AppSheetFooter>
     </EqSheet>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  title: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -113,7 +110,7 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 18,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
@@ -131,12 +128,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   invalidText: {
     color: colors.warning,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
   },
 }));
 

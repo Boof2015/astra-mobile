@@ -5,6 +5,7 @@ import { Text } from '@/components/Text';
 import { spacing } from '@/theme';
 import { useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import { AppSheetDivider, AppSheetTitle } from '@/components/sheets/AppSheet';
 import type { KnownEQOutputDevice } from '@/audio/eqDevicePresets';
 import type { EQPreset } from '@/types/audio';
 import {
@@ -66,6 +67,7 @@ export function PresetSheet({
         subtitle={assignmentSubtitle}
         icon={preset.isCustom ? modeIcon(preset) : undefined}
         selected={preset.id === activePresetId}
+        stackActionsOnCompact={preset.isCustom}
         onPress={() => {
           onApply(preset.id);
           onClose();
@@ -74,7 +76,6 @@ export function PresetSheet({
           <View style={styles.trailingActions}>
             <ActionButton
               unstable_pressDelay={SCROLL_PRESS_DELAY}
-              hitSlop={6}
               onPress={() => onAssign(preset)}
               accessibilityLabel={`Assign devices to ${preset.name}`}
               variant="secondary"
@@ -87,12 +88,11 @@ export function PresetSheet({
               <AppPressable feedback="control"
 
                 unstable_pressDelay={SCROLL_PRESS_DELAY}
-                hitSlop={8}
                 onPress={() => onDelete(preset)}
                 style={styles.deleteButton}
                 accessibilityLabel={`Delete preset ${preset.name}`}
               >
-                <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
+                <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
               </AppPressable>
             ) : null}
           </View>
@@ -103,11 +103,9 @@ export function PresetSheet({
 
   return (
     <EqSheet onClose={onClose} scrollable>
-      <Text variant="heading" style={styles.title}>
-        Presets
-      </Text>
+      <AppSheetTitle title="Presets" />
 
-      <EqSheetSection label="BUILT-IN" />
+      <EqSheetSection label="BUILT-IN" first />
       {builtIn.map(renderPreset)}
 
       <EqSheetSection label="CUSTOM" />
@@ -119,6 +117,7 @@ export function PresetSheet({
         custom.map(renderPreset)
       )}
 
+      <AppSheetDivider />
       <EqSheetItem
         label="Save current as preset…"
         icon="bookmark-outline"
@@ -132,10 +131,8 @@ export function PresetSheet({
 }
 
 const styles = StyleSheet.create({
-  title: {
-    marginTop: spacing.xs,
-  },
   empty: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   trailingActions: {
@@ -144,8 +141,11 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   deleteButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
   },
 });
 

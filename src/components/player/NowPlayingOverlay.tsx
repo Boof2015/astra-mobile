@@ -1944,7 +1944,7 @@ export function NowPlayingOverlay({
         onClose={() => setPlaylistActionTrack(null)}
       />
       {sleepTimerOpen ? (
-        <AppSheet onClose={() => setSleepTimerOpen(false)}>
+        <AppSheet onClose={() => setSleepTimerOpen(false)} scrollable>
           <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerStatus(sleepTimer) : undefined} />
           <SleepTimerControls inputContext="bottom-sheet" />
         </AppSheet>

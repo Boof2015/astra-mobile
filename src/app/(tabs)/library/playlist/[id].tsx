@@ -362,7 +362,7 @@ export default function PlaylistScreen() {
         extraItems={extraItems}
       />
       {missingEntry !== null ? (
-        <AppSheet onClose={() => setMissingEntry(null)}>
+        <AppSheet onClose={() => setMissingEntry(null)} scrollable>
           <AppSheetTitle
             title={missingEntry.fallback_title ?? 'Missing track'}
             subtitle={missingEntry.fallback_artist ?? 'Track not in library'}
@@ -381,7 +381,7 @@ export default function PlaylistScreen() {
         </AppSheet>
       ) : null}
       {optionsOpen ? (
-        <AppSheet onClose={() => setOptionsOpen(false)}>
+        <AppSheet onClose={() => setOptionsOpen(false)} scrollable>
           <AppSheetTitle title={name} />
           {isFavorites ? (
             <AppSheetItem

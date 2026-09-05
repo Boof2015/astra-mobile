@@ -371,7 +371,7 @@ export default function ArtistScreen() {
       />
       <TrackActionsSheet track={actionTrack} onClose={() => setActionTrack(null)} />
       {imageMenuOpen ? (
-        <AppSheet onClose={() => setImageMenuOpen(false)}>
+        <AppSheet onClose={() => setImageMenuOpen(false)} scrollable>
           <AppSheetTitle title={`${name} image`} />
           {imageActions.map(({ key, ...item }) => (
             <AppSheetItem key={key} {...item} />

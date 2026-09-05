@@ -26,6 +26,7 @@ import { BandConsole } from '@/components/eq/BandConsole';
 import { getEQLayout } from '@/components/eq/eqLayout';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { EqSheet, EqSheetItem } from '@/components/eq/EqSheet';
+import { AppSheetDivider, AppSheetTitle } from '@/components/sheets/AppSheet';
 import { EQModeSwitcher } from '@/components/eq/EQModeSwitcher';
 import { EQValueEditSheet } from '@/components/eq/EQValueEditSheet';
 import { GraphicEQPanel } from '@/components/eq/GraphicEQPanel';
@@ -578,10 +579,11 @@ export default function EQScreen() {
       ) : null}
 
       {sheet === 'overflow' ? (
-        <EqSheet onClose={closeSheet}>
+        <EqSheet onClose={closeSheet} scrollable>
           <EqSheetItem label="Export preset..." icon="folder-outline" onPress={() => startCurrentPresetAction('export')} />
           <EqSheetItem label="Share preset..." icon="share-outline" onPress={() => startCurrentPresetAction('share')} />
           <EqSheetItem label="Show preset QR..." icon="qr-code-outline" onPress={() => startCurrentPresetAction('qr')} />
+          <AppSheetDivider />
           <EqSheetItem label="Import Astra preset..." icon="download-outline" onPress={handleImportAstraPreset} />
           <EqSheetItem
             label="Scan preset QR..."
@@ -592,6 +594,7 @@ export default function EQScreen() {
             }}
           />
           <EqSheetItem label="Import AutoEQ…" icon="download-outline" onPress={handleImportAutoEQ} />
+          <AppSheetDivider />
           {!isGraphic && eq.bands.length > 1 && activeBand ? (
             <EqSheetItem
               label={`Remove band ${activeBandNumber}`}
@@ -650,10 +653,8 @@ export default function EQScreen() {
       ) : null}
 
       {sheet === 'type' && activeBand ? (
-        <EqSheet onClose={closeSheet}>
-          <Text variant="heading" style={styles.sheetTitle}>
-            Filter type
-          </Text>
+        <EqSheet onClose={closeSheet} scrollable>
+          <AppSheetTitle title="Filter type" />
           {BAND_TYPES.map((type) => (
             <EqSheetItem
               key={type}
@@ -929,9 +930,5 @@ const useStyles = createThemedStyles((colors) => ({
   eqToggleOn: {
     borderColor: colors.accent,
     backgroundColor: colors.accentGlow,
-  },
-  sheetTitle: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
   },
 }));

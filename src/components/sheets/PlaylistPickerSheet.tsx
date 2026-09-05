@@ -1,19 +1,19 @@
 import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
-import {
-  StyleSheet,
-  View
-} from 'react-native';
+import { StyleSheet } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
 import {
   AppSheet,
+  AppSheetBody,
+  AppSheetDivider,
+  AppSheetField,
+  AppSheetFooter,
   AppSheetItem,
   AppSheetTitle
 } from '@/components/sheets/AppSheet';
 import {
   fonts,
-  radius,
   spacing,
 } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -68,20 +68,25 @@ export function PlaylistPickerSheet({
 
   if (step === 'create') {
     return (
-      <AppSheet onClose={onClose}>
+      <AppSheet onClose={onClose} scrollable>
         <AppSheetTitle title="New playlist" subtitle={subtitle} />
-        <BottomSheetTextInput
-          value={playlistName}
-          onChangeText={setPlaylistName}
-          placeholder="Playlist name"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.input}
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={addToNewPlaylist}
-          selectionColor={colors.accent}
-        />
-        <View style={styles.actions}>
+        <AppSheetBody>
+          <AppSheetField label="Playlist name">
+            <BottomSheetTextInput
+              value={playlistName}
+              onChangeText={setPlaylistName}
+              placeholder="Playlist name"
+              accessibilityLabel="Playlist name"
+              placeholderTextColor={colors.textTertiary}
+              style={styles.input}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={addToNewPlaylist}
+              selectionColor={colors.accent}
+            />
+          </AppSheetField>
+        </AppSheetBody>
+        <AppSheetFooter>
           <ActionButton
             onPress={() => setStep('pick')}
             variant="secondary"
@@ -93,13 +98,13 @@ export function PlaylistPickerSheet({
             variant="primary"
             label="Create"
           />
-        </View>
+        </AppSheetFooter>
       </AppSheet>
     );
   }
 
   return (
-    <AppSheet onClose={onClose}>
+    <AppSheet onClose={onClose} scrollable>
       <AppSheetTitle title="Add to playlist" subtitle={subtitle} />
       {onBackToMenu ? (
         <AppSheetItem label="Track actions" icon="arrow-back" onPress={onBackToMenu} />
@@ -117,6 +122,7 @@ export function PlaylistPickerSheet({
           onPress={() => addToExisting(playlist.id)}
         />
       ))}
+      <AppSheetDivider />
       <AppSheetItem label="New playlist..." icon="add" onPress={() => setStep('create')} />
     </AppSheet>
   );
@@ -124,6 +130,7 @@ export function PlaylistPickerSheet({
 
 const useStyles = createThemedStyles((colors) => ({
   empty: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   input: {
@@ -132,15 +139,9 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 16,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassBg,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
   },
 }));

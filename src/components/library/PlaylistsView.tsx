@@ -256,7 +256,7 @@ export function PlaylistOverlays({
   return (
     <>
       {menuFor !== null ? (
-        <AppSheet onClose={onCloseMenu}>
+        <AppSheet onClose={onCloseMenu} scrollable>
           <AppSheetTitle title={menuFor === 'favorites' ? 'Favorites' : menuFor.name} />
           {menuItems.map(({ key, ...item }) => (
             <AppSheetItem key={key} {...item} />
@@ -264,7 +264,7 @@ export function PlaylistOverlays({
         </AppSheet>
       ) : null}
       {addMenuOpen ? (
-        <AppSheet onClose={onCloseAddMenu}>
+        <AppSheet onClose={onCloseAddMenu} scrollable>
           <AppSheetTitle title="Add playlist" />
           <AppSheetItem
             label="Standard playlist"

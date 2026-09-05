@@ -715,7 +715,7 @@ export function FolderActionsSheet({
   };
 
   return (
-    <AppSheet onClose={onClose}>
+    <AppSheet onClose={onClose} scrollable>
       <AppSheetTitle
         title={folder.name}
         subtitle={`${folder.totalTrackCount} ${folder.totalTrackCount === 1 ? 'track' : 'tracks'}`}

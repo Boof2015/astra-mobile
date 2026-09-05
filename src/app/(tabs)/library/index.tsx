@@ -1200,8 +1200,8 @@ export default function LibraryScreen() {
         />
       ) : null}
       {sortSheetOpen ? (
-        <AppSheet onClose={() => setSortSheetOpen(false)}>
-          <AppSheetSection label={sortSheetLabel} />
+        <AppSheet onClose={() => setSortSheetOpen(false)} scrollable>
+          <AppSheetSection label={sortSheetLabel} first />
           {sortItems.map(({ key, label, selected, onSelect }) => (
             <AppSheetItem
               key={key}
@@ -1222,8 +1222,8 @@ export default function LibraryScreen() {
         </AppSheet>
       ) : null}
       {layoutSheetOpen && activeLayout ? (
-        <AppSheet onClose={() => setLayoutSheetOpen(false)}>
-          <AppSheetSection label={layoutSheetLabel} />
+        <AppSheet onClose={() => setLayoutSheetOpen(false)} scrollable>
+          <AppSheetSection label={layoutSheetLabel} first />
           {LIBRARY_LAYOUT_OPTIONS.map((option) => (
             <AppSheetItem
               key={option.value}
@@ -1242,7 +1242,7 @@ export default function LibraryScreen() {
       {viewOptionsSheetOpen && activeLayout ? (
         <AppSheet scrollable onClose={() => setViewOptionsSheetOpen(false)}>
           <AppSheetTitle title={`${libraryViewModeLabel(viewMode)} options`} />
-          <AppSheetSection label={sortSheetLabel} />
+          <AppSheetSection label={sortSheetLabel} first />
           {sortItems.map(({ key, label, selected, onSelect }) => (
             <AppSheetItem
               key={`sort:${key}`}
