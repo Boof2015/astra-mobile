@@ -1,11 +1,11 @@
 import { ActionButton } from '@/components/ActionButton';
 import { useState } from 'react';
 import {
-  StyleSheet,
   View,
   type KeyboardTypeOptions
 } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { AppSheetBody, AppSheetFooter, AppSheetTitle } from '@/components/sheets/AppSheet';
 import {
@@ -20,6 +20,7 @@ interface EQValueEditSheetProps {
   initialValue: string;
   unit: string;
   rangeLabel: string;
+  invalidMessage: string;
   placeholder?: string;
   keyboardType?: KeyboardTypeOptions;
   parseValue: (value: string) => number | null;
@@ -33,6 +34,7 @@ export function EQValueEditSheet({
   initialValue,
   unit,
   rangeLabel,
+  invalidMessage,
   placeholder,
   keyboardType = 'numbers-and-punctuation',
   parseValue,
@@ -42,9 +44,11 @@ export function EQValueEditSheet({
   const styles = useStyles();
   const colors = useColors();
   const [value, setValue] = useState(initialValue);
+  const [focused, setFocused] = useState(false);
   const trimmed = value.trim();
   const parsed = trimmed.length > 0 ? parseValue(trimmed) : null;
   const valid = parsed !== null;
+  const invalid = trimmed.length > 0 && !valid;
 
   const apply = () => {
     if (parsed === null) return;
@@ -56,15 +60,18 @@ export function EQValueEditSheet({
     <EqSheet onClose={onClose} scrollable>
       <AppSheetTitle title={title} />
       <AppSheetBody>
-        <View style={styles.inputRow}>
+        <View style={[styles.inputRow, focused && styles.inputFocused, invalid && styles.inputInvalid]}>
           <BottomSheetTextInput
             value={value}
             accessibilityLabel={title}
+            accessibilityHint={invalid ? invalidMessage : rangeLabel}
             onChangeText={setValue}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             placeholder={placeholder}
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={colors.textSecondary}
             keyboardType={keyboardType}
-            style={[styles.input, trimmed.length > 0 && !valid && styles.inputInvalid]}
+            style={styles.input}
             autoFocus
             selectTextOnFocus
             maxLength={16}
@@ -76,9 +83,18 @@ export function EQValueEditSheet({
             {unit}
           </Text>
         </View>
-        <Text variant="caption" style={[styles.range, trimmed.length > 0 && !valid && styles.invalidText]}>
-          {valid || trimmed.length === 0 ? rangeLabel : 'Enter a valid number'}
-        </Text>
+        <View style={styles.hintRow}>
+          {invalid ? (
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} accessible={false} />
+          ) : null}
+          <Text
+            variant="caption"
+            style={[styles.range, invalid && styles.invalidText]}
+            accessibilityLiveRegion="polite"
+          >
+            {invalid ? invalidMessage : rangeLabel}
+          </Text>
+        </View>
       </AppSheetBody>
       <AppSheetFooter>
         <ActionButton
@@ -102,29 +118,42 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.bgTertiary,
   },
   input: {
     flex: 1,
+    minWidth: 0,
     color: colors.textPrimary,
     fontFamily: fonts.mono.regular,
     fontSize: 18,
+    lineHeight: 24,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    paddingVertical: spacing.sm + 2,
+  },
+  inputFocused: {
+    borderColor: colors.accent,
   },
   inputInvalid: {
     borderColor: colors.warning,
   },
   unit: {
-    minWidth: 34,
+    paddingRight: spacing.md,
     color: colors.textSecondary,
   },
-  range: {
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs + 2,
     marginTop: spacing.sm,
-    color: colors.textTertiary,
+  },
+  range: {
+    flex: 1,
+    lineHeight: 16,
+    color: colors.textSecondary,
   },
   invalidText: {
     color: colors.warning,

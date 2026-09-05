@@ -675,6 +675,7 @@ export default function EQScreen() {
           initialValue={valueEditConfig.initialValue}
           unit={valueEditConfig.unit}
           rangeLabel={valueEditConfig.rangeLabel}
+          invalidMessage={valueEditConfig.invalidMessage}
           placeholder={valueEditConfig.placeholder}
           keyboardType={valueEditConfig.keyboardType}
           parseValue={valueEditConfig.parseValue}
@@ -698,6 +699,7 @@ function getPreampEditConfig(preamp: number) {
     initialValue: preamp.toFixed(1),
     unit: 'dB',
     rangeLabel: `${EQ_MIN_PREAMP_DB} to +${EQ_MAX_PREAMP_DB} dB`,
+    invalidMessage: 'Enter a preamp value, such as -3 or 0.',
     placeholder: '0.0',
     keyboardType: 'numbers-and-punctuation' as const,
     parseValue: parseDb,
@@ -712,7 +714,8 @@ function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
         initialValue: String(Math.round(band.frequency)),
         unit: 'Hz',
         rangeLabel: `${EQ_MIN_FREQUENCY}-${EQ_MAX_FREQUENCY} Hz`,
-        placeholder: '1000 or 1k',
+        invalidMessage: 'Enter a frequency, such as 1000 or 1.3k.',
+        placeholder: '1000 or 1.3k',
         keyboardType: 'default' as const,
         parseValue: parseFrequency,
       };
@@ -723,6 +726,7 @@ function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
         initialValue: band.gain.toFixed(1),
         unit: 'dB',
         rangeLabel: `${-EQ_MAX_GAIN_DB} to +${EQ_MAX_GAIN_DB} dB`,
+        invalidMessage: 'Enter a gain, such as -3 or +1.5.',
         placeholder: '0.0',
         keyboardType: 'numbers-and-punctuation' as const,
         parseValue: parseDb,
@@ -733,6 +737,7 @@ function getValueEditConfig(kind: EQEditableValue, band: EQBand) {
         initialValue: band.Q.toFixed(2),
         unit: 'Q',
         rangeLabel: `${EQ_MIN_Q}-${EQ_MAX_Q}`,
+        invalidMessage: 'Enter a Q value, such as 0.7 or 1.4.',
         placeholder: '1.00',
         keyboardType: 'numbers-and-punctuation' as const,
         parseValue: parsePlainNumber,
