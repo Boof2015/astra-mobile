@@ -625,7 +625,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
             (folder) => folder.available && folder.needs_metadata_reindex === true
           );
           if ((status.status === 'rebuilding' || needsMetadataReindex) && !get().isScanning) {
-            void get().rebuildLocalIndex();
+            // Version gates already select stale rows. Retrying one failed
+            // upgrade must not re-read every successfully upgraded file.
+            if (status.status === 'rebuilding') void get().rebuildLocalIndex();
+            else void get().rescan();
           }
         })().catch((error) => {
           initPromise = null;

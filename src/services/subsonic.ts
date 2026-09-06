@@ -66,6 +66,8 @@ interface SubsonicAlbumSongs {
 }
 
 interface SubsonicSong {
+  artists?: unknown;
+  albumArtists?: unknown;
   id?: unknown;
   title?: unknown;
   artist?: unknown;
@@ -360,6 +362,8 @@ function mapSongToCatalogTrack(
     artwork_source_id: artworkSourceId,
     title,
     artist,
+    artist_names: asArray<Record<string, unknown>>(song.artists).map(value => toTrimmedText(value?.name)).filter((value): value is string => value !== null),
+    album_artist_names: asArray<Record<string, unknown>>(song.albumArtists).map(value => toTrimmedText(value?.name)).filter((value): value is string => value !== null),
     album,
     album_artist: albumArtist,
     duration: duration && duration > 0 ? duration : 0,

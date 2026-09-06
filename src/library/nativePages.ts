@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { normalizeKey } from '@/shared/library/albumGrouping';
 import type { ArtistGroupingMode } from '@/library/artistGrouping';
@@ -24,57 +24,63 @@ function appendTracks(current: DbTrack[], incoming: DbTrack[]): DbTrack[] {
   return [...current, ...incoming.filter((track) => !paths.has(track.path))];
 }
 
-export function useNativeAlbumDetail(albumKey: string): PagedDetail<DbTrack, NativeAlbumSummary> {
+export function useNativeAlbumDetail(
+  albumKey: string, trackPath?: string
+): PagedDetail<DbTrack, NativeAlbumSummary> & { resolvedAlbumKey: string } {
   const [items, setItems] = useState<DbTrack[]>([]);
   const [summary, setSummary] = useState<NativeAlbumSummary | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resolvedAlbumKey, setResolvedAlbumKey] = useState(albumKey);
+  const anchor = useRef<{ key: string; path?: string }>({ key: albumKey, path: trackPath });
+  const request = useRef(0);
 
   const reset = useCallback(async () => {
     if (!albumKey) return;
+    const version = ++request.current;
     setLoading(true);
     try {
-      const page = await AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(
-        albumKey,
-        null,
-        DETAIL_PAGE_SIZE
-      );
+      const anchorPath = anchor.current.key === albumKey ? anchor.current.path ?? trackPath : trackPath;
+      const anchorTrack = anchorPath ? await AstraLibraryData.getTrack<DbTrack>(anchorPath) : null;
+      const nextKey = anchorTrack?.album_identity_key ?? albumKey;
+      const page = await AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(nextKey, null, DETAIL_PAGE_SIZE);
+      if (version !== request.current) return;
+      anchor.current = { key: albumKey, path: page.items?.[0]?.path ?? anchorPath };
+      setResolvedAlbumKey(nextKey);
       setItems(page.items ?? []);
       setSummary(page.summary ?? null);
       setTotalCount(page.totalCount ?? 0);
       setCursor(page.nextCursor ?? null);
     } finally {
-      setLoading(false);
+      if (version === request.current) setLoading(false);
     }
-  }, [albumKey]);
+  }, [albumKey, trackPath]);
 
   useEffect(() => {
     queueMicrotask(() => void reset());
     const subscription = AstraLibraryData.addListener('onCatalogChanged', () => void reset());
-    return () => subscription.remove();
+    return () => { request.current += 1; subscription.remove(); };
   }, [reset]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loading) return;
+    const version = request.current;
     setLoading(true);
     try {
-      const page = await AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(
-        albumKey,
-        cursor,
-        DETAIL_PAGE_SIZE
-      );
+      const page = await AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(resolvedAlbumKey, cursor, DETAIL_PAGE_SIZE);
+      if (version !== request.current) return;
       if (page.error === 'STALE_REVISION') return reset();
       setItems((current) => appendTracks(current, page.items));
       setSummary(page.summary ?? null);
       setTotalCount(page.totalCount ?? 0);
       setCursor(page.nextCursor ?? null);
     } finally {
-      setLoading(false);
+      if (version === request.current) setLoading(false);
     }
-  }, [albumKey, cursor, loading, reset]);
+  }, [resolvedAlbumKey, cursor, loading, reset]);
 
-  return { items, summary, totalCount, loading, loadMore };
+  return { items, summary, totalCount, loading, loadMore, resolvedAlbumKey };
 }
 
 export function useNativeArtistDetail(

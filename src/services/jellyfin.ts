@@ -429,6 +429,9 @@ function mapJellyfinItemToCatalogTrack(
     artwork_source_id: artworkSourceId,
     title,
     artist,
+    artist_names: asArray<unknown>(item.Artists).map(toTrimmedText).filter((value): value is string => value !== null)
+      .concat(asArray<Record<string, unknown>>(item.ArtistItems).map(value => toTrimmedText(value?.Name)).filter((value): value is string => value !== null)),
+    album_artist_names: asArray<unknown>(item.AlbumArtists).map(value => toTrimmedText(typeof value === 'object' && value !== null ? (value as Record<string, unknown>).Name : value)).filter((value): value is string => value !== null),
     album,
     album_artist: albumArtist,
     duration,

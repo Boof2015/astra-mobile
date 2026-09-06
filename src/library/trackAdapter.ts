@@ -26,6 +26,8 @@ export function dbTrackToTrack(track: DbTrack): Track {
     title: track.title,
     artist: track.artist,
     artistNames: track.artist_names?.length > 0 ? track.artist_names : undefined,
+    resolvedArtistNames: track.resolved_artist_names ?? undefined,
+    resolvedAlbumArtistNames: track.resolved_album_artist_names ?? undefined,
     album: track.album,
     albumArtist: track.album_artist ?? undefined,
     albumArtistNames:
@@ -33,6 +35,8 @@ export function dbTrackToTrack(track: DbTrack): Track {
     albumIdentityKey: track.album_identity_key,
     duration: track.duration,
     trackNumber: track.track_number ?? undefined,
+    trackTotal: track.track_total ?? undefined,
+    discTotal: track.disc_total ?? undefined,
     discNumber: track.disc_number ?? undefined,
     year: track.year ?? undefined,
     genre: track.genre ?? undefined,

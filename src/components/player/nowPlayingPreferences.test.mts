@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseNowPlayingCompanion } from './nowPlayingPreferences.ts';
 import {
-  buildArtistNameTokens,
+  buildArtistCreditTokens,
+  buildArtistIdentityIndex,
+  resolveTrackArtistNames,
   formatArtistNames,
-  parseArtistMetadata,
 } from '../../shared/library/artistCredits.ts';
 
 test('defaults missing and invalid companion preferences to queue', () => {
@@ -20,8 +21,8 @@ test('restores persisted queue and lyrics companion preferences', () => {
 
 test('builds separate clickable credits for collaborative track artists', () => {
   const artists = ['Dazbee', '9Lana', 'ValkyR'];
-  assert.equal(formatArtistNames(artists), 'Dazbee, 9Lana, ValkyR');
-  assert.deepEqual(buildArtistNameTokens(artists), [
+  assert.equal(formatArtistNames(artists), 'Dazbee, 9Lana & ValkyR');
+  assert.deepEqual(buildArtistCreditTokens('Dazbee, 9Lana, ValkyR', artists), [
     { artist: 'Dazbee', separator: ', ' },
     { artist: '9Lana', separator: ', ' },
     { artist: 'ValkyR', separator: null },
@@ -29,13 +30,14 @@ test('builds separate clickable credits for collaborative track artists', () => 
 });
 
 test('structured credits preserve commas and ampersands inside one artist name', () => {
-  assert.deepEqual(buildArtistNameTokens(['Earth, Wind & Fire', 'The Emotions']), [
+  assert.deepEqual(buildArtistCreditTokens('Earth, Wind & Fire, The Emotions', ['Earth, Wind & Fire', 'The Emotions']), [
     { artist: 'Earth, Wind & Fire', separator: ', ' },
     { artist: 'The Emotions', separator: null },
   ]);
 });
 
-test('legacy display credits keep their literal separators', () => {
+test('resolved display credits keep their literal separators', () => {
+  const parseArtistMetadata = (artist: string) => buildArtistCreditTokens(artist, resolveTrackArtistNames({ artist }, buildArtistIdentityIndex([{ artist }])));
   assert.deepEqual(parseArtistMetadata('1, 2, 3'), [
     { artist: '1', separator: ', ' },
     { artist: '2', separator: ', ' },

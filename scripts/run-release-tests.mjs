@@ -8,6 +8,7 @@ const TEST_SCRIPTS = [
   'test:dynamic-playlists',
   'test:album-grouping',
   'test:artist-grouping',
+  'test:resolve',
   'test:desktop-sync',
   'test:eq-share',
   'test:signal',

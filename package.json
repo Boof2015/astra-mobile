@@ -107,7 +107,8 @@
     "test:release": "node scripts/run-release-tests.mjs",
     "release:validate": "node scripts/release/android-release.mjs validate github && node scripts/release/android-release.mjs validate google-play",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "test:resolve": "node --experimental-strip-types --test src/shared/library/artistCreditsDesktop.test.mts src/shared/library/albumGroupingDesktop.test.mts src/shared/library/resolveParity.test.mts src/library/artistGrouping.test.mts src/components/player/nowPlayingPreferences.test.mts"
   },
   "private": true
 }

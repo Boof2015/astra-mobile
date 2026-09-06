@@ -31,7 +31,7 @@ class ArtistCreditsTest {
 
     val credits = collector.build()
 
-    assertEquals(listOf("Artist One", "Artist Two"), credits.artists)
+    assertEquals(listOf("Artist Two"), credits.artists)
     assertEquals(listOf("Album Artist", "Guest Curator"), credits.albumArtists)
   }
 

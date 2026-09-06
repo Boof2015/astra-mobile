@@ -92,7 +92,7 @@ function TrackActionsSheetInner({
           // pushing would stack a duplicate of the current screen.
           if (pathname === albumHref) return;
           returnToTabs(
-            { pathname: '/library/album/[key]', params: { key: track.album_identity_key } },
+            { pathname: '/library/album/[key]', params: { key: track.album_identity_key, trackPath: track.path } },
             'push'
           );
         }),

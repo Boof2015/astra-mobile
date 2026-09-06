@@ -76,6 +76,33 @@ interface CatalogDao {
   @Query("SELECT * FROM catalog_sources WHERE source_key = :sourceKey")
   suspend fun getSource(sourceKey: String): CatalogSourceEntity?
 
+  @Query("SELECT COUNT(*) FROM active_tracks WHERE folder_id = :folderId AND metadata_reader_version < :version")
+  suspend fun countStaleMetadata(folderId: Long, version: Int): Long
+
+  @Query("UPDATE catalog_meta SET resolve_version = :version WHERE id = 1")
+  suspend fun setResolveVersion(version: Int)
+
+  @Transaction
+  suspend fun publishResolve(models: CatalogReadModels, now: Long): Long {
+    for (update in models.identityUpdates) {
+      updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist, update.resolvedArtistNamesJson, update.resolvedAlbumArtistNamesJson)
+    }
+    incrementRevision(now)
+    val revision = getRevision()
+    if (models.albums.isNotEmpty()) putAlbumSummaries(models.albums)
+    if (models.artists.isNotEmpty()) putArtistSummaries(models.artists)
+    if (models.artistTrackIndex.isNotEmpty()) putArtistTrackIndex(models.artistTrackIndex)
+    if (models.directories.isNotEmpty()) putDirectorySummaries(models.directories)
+    clearFts()
+    if (models.ftsRows.isNotEmpty()) putFtsRows(models.ftsRows)
+    deleteOldAlbumSummaries(revision)
+    deleteOldArtistSummaries(revision)
+    deleteOldArtistTrackIndex(revision)
+    deleteOldDirectorySummaries(revision)
+    setResolveVersion(CURRENT_RESOLVE_VERSION)
+    return revision
+  }
+
   @Query("SELECT * FROM catalog_sources ORDER BY source_key")
   suspend fun getSources(): List<CatalogSourceEntity>
 
@@ -179,7 +206,9 @@ interface CatalogDao {
     """
       UPDATE tracks
       SET album_identity_key = :identityKey,
-          album_display_artist = :displayArtist
+          album_display_artist = :displayArtist,
+          resolved_artist_names_json = :resolvedArtists,
+          resolved_album_artist_names_json = :resolvedAlbumArtists
       WHERE id = :trackId
     """,
   )
@@ -187,6 +216,8 @@ interface CatalogDao {
     trackId: Long,
     identityKey: String,
     displayArtist: String,
+    resolvedArtists: String? = null,
+    resolvedAlbumArtists: String? = null,
   )
 
   @Query("DELETE FROM tracks WHERE generation_id = :generationId")
@@ -1567,7 +1598,7 @@ interface CatalogDao {
     artistCreditVersion: Int? = null,
   ): Long {
     for (update in albumIdentityUpdates) {
-      updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist)
+      updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist, update.resolvedArtistNamesJson, update.resolvedAlbumArtistNamesJson)
     }
     setActiveGeneration(sourceKey, generationId, now, artistCreditVersion)
     setGenerationState(generationId, "active", now, null)
@@ -1603,7 +1634,7 @@ interface CatalogDao {
     ftsRows: List<TrackFtsEntity>,
   ): Long {
     for (update in albumIdentityUpdates) {
-      updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist)
+      updateAlbumIdentity(update.trackId, update.identityKey, update.displayArtist, update.resolvedArtistNamesJson, update.resolvedAlbumArtistNamesJson)
     }
     deleteSource(sourceKey)
     if (generationId != null) {
@@ -1642,7 +1673,7 @@ interface CatalogDao {
     TrackFtsEntity::class,
   ],
   views = [ActiveTrackView::class],
-  version = 2,
+  version = 4,
   exportSchema = true,
 )
 abstract class AstraCatalogDatabase : RoomDatabase() {
@@ -1661,5 +1692,21 @@ internal val CATALOG_MIGRATION_1_2 = object : Migration(1, 2) {
     database.execSQL(
       "UPDATE catalog_sources SET artist_credit_version = 1 WHERE source_type = 'local'",
     )
+  }
+}
+
+internal val CATALOG_MIGRATION_2_3 = object : Migration(2, 3) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL("ALTER TABLE tracks ADD COLUMN track_total INTEGER")
+    database.execSQL("ALTER TABLE tracks ADD COLUMN disc_total INTEGER")
+    database.execSQL("ALTER TABLE tracks ADD COLUMN metadata_reader_version INTEGER NOT NULL DEFAULT 0")
+  }
+}
+
+internal val CATALOG_MIGRATION_3_4 = object : Migration(3, 4) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL("ALTER TABLE tracks ADD COLUMN resolved_artist_names_json TEXT")
+    database.execSQL("ALTER TABLE tracks ADD COLUMN resolved_album_artist_names_json TEXT")
+    database.execSQL("ALTER TABLE catalog_meta ADD COLUMN resolve_version INTEGER NOT NULL DEFAULT 0")
   }
 }

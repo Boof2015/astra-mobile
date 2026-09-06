@@ -1,21 +1,11 @@
-// Artist browse grouping — ported from desktop (astra src/main/services/library.ts
-// and src/shared/library/artistCredits.ts). Two modes:
-//   'astra'    (desktop "canonical"): parse the artist string into collaborators,
-//              file each track under its primary artist, and also index it under
-//              every collaborator so featured artists are browsable.
-//   'fileTags' (desktop "strict"): use the tag verbatim (album_artist || artist).
-//
-// Structured artist arrays are preferred when present so punctuation inside an
-// individual name is never mistaken for a collaboration boundary. Legacy and
-// remote rows still fall back to the original display-string heuristics.
-
-// Runtime imports stay relative so this module can run under plain `node --test`.
-import { normalizeDisplay, normalizeKey, splitCollaborators } from '../shared/library/albumGrouping.ts';
-import { normalizeArtistNames } from '../shared/library/artistCredits.ts';
+// Astra Resolve browse adapters. Catalog-backed rows carry identities computed
+// over the full library; pure callers can supply the same complete evidence index.
+import { normalizeDisplay, splitCollaborators } from '../shared/library/albumGrouping.ts';
+import {
+  normalizeArtistNames, normalizeArtistKey as normalizeKey, normalizeIdentityKey, canonicalizeArtistDisplay,
+  buildArtistIdentityIndex, resolveTrackArtistNames, type ArtistIdentityIndex,
+} from '../shared/library/artistCredits.ts';
 import type { Artist, DbTrack } from '../types/library';
-
-// Shared with the album-identity port so artist and album grouping can never
-// drift apart on normalization or collaborator splitting.
 export { normalizeDisplay, normalizeKey, splitCollaborators };
 
 export type ArtistGroupingMode = 'astra' | 'fileTags';
@@ -26,6 +16,9 @@ const VARIOUS_ARTISTS_KEY = 'various artists';
 /** Track fields the grouping logic reads (subset of DbTrack, for testability). */
 export interface ArtistCreditTrackLike {
   artist: string;
+  album?: string | null;
+  resolved_artist_names?: readonly string[] | null;
+  resolved_album_artist_names?: readonly string[] | null;
   artist_names?: readonly string[] | null;
   album_artist: string | null;
   album_artist_names?: readonly string[] | null;
@@ -36,124 +29,52 @@ export type ArtistTrackLike = ArtistCreditTrackLike & Pick<
   'artwork_hash' | 'year' | 'added_at' | 'modified_at' | 'album_identity_key'
 >;
 
-/** Like splitCollaborators but keeps "&" (e.g. "Earth, Wind & Fire" stays whole). */
 export function splitAlbumArtistCollaborators(rawAlbumArtist: string): string[] {
-  const normalized = normalizeDisplay(rawAlbumArtist);
-  if (!normalized) return [];
-
-  const unified = normalized
-    .replace(/\s*;\s*/g, ',')
-    .replace(/\s+[x×]\s+/gi, ',')
-    .replace(/\s+(?:feat\.?|ft\.?|featuring|with)\s+/gi, ',');
-
-  return dedupeByKey(unified.split(','));
+  const track = { artist: '', album_artist: rawAlbumArtist };
+  return resolveTrackArtistNames(track, buildArtistIdentityIndex([track]), true);
 }
 
-function dedupeByKey(parts: string[]): string[] {
-  const unique = new Map<string, string>();
-  for (const part of parts) {
-    const display = normalizeDisplay(part);
-    if (!display) continue;
-    const key = normalizeKey(display);
-    if (!key || unique.has(key)) continue;
-    unique.set(key, display);
-  }
-  return Array.from(unique.values());
+export function resolvedCreditNames(
+  track: ArtistCreditTrackLike, albumArtist = false, index?: ArtistIdentityIndex
+): string[] {
+  const resolved = albumArtist ? track.resolved_album_artist_names : track.resolved_artist_names;
+  if (resolved != null) return normalizeArtistNames(resolved);
+  return resolveTrackArtistNames(track, index ?? buildArtistIdentityIndex([track]), albumArtist);
 }
 
-/** File-tags artist: album_artist if present, else the raw track artist. */
 export function resolveStrictBrowseArtist(track: ArtistCreditTrackLike): string {
-  const albumArtist = normalizeDisplay(track.album_artist ?? '');
-  if (albumArtist) return albumArtist;
-  return normalizeDisplay(track.artist) || UNKNOWN_ARTIST;
+  return normalizeDisplay(track.album_artist ?? '') || normalizeDisplay(track.artist) || UNKNOWN_ARTIST;
 }
 
-/** Astra-grouping primary: album_artist's first collaborator, else artist's first. */
-export function resolveCanonicalBrowseArtist(track: ArtistCreditTrackLike): string {
-  const albumArtist = normalizeDisplay(track.album_artist ?? '');
-  if (albumArtist) {
-    const parsedAlbumArtists = normalizeArtistNames(track.album_artist_names);
-    if (parsedAlbumArtists.length > 0) return parsedAlbumArtists[0];
-    return splitAlbumArtistCollaborators(albumArtist)[0] ?? albumArtist;
-  }
-  const parsedTrackArtists = normalizeArtistNames(track.artist_names);
-  if (parsedTrackArtists.length > 0) return parsedTrackArtists[0];
-  return splitCollaborators(track.artist)[0] ?? UNKNOWN_ARTIST;
+export function resolveCanonicalBrowseArtist(track: ArtistCreditTrackLike, index?: ArtistIdentityIndex): string {
+  return canonicalizeArtistDisplay(
+    resolvedCreditNames(track, true, index)[0] ?? resolvedCreditNames(track, false, index)[0] ?? UNKNOWN_ARTIST
+  );
 }
 
-/** Every artist a track is indexed under in astra mode: primary + all collaborators. */
-export function getCanonicalArtistIndexNames(track: ArtistCreditTrackLike): string[] {
-  const unique = new Map<string, string>();
-  const add = (name: string) => {
-    const display = normalizeDisplay(name);
-    const key = normalizeKey(display);
-    if (!key || unique.has(key)) return;
-    unique.set(key, display);
-  };
-
-  add(resolveCanonicalBrowseArtist(track));
-
-  const parsedTrackArtists = normalizeArtistNames(track.artist_names);
-  const trackArtists =
-    parsedTrackArtists.length > 0 ? parsedTrackArtists : splitCollaborators(track.artist);
-  for (const name of trackArtists) add(name);
-  if (trackArtists.length === 0) {
-    const parsedAlbumArtists = normalizeArtistNames(track.album_artist_names);
-    const albumArtists =
-      parsedAlbumArtists.length > 0
-        ? parsedAlbumArtists
-        : splitAlbumArtistCollaborators(track.album_artist ?? '');
-    for (const name of albumArtists) add(name);
-  }
-
-  return Array.from(unique.values());
+export function getCanonicalArtistIndexNames(track: ArtistCreditTrackLike, index?: ArtistIdentityIndex): string[] {
+  return normalizeArtistNames([
+    resolveCanonicalBrowseArtist(track, index),
+    ...resolvedCreditNames(track, false, index),
+    ...resolvedCreditNames(track, true, index),
+  ]).map(canonicalizeArtistDisplay);
 }
 
-/**
- * Per-track "View artist" destination. "Various Artists" is an album-level
- * placeholder, not a person — in astra mode fall through to the track's own
- * primary artist (desktop parity: album artist links are nulled when they
- * normalize to Various Artists). File-tags mode keeps the tag verbatim: the VA
- * bucket is the only artist page that lists those tracks in that mode.
- */
-export function resolveNavigationArtist(
-  track: ArtistCreditTrackLike,
-  mode: ArtistGroupingMode
-): string {
+export function resolveNavigationArtist(track: ArtistCreditTrackLike, mode: ArtistGroupingMode): string {
   if (mode === 'fileTags') return resolveStrictBrowseArtist(track);
   const canonical = resolveCanonicalBrowseArtist(track);
-  if (normalizeKey(canonical) !== VARIOUS_ARTISTS_KEY) return canonical;
-  return normalizeArtistNames(track.artist_names)[0] ?? splitCollaborators(track.artist)[0] ?? canonical;
+  return normalizeKey(canonical) === VARIOUS_ARTISTS_KEY
+    ? resolvedCreditNames(track)[0] ?? canonical
+    : canonical;
 }
 
-/** Whether a track belongs to the given artist key under the active browse mode. */
 export function trackMatchesBrowseArtist(
-  track: ArtistCreditTrackLike,
-  targetArtistKey: string,
-  mode: ArtistGroupingMode
+  track: ArtistCreditTrackLike, targetArtistKey: string, mode: ArtistGroupingMode, index?: ArtistIdentityIndex
 ): boolean {
-  const browseKey = normalizeKey(
-    mode === 'fileTags' ? resolveStrictBrowseArtist(track) : resolveCanonicalBrowseArtist(track)
-  );
-  if (browseKey === targetArtistKey) return true;
-  if (mode === 'fileTags') return false;
-
-  const albumArtistKey = normalizeKey(track.album_artist ?? '');
-  if (albumArtistKey && albumArtistKey === targetArtistKey) return true;
-
-  const trackArtistKey = normalizeKey(track.artist);
-  if (trackArtistKey && trackArtistKey === targetArtistKey) return true;
-
-  if (normalizeArtistNames(track.album_artist_names).some((n) => normalizeKey(n) === targetArtistKey)) {
-    return true;
-  }
-  if (splitAlbumArtistCollaborators(track.album_artist ?? '').some((n) => normalizeKey(n) === targetArtistKey)) {
-    return true;
-  }
-  if (normalizeArtistNames(track.artist_names).some((n) => normalizeKey(n) === targetArtistKey)) {
-    return true;
-  }
-  return splitCollaborators(track.artist).some((n) => normalizeKey(n) === targetArtistKey);
+  if (mode === 'fileTags') return normalizeIdentityKey(resolveStrictBrowseArtist(track)) === targetArtistKey;
+  return getCanonicalArtistIndexNames(track, index).some((name) => normalizeKey(name) === targetArtistKey)
+    || normalizeKey(track.artist) === targetArtistKey
+    || normalizeKey(track.album_artist ?? '') === targetArtistKey;
 }
 
 interface ArtistAggregate {
@@ -176,20 +97,22 @@ interface ArtistAggregate {
  */
 export function buildArtistList(tracks: readonly ArtistTrackLike[], mode: ArtistGroupingMode): Artist[] {
   const byKey = new Map<string, ArtistAggregate>();
+  const index = buildArtistIdentityIndex(tracks);
 
   for (const track of tracks) {
-    const primaryArtistKey = normalizeKey(
+    const keyForMode = mode === 'fileTags' ? normalizeIdentityKey : normalizeKey;
+    const primaryArtistKey = keyForMode(
       mode === 'fileTags'
         ? resolveStrictBrowseArtist(track)
-        : resolveCanonicalBrowseArtist(track)
+        : resolveCanonicalBrowseArtist(track, index)
     );
     const indexNames = mode === 'fileTags'
       ? [resolveStrictBrowseArtist(track)]
-      : getCanonicalArtistIndexNames(track);
+      : getCanonicalArtistIndexNames(track, index);
 
     const seen = new Set<string>();
     for (const name of indexNames) {
-      const key = normalizeKey(name);
+      const key = keyForMode(name);
       if (!key || seen.has(key)) continue;
       seen.add(key);
 
@@ -273,7 +196,8 @@ export function filterTracksByArtist(
   artistName: string,
   mode: ArtistGroupingMode
 ): DbTrack[] {
-  const key = normalizeKey(artistName);
+  const key = mode === 'fileTags' ? normalizeIdentityKey(artistName) : normalizeKey(artistName);
   if (!key) return [];
-  return tracks.filter((track) => trackMatchesBrowseArtist(track, key, mode));
+  const index = buildArtistIdentityIndex(tracks);
+  return tracks.filter((track) => trackMatchesBrowseArtist(track, key, mode, index));
 }

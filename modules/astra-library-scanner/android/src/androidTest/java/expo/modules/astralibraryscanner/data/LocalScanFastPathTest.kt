@@ -225,6 +225,39 @@ class LocalScanFastPathTest {
     }
   }
 
+  @Test
+  fun staleMetadataRetriesWithoutDroppingUserFactsOrAnalysis() = runBlocking {
+    val repository = AstraLibraryRepository.get(ApplicationProvider.getApplicationContext())
+    val suffix = System.nanoTime().toString()
+    val tree = "content://metadata-test/tree/$suffix"
+    val folderId = (repository.registerFolder(tree, "Metadata upgrade").getValue("id") as Number).toLong()
+    val path = "$tree/track.opus"
+    val files = listOf(file(path, tree, 1024, 100))
+    try {
+      repository.scanLocalFolder(folderId, false, { files }, { metadata("Legacy").copy(metadataReaderVersion = 0) }, { _, _, _, _ -> })
+      val addedAt = repository.getTrack(path)?.get("added_at")
+      repository.setFavorite(path, true)
+      repository.setTrackLoudness(path, -15.0, 0.8)
+      val failed = repository.scanLocalFolder(folderId, false, { files }, { LocalAudioMetadata(ok = false) }, { _, _, _, _ -> })
+      assertEquals(1, failed.errors)
+      assertEquals("Legacy", repository.getTrack(path)?.get("title"))
+      assertEquals(true, repository.listFolders().single { (it["id"] as Number).toLong() == folderId }["needs_metadata_reindex"])
+      val repaired = repository.scanLocalFolder(folderId, false, { files }, { metadata("Repaired").copy(trackTotal = 12, discTotal = 2) }, { _, _, _, _ -> })
+      assertEquals(1, repaired.updated)
+      val track = repository.getTrack(path)!!
+      assertEquals("Repaired", track["title"])
+      assertEquals(12, track["track_total"])
+      assertEquals(addedAt, track["added_at"])
+      assertEquals(-15.0, track["loudness_lufs"])
+      assertTrue(path in repository.getFavoritePaths())
+      val unchanged = repository.scanLocalFolder(folderId, false, { files }, { error("Must reuse successfully upgraded metadata") }, { _, _, _, _ -> })
+      assertEquals(repaired.revision, unchanged.revision)
+    } finally {
+      repository.setFavorite(path, false)
+      repository.removeFolder(folderId)
+    }
+  }
+
   private fun file(
     uri: String,
     parentUri: String,

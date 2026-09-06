@@ -4,10 +4,14 @@ import android.net.Uri
 import java.util.Locale
 import org.json.JSONArray
 
+internal const val CURRENT_RESOLVE_VERSION = 1
+
 data class AlbumIdentityUpdate(
   val trackId: Long,
   val identityKey: String,
   val displayArtist: String,
+  val resolvedArtistNamesJson: String? = null,
+  val resolvedAlbumArtistNamesJson: String? = null,
 )
 
 data class CatalogReadModels(
@@ -42,6 +46,9 @@ data class LocalAudioMetadata(
   val durationMs: Long? = null,
   val bitrate: Int? = null,
   val trackNumber: Int? = null,
+  val trackTotal: Int? = null,
+  val discTotal: Int? = null,
+  val metadataReaderVersion: Int = CURRENT_METADATA_READER_VERSION,
   val discNumber: Int? = null,
   val year: Int? = null,
   val sampleRate: Int? = null,
@@ -72,15 +79,6 @@ data class NativeScanResult(
   )
 }
 
-private data class PreparedAlbumTrack(
-  val track: TrackEntity,
-  val albumKey: String,
-  val primaryArtist: String,
-  val primaryArtistKey: String,
-  val normalizedAlbumArtist: String,
-  val artworkIdentityHash: String?,
-)
-
 private data class SettledTrack(
   val track: TrackEntity,
   val identityKey: String,
@@ -97,17 +95,28 @@ object CatalogReadModelBuilder {
     revision: Long,
     folders: Map<Long, FolderEntity> = emptyMap(),
   ): CatalogReadModels {
-    val settled = settleAlbums(tracks)
+    val originals = tracks.associateBy(TrackEntity::id)
+    val index = ArtistResolve.build(tracks.map(::credit))
+    val resolved = tracks.map { track ->
+      track.copy(
+        resolvedArtistNamesJson = JSONArray(ArtistResolve.trackNames(credit(track), index)).toString(),
+        resolvedAlbumArtistNamesJson = JSONArray(ArtistResolve.trackNames(credit(track), index, true)).toString(),
+      )
+    }
+    val settled = settleAlbums(resolved, index)
     val artistModels = buildArtists(settled, revision)
     return CatalogReadModels(
       identityUpdates = settled.mapNotNull { row ->
+        val original = originals.getValue(row.track.id)
         if (
-          row.track.albumIdentityKey == row.identityKey &&
-          row.track.albumDisplayArtist == row.displayArtist
+          original.albumIdentityKey == row.identityKey &&
+          original.albumDisplayArtist == row.displayArtist &&
+          original.resolvedArtistNamesJson == row.track.resolvedArtistNamesJson &&
+          original.resolvedAlbumArtistNamesJson == row.track.resolvedAlbumArtistNamesJson
         ) {
           null
         } else {
-          AlbumIdentityUpdate(row.track.id, row.identityKey, row.displayArtist)
+          AlbumIdentityUpdate(row.track.id, row.identityKey, row.displayArtist, row.track.resolvedArtistNamesJson, row.track.resolvedAlbumArtistNamesJson)
         }
       },
       albums = buildAlbums(settled, revision),
@@ -118,7 +127,7 @@ object CatalogReadModelBuilder {
         TrackFtsEntity(
           rowId = row.track.id,
           title = row.track.title,
-          artist = row.track.artist,
+          artist = (listOf(row.track.artist) + deserializeArtistNames(row.track.resolvedArtistNamesJson) + deserializeArtistNames(row.track.resolvedAlbumArtistNamesJson)).distinct().joinToString(" "),
           album = row.track.album,
           fileName = row.track.fileName,
         )
@@ -141,61 +150,25 @@ object CatalogReadModelBuilder {
     return identity(albumKey, "ta:${normalizeKey(primary)}") to primary
   }
 
-  private fun settleAlbums(tracks: List<TrackEntity>): List<SettledTrack> {
-    val settled = ArrayList<SettledTrack>(tracks.size)
-    val missingAlbumArtist = LinkedHashMap<String, MutableList<PreparedAlbumTrack>>()
+  private fun credit(track: TrackEntity) = ResolveCredit(
+    artist = track.artist, album = track.album, artists = deserializeArtistNames(track.artistNamesJson),
+    albumArtist = track.albumArtist, albumArtists = deserializeArtistNames(track.albumArtistNamesJson),
+  )
 
-    for (track in tracks) {
-      val albumKey = normalizeKey(normalizeAlbum(track.album))
-      val explicit = normalizeDisplay(track.albumArtist.orEmpty())
-      val primary = primaryArtist(track.artist, track.artistNamesJson)
-      val prepared = PreparedAlbumTrack(
-        track = track,
-        albumKey = albumKey,
-        primaryArtist = primary,
-        primaryArtistKey = normalizeKey(primary),
-        normalizedAlbumArtist = explicit,
-        artworkIdentityHash = normalizeKey(
-          track.artworkHash ?: if (track.sourceType != "local") track.artworkSourceId.orEmpty() else "",
-        ).ifEmpty { null },
+  private fun settleAlbums(tracks: List<TrackEntity>, index: ArtistIdentityIndex): List<SettledTrack> {
+    val byPath = tracks.associateBy(TrackEntity::path)
+    val prepared = tracks.map { track ->
+      ResolveAlbumTrack(
+        id = track.path, credit = credit(track),
+        artwork = track.artworkHash ?: track.artworkSourceId?.takeIf { track.sourceType != "local" }
+          ?.let { "remote:${track.sourceKey}:$it" },
+        year = track.year, trackNumber = track.trackNumber, trackTotal = track.trackTotal,
+        discNumber = track.discNumber, discTotal = track.discTotal,
       )
-      if (explicit.isNotEmpty()) {
-        settled += SettledTrack(
-          track,
-          identity(albumKey, "aa:${normalizeKey(explicit).ifEmpty { normalizeKey(UNKNOWN_ARTIST) }}"),
-          explicit,
-        )
-      } else {
-        missingAlbumArtist.getOrPut(albumKey) { mutableListOf() } += prepared
-      }
     }
-
-    for ((albumKey, bucket) in missingAlbumArtist) {
-      val artistKeys = bucket.mapTo(linkedSetOf()) { it.primaryArtistKey }
-      val firstArtwork = bucket.firstOrNull()?.artworkIdentityHash
-      val sharedArtwork = if (
-        artistKeys.size > 1 &&
-        firstArtwork != null &&
-        bucket.all { it.artworkIdentityHash == firstArtwork }
-      ) {
-        firstArtwork
-      } else {
-        null
-      }
-      if (sharedArtwork != null) {
-        val key = identity(albumKey, "ah:$sharedArtwork")
-        bucket.forEach { settled += SettledTrack(it.track, key, VARIOUS_ARTISTS) }
-      } else {
-        bucket.forEach {
-          settled += SettledTrack(
-            it.track,
-            identity(albumKey, "ta:${it.primaryArtistKey}"),
-            it.primaryArtist,
-          )
-        }
-      }
+    return AlbumResolve.group(prepared, index).flatMap { group ->
+      group.tracks.map { SettledTrack(byPath.getValue(it.id), group.identityKey, group.displayArtist) }
     }
-    return settled
   }
 
   private fun buildAlbums(
@@ -260,9 +233,9 @@ object CatalogReadModelBuilder {
         } else {
           canonicalArtistNames(track)
         }
-        val primaryKey = normalizeKey(primary)
+        val primaryKey = if (mode == "fileTags") normalizeKey(primary) else ArtistResolve.artistKey(primary)
         for (name in names) {
-          val key = normalizeKey(name)
+          val key = if (mode == "fileTags") normalizeKey(name) else ArtistResolve.artistKey(name)
           if (key.isEmpty()) continue
           val isPrimary = key == primaryKey
           val aggregate = aggregates.getOrPut(key) { Aggregate(name) }
@@ -415,62 +388,15 @@ object CatalogReadModelBuilder {
       }
   }
 
-  private fun canonicalPrimary(track: TrackEntity): String {
-    val albumArtist = normalizeDisplay(track.albumArtist.orEmpty())
-    if (albumArtist.isNotEmpty()) {
-      val parsedAlbumArtists = deserializeArtistNames(track.albumArtistNamesJson)
-      if (parsedAlbumArtists.isNotEmpty()) return parsedAlbumArtists[0]
-      return splitAlbumArtists(albumArtist).firstOrNull() ?: albumArtist
-    }
-    return primaryArtist(track.artist, track.artistNamesJson)
-  }
+  private fun canonicalPrimary(track: TrackEntity): String =
+    deserializeArtistNames(track.resolvedAlbumArtistNamesJson).firstOrNull()
+      ?: deserializeArtistNames(track.resolvedArtistNamesJson).firstOrNull()
+      ?: UNKNOWN_ARTIST
 
-  private fun canonicalArtistNames(track: TrackEntity): List<String> {
-    val result = LinkedHashMap<String, String>()
-    fun add(value: String) {
-      val display = normalizeDisplay(value)
-      val key = normalizeKey(display)
-      if (key.isNotEmpty()) result.putIfAbsent(key, display)
-    }
-    add(canonicalPrimary(track))
-    val parsedTrackArtists = deserializeArtistNames(track.artistNamesJson)
-    val trackArtists = if (parsedTrackArtists.isNotEmpty()) {
-      parsedTrackArtists
-    } else {
-      splitTrackArtists(track.artist)
-    }
-    trackArtists.forEach(::add)
-    if (trackArtists.isEmpty()) {
-      val parsedAlbumArtists = deserializeArtistNames(track.albumArtistNamesJson)
-      if (parsedAlbumArtists.isNotEmpty()) {
-        parsedAlbumArtists.forEach(::add)
-      } else {
-        splitAlbumArtists(track.albumArtist.orEmpty()).forEach(::add)
-      }
-    }
-    return result.values.toList()
-  }
-
-  private fun splitTrackArtists(raw: String): List<String> =
-    splitArtists(raw, splitAmpersand = true)
-
-  private fun splitAlbumArtists(raw: String): List<String> =
-    splitArtists(raw, splitAmpersand = false)
-
-  private fun splitArtists(raw: String, splitAmpersand: Boolean): List<String> {
-    var unified = normalizeDisplay(raw)
-      .replace(Regex("\\s*;\\s*"), ",")
-      .replace(Regex("\\s+[x×]\\s+", RegexOption.IGNORE_CASE), ",")
-      .replace(Regex("\\s+(?:feat\\.?|ft\\.?|featuring|with)\\s+", RegexOption.IGNORE_CASE), ",")
-    if (splitAmpersand) unified = unified.replace(Regex("\\s+&\\s+"), ",")
-    val result = LinkedHashMap<String, String>()
-    unified.split(',').forEach {
-      val display = normalizeDisplay(it)
-      val key = normalizeKey(display)
-      if (key.isNotEmpty()) result.putIfAbsent(key, display)
-    }
-    return result.values.toList()
-  }
+  private fun canonicalArtistNames(track: TrackEntity): List<String> = ArtistResolve.names(
+    listOf(canonicalPrimary(track)) + deserializeArtistNames(track.resolvedArtistNamesJson) +
+      deserializeArtistNames(track.resolvedAlbumArtistNamesJson),
+  ).map(ArtistResolve::canonicalDisplay)
 
   private fun newerArtwork(candidate: TrackEntity, current: TrackEntity): Boolean {
     val candidateYear = candidate.year ?: -1
@@ -496,17 +422,17 @@ object CatalogReadModelBuilder {
       .firstOrNull()?.key
 
   private fun normalizeDisplay(value: String): String =
-    value.replace(Regex("\\s+"), " ").trim()
+    ArtistResolve.display(value)
 
   private fun normalizeKey(value: String): String =
-    normalizeDisplay(value).lowercase(Locale.ROOT)
+    ArtistResolve.identityKey(value)
 
   private fun normalizeAlbum(value: String): String =
     normalizeDisplay(value).ifEmpty { UNKNOWN_ALBUM }
 
   private fun primaryArtist(value: String, artistNamesJson: String? = null): String =
     deserializeArtistNames(artistNamesJson).firstOrNull()
-      ?: splitTrackArtists(value).firstOrNull()
+      ?: ArtistResolve.resolve(value, ArtistResolve.build(listOf(ResolveCredit(value)))).firstOrNull()
       ?: UNKNOWN_ARTIST
 
   private fun identity(albumKey: String, discriminator: String): String =

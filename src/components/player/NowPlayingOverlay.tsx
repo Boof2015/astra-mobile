@@ -1,4 +1,5 @@
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
+import { useCatalogTrack } from '@/library/useCatalogTrack';
 import { ActionButton } from '@/components/ActionButton';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -92,14 +93,14 @@ import {
 import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { resolveNavigationArtist } from '@/library/artistGrouping';
 import {
-  buildArtistNameTokens,
-  parseArtistMetadata,
+  buildArtistCreditTokens,
+  buildArtistIdentityIndex,
+  resolveTrackArtistNames,
 } from '@/shared/library/artistCredits';
 import {
   artworkThumbFromSource,
   playerBackdropArtworkSource,
 } from '@/library/artwork';
-import { useLibraryStore } from '@/stores/libraryStore';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useQueueStore } from '@/stores/queueStore';
@@ -245,7 +246,6 @@ export function NowPlayingOverlay({
   const companionOpen = useSettingsStore((s) => s.nowPlayingCompanionOpen);
   const setCompanionOpen = useSettingsStore((s) => s.setNowPlayingCompanionOpen);
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
-  const libraryTracks = useLibraryStore((s) => s.tracks);
   const track = usePlayerStore((s) => s.currentTrack);
   const playbackSource = useQueueStore((s) => s.source);
   const playbackState = usePlayerStore((s) => s.playbackState);
@@ -411,15 +411,14 @@ export function NowPlayingOverlay({
     ? shellLeft + shellWidth - tabletCompanionLayout.companionWidth
     : Number.POSITIVE_INFINITY;
   const menuTop = insets.top + CONTENT_TOP_PADDING + HEADER_HEIGHT + spacing.xs;
-  const libraryTrack = useMemo(
-    () => (track ? libraryTracks.find((entry) => entry.path === track.path) ?? null : null),
-    [libraryTracks, track]
-  );
+  const libraryTrack = useCatalogTrack(track?.path);
   const artistName = track
       ? resolveNavigationArtist(
         libraryTrack ?? {
           artist: track.artist,
           artist_names: track.artistNames,
+          resolved_artist_names: track.resolvedArtistNames,
+          resolved_album_artist_names: track.resolvedAlbumArtistNames,
           album_artist: track.albumArtist ?? null,
           album_artist_names: track.albumArtistNames,
         },
@@ -428,12 +427,12 @@ export function NowPlayingOverlay({
     : '';
   const artistCreditTokens = useMemo(() => {
     if (!track) return [];
-    if (track.artistNames && track.artistNames.length > 0) {
-      return buildArtistNameTokens(track.artistNames);
-    }
-    return parseArtistMetadata(track.artist);
-  }, [track]);
-  const albumKey = track?.albumIdentityKey ?? libraryTrack?.album_identity_key;
+    const credit = { artist: track.artist, artist_names: track.artistNames, album: track.album };
+    const names = libraryTrack?.resolved_artist_names ?? track.resolvedArtistNames ??
+      resolveTrackArtistNames(credit, buildArtistIdentityIndex([credit]));
+    return buildArtistCreditTokens(libraryTrack?.artist ?? track.artist, names);
+  }, [track, libraryTrack]);
+  const albumKey = libraryTrack?.album_identity_key ?? track?.albumIdentityKey;
 
   // The overlay stays mounted; open/close is this one shared value sliding the
   // sheet on the UI thread. The gesture itself is memoized below, so changing
@@ -536,7 +535,7 @@ export function NowPlayingOverlay({
   const navigateToAlbum = () => {
     if (!albumKey) return;
     dismissSheet();
-    returnToTabs({ pathname: '/library/album/[key]', params: { key: albumKey } }, 'push');
+    returnToTabs({ pathname: '/library/album/[key]', params: { key: albumKey, trackPath: track?.path } }, 'push');
   };
 
   const menuItems: NowPlayingMenuItem[] = [];

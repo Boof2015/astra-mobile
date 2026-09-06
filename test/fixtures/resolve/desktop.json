@@ -1,0 +1,2497 @@
+{
+  "revision": "7e9d3dd",
+  "artists": [
+    {
+      "tracks": [
+        {
+          "artist": "BIZ",
+          "album_artist": "BIZ"
+        },
+        {
+          "artist": "Zera",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill",
+          "album_artist": "Becky Hill"
+        },
+        {
+          "artist": "BIZ, Zera",
+          "album_artist": "BIZ, Zera"
+        },
+        {
+          "artist": "d4vd, Arcane, League of Legends",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "BIZ"
+          ],
+          "albumArtists": [
+            "BIZ"
+          ]
+        },
+        {
+          "artists": [
+            "Zera"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Becky Hill"
+          ],
+          "albumArtists": [
+            "Becky Hill"
+          ]
+        },
+        {
+          "artists": [
+            "BIZ",
+            "Zera"
+          ],
+          "albumArtists": [
+            "BIZ",
+            "Zera"
+          ]
+        },
+        {
+          "artists": [
+            "d4vd",
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Becky Hill",
+            "Chase & Status"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Royal & the Serpent"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire & The Emotions",
+          "artist_names": [
+            "Earth, Wind & Fire",
+            "The Emotions"
+          ],
+          "album_artist": null
+        },
+        {
+          "artist": "Porter Robinson",
+          "album_artist": null
+        },
+        {
+          "artist": "Madeon",
+          "album_artist": null
+        },
+        {
+          "artist": "Porter Robinson & Madeon",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Earth, Wind & Fire",
+            "The Emotions"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Porter Robinson"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Madeon"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Porter Robinson",
+            "Madeon"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire",
+          "artist_names": [
+            "Earth, Wind & Fire"
+          ],
+          "album_artist": null
+        },
+        {
+          "artist": "The Emotions",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "The Emotions"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "V/A",
+          "artist_names": [
+            "V/A"
+          ],
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "V/A"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Earth, Wind & Fire"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Bensley",
+          "album": "Fade Out",
+          "album_artist": "Bensley"
+        },
+        {
+          "artist": "Protostar",
+          "album": "Galaxies",
+          "album_artist": "Protostar"
+        },
+        {
+          "artist": "P Money x Whiney x hayve",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "hayve & DRIIA",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": "Hospital & Monstercat"
+        },
+        {
+          "artist": "Waeys, Bensley & Hoax",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "Anaïs & hayve",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "Bensley, BOP & Degs",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "Protostar, Subten & PVC",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "DNMO & SOLAH",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "BOP, Subwave & imallryt",
+          "album": "Monstercat x Hospital Records",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album": "Arcane League of Legends: Season 2",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album": "Disconnect",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Bensley"
+          ],
+          "albumArtists": [
+            "Bensley"
+          ]
+        },
+        {
+          "artists": [
+            "Protostar"
+          ],
+          "albumArtists": [
+            "Protostar"
+          ]
+        },
+        {
+          "artists": [
+            "P Money",
+            "Whiney",
+            "hayve"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "hayve",
+            "DRIIA"
+          ],
+          "albumArtists": [
+            "Hospital & Monstercat"
+          ]
+        },
+        {
+          "artists": [
+            "Waeys",
+            "Bensley",
+            "Hoax"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Anaïs",
+            "hayve"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Bensley",
+            "BOP",
+            "Degs"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Protostar",
+            "Subten",
+            "PVC"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "DNMO",
+            "SOLAH"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "BOP",
+            "Subwave",
+            "imallryt"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Royal & the Serpent"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Becky Hill",
+            "Chase & Status"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "MOTTO MUSIC",
+          "album": "Angle.",
+          "album_artist": "MOTTO MUSIC"
+        },
+        {
+          "artist": "MOTTO MUSIC & 雄之助",
+          "album": "Sweets.",
+          "album_artist": "MOTTO MUSIC"
+        },
+        {
+          "artist": "WaMi & 雄之助",
+          "album": "Glass heel",
+          "album_artist": "WaMi & 雄之助"
+        },
+        {
+          "artist": "lapix",
+          "album": "Genexx Nova",
+          "album_artist": "lapix"
+        },
+        {
+          "artist": "lapix & 水槽",
+          "album": "Backstage",
+          "album_artist": "lapix & 水槽"
+        },
+        {
+          "artist": "t+pazolite & ぷにぷに電機",
+          "album": "FAKE CIRCUS",
+          "album_artist": "T+pazolite"
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album": "Arcane Season 2",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album": "Disconnect",
+          "album_artist": null
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "MOTTO MUSIC"
+          ],
+          "albumArtists": [
+            "MOTTO MUSIC"
+          ]
+        },
+        {
+          "artists": [
+            "MOTTO MUSIC",
+            "雄之助"
+          ],
+          "albumArtists": [
+            "MOTTO MUSIC"
+          ]
+        },
+        {
+          "artists": [
+            "WaMi",
+            "雄之助"
+          ],
+          "albumArtists": [
+            "WaMi",
+            "雄之助"
+          ]
+        },
+        {
+          "artists": [
+            "lapix"
+          ],
+          "albumArtists": [
+            "lapix"
+          ]
+        },
+        {
+          "artists": [
+            "lapix",
+            "水槽"
+          ],
+          "albumArtists": [
+            "lapix",
+            "水槽"
+          ]
+        },
+        {
+          "artists": [
+            "t+pazolite",
+            "ぷにぷに電機"
+          ],
+          "albumArtists": [
+            "T+pazolite"
+          ]
+        },
+        {
+          "artists": [
+            "Royal & the Serpent"
+          ],
+          "albumArtists": []
+        },
+        {
+          "artists": [
+            "Becky Hill",
+            "Chase & Status"
+          ],
+          "albumArtists": []
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "Arcane, League of Legends",
+          "album": "Arcane Soundtrack",
+          "album_artist": "Arcane, League of Legends"
+        },
+        {
+          "artist": "League of Legends",
+          "album": "Soul Fighter",
+          "album_artist": "League of Legends"
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "Arcane",
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "Arcane",
+            "League of Legends"
+          ]
+        },
+        {
+          "artists": [
+            "League of Legends"
+          ],
+          "albumArtists": [
+            "League of Legends"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Sān-Z, HOYO-MiX",
+          "album": "Release 1",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX",
+          "album": "Release 2",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX",
+          "album": "Release 3",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, Alaina Cross",
+          "album": "Guest Release 1",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, Ymir",
+          "album": "Guest Release 2",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, Gin Wigmore",
+          "album": "Guest Release 3",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, Astra Yao",
+          "album": "Guest Release 4",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, han.irl<3",
+          "album": "Guest Release 5",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, 雷雨心",
+          "album": "Guest Release 6",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        },
+        {
+          "artist": "Sān-Z, HOYO-MiX, 狐妖Mikan",
+          "album": "Guest Release 7",
+          "album_artist": "Sān-Z, HOYO-MiX"
+        }
+      ],
+      "expected": [
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "Alaina Cross"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "Ymir"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "Gin Wigmore"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "Astra Yao"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "han.irl<3"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "雷雨心"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        },
+        {
+          "artists": [
+            "Sān-Z",
+            "HOYO-MiX",
+            "狐妖Mikan"
+          ],
+          "albumArtists": [
+            "Sān-Z",
+            "HOYO-MiX"
+          ]
+        }
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "tracks": [
+        {
+          "artist": "BIZ",
+          "album_artist": "BIZ"
+        },
+        {
+          "artist": "Zera",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill",
+          "album_artist": "Becky Hill"
+        },
+        {
+          "artist": "BIZ, Zera",
+          "album_artist": "BIZ, Zera"
+        },
+        {
+          "artist": "d4vd, Arcane, League of Legends",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album_artist": null
+        }
+      ],
+      "raw": "BIZ, Zera",
+      "expected": [
+        "BIZ",
+        "Zera"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "BIZ",
+          "album_artist": "BIZ"
+        },
+        {
+          "artist": "Zera",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill",
+          "album_artist": "Becky Hill"
+        },
+        {
+          "artist": "BIZ, Zera",
+          "album_artist": "BIZ, Zera"
+        },
+        {
+          "artist": "d4vd, Arcane, League of Legends",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album_artist": null
+        }
+      ],
+      "raw": "d4vd, Arcane, League of Legends",
+      "expected": [
+        "d4vd",
+        "Arcane",
+        "League of Legends"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "BIZ",
+          "album_artist": "BIZ"
+        },
+        {
+          "artist": "Zera",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill",
+          "album_artist": "Becky Hill"
+        },
+        {
+          "artist": "BIZ, Zera",
+          "album_artist": "BIZ, Zera"
+        },
+        {
+          "artist": "d4vd, Arcane, League of Legends",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album_artist": null
+        }
+      ],
+      "raw": "Becky Hill, Chase & Status",
+      "expected": [
+        "Becky Hill",
+        "Chase & Status"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "BIZ",
+          "album_artist": "BIZ"
+        },
+        {
+          "artist": "Zera",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill",
+          "album_artist": "Becky Hill"
+        },
+        {
+          "artist": "BIZ, Zera",
+          "album_artist": "BIZ, Zera"
+        },
+        {
+          "artist": "d4vd, Arcane, League of Legends",
+          "album_artist": null
+        },
+        {
+          "artist": "Becky Hill, Chase & Status",
+          "album_artist": null
+        },
+        {
+          "artist": "Royal & the Serpent",
+          "album_artist": null
+        }
+      ],
+      "raw": "Royal & the Serpent",
+      "expected": [
+        "Royal & the Serpent"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire & The Emotions",
+          "artist_names": [
+            "Earth, Wind & Fire",
+            "The Emotions"
+          ],
+          "album_artist": null
+        },
+        {
+          "artist": "Porter Robinson",
+          "album_artist": null
+        },
+        {
+          "artist": "Madeon",
+          "album_artist": null
+        },
+        {
+          "artist": "Porter Robinson & Madeon",
+          "album_artist": null
+        }
+      ],
+      "raw": "Porter Robinson & Madeon",
+      "expected": [
+        "Porter Robinson",
+        "Madeon"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire",
+          "artist_names": [
+            "Earth, Wind & Fire"
+          ],
+          "album_artist": null
+        },
+        {
+          "artist": "The Emotions",
+          "album_artist": null
+        }
+      ],
+      "raw": "Earth, Wind & Fire & The Emotions",
+      "expected": [
+        "Earth, Wind & Fire",
+        "The Emotions"
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        },
+        {
+          "artist": "Earth, Wind & Fire",
+          "album_artist": null
+        }
+      ],
+      "raw": "Earth, Wind & Fire",
+      "expected": [
+        "Earth, Wind & Fire"
+      ]
+    }
+  ],
+  "albums": [
+    {
+      "tracks": [
+        {
+          "id": "Z",
+          "artist": "Artist",
+          "album": "Overlapping releases",
+          "year": 2002
+        },
+        {
+          "id": "a",
+          "artist": "Artist",
+          "album": "Overlapping releases",
+          "year": 2000
+        },
+        {
+          "id": "b",
+          "artist": "Artist",
+          "album": "Overlapping releases",
+          "year": 2001
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:overlapping releases::ta:artist:rp:y2000-2001:du:tu",
+          "albumKey": "overlapping releases",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "identityKey": "album:overlapping releases::ta:artist:rp:y2002:du:tu",
+          "albumKey": "overlapping releases",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "Z"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "teen week",
+          "artist": "Jane Remover",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-a",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "teen week",
+          "artist": "Jane Remover feat. Venturing",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-b",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:teen week::ta:jane remover",
+          "albumKey": "teen week",
+          "mode": "track-artist",
+          "displayArtist": "Jane Remover",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "duets",
+          "artist": "Earth, Wind & Fire & The Emotions",
+          "artist_names": [
+            "Earth, Wind & Fire",
+            "The Emotions"
+          ],
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-a",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "duets",
+          "artist": "Earth, Wind & Fire & The Emotions",
+          "artist_names": [
+            "Earth, Wind & Fire",
+            "The Emotions"
+          ],
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-b",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:duets::ta:earth, wind & fire",
+          "albumKey": "duets",
+          "mode": "track-artist",
+          "displayArtist": "Earth, Wind & Fire",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "split release",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "shared-cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "split release",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "shared-cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:split release::ah:shared-cover",
+          "albumKey": "split release",
+          "mode": "shared-artwork-compilation",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "split release",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-a",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "split release",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-b",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:split release::ta:artist a",
+          "albumKey": "split release",
+          "mode": "track-artist",
+          "displayArtist": "Artist A",
+          "ids": [
+            "1"
+          ]
+        },
+        {
+          "identityKey": "album:split release::ta:artist b",
+          "albumKey": "split release",
+          "mode": "track-artist",
+          "displayArtist": "Artist B",
+          "ids": [
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "mixtape",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": "Curator",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-a",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "mixtape",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": "Curator",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-b",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:mixtape::aa:curator",
+          "albumKey": "mixtape",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Curator",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "teen week",
+          "artist": "Jane Remover",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-a",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "teen week",
+          "artist": "Jane Remover feat. Venturing",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-b",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "3",
+          "album": "split release",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "shared-cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "4",
+          "album": "split release",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "shared-cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "5",
+          "album": "mixtape",
+          "artist": "Artist C",
+          "artist_names": null,
+          "album_artist": "Curator",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-c",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:mixtape::aa:curator",
+          "albumKey": "mixtape",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Curator",
+          "ids": [
+            "5"
+          ]
+        },
+        {
+          "identityKey": "album:split release::ah:shared-cover",
+          "albumKey": "split release",
+          "mode": "shared-artwork-compilation",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "3",
+            "4"
+          ]
+        },
+        {
+          "identityKey": "album:teen week::ta:jane remover",
+          "albumKey": "teen week",
+          "mode": "track-artist",
+          "displayArtist": "Jane Remover",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "3",
+          "album": "Compilation",
+          "artist": "Artist C",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::ah:cover",
+          "albumKey": "compilation",
+          "mode": "shared-artwork-compilation",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "1",
+            "2",
+            "3"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "Artist 1",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "Artist 2",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "3",
+          "album": "Compilation",
+          "artist": "Artist 3",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "4",
+          "album": "Compilation",
+          "artist": "Artist 4",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "5",
+          "album": "Compilation",
+          "artist": "Artist 5",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "minority",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::ah:cover",
+          "albumKey": "compilation",
+          "mode": "shared-artwork-compilation",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "Artist 1",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "Artist 2",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "3",
+          "album": "Compilation",
+          "artist": "Artist 3",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "4",
+          "album": "Compilation",
+          "artist": "Artist 4",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "5",
+          "album": "Compilation",
+          "artist": "Artist 5",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "minority",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::ta:artist 1",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 1",
+          "ids": [
+            "1"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 2",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 2",
+          "ids": [
+            "2"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 3",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 3",
+          "ids": [
+            "3"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 4",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 4",
+          "ids": [
+            "4"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 5",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 5",
+          "ids": [
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "Artist 1",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-1",
+          "year": 2025,
+          "track_number": 1,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "Artist 2",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-2",
+          "year": 2025,
+          "track_number": 2,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "3",
+          "album": "Compilation",
+          "artist": "Artist 3",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-3",
+          "year": 2025,
+          "track_number": 3,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "4",
+          "album": "Compilation",
+          "artist": "Artist 4",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-4",
+          "year": 2025,
+          "track_number": 4,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::ci:rp:y2025:d1:t4",
+          "albumKey": "compilation",
+          "mode": "metadata-compilation",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "old",
+          "album": "Greatest Hits",
+          "artist": "Artist",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": 2004,
+          "track_number": null,
+          "track_total": 18,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "new",
+          "album": "Greatest Hits",
+          "artist": "Artist",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": 2017,
+          "track_number": null,
+          "track_total": 12,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:greatest hits::ta:artist:rp:y2004:du:t18",
+          "albumKey": "greatest hits",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "old"
+          ]
+        },
+        {
+          "identityKey": "album:greatest hits::ta:artist:rp:y2017:du:t12",
+          "albumKey": "greatest hits",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "new"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "short",
+          "album": "Deluxe",
+          "artist": "Artist",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": 1,
+          "track_total": 10,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "long",
+          "album": "Deluxe",
+          "artist": "Artist",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": 1,
+          "track_total": 14,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:deluxe::ta:artist:rp:yu:du:t10",
+          "albumKey": "deluxe",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "short"
+          ]
+        },
+        {
+          "identityKey": "album:deluxe::ta:artist:rp:yu:du:t14",
+          "albumKey": "deluxe",
+          "mode": "track-artist",
+          "displayArtist": "Artist",
+          "ids": [
+            "long"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "Artist 1",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-1",
+          "year": 2025,
+          "track_number": 1,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "Artist 2",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-2",
+          "year": 2025,
+          "track_number": 2,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "3",
+          "album": "Compilation",
+          "artist": "Artist 3",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-3",
+          "year": 2025,
+          "track_number": 3,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        },
+        {
+          "id": "4",
+          "album": "Compilation",
+          "artist": "Artist 4",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover-4",
+          "year": 2025,
+          "track_number": 3,
+          "track_total": 4,
+          "disc_number": 1,
+          "disc_total": 1
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::ta:artist 1",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 1",
+          "ids": [
+            "1"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 2",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 2",
+          "ids": [
+            "2"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 3",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 3",
+          "ids": [
+            "3"
+          ]
+        },
+        {
+          "identityKey": "album:compilation::ta:artist 4",
+          "albumKey": "compilation",
+          "mode": "track-artist",
+          "displayArtist": "Artist 4",
+          "ids": [
+            "4"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Album",
+          "artist": "Owner",
+          "artist_names": null,
+          "album_artist": "Owner",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Album",
+          "artist": "Owner feat. Guest",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": 2025,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:album::aa:owner",
+          "albumKey": "album",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Owner",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Album",
+          "artist": "Owner",
+          "artist_names": null,
+          "album_artist": "Owner",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Album",
+          "artist": "Guest feat. Owner",
+          "artist_names": [
+            "Guest",
+            "Owner"
+          ],
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:album::aa:owner",
+          "albumKey": "album",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Owner",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Album",
+          "artist": "Owner A",
+          "artist_names": null,
+          "album_artist": "Owner A",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Album",
+          "artist": "Owner B",
+          "artist_names": null,
+          "album_artist": "Owner B",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "3",
+          "album": "Album",
+          "artist": "Guest",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:album::aa:owner a",
+          "albumKey": "album",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Owner A",
+          "ids": [
+            "1"
+          ]
+        },
+        {
+          "identityKey": "album:album::aa:owner b",
+          "albumKey": "album",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Owner B",
+          "ids": [
+            "2"
+          ]
+        },
+        {
+          "identityKey": "album:album::ta:guest",
+          "albumKey": "album",
+          "mode": "track-artist",
+          "displayArtist": "Guest",
+          "ids": [
+            "3"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "",
+          "artist": "Artist A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Unknown Album",
+          "artist": "Artist B",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": "cover",
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:unknown album::ta:artist a",
+          "albumKey": "unknown album",
+          "mode": "track-artist",
+          "displayArtist": "Artist A",
+          "ids": [
+            "1"
+          ]
+        },
+        {
+          "identityKey": "album:unknown album::ta:artist b",
+          "albumKey": "unknown album",
+          "mode": "track-artist",
+          "displayArtist": "Artist B",
+          "ids": [
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Compilation",
+          "artist": "A",
+          "artist_names": null,
+          "album_artist": "V/A",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Compilation",
+          "artist": "B",
+          "artist_names": null,
+          "album_artist": "Various Artists",
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:compilation::aa:various artists",
+          "albumKey": "compilation",
+          "mode": "explicit-album-artist",
+          "displayArtist": "Various Artists",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "tracks": [
+        {
+          "id": "1",
+          "album": "Loose Compilation",
+          "artist": "V/A",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        },
+        {
+          "id": "2",
+          "album": "Loose Compilation",
+          "artist": "Various Artists",
+          "artist_names": null,
+          "album_artist": null,
+          "album_artist_names": null,
+          "artwork_hash": null,
+          "base_artwork_hash": null,
+          "year": null,
+          "track_number": null,
+          "track_total": null,
+          "disc_number": null,
+          "disc_total": null
+        }
+      ],
+      "expected": [
+        {
+          "identityKey": "album:loose compilation::ta:various artists",
+          "albumKey": "loose compilation",
+          "mode": "track-artist",
+          "displayArtist": "V/A",
+          "ids": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    }
+  ]
+}

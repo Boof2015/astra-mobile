@@ -27,10 +27,14 @@ export interface RemoteCatalogTrack {
   artwork_source_id: string | null;
   title: string;
   artist: string;
+  artist_names?: string[];
+  album_artist_names?: string[];
   album: string;
   album_artist: string | null;
   duration: number;
   track_number: number | null;
+  track_total?: number | null;
+  disc_total?: number | null;
   disc_number: number | null;
   year: number | null;
   genre: string | null;

@@ -498,6 +498,7 @@ class RoomLibraryRepositoryTest {
   fun albumAndCollaborativeArtistReadModelsMatchEstablishedRules() = runBlocking {
     val first = track("groups", 1, "One").copy(
       artist = "Alpha & Guest",
+      artistNamesJson = serializeArtistNames(listOf("Alpha", "Guest")),
       album = "Shared Album",
       artworkHash = "same-cover",
       artistSortKey = SortKeys.forText("Alpha & Guest"),
@@ -872,11 +873,11 @@ class RoomLibraryRepositoryTest {
     assertEquals(setOf("Earth, Wind & Fire", "The Emotions"), astraArtists.map { it.artist }.toSet())
     assertEquals(
       1,
-      dao.countArtistTracks(revision, "astra", "earth, wind & fire", "songs"),
+      dao.countArtistTracks(revision, "astra", "earth, wind & fire", "song"),
     )
     assertEquals(
       1,
-      dao.countArtistTracks(revision, "astra", "the emotions", "appearances"),
+      dao.countArtistTracks(revision, "astra", "the emotions", "appearance"),
     )
     assertEquals(
       listOf(display),
@@ -1095,6 +1096,22 @@ class RoomLibraryRepositoryTest {
     assertNull(user.userDao().getPlaybackHistory(path))
     assertEquals(true, checkpoint("natural", true)["qualifiedNow"])
     assertEquals(1L, user.userDao().getPlaybackHistory(path)?.playCount)
+  }
+
+  @Test
+  fun resolveRebuildUsesSourceEvidenceAndReversesWhenAnAnchorIsRemoved() = runBlocking {
+    val collaboration = track("g1", 0, "Collaboration").copy(artist = "Alpha & Beta", albumArtist = null)
+    publish("g1", listOf(collaboration))
+    val dao = catalog.catalogDao()
+    assertEquals(listOf("Alpha & Beta"), deserializeArtistNames(dao.getActiveTrack(collaboration.path)!!.resolvedArtistNamesJson))
+    val anchor = track("g2", 1, "Anchor").copy(artist = "Alpha", albumArtist = null)
+    publish("g2", listOf(collaboration.copy(id = 0, generationId = "g2"), anchor), "g1")
+    val resolved = dao.getActiveTrack(collaboration.path)!!
+    assertEquals(listOf("Alpha", "Beta"), deserializeArtistNames(resolved.resolvedArtistNamesJson))
+    assertNull(resolved.artistNamesJson)
+    assertEquals("Alpha & Beta", resolved.artist)
+    publish("g3", listOf(collaboration.copy(id = 0, generationId = "g3")), "g2")
+    assertEquals(listOf("Alpha & Beta"), deserializeArtistNames(dao.getActiveTrack(collaboration.path)!!.resolvedArtistNamesJson))
   }
 
   /** 10 tracks under each of A-Z, so every section has rows above and below it. */

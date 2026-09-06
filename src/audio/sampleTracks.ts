@@ -69,6 +69,8 @@ export function toRntpTrack(track: Track): RntpTrack {
     bitDepth: track.bitDepth,
     bitrate: track.bitrate,
     astraArtistNamesJson: serializeArtistCreditTransport(track.artistNames),
+    astraResolvedArtistNamesJson: serializeArtistCreditTransport(track.resolvedArtistNames),
+    astraResolvedAlbumArtistNamesJson: serializeArtistCreditTransport(track.resolvedAlbumArtistNames),
     astraAlbumArtist: track.albumArtist,
     astraAlbumArtistNamesJson: serializeArtistCreditTransport(track.albumArtistNames),
     astraAlbumIdentityKey: track.albumIdentityKey,
@@ -90,6 +92,8 @@ export function rntpToTrack(rt: RntpTrack): Track {
     title: rt.title ?? 'Unknown title',
     artist: rt.artist ?? 'Unknown artist',
     artistNames: parseArtistCreditTransport(rt.astraArtistNamesJson),
+    resolvedArtistNames: parseArtistCreditTransport(rt.astraResolvedArtistNamesJson),
+    resolvedAlbumArtistNames: parseArtistCreditTransport(rt.astraResolvedAlbumArtistNamesJson),
     album: rt.album ?? '',
     albumArtist:
       typeof rt.astraAlbumArtist === 'string' ? rt.astraAlbumArtist : undefined,

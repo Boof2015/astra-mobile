@@ -117,7 +117,7 @@ test('remote rows use the album-scoped cover-art id as the shared-artwork signal
 
   assert.equal(updates.length, 1);
   assert.equal(updates[0].displayArtist, 'Various Artists');
-  assert.equal(updates[0].identityKey, 'album:server comp::ah:al-77');
+  assert.equal(updates[0].identityKey, 'album:server comp::ah:remote:subsonic:unknown:al-77');
 });
 
 test('local rows without artwork stay split per artist (desktop parity)', () => {

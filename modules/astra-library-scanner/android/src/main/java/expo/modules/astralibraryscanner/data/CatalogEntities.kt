@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "catalog_meta")
 data class CatalogMetaEntity(
+  @ColumnInfo(name = "resolve_version", defaultValue = "0") val resolveVersion: Int = CURRENT_RESOLVE_VERSION,
   @PrimaryKey val id: Int = 1,
   val revision: Long = 0,
   @ColumnInfo(name = "collation_version") val collationVersion: Int,
@@ -107,6 +108,12 @@ data class TrackEntity(
   @ColumnInfo(name = "disc_sort") val discSort: Int,
   @ColumnInfo(name = "track_sort") val trackSort: Int,
   @ColumnInfo(name = "section_label") val sectionLabel: String,
+  @ColumnInfo(name = "track_total") val trackTotal: Int? = null,
+  @ColumnInfo(name = "disc_total") val discTotal: Int? = null,
+  @ColumnInfo(name = "metadata_reader_version", defaultValue = "0")
+  val metadataReaderVersion: Int = CURRENT_METADATA_READER_VERSION,
+  @ColumnInfo(name = "resolved_artist_names_json") val resolvedArtistNamesJson: String? = null,
+  @ColumnInfo(name = "resolved_album_artist_names_json") val resolvedAlbumArtistNamesJson: String? = null,
 )
 
 @DatabaseView(
@@ -172,6 +179,12 @@ data class ActiveTrackView(
   @ColumnInfo(name = "disc_sort") val discSort: Int,
   @ColumnInfo(name = "track_sort") val trackSort: Int,
   @ColumnInfo(name = "section_label") val sectionLabel: String,
+  @ColumnInfo(name = "track_total") val trackTotal: Int? = null,
+  @ColumnInfo(name = "disc_total") val discTotal: Int? = null,
+  @ColumnInfo(name = "metadata_reader_version", defaultValue = "0")
+  val metadataReaderVersion: Int = CURRENT_METADATA_READER_VERSION,
+  @ColumnInfo(name = "resolved_artist_names_json") val resolvedArtistNamesJson: String? = null,
+  @ColumnInfo(name = "resolved_album_artist_names_json") val resolvedAlbumArtistNamesJson: String? = null,
 )
 
 @Entity(

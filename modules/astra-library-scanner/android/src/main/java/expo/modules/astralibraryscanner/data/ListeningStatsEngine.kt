@@ -617,10 +617,10 @@ private fun identity(
     trackPath = current?.path,
     title = current?.title?.trim()?.takeIf { it.isNotEmpty() } ?: session.title,
     artist = current?.artist?.trim()?.takeIf { it.isNotEmpty() } ?: session.artist,
-    artistNamesJson = current?.artistNamesJson ?: session.artistNamesJson,
+    artistNamesJson = current?.resolvedArtistNamesJson ?: current?.artistNamesJson ?: session.artistNamesJson,
     album = current?.album?.trim()?.takeIf { it.isNotEmpty() } ?: session.album,
     albumArtist = current?.albumArtist?.trim()?.takeIf { it.isNotEmpty() } ?: session.albumArtist,
-    albumArtistNamesJson = current?.albumArtistNamesJson ?: session.albumArtistNamesJson,
+    albumArtistNamesJson = current?.resolvedAlbumArtistNamesJson ?: current?.albumArtistNamesJson ?: session.albumArtistNamesJson,
     albumKey = current?.albumIdentityKey ?: session.albumIdentityKey,
     artworkHash = current?.artworkHash ?: session.artworkHash,
     sourceType = current?.sourceType ?: session.sourceType,
@@ -635,44 +635,23 @@ private fun browseArtists(identity: ListeningIdentity, groupingMode: String): Li
   if (groupingMode == "fileTags") return listOf(strict.ifBlank { "Unknown Artist" })
   val result = LinkedHashMap<String, String>()
   fun add(value: String) {
-    val display = normalizeDisplay(value)
-    val key = normalizeKey(display)
+    val display = ArtistResolve.canonicalDisplay(value)
+    val key = ArtistResolve.artistKey(display)
     if (key.isNotEmpty()) result.putIfAbsent(key, display)
   }
   val albumNames = deserializeArtistNames(identity.albumArtistNamesJson)
   val trackNames = deserializeArtistNames(identity.artistNamesJson)
-  val primary = albumNames.firstOrNull()
-    ?: splitArtists(identity.albumArtist.orEmpty(), splitAmpersand = false).firstOrNull()
-    ?: trackNames.firstOrNull()
-    ?: splitArtists(identity.artist, splitAmpersand = true).firstOrNull()
-    ?: "Unknown Artist"
-  add(primary)
-  val artists = trackNames.ifEmpty { splitArtists(identity.artist, splitAmpersand = true) }
-  artists.forEach(::add)
-  if (artists.isEmpty()) {
-    albumNames.ifEmpty { splitArtists(identity.albumArtist.orEmpty(), splitAmpersand = false) }
-      .forEach(::add)
-  }
+  val credit = ResolveCredit(identity.artist, identity.album, trackNames, identity.albumArtist, albumNames)
+  val index = ArtistResolve.build(listOf(credit))
+  val resolvedArtists = ArtistResolve.trackNames(credit, index)
+  val resolvedOwners = ArtistResolve.trackNames(credit, index, true)
+  add(resolvedOwners.firstOrNull() ?: resolvedArtists.firstOrNull() ?: "Unknown Artist")
+  (resolvedArtists + resolvedOwners).forEach(::add)
   return result.values.toList().ifEmpty { listOf("Unknown Artist") }
 }
 
-private fun splitArtists(raw: String, splitAmpersand: Boolean): List<String> {
-  var unified = normalizeDisplay(raw)
-    .replace(Regex("\\s*;\\s*"), ",")
-    .replace(Regex("\\s+[x×]\\s+", RegexOption.IGNORE_CASE), ",")
-    .replace(Regex("\\s+(?:feat\\.?|ft\\.?|featuring|with)\\s+", RegexOption.IGNORE_CASE), ",")
-  if (splitAmpersand) unified = unified.replace(Regex("\\s+&\\s+"), ",")
-  val result = LinkedHashMap<String, String>()
-  unified.split(',').forEach { part ->
-    val display = normalizeDisplay(part)
-    val key = normalizeKey(display)
-    if (key.isNotEmpty()) result.putIfAbsent(key, display)
-  }
-  return result.values.toList()
-}
-
-private fun normalizeDisplay(value: String): String = value.replace(Regex("\\s+"), " ").trim()
-private fun normalizeKey(value: String): String = normalizeDisplay(value).lowercase(Locale.ROOT)
+private fun normalizeDisplay(value: String): String = ArtistResolve.display(value)
+private fun normalizeKey(value: String): String = ArtistResolve.identityKey(value)
 
 private fun overlapSeconds(segment: ListeningSegmentEntity, startAt: Long, endAt: Long): Double {
   val segmentStart = segment.startedAt

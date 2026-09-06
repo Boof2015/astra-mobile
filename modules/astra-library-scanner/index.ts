@@ -38,6 +38,8 @@ export interface ExtractedMetadata {
   durationMs?: number | null;
   bitrate?: number | null;
   trackNumber?: number | null;
+  trackTotal?: number | null;
+  discTotal?: number | null;
   discNumber?: number | null;
   year?: number | null;
   sampleRate?: number | null;

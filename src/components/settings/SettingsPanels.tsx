@@ -86,8 +86,8 @@ const COVER_ART_METHOD_SEGMENTS = [
 const ARTIST_GROUPING_OPTIONS: { mode: ArtistGroupingMode; title: string; description: string }[] = [
   {
     mode: 'astra',
-    title: 'Astra grouping',
-    description: 'Parse collaborators ("feat.", "&", "x"). Featured artists get their own entry.',
+    title: 'Astra Resolve',
+    description: 'Use library evidence to identify artists and collaborations, and keep incomplete album tags together.',
   },
   {
     mode: 'fileTags',

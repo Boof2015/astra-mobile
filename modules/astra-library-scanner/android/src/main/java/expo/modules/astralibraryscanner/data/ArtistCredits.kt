@@ -25,7 +25,7 @@ internal data class ArtistCreditNames(
 internal fun normalizeArtistNames(values: Iterable<String?>): List<String> {
   val result = LinkedHashMap<String, String>()
   for (value in values) {
-    val display = MediaTagCleanup.clean(value)
+    val display = value?.trim()?.takeIf(String::isNotEmpty)
       ?.replace(Regex("\\s+"), " ")
       ?.trim()
       ?.takeIf(String::isNotEmpty)
@@ -42,7 +42,7 @@ internal fun formatArtistNames(values: Iterable<String?>): String {
 
 internal fun serializeArtistNames(values: Iterable<String?>): String? {
   val names = normalizeArtistNames(values)
-  return if (names.size > 1) JSONArray(names).toString() else null
+  return if (names.isNotEmpty()) JSONArray(names).toString() else null
 }
 
 internal fun deserializeArtistNames(value: String?): List<String> {
@@ -61,13 +61,17 @@ internal fun deserializeArtistNames(value: String?): List<String> {
 internal class ArtistCreditCollector {
   private val artists = mutableListOf<String?>()
   private val albumArtists = mutableListOf<String?>()
+  private val explicitArtists = mutableListOf<String?>()
+  private val explicitAlbumArtists = mutableListOf<String?>()
 
   fun consider(rawKey: String?, rawValue: String?) {
     if (rawKey == null || rawValue == null) return
     val key = rawKey.trim().uppercase().replace(Regex("[\\s_-]+"), "")
     val target = when (key) {
-      "ARTIST", "ARTISTS", "TPE1" -> artists
-      "ALBUMARTIST", "ALBUMARTISTS", "TPE2" -> albumArtists
+      "ARTISTS" -> explicitArtists
+      "ALBUMARTISTS" -> explicitAlbumArtists
+      "ARTIST", "TPE1" -> artists
+      "ALBUMARTIST", "TPE2" -> albumArtists
       else -> null
     } ?: return
 
@@ -78,8 +82,8 @@ internal class ArtistCreditCollector {
   }
 
   fun build(): ArtistCreditNames = ArtistCreditNames(
-    artists = normalizeArtistNames(artists),
-    albumArtists = normalizeArtistNames(albumArtists),
+    artists = normalizeArtistNames(explicitArtists).ifEmpty { normalizeArtistNames(artists) },
+    albumArtists = normalizeArtistNames(explicitAlbumArtists).ifEmpty { normalizeArtistNames(albumArtists) },
   )
 }
 
@@ -98,7 +102,7 @@ internal object ArtistCreditMetadataReader {
             when (val entry = metadata.get(entryIndex)) {
               is VorbisComment -> collector.consider(entry.key, entry.value)
               is TextInformationFrame ->
-                entry.values.forEach { value -> collector.consider(entry.id, value) }
+                entry.values.forEach { value -> collector.consider(if (entry.id == "TXXX") entry.description else entry.id, value) }
               is InternalFrame -> collector.consider(entry.description, entry.text)
             }
           }

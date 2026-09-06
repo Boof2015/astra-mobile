@@ -137,7 +137,8 @@ internal fun canReuseActiveLocalGeneration(
   return files.all { file ->
     if (!seen.add(file.uri)) return@all false
     val existing = existingByPath[file.uri] ?: return@all false
-    existing.mtime == file.lastModified && existing.size == file.size
+    existing.metadataReaderVersion >= CURRENT_METADATA_READER_VERSION &&
+      existing.mtime == file.lastModified && existing.size == file.size
   }
 }
 
@@ -239,6 +240,15 @@ class AstraLibraryRepository private constructor(
         dao.migrateSectionLabels(COLLATION_VERSION, System.currentTimeMillis())
       }
       dao.discardAbandonedGenerations()
+      if (existingMeta != null && existingMeta.resolveVersion < CURRENT_RESOLVE_VERSION) {
+        val models = withContext(Dispatchers.Default) {
+          CatalogReadModelBuilder.build(
+            dao.getActiveTrackEntitiesExcludingSource(""), dao.getRevision() + 1,
+            userOpen.userDao().getFolders().associateBy(FolderEntity::id),
+          )
+        }
+        dao.publishResolve(models, System.currentTimeMillis())
+      }
       reconcileUserFacts()
 
       val revision = dao.getRevision()
@@ -375,7 +385,8 @@ class AstraLibraryRepository private constructor(
         "track_count" to catalogDao.countActiveTracksForFolder(folder.id).toDouble(),
         "needs_metadata_reindex" to (
           source != null &&
-            source.artistCreditVersion < CURRENT_ARTIST_CREDIT_VERSION
+            (source.artistCreditVersion < CURRENT_ARTIST_CREDIT_VERSION ||
+              catalogDao.countStaleMetadata(folder.id, CURRENT_METADATA_READER_VERSION) > 0)
           ),
       )
     }
@@ -567,6 +578,7 @@ class AstraLibraryRepository private constructor(
             val old = existingByPath[file.uri]
             val unchanged = !effectiveFull &&
               old != null &&
+              old.metadataReaderVersion >= CURRENT_METADATA_READER_VERSION &&
               old.mtime == file.lastModified &&
               old.size == file.size
             if (unchanged) {
@@ -587,7 +599,7 @@ class AstraLibraryRepository private constructor(
             } else {
               val metadata = extract(file)
               throwIfScanCancelled(isCancelled)
-              if (!metadata.ok) {
+              if (!metadata.ok || (old != null && metadata.metadataReaderVersion < CURRENT_METADATA_READER_VERSION)) {
                 StagedLocalTrack(
                   row = old?.copy(id = 0, generationId = generationId, sourceKey = sourceKey),
                   failed = true,
@@ -602,7 +614,16 @@ class AstraLibraryRepository private constructor(
                     file = file,
                     metadata = metadata,
                     addedAt = old?.addedAt ?: startedAt,
-                  ),
+                  ).let { next ->
+                    if (old != null && old.mtime == file.lastModified && old.size == file.size) {
+                      next.copy(
+                        loudnessLufs = old.loudnessLufs, samplePeak = old.samplePeak,
+                        replayGainTrackDb = old.replayGainTrackDb, replayGainAlbumDb = old.replayGainAlbumDb,
+                        replayGainTrackPeak = old.replayGainTrackPeak, replayGainAlbumPeak = old.replayGainAlbumPeak,
+                        replayGainScanned = old.replayGainScanned, bpm = old.bpm, musicalKey = old.musicalKey,
+                      )
+                    } else next
+                  },
                   failed = false,
                   metadataChanged = true,
                 )
@@ -2859,7 +2880,7 @@ class AstraLibraryRepository private constructor(
   }
 
   private fun normalizeArtistKey(value: String): String =
-    value.replace(Regex("\\s+"), " ").trim().lowercase(java.util.Locale.ROOT)
+    ArtistResolve.identityKey(value)
 
   suspend fun getSectionAnchors(
     kind: String,
@@ -3211,23 +3232,15 @@ class AstraLibraryRepository private constructor(
     metadata: LocalAudioMetadata,
     addedAt: Long,
   ): TrackEntity {
-    fun clean(value: String?): String? = MediaTagCleanup.clean(value)
+    fun clean(value: String?): String? = value?.trim()?.takeIf(String::isNotEmpty)
     val extension = file.name.substringAfterLast('.', "")
     val title = clean(metadata.title)
       ?: file.name.removeSuffix(if (extension.isEmpty()) "" else ".$extension")
     val artistNames = normalizeArtistNames(metadata.artistNames)
     val albumArtistNames = normalizeArtistNames(metadata.albumArtistNames)
-    val artist = if (artistNames.size > 1) {
-      formatArtistNames(artistNames)
-    } else {
-      clean(metadata.artist) ?: artistNames.firstOrNull() ?: "Unknown Artist"
-    }
+    val artist = clean(metadata.artist) ?: artistNames.takeIf { it.isNotEmpty() }?.let(::formatArtistNames) ?: "Unknown Artist"
     val album = clean(metadata.album) ?: "Unknown Album"
-    val albumArtist = if (albumArtistNames.size > 1) {
-      formatArtistNames(albumArtistNames)
-    } else {
-      clean(metadata.albumArtist) ?: albumArtistNames.firstOrNull()
-    }
+    val albumArtist = clean(metadata.albumArtist) ?: albumArtistNames.takeIf { it.isNotEmpty() }?.let(::formatArtistNames)
     val artistNamesJson = serializeArtistNames(artistNames)
     val albumArtistNamesJson = serializeArtistNames(albumArtistNames)
     val provisional = CatalogReadModelBuilder.provisionalIdentity(
@@ -3252,6 +3265,9 @@ class AstraLibraryRepository private constructor(
       albumDisplayArtist = provisional.second,
       duration = (metadata.durationMs ?: 0L) / 1_000.0,
       trackNumber = metadata.trackNumber,
+      trackTotal = metadata.trackTotal,
+      discTotal = metadata.discTotal,
+      metadataReaderVersion = metadata.metadataReaderVersion,
       discNumber = metadata.discNumber,
       year = metadata.year,
       genre = clean(metadata.genre),
@@ -3338,12 +3354,16 @@ class AstraLibraryRepository private constructor(
       path = path,
       title = title,
       artist = artist,
+      artistNamesJson = serializeArtistNames((row["artist_names"] as? List<*>)?.filterIsInstance<String>().orEmpty()),
+      albumArtistNamesJson = serializeArtistNames((row["album_artist_names"] as? List<*>)?.filterIsInstance<String>().orEmpty()),
       album = album,
       albumArtist = albumArtist,
       albumIdentityKey = provisional.first,
       albumDisplayArtist = provisional.second,
       duration = double("duration") ?: 0.0,
       trackNumber = int("track_number"),
+      trackTotal = int("track_total"),
+      discTotal = int("disc_total"),
       discNumber = int("disc_number"),
       year = int("year"),
       genre = string("genre"),
@@ -3472,7 +3492,7 @@ class AstraLibraryRepository private constructor(
   private fun buildCatalogDatabase(): AstraCatalogDatabase =
     Room.databaseBuilder(applicationContext, AstraCatalogDatabase::class.java, CATALOG_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-      .addMigrations(CATALOG_MIGRATION_1_2)
+      .addMigrations(CATALOG_MIGRATION_1_2, CATALOG_MIGRATION_2_3, CATALOG_MIGRATION_3_4)
       .fallbackToDestructiveMigration(true)
       .build()
 

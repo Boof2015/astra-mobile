@@ -60,6 +60,39 @@ class CatalogMigrationTest {
     }
   }
 
+  @Test
+  fun metadataAndResolveMigrationsPreserveSourceRowsAndMarkDerivedStateStale() {
+    helper.createDatabase(TEST_DATABASE, 2).apply {
+      insertSource("local:1", "local", 1)
+      execSQL("INSERT INTO catalog_meta (id, revision, collation_version, updated_at) VALUES (1, 7, 1, 42)")
+      execSQL("""
+        INSERT INTO tracks (generation_id, source_key, path, title, artist, artist_names_json,
+          album, album_identity_key, format, file_name, added_at, modified_at,
+          title_sort_key, artist_sort_key, album_sort_key, file_name_sort_key,
+          disc_sort, track_sort, section_label, duration, mtime, source_type, rg_scanned)
+        VALUES ('legacy', 'local:1', 'content://legacy/track.opus', '日本語', 'Earth, Wind & Fire',
+          '["Earth, Wind & Fire","The Emotions"]', 'Album', 'legacy-key', 'OPUS', 'track.opus',
+          100, 200, 'title', 'artist', 'album', 'file', 0, 0, 'T', 12, 300, 'local', 0)
+      """.trimIndent())
+      close()
+    }
+    val database = helper.runMigrationsAndValidate(TEST_DATABASE, 4, true, CATALOG_MIGRATION_2_3, CATALOG_MIGRATION_3_4)
+    database.query("SELECT title, artist_names_json, added_at, metadata_reader_version, track_total, resolved_artist_names_json FROM tracks").use {
+      assertTrue(it.moveToFirst())
+      assertEquals("日本語", it.getString(0))
+      assertEquals("[\"Earth, Wind & Fire\",\"The Emotions\"]", it.getString(1))
+      assertEquals(100L, it.getLong(2))
+      assertEquals(0, it.getInt(3))
+      assertTrue(it.isNull(4))
+      assertTrue(it.isNull(5))
+    }
+    database.query("SELECT revision, resolve_version FROM catalog_meta").use {
+      assertTrue(it.moveToFirst())
+      assertEquals(7L, it.getLong(0))
+      assertEquals(0, it.getInt(1))
+    }
+  }
+
   private fun SupportSQLiteDatabase.insertSource(key: String, type: String, id: Long) {
     execSQL(
       """

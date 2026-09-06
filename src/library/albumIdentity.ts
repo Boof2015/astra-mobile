@@ -63,6 +63,12 @@ export interface AlbumIdentityRow {
   album_artist_names: string[];
   artwork_hash: string | null;
   source_type: string;
+  source_id?: number | null;
+  year?: number | null;
+  track_number?: number | null;
+  track_total?: number | null;
+  disc_number?: number | null;
+  disc_total?: number | null;
   artwork_source_id: string | null;
   album_identity_key: string;
   album_display_artist: string | null;
@@ -90,8 +96,13 @@ export function computeAlbumIdentityUpdates(
     artist_names: row.artist_names,
     album_artist: row.album_artist,
     album_artist_names: row.album_artist_names,
-    base_artwork_hash:
-      row.artwork_hash ?? (row.source_type !== 'local' ? row.artwork_source_id : null),
+    year: row.year,
+    track_number: row.track_number,
+    track_total: row.track_total,
+    disc_number: row.disc_number,
+    disc_total: row.disc_total,
+    base_artwork_hash: row.artwork_hash ?? (row.source_type !== 'local' && row.artwork_source_id
+      ? `remote:${row.source_type}:${row.source_id ?? 'unknown'}:${row.artwork_source_id}` : null),
   }));
 
   const groups = groupTracksByAlbumIdentity(adapted, (track) => String(track.row.id));

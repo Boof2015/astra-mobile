@@ -11,6 +11,9 @@ export interface DbTrack {
   artist: string;
   /** Ordered repeated ARTIST tag values; empty for legacy/single-value rows. */
   artist_names: string[];
+  /** Derived using the complete catalog; null before Resolve materialization. */
+  resolved_artist_names?: string[] | null;
+  resolved_album_artist_names?: string[] | null;
   album: string;
   album_artist: string | null;
   /** Ordered repeated ALBUMARTIST values; empty for legacy/single-value rows. */
@@ -21,6 +24,8 @@ export interface DbTrack {
   album_display_artist: string | null;
   duration: number;
   track_number: number | null;
+  track_total?: number | null;
+  disc_total?: number | null;
   disc_number: number | null;
   year: number | null;
   genre: string | null;

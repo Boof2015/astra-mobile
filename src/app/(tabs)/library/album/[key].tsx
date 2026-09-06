@@ -39,8 +39,8 @@ function DiscHeader({ disc }: { disc: number }) {
 export default function AlbumScreen() {
   const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
-  const { key } = useLocalSearchParams<{ key: string }>();
-  const { items: tracks, summary: album, totalCount, loadMore } = useNativeAlbumDetail(key);
+  const { key, trackPath } = useLocalSearchParams<{ key: string; trackPath?: string }>();
+  const { items: tracks, summary: album, totalCount, loadMore, resolvedAlbumKey } = useNativeAlbumDetail(key, trackPath);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
@@ -73,7 +73,7 @@ export default function AlbumScreen() {
   }, [tracks]);
 
   const playFrom = (index: number) => {
-    void playLibraryQuery({ kind: 'album', albumKey: key }, {
+    void playLibraryQuery({ kind: 'album', albumKey: resolvedAlbumKey }, {
       anchorPath: tracks[index]?.path,
       source: { kind: 'album', label: album?.album ?? tracks[0]?.album ?? 'Album' },
     });
@@ -160,7 +160,7 @@ export default function AlbumScreen() {
         onBack={goBack}
         backLabel={backLabel}
         onPlay={() => playFrom(0)}
-        onShuffle={() => void playLibraryQuery({ kind: 'album', albumKey: key }, {
+        onShuffle={() => void playLibraryQuery({ kind: 'album', albumKey: resolvedAlbumKey }, {
           shuffle: true,
           source: {
             kind: 'album',

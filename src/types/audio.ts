@@ -9,12 +9,16 @@ export interface Track {
   title: string;
   artist: string;
   artistNames?: string[];
+  resolvedArtistNames?: string[];
+  resolvedAlbumArtistNames?: string[];
   album: string;
   albumArtist?: string;
   albumArtistNames?: string[];
   albumIdentityKey?: string;
   duration: number;
   trackNumber?: number;
+  trackTotal?: number;
+  discTotal?: number;
   discNumber?: number;
   year?: number;
   genre?: string;
