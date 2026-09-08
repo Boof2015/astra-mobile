@@ -38,9 +38,9 @@ const ART_ID_PLACEHOLDER = '__ASTRA_ART_ID__';
 
 /**
  * Build a self-contained cover-art URL with an `__ASTRA_ART_ID__` placeholder in place of
- * the cover id, for the given remote source. Persisted to `remote_sources.art_auth` so the
- * native Android Auto artwork provider (no JS/secret access) can url-encode a real id into
- * it and download. Returns null when the source isn't loaded/authenticated yet.
+ * the cover id, for the given remote source. SecureStore retains the template; source
+ * initialization registers it in native process memory for Android Auto artwork.
+ * Returns null when the source is not loaded/authenticated yet.
  */
 export function buildCoverArtUrlTemplate(sourceId: number): string | null {
   const cfg = getResolvedRemoteConfig(sourceId);

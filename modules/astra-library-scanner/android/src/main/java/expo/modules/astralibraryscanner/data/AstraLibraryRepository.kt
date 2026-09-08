@@ -1143,7 +1143,8 @@ class AstraLibraryRepository private constructor(
       if (anchor != null) ordered.add(0, anchor)
       activePosition = 0
     }
-    val now = System.currentTimeMillis()
+    val existingContext = userDao.getPlaybackSession(ACTIVE_PLAYBACK_CONTEXT_ID)
+    val now = maxOf(System.currentTimeMillis(), (existingContext?.createdAt ?: 0L) + 1)
     val reusableCatalogContext = contextKind in setOf(
       "library",
       "album",
@@ -1211,6 +1212,7 @@ class AstraLibraryRepository private constructor(
       } else {
         emptyList()
       },
+      replaceIdentity = true,
       )
     }
     scheduleSnapshot()
@@ -3064,7 +3066,8 @@ class AstraLibraryRepository private constructor(
         else -> userDao.getPlaylistTracks(playlist.id).map(PlaylistTrackEntity::trackPath)
       }
     }
-    "favorites" -> userDao.getFavorites().map(FavoriteEntity::trackPath)
+    "favorites" -> if (context["sort"] == "title") catalogDao.getFavoritePathsByTitle()
+      else userDao.getFavorites().map(FavoriteEntity::trackPath)
     "recent" -> userDao.getPlaybackHistory().map(PlaybackHistoryEntity::trackPath)
     "search" -> {
       val search = context["query"] as? String ?: ""
@@ -3136,6 +3139,7 @@ class AstraLibraryRepository private constructor(
     }
     return mapOf(
       "sessionId" to session.id,
+      "sessionEpoch" to session.createdAt.toDouble(),
       "items" to items,
       "windowStart" to (boundedStart ?: requestedStart).toDouble(),
       "activePosition" to session.activePosition.toDouble(),

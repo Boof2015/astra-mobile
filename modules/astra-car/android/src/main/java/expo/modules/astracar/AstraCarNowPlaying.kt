@@ -1,175 +1,132 @@
 package expo.modules.astracar
 
 import android.content.Context
+import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import org.json.JSONObject
-import java.lang.ref.WeakReference
 
-data class AstraCarNowPlayingState(
-  val title: String?,
-  val artist: String?,
-  val album: String?,
-  val artworkUri: String?,
-  val playbackState: String,
-  val hasTrack: Boolean,
-  val durationSeconds: Double?,
-  val positionSeconds: Double?,
-  val trackPath: String?,
-  val isFavorite: Boolean,
-)
-
+/** Only a paused resume card is persisted; native playback owns live state. */
 object AstraCarNowPlayingStore {
-  private const val PREFS_NAME = "astra_car_now_playing"
-  private const val KEY_STATE = "state"
-
-  private var serviceRef: WeakReference<AstraCarMediaService>? = null
-
-  fun attach(service: AstraCarMediaService) {
-    serviceRef = WeakReference(service)
+  fun save(context: Context, snapshot: AstraCarPlaybackSnapshot) {
+    val track = snapshot.track?.takeUnless { it.path.startsWith("https://", true) || it.path.startsWith("http://", true) }
+    val json = JSONObject().put("savedAt", System.currentTimeMillis()).put("positionMs", snapshot.positionMs).put("durationMs", snapshot.durationMs)
+    if (track != null) json.put("track", JSONObject()
+      .put("path", track.path).put("title", track.title).put("artist", track.artist).put("album", track.album)
+      .put("artwork", track.artwork?.takeIf { it.startsWith("file://") })
+      .put("sourceId", track.sourceId).put("artworkSourceId", track.artworkSourceId)
+      .put("entryId", track.entryId).put("queuePosition", track.queuePosition).put("sessionId", track.sessionId))
+    context.getSharedPreferences("astra_car_now_playing", Context.MODE_PRIVATE).edit()
+      .putString("native_resume", json.toString()).remove("state").apply()
   }
 
-  fun detach(service: AstraCarMediaService) {
-    if (serviceRef?.get() === service) serviceRef = null
-  }
-
-  fun saveAndApply(context: Context, state: AstraCarNowPlayingState) {
-    context.applicationContext
-      .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-      .edit()
-      .putString(KEY_STATE, encode(state))
-      .apply()
-    serviceRef?.get()?.applyNowPlaying(state)
-  }
-
-  fun load(context: Context): AstraCarNowPlayingState =
-    decode(
-      context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        .getString(KEY_STATE, null),
-    )
-
-  fun buildMetadata(state: AstraCarNowPlayingState): MediaMetadataCompat =
-    MediaMetadataCompat.Builder().apply {
-      state.title?.let {
-        putString(MediaMetadataCompat.METADATA_KEY_TITLE, it)
-        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, it)
-      }
-      state.artist?.let {
-        putString(MediaMetadataCompat.METADATA_KEY_ARTIST, it)
-        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, it)
-      }
-      state.album?.let {
-        putString(MediaMetadataCompat.METADATA_KEY_ALBUM, it)
-        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, it)
-      }
-      state.artworkUri?.let {
-        putString(MediaMetadataCompat.METADATA_KEY_ART_URI, it)
-        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, it)
-      }
-      state.durationSeconds?.let {
-        putLong(MediaMetadataCompat.METADATA_KEY_DURATION, (it * 1000).toLong())
-      }
-    }.build()
-
-  fun buildPlaybackState(state: AstraCarNowPlayingState): PlaybackStateCompat {
-    val playbackState = when (state.playbackState) {
-      "playing" -> PlaybackStateCompat.STATE_PLAYING
-      "paused" -> PlaybackStateCompat.STATE_PAUSED
-      "loading" -> PlaybackStateCompat.STATE_BUFFERING
-      else -> PlaybackStateCompat.STATE_STOPPED
+  fun load(context: Context): AstraCarPlaybackSnapshot {
+    val json = runCatching {
+      JSONObject(context.getSharedPreferences("astra_car_now_playing", Context.MODE_PRIVATE)
+        .getString("native_resume", "{}") ?: "{}")
+    }.getOrDefault(JSONObject())
+    if (!json.has("track")) {
+      val legacy = runCatching { JSONObject(context.getSharedPreferences("astra_car_now_playing", Context.MODE_PRIVATE).getString("state", "{}") ?: "{}") }.getOrNull()
+      val path = legacy?.nullable("trackPath")
+      if (path != null) return AstraCarPlaybackSnapshot(0, 0,
+        AstraCarTrack(path, legacy.optString("title"), legacy.optString("artist"), legacy.optString("album"),
+          entryId = "legacy", queuePosition = 0), "paused",
+        (legacy.optDouble("positionSeconds", 0.0) * 1000).toLong(),
+        (legacy.optDouble("durationSeconds", 0.0) * 1000).toLong(), 0f, SystemClock.elapsedRealtime())
     }
-    val actions =
-      PlaybackStateCompat.ACTION_PLAY or
-        PlaybackStateCompat.ACTION_PAUSE or
-        PlaybackStateCompat.ACTION_PLAY_PAUSE or
-        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-        PlaybackStateCompat.ACTION_SEEK_TO or
-        PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
-        PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
-    return PlaybackStateCompat.Builder()
-      .setActions(actions)
-      .setState(
-        playbackState,
-        ((state.positionSeconds ?: 0.0) * 1000).toLong(),
-        if (playbackState == PlaybackStateCompat.STATE_PLAYING) 1f else 0f,
-      )
-      .apply {
-        favoriteAction(state)?.let(::addCustomAction)
-      }
-      .build()
+    val track = json.optJSONObject("track")?.let {
+      AstraCarTrack(it.optString("path"), it.optString("title"), it.optString("artist"), it.optString("album"),
+        artwork = it.nullable("artwork"), sourceId = if (it.isNull("sourceId")) null else it.optLong("sourceId"),
+        artworkSourceId = it.nullable("artworkSourceId"), entryId = it.optString("entryId"),
+        queuePosition = it.optLong("queuePosition"), sessionId = it.nullable("sessionId"))
+    }
+    return AstraCarPlaybackSnapshot(0, 0, track, if (track != null) "paused" else "stopped",
+      json.optLong("positionMs"), json.optLong("durationMs"), 0f, SystemClock.elapsedRealtime())
   }
 
-  private fun favoriteAction(state: AstraCarNowPlayingState): PlaybackStateCompat.CustomAction? {
-    if (!state.hasTrack || state.trackPath.isNullOrBlank()) return null
-    val label = if (state.isFavorite) "Unfavorite" else "Favorite"
-    val icon = if (state.isFavorite) R.drawable.ic_astra_favorite else R.drawable.ic_astra_favorite_border
-    return PlaybackStateCompat.CustomAction.Builder(AstraCarFavoriteAction.TOGGLE, label, icon).build()
+  fun resumeState(context: Context): Map<String, Any?> {
+    val prefs = context.getSharedPreferences("astra_car_now_playing", Context.MODE_PRIVATE)
+    val snapshot = load(context)
+    return mapOf("path" to snapshot.track?.path, "position" to snapshot.positionMs / 1000.0,
+      "session" to snapshot.track?.sessionId, "entryId" to snapshot.track?.entryId,
+      "queuePosition" to snapshot.track?.queuePosition?.toDouble(),
+      "shuffle" to prefs.getBoolean("shuffle", false), "repeat" to (prefs.getString("repeat", "none") ?: "none"),
+      "savedAt" to runCatching { JSONObject(prefs.getString("native_resume", "{}") ?: "{}").optLong("savedAt").toDouble() }.getOrDefault(0.0))
   }
 
-  private fun encode(state: AstraCarNowPlayingState): String =
-    JSONObject()
-      .put("title", state.title)
-      .put("artist", state.artist)
-      .put("album", state.album)
-      .put("artworkUri", state.artworkUri)
-      .put("playbackState", state.playbackState)
-      .put("hasTrack", state.hasTrack)
-      .put("durationSeconds", state.durationSeconds)
-      .put("positionSeconds", state.positionSeconds)
-      .put("trackPath", state.trackPath)
-      .put("isFavorite", state.isFavorite)
-      .toString()
-
-  private fun decode(value: String?): AstraCarNowPlayingState {
-    if (value.isNullOrBlank()) return emptyState()
-    return runCatching {
-      val json = JSONObject(value)
-      AstraCarNowPlayingState(
-        title = json.optNullableString("title"),
-        artist = json.optNullableString("artist"),
-        album = json.optNullableString("album"),
-        artworkUri = json.optNullableString("artworkUri"),
-        playbackState = json.optString("playbackState", "stopped"),
-        hasTrack = json.optBoolean("hasTrack", false),
-        durationSeconds = json.optDoubleOrNull("durationSeconds"),
-        positionSeconds = json.optDoubleOrNull("positionSeconds"),
-        trackPath = json.optNullableString("trackPath"),
-        isFavorite = json.optBoolean("isFavorite", false),
-      )
-    }.getOrDefault(emptyState())
-  }
-
-  private fun emptyState(): AstraCarNowPlayingState =
-    AstraCarNowPlayingState(
-      title = null,
-      artist = null,
-      album = null,
-      artworkUri = null,
-      playbackState = "stopped",
-      hasTrack = false,
-      durationSeconds = null,
-      positionSeconds = null,
-      trackPath = null,
-      isFavorite = false,
-    )
-
-  private fun JSONObject.optNullableString(key: String): String? {
-    if (!has(key) || isNull(key)) return null
-    return optString(key).trim().takeIf { it.isNotEmpty() }
-  }
-
-  private fun JSONObject.optDoubleOrNull(key: String): Double? {
-    if (!has(key) || isNull(key)) return null
-    val value = optDouble(key)
-    return if (value.isNaN()) null else value
-  }
+  private fun JSONObject.nullable(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
 }
 
-fun MediaSessionCompat.applyAstraState(state: AstraCarNowPlayingState) {
-  setMetadata(AstraCarNowPlayingStore.buildMetadata(state))
-  setPlaybackState(AstraCarNowPlayingStore.buildPlaybackState(state))
-  isActive = state.hasTrack || state.playbackState != "stopped"
+/** Metadata and playback state have independent lifetimes: changing a button never reloads art. */
+class AstraCarSessionPresenter(private val context: Context, private val session: MediaSessionCompat) {
+  private var metadataKey: List<Any?>? = null
+
+  fun apply(snapshot: AstraCarPlaybackSnapshot, favorite: Boolean, activeQueueId: Long, hasNext: Boolean, hasPrevious: Boolean) {
+    val track = snapshot.track
+    val art = track?.let { AstraCarArtwork.forTrack(context, it).toString() }
+    val mediaId = track?.let {
+      AstraCarMediaIds.encode(AstraCarMediaId("queueEntry", key = it.entryId,
+        session = it.sessionId ?: "native:${snapshot.generation}"))
+    }
+    val key = listOf(mediaId, track?.title, track?.artist, track?.album, art, snapshot.durationMs)
+    if (metadataKey != key) {
+      metadataKey = key
+      session.setMetadata(MediaMetadataCompat.Builder().apply {
+        putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
+        putString(MediaMetadataCompat.METADATA_KEY_TITLE, track?.title?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, track?.title?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, track?.artist?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, track?.album?.take(512))
+        putString(MediaMetadataCompat.METADATA_KEY_ART_URI, art)
+        putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, art)
+        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, art)
+        putLong(MediaMetadataCompat.METADATA_KEY_DURATION, snapshot.durationMs.coerceAtLeast(0))
+      }.build())
+    }
+    var actions = PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
+      PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
+    if (track != null) actions = actions or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_STOP or
+      PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or PlaybackStateCompat.ACTION_SET_REPEAT_MODE
+    if (track != null && snapshot.durationMs > 0) actions = actions or PlaybackStateCompat.ACTION_SEEK_TO
+    if (hasNext) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+    if (hasPrevious) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+    if (activeQueueId != MediaSessionCompat.QueueItem.UNKNOWN_ID.toLong()) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM
+    val state = when (snapshot.state) {
+      "playing" -> PlaybackStateCompat.STATE_PLAYING
+      "loading" -> PlaybackStateCompat.STATE_BUFFERING
+      "paused" -> PlaybackStateCompat.STATE_PAUSED
+      "error" -> PlaybackStateCompat.STATE_ERROR
+      else -> PlaybackStateCompat.STATE_STOPPED
+    }
+    val shuffle = AstraCarPlaybackBridge.shuffle
+    val repeat = AstraCarPlaybackBridge.repeat
+    session.setShuffleMode(if (shuffle) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
+    session.setRepeatMode(when (repeat) {
+      "all" -> PlaybackStateCompat.REPEAT_MODE_ALL
+      "one" -> PlaybackStateCompat.REPEAT_MODE_ONE
+      else -> PlaybackStateCompat.REPEAT_MODE_NONE
+    })
+    session.setPlaybackState(PlaybackStateCompat.Builder().setActions(actions)
+      .setState(state, snapshot.positionMs.coerceAtLeast(0), snapshot.speed, snapshot.updatedAt)
+      .setBufferedPosition(snapshot.bufferedPositionMs).setActiveQueueItemId(activeQueueId).apply {
+        if (track != null) {
+          addCustomAction(if (shuffle) "shuffleOff" else "shuffleOn", if (shuffle) "Turn shuffle off" else "Turn shuffle on",
+            if (shuffle) R.drawable.ic_astra_shuffle else R.drawable.ic_astra_shuffle_off)
+          addCustomAction("cycleRepeat", "Repeat: ${if (repeat == "none") "off" else repeat}", when (repeat) {
+            "one" -> R.drawable.ic_astra_repeat_one
+            "all" -> R.drawable.ic_astra_repeat
+            else -> R.drawable.ic_astra_repeat_off
+          })
+          addCustomAction(AstraCarFavoriteAction.TOGGLE, if (favorite) "Unfavorite" else "Favorite",
+            if (favorite) R.drawable.ic_astra_favorite else R.drawable.ic_astra_favorite_border)
+        }
+        (snapshot.error ?: AstraCarPlaybackBridge.commandError)?.let {
+          setErrorMessage(PlaybackStateCompat.ERROR_CODE_APP_ERROR, it)
+        }
+      }.build())
+    session.isActive = track != null || snapshot.state == "loading"
+  }
 }

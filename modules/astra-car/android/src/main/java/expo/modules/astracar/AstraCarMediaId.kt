@@ -14,6 +14,11 @@ data class AstraCarMediaId(
   val contextSection: String? = null,
   val contextKey: String? = null,
   val contextId: Long? = null,
+  val session: String? = null,
+  val offset: Long? = null,
+  val size: Long? = null,
+  val firstLetter: String? = null,
+  val lastLetter: String? = null,
 )
 
 object AstraCarMediaIds {
@@ -56,6 +61,11 @@ object AstraCarMediaIds {
       .putIfPresent("contextSection", media.contextSection)
       .putIfPresent("contextKey", media.contextKey)
       .putIfPresent("contextId", media.contextId)
+      .putIfPresent("session", media.session)
+      .putIfPresent("offset", media.offset)
+      .putIfPresent("size", media.size)
+      .putIfPresent("firstLetter", media.firstLetter)
+      .putIfPresent("lastLetter", media.lastLetter)
       .toString()
     val encoded = Base64.encodeToString(
       json.toByteArray(Charsets.UTF_8),
@@ -82,6 +92,11 @@ object AstraCarMediaIds {
         contextSection = json.optStringOrNull("contextSection"),
         contextKey = json.optStringOrNull("contextKey"),
         contextId = json.optLongOrNull("contextId"),
+        session = json.optStringOrNull("session"),
+        offset = json.optLongOrNull("offset"),
+        size = json.optLongOrNull("size"),
+        firstLetter = json.optStringOrNull("firstLetter"),
+        lastLetter = json.optStringOrNull("lastLetter"),
       )
     }.getOrNull()
   }
@@ -97,6 +112,7 @@ object AstraCarMediaIds {
       putNullableString("contextSection", media.contextSection)
       putNullableString("contextKey", media.contextKey)
       media.contextId?.let { putDouble("contextId", it.toDouble()) }
+      putNullableString("session", media.session)
     }
 
   private fun JSONObject.putIfPresent(key: String, value: String?): JSONObject {

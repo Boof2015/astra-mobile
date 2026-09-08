@@ -4,6 +4,7 @@ const TEST_SCRIPTS = [
   'test:release-config',
   'test:press-feedback',
   'test:queue-actions',
+  'test:car',
   'test:desktop-remote',
   'test:dynamic-playlists',
   'test:album-grouping',

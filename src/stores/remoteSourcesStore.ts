@@ -5,6 +5,7 @@
 // The decrypted config + cached Jellyfin token are pushed into the synchronous
 // registry (services/remoteConfig) so the library UI and playback can build URLs.
 
+import { AstraCar } from '../../modules/astra-car';
 import { create } from 'zustand';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { buildCoverArtUrlTemplate } from '@/services/remoteUrls';
@@ -46,11 +47,19 @@ function errorMessage(error: unknown): string {
 
 /** Hydrate the synchronous URL-building registry for one source (loads its secret). */
 async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectionConfig | null> {
+  if (!source.enabled) {
+    AstraCar.registerArtworkSource(source.id, null);
+    clearResolvedRemoteConfig(source.id);
+    return null;
+  }
   const [password, auth] = await Promise.all([
     getRemoteSecret(source.id),
     getRemoteSecureAuth(source.id),
   ]);
-  if (password == null) return null;
+  if (password == null) {
+    AstraCar.registerArtworkSource(source.id, null);
+    return null;
+  }
   setResolvedRemoteConfig({
     id: source.id,
     type: source.type,
@@ -65,16 +74,15 @@ async function hydrateRegistry(source: RemoteSourceRow): Promise<RemoteConnectio
 }
 
 /**
- * Generate + persist the cover-art URL template the native Android Auto artwork provider
- * reads. Done once per source (stable Subsonic salt; Jellyfin token); regenerated when
+ * Keep the cover-art URL template in SecureStore and register it in native memory. Done once per source (stable Subsonic salt; Jellyfin token); regenerated when
  * credentials change (updateSource clears it) or a Jellyfin token is refreshed.
  * Requires the source's config to already be in the registry.
  */
 async function persistArtAuthIfNeeded(source: RemoteSourceRow): Promise<void> {
-  if ((await getRemoteSecureAuth(source.id)).artAuth) return;
-  const template = buildCoverArtUrlTemplate(source.id);
-  if (!template) return;
-  await setRemoteArtAuth(source.id, template);
+  const cached = (await getRemoteSecureAuth(source.id)).artAuth;
+  const template = cached ?? buildCoverArtUrlTemplate(source.id);
+  if (template && !cached) await setRemoteArtAuth(source.id, template);
+  AstraCar.registerArtworkSource(source.id, template ?? null);
 }
 
 /** Ensure a usable Jellyfin token, authenticating + persisting it if missing. */
@@ -96,6 +104,7 @@ async function ensureJellyfinAuth(
   // Token (re)issued — refresh the native Auto cover-art template so it isn't stale.
   const artTemplate = buildCoverArtUrlTemplate(source.id);
   if (artTemplate) await setRemoteArtAuth(source.id, artTemplate);
+  AstraCar.registerArtworkSource(source.id, artTemplate ?? null);
   return auth;
 }
 
@@ -260,6 +269,7 @@ export const useRemoteSourcesStore = create<RemoteSourcesStore>((set, get) => ({
 
   deleteSource: async (id, purgeTracks) => {
     await AstraLibraryData.deleteRemoteSource(id, purgeTracks);
+    AstraCar.registerArtworkSource(id, null);
     await deleteRemoteSecret(id);
     clearResolvedRemoteConfig(id);
     await get().refresh();

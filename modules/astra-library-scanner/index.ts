@@ -261,13 +261,15 @@ export type LibraryQuery =
     }
   | { kind: 'folder'; folderNodeId?: string; folderId?: number }
   | { kind: 'playlist'; playlistId: number }
-  | { kind: 'favorites' }
+  | { kind: 'favorites'; sort?: 'title' }
   | { kind: 'recent' }
   | { kind: 'search'; query: string }
   | { kind: 'manual'; paths: string[] }
   | { kind: 'dynamicPlaylist'; playlistId: number };
 
 export interface NativePlaybackWindow<T> {
+  /** Stable for edits; changes when this saved queue is replaced. */
+  sessionEpoch: number;
   sessionId: string;
   items: (T & { queuePosition: number; queueEntryId: number })[];
   windowStart: number;
@@ -354,6 +356,7 @@ type AstraLibraryDataEvents = {
 
 declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEvents> {
   initialize(): Promise<LibraryStatusSnapshot>;
+  yieldPlaybackQueue(): Promise<void>;
   getCurrentStatus(): LibraryStatusSnapshot;
   getSettings(keys: string[]): Promise<Record<string, string | null>>;
   setSettings(values: Record<string, string | null>): Promise<void>;

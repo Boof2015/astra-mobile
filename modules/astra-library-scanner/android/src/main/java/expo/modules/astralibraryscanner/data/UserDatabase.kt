@@ -176,8 +176,6 @@ interface UserDao {
   @Query("SELECT * FROM favorites ORDER BY added_at DESC")
   suspend fun getFavorites(): List<FavoriteEntity>
 
-  @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE track_path = :path)")
-  suspend fun isFavorite(path: String): Boolean
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun putFavorite(favorite: FavoriteEntity)
@@ -199,6 +197,30 @@ interface UserDao {
 
   @Query("SELECT * FROM playback_history ORDER BY last_played_at DESC")
   suspend fun getPlaybackHistory(): List<PlaybackHistoryEntity>
+
+  @Query("SELECT * FROM playback_history ORDER BY last_played_at DESC, track_path LIMIT :limit OFFSET :offset")
+  suspend fun getPlaybackHistoryPage(offset: Long, limit: Int): List<PlaybackHistoryEntity>
+
+  @Query("SELECT COUNT(*) FROM playback_history")
+  suspend fun countPlaybackHistory(): Long
+
+  @Query("SELECT * FROM favorites ORDER BY added_at DESC, track_path LIMIT :limit OFFSET :offset")
+  suspend fun getFavoritePage(offset: Long, limit: Int): List<FavoriteEntity>
+
+  @Query("SELECT COUNT(*) FROM favorites")
+  suspend fun countFavorites(): Long
+
+  @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE track_path = :path)")
+  suspend fun isFavorite(path: String): Boolean
+
+  @Query("SELECT * FROM playlists ORDER BY name COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
+  suspend fun getPlaylistPage(offset: Long, limit: Int): List<PlaylistEntity>
+
+  @Query("SELECT COUNT(*) FROM playlists")
+  suspend fun countPlaylists(): Long
+
+  @Query("SELECT * FROM playlists WHERE name LIKE :pattern ESCAPE '\\' ORDER BY name COLLATE NOCASE, id LIMIT :limit")
+  suspend fun searchPlaylistPage(pattern: String, limit: Int): List<PlaylistEntity>
 
   @Query("SELECT * FROM playback_history WHERE track_path = :path")
   suspend fun getPlaybackHistory(path: String): PlaybackHistoryEntity?
@@ -402,6 +424,19 @@ interface UserDao {
     limit: Int,
   ): List<PlaybackQueueEntryEntity>
 
+  @Query("SELECT * FROM playback_queue_entries WHERE session_id = :sessionId AND entry_id = :entryId")
+  suspend fun getQueueEntry(sessionId: String, entryId: Long): PlaybackQueueEntryEntity?
+
+  /** Resolve and select in one transaction, including the queue replacement epoch. */
+  @Transaction
+  suspend fun selectQueueOccurrence(sessionId: String, epoch: Long, entryId: Long): PlaybackQueueEntryEntity? {
+    val session = getPlaybackSession(sessionId) ?: return null
+    if (session.createdAt != epoch) return null
+    val entry = getQueueEntry(sessionId, entryId) ?: return null
+    updatePlaybackPosition(sessionId, entry.position, entry.trackPath, System.currentTimeMillis())
+    return entry
+  }
+
   @Query("SELECT * FROM playback_queue_entries WHERE session_id = :sessionId ORDER BY position")
   suspend fun getAllQueueEntries(sessionId: String): List<PlaybackQueueEntryEntity>
 
@@ -529,8 +564,12 @@ interface UserDao {
     session: PlaybackSessionEntity,
     entries: List<PlaybackQueueEntryEntity>,
     originalEntries: List<PlaybackOriginalQueueEntryEntity> = emptyList(),
+    replaceIdentity: Boolean = false,
   ) {
-    putPlaybackSession(session)
+    // Generate the epoch inside the transaction, including simultaneous replacements.
+    val previous = if (replaceIdentity) getPlaybackSession(session.id) else null
+    val stored = if (replaceIdentity) session.copy(createdAt = maxOf(session.createdAt, (previous?.createdAt ?: 0L) + 1)) else session
+    putPlaybackSession(stored)
     clearQueueEntries(session.id)
     if (entries.isNotEmpty()) putQueueEntries(entries)
     clearOriginalQueueEntries(session.id)

@@ -42,6 +42,9 @@ export const SAMPLE_TRACKS: Track[] = [
 ];
 
 /** Map an Astra Track to an RNTP track, carrying audiophile metadata as custom fields. */
+let carQueueSequence = 0;
+const carQueueEpoch = Date.now().toString(36);
+
 export function toRntpTrack(track: Track): RntpTrack {
   // Remote tracks play from a resolved HTTP stream URL; the stable identity path
   // (subsonic://|jellyfin://) rides along as `astraPath` so history/favorites/now-
@@ -57,6 +60,7 @@ export function toRntpTrack(track: Track): RntpTrack {
     : artworkThumbFromSource(track.artworkData);
   return {
     id: track.id,
+    astraCarQueueEntryId: `${carQueueEpoch}-${++carQueueSequence}`,
     url,
     title: track.title,
     artist: track.artist,

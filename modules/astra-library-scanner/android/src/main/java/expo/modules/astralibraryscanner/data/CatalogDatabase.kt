@@ -229,6 +229,21 @@ interface CatalogDao {
   @Query("SELECT COUNT(*) FROM active_tracks")
   suspend fun countActiveTracks(): Long
 
+  @Query("SELECT * FROM active_tracks ORDER BY title_sort_key, path LIMIT :limit OFFSET :offset")
+  suspend fun getTrackOffsetPage(offset: Long, limit: Int): List<ActiveTrackView>
+
+  @Query("SELECT * FROM album_summaries WHERE revision = :revision ORDER BY name_sort_key, identity_key LIMIT :limit OFFSET :offset")
+  suspend fun getAlbumOffsetPage(revision: Long, offset: Long, limit: Int): List<AlbumSummaryEntity>
+
+  @Query("SELECT * FROM artist_summaries WHERE revision = :revision AND grouping_mode = :mode ORDER BY name_sort_key, artist_key LIMIT :limit OFFSET :offset")
+  suspend fun getArtistOffsetPage(revision: Long, mode: String, offset: Long, limit: Int): List<ArtistSummaryEntity>
+
+  @Query("SELECT t.* FROM active_tracks t INNER JOIN artist_track_index i ON i.track_id = t.id WHERE i.revision = :revision AND i.grouping_mode = :mode AND i.artist_key = :key ORDER BY t.album_sort_key, t.disc_sort, t.track_sort, t.title_sort_key, t.path LIMIT :limit OFFSET :offset")
+  suspend fun getArtistTrackOffsetPage(revision: Long, mode: String, key: String, offset: Long, limit: Int): List<ActiveTrackView>
+
+  @Query("SELECT * FROM active_tracks WHERE album_identity_key = :key ORDER BY disc_sort, track_sort, title_sort_key, path LIMIT :limit OFFSET :offset")
+  suspend fun getAlbumTrackOffsetPage(key: String, offset: Long, limit: Int): List<ActiveTrackView>
+
   @Query("SELECT COUNT(*) FROM active_tracks WHERE folder_id = :folderId")
   suspend fun countActiveTracksForFolder(folderId: Long): Long
 
@@ -1527,6 +1542,18 @@ interface CatalogDao {
 
   @RawQuery
   suspend fun runDynamicCountQuery(query: SupportSQLiteQuery): Long
+
+  @RawQuery
+  suspend fun getCarBrowseGroups(query: SupportSQLiteQuery): List<CarBrowseGroup>
+
+  @RawQuery
+  suspend fun getCarAlbumPage(query: SupportSQLiteQuery): List<AlbumSummaryEntity>
+
+  @RawQuery
+  suspend fun getCarArtistPage(query: SupportSQLiteQuery): List<ArtistSummaryEntity>
+
+  @Query("SELECT t.path FROM active_tracks t INNER JOIN track_user_facts f ON f.path = t.path WHERE f.is_favorite = 1 ORDER BY t.title_sort_key, t.path")
+  suspend fun getFavoritePathsByTitle(): List<String>
 
   @Upsert
   suspend fun putTrackUserFacts(rows: List<TrackUserFactEntity>)

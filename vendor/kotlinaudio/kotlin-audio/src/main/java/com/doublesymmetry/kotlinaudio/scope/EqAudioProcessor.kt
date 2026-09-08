@@ -35,9 +35,8 @@ class EqAudioProcessor : BaseAudioProcessor() {
   override fun onConfigure(
     inputAudioFormat: AudioProcessor.AudioFormat
   ): AudioProcessor.AudioFormat {
-    channels = inputAudioFormat.channelCount
-    sampleRate = inputAudioFormat.sampleRate.toFloat()
-    lastRevision = Int.MIN_VALUE // force a rebuild on the next buffer
+    // configure() stages a pending format; old-format audio may still drain
+    // before flush() activates it. Do not change the active filter layout here.
     return inputAudioFormat
   }
 
@@ -67,8 +66,18 @@ class EqAudioProcessor : BaseAudioProcessor() {
   }
 
   override fun onFlush() {
-    z1.fill(0f)
-    z2.fill(0f)
+    channels = inputAudioFormat.channelCount.coerceAtLeast(0)
+    sampleRate = inputAudioFormat.sampleRate.toFloat()
+    lastRevision = Int.MIN_VALUE
+    val states = bandCount * channels.coerceAtLeast(1)
+    // The band count can stay fixed across mono/stereo/multichannel tracks.
+    if (z1.size != states) {
+      z1 = FloatArray(states)
+      z2 = FloatArray(states)
+    } else {
+      z1.fill(0f)
+      z2.fill(0f)
+    }
   }
 
   private fun rebuildIfNeeded() {

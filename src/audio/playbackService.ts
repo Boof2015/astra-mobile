@@ -1,5 +1,5 @@
 import TrackPlayer, { Event } from 'react-native-track-player';
-import { syncCarNowPlayingFromTrackPlayer } from './carSync';
+import { initializeCarContextSync } from './carSync';
 import { syncWidgetNowPlayingFromTrackPlayer } from './widgetSync';
 import { applyNormalizationForActiveTrack } from './applyNormalization';
 import { startAudioProcessingWarmup } from './audioProcessingStartup';
@@ -27,6 +27,7 @@ import {
  * controls to the player. Must not depend on React or the JS UI tree.
  */
 export async function PlaybackService(): Promise<void> {
+  initializeCarContextSync();
   initializeListeningHistoryTracking();
   void useSleepTimerStore.getState().hydrate().catch(() => {});
   // Begin the small fail-closed warm-up before a car/Bluetooth play command can
@@ -38,25 +39,22 @@ export async function PlaybackService(): Promise<void> {
     });
   });
 
-  const syncNowPlaying = () =>
-    Promise.allSettled([
-      syncWidgetNowPlayingFromTrackPlayer(),
-      syncCarNowPlayingFromTrackPlayer(),
-    ]);
-
-  // A seek/skip fires 2-3 events back-to-back (track change, buffering, playing),
-  // and each sync is TrackPlayer getter round-trips + widget RemoteViews/Binder +
-  // car MediaSession pushes on the main thread — landing exactly during the
-  // transition the user is watching. Trailing-coalesce the burst into one sync
-  // with the settled values; 150ms of extra latency on Auto/widget metadata is
-  // imperceptible.
-  let syncTimer: ReturnType<typeof setTimeout> | null = null;
+  // Widgets use an immediate, single-flight refresh. JS timers can suspend
+  // after the headless task returns while the Activity is backgrounded.
+  let syncingWidget = false;
+  let widgetDirty = false;
   const scheduleSync = () => {
-    if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => {
-      syncTimer = null;
-      void syncNowPlaying();
-    }, 150);
+    widgetDirty = true;
+    if (syncingWidget) return;
+    syncingWidget = true;
+    void (async () => {
+      try {
+        while (widgetDirty) {
+          widgetDirty = false;
+          await syncWidgetNowPlayingFromTrackPlayer();
+        }
+      } finally { syncingWidget = false; }
+    })().catch(() => {});
   };
 
   // Deferred past the transition frame like the UI hook's recompute: the track

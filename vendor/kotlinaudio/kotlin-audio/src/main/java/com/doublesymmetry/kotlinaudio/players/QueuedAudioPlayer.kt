@@ -40,6 +40,12 @@ class QueuedAudioPlayer(
     val items: List<AudioItem>
         get() = queue.map { it.mediaItem.getAudioItemHolder().audioItem }
 
+    /** Bound the work for a car browse page; do not marshal the full playback queue. */
+    fun nativeQueuePage(offset: Int, limit: Int): List<AudioItem> =
+        (offset until minOf(offset + limit, exoPlayer.mediaItemCount)).map { index ->
+            exoPlayer.getMediaItemAt(index).getAudioItemHolder().audioItem
+        }
+
     val previousItems: List<AudioItem>
         get() {
             return if (queue.isEmpty()) emptyList()
@@ -219,6 +225,7 @@ class QueuedAudioPlayer(
     fun replaceItem(index: Int, item: AudioItem) {
         val mediaSource = getMediaSourceFromAudioItem(item)
         queue[index] = mediaSource
+        notifyNativePlaybackObservers()
         if (index == currentIndex) {
             updateNotificationIfNecessary(overrideAudioItem = item)
         }

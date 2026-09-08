@@ -272,6 +272,33 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun carQueueSelectionResolvesDuplicatesOutsideTheWindowAndRejectsRemovedOrReplacedEntries() = runBlocking {
+    val dao = user.userDao()
+    val session = PlaybackSessionEntity("active-context", "{}", "/duplicate.flac", null, 0, 100, 100)
+    val entries = (0L..700L).map { PlaybackQueueEntryEntity(session.id, it, "/duplicate.flac", it) }
+    dao.replacePlaybackQueue(session, entries)
+    assertEquals(650L, dao.selectQueueOccurrence(session.id, 100, 650)?.position)
+    assertEquals(650L, dao.getPlaybackSession(session.id)?.activePosition)
+    dao.replacePlaybackQueue(session, entries.filter { it.entryId != 650L })
+    assertNull(dao.selectQueueOccurrence(session.id, 100, 650))
+    dao.replacePlaybackQueue(session.copy(createdAt = 101), entries)
+    assertNull(dao.selectQueueOccurrence(session.id, 100, 650))
+    assertEquals(650L, dao.selectQueueOccurrence(session.id, 101, 650)?.position)
+    dao.replacePlaybackQueue(session.copy(createdAt = 101), entries, replaceIdentity = true)
+    assertEquals(102L, dao.getPlaybackSession(session.id)?.createdAt)
+    assertNull(dao.selectQueueOccurrence(session.id, 101, 650))
+  }
+
+  @Test
+  fun carCatalogPagesReachBeyondTheOldFiveHundredTrackCutoff() = runBlocking {
+    publish("car-pages", (0..650).map { track("car-pages", it, "Song %04d".format(it), "/car/$it.flac") })
+    val dao = catalog.catalogDao()
+    assertEquals(100, dao.getTrackOffsetPage(500, 100).size)
+    assertEquals(51, dao.getTrackOffsetPage(600, 100).size)
+    assertTrue(dao.getTrackOffsetPage(700, 100).isEmpty())
+  }
+
+  @Test
   fun playbackWindowNeverClampsPastTheEndBackToTheLastTrack() {
     assertEquals(0L, boundedPlaybackWindowStart(-10, 3))
     assertEquals(2L, boundedPlaybackWindowStart(2, 3))

@@ -4,19 +4,11 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
-import { dbTrackToTrack } from '@/library/trackAdapter';
-import {
-  hasActiveNativePlaybackSession,
-  restorePlaybackSession,
-  restoreVirtualPlaybackContext,
-} from '@/audio/playbackController';
-import { AstraLibraryData } from '../../modules/astra-library-scanner';
-import type { DbTrack } from '@/types/library';
+import { restoreSavedPlayback } from './restorePlayback';
 import {
   installMobileSessionPersistence,
   readPersistedMobileSession,
 } from './sessionPersistence';
-import { resolvePlaybackSession } from './sessionState';
 
 interface SessionLifecycleProps {
   onReady: () => void;
@@ -73,23 +65,7 @@ export function SessionLifecycle({ onReady }: SessionLifecycleProps) {
         }
         useSearchStore.getState().closeQuickSearch();
 
-        const liveNativeSession = await hasActiveNativePlaybackSession();
-        if (!cancelled && snapshot?.playback && !liveNativeSession) {
-          const nativeContext = await AstraLibraryData.restorePlaybackContext<DbTrack>();
-          if (nativeContext) {
-            restoreVirtualPlaybackContext(nativeContext, snapshot.playback);
-          } else {
-            const resolved = resolvePlaybackSession(
-              snapshot.playback,
-              useLibraryStore.getState().tracks
-            );
-            restorePlaybackSession(
-              resolved
-                ? { ...resolved, tracks: resolved.tracks.map(dbTrackToTrack) }
-                : null
-            );
-          }
-        }
+        if (!cancelled) await restoreSavedPlayback();
         if (cancelled) return;
 
         uninstallPersistence.current = installMobileSessionPersistence(

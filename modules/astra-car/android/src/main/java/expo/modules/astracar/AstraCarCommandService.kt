@@ -1,170 +1,208 @@
 package expo.modules.astracar
 
-import android.app.Notification
+import android.app.Service
+import android.os.PowerManager
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactInstanceEventListener
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.jstasks.HeadlessJsTaskContext
+import com.facebook.react.jstasks.HeadlessJsTaskEventListener
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.ComponentName
+import android.content.ServiceConnection
+import android.os.IBinder
 import android.content.pm.ServiceInfo
+import android.os.Binder
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
+import java.lang.ref.WeakReference
+import java.util.UUID
 
-private const val NOTIFICATION_ICON_RESOURCE = "astra_notification_icon"
+/** A bound coordinator can initialize credentials without starting playback or a foreground service. */
+class AstraCarCommandService : Service(), HeadlessJsTaskEventListener {
+  private val activeTasks = mutableSetOf<Int>()
+  private val waitingTasks = mutableListOf<Bundle>()
+  private var taskContext: HeadlessJsTaskContext? = null
+  private var reactListener: ReactInstanceEventListener? = null
+  private var wakeLock: PowerManager.WakeLock? = null
+  private val host get() = (application as ReactApplication).reactHost
 
-private fun notificationSmallIcon(context: Context): Int =
-  context.resources
-    .getIdentifier(NOTIFICATION_ICON_RESOURCE, "drawable", context.packageName)
-    .takeIf { it != 0 }
-    ?: android.R.drawable.ic_media_play
+  private var foreground = false
+  private var taskBinding = false
+  private val taskConnection = object : ServiceConnection {
+    override fun onServiceConnected(name: ComponentName, service: IBinder) = Unit
+    override fun onServiceDisconnected(name: ComponentName) = Unit
+  }
+  inner class LocalBinder : Binder() { val service get() = this@AstraCarCommandService }
+  override fun onCreate() { super.onCreate(); instance = WeakReference(this) }
+  override fun onBind(intent: Intent) = LocalBinder()
 
-class AstraCarCommandService : HeadlessJsTaskService() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    // We're started via startForegroundService (so transport from the car works even when
-    // the app is backgrounded — the media-session callback grants the FGS-start allowlist).
-    // Promote immediately to satisfy the "call startForeground within ~5s" requirement.
-    if (intent?.getStringExtra(EXTRA_COMMAND) != null) {
-      promoteToForeground()
+    val data = intent?.getBundleExtra("data") ?: return START_NOT_STICKY
+    if (!promote()) {
+      complete(data.getString("requestId"), "Unable to start playback. Open Astra on your phone and try again.")
+      stopSelf(startId)
+      return START_NOT_STICKY
     }
-    return super.onStartCommand(intent, flags, startId)
+    submit(data)
+    finishIfIdle()
+    // Enqueue commands must never be replayed after process death.
+    return START_NOT_STICKY
   }
 
-  override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
-    val command = intent?.getStringExtra(EXTRA_COMMAND) ?: return null
-    val data = Arguments.createMap().apply {
-      putString("command", command)
-      intent.getBundleExtra(EXTRA_MEDIA)?.let { putMap("media", Arguments.fromBundle(it)) }
-      if (intent.hasExtra(EXTRA_QUERY)) putString("query", intent.getStringExtra(EXTRA_QUERY))
-      if (intent.hasExtra(EXTRA_FOCUS)) putString("focus", intent.getStringExtra(EXTRA_FOCUS))
-      if (intent.hasExtra(EXTRA_TITLE)) putString("title", intent.getStringExtra(EXTRA_TITLE))
-      if (intent.hasExtra(EXTRA_ARTIST)) putString("artist", intent.getStringExtra(EXTRA_ARTIST))
-      if (intent.hasExtra(EXTRA_ALBUM)) putString("album", intent.getStringExtra(EXTRA_ALBUM))
-      if (intent.hasExtra(EXTRA_PLAYLIST)) putString("playlist", intent.getStringExtra(EXTRA_PLAYLIST))
-      if (intent.hasExtra(EXTRA_POSITION)) putDouble("position", intent.getDoubleExtra(EXTRA_POSITION, 0.0))
-    }
-    return HeadlessJsTaskConfig("AstraCarCommand", data, 30_000, true)
-  }
+  fun initialize() { dispatch(this, Bundle().apply { putString("command", "initialize") }) }
 
-  override fun onHeadlessJsTaskFinish(taskId: Int) {
-    super.onHeadlessJsTaskFinish(taskId)
-    // The base impl stops the service when the last task finishes; drop the FGS notification.
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      stopForeground(STOP_FOREGROUND_REMOVE)
-    } else {
-      @Suppress("DEPRECATION")
-      stopForeground(true)
-    }
-  }
-
-  private fun promoteToForeground() {
-    val promoted = runCatching {
-      val notification = buildNotification()
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-      } else {
-        startForeground(NOTIFICATION_ID, notification)
+  private fun submit(data: Bundle) {
+    if (!isActive(data.getString("requestId"))) return
+    // Keep accepted commands alive even if the car unbinds during initialization.
+    if (!taskBinding) taskBinding = applicationContext.bindService(
+      Intent(this, AstraCarCommandService::class.java), taskConnection, Context.BIND_AUTO_CREATE)
+    if (wakeLock == null) wakeLock = getSystemService(PowerManager::class.java)
+      .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:car-commands").apply { setReferenceCounted(false) }
+    wakeLock?.acquire(TIMEOUT_MS + 5_000)
+    val reactHost = host ?: run { complete(data.getString("requestId"), "Unable to initialize car controls."); return }
+    val context = reactHost.currentReactContext
+    if (context != null) launchTask(context, data)
+    else {
+      waitingTasks.add(data)
+      if (reactListener == null) {
+        reactListener = object : ReactInstanceEventListener {
+          override fun onReactContextInitialized(context: ReactContext) {
+            main.post {
+              reactListener?.let { reactHost.removeReactInstanceEventListener(it) }
+              reactListener = null
+              val waiting = waitingTasks.toList()
+              waitingTasks.clear()
+              waiting.filter { isActive(it.getString("requestId")) }.forEach { launchTask(context, it) }
+              finishIfIdle()
+            }
+          }
+        }.also { reactHost.addReactInstanceEventListener(it) }
+        reactHost.start()
       }
-    }.isSuccess
-    // If we couldn't promote (e.g. FGS-start not allowed), stop now rather than let the
-    // system kill the whole process with "did not call startForeground in time".
-    if (!promoted) stopSelf()
+    }
   }
 
-  private fun buildNotification(): Notification {
-    ensureChannel()
-    return NotificationCompat.Builder(this, CHANNEL_ID)
-      .setContentTitle("Astra")
-      .setContentText("Handling car controls")
-      .setSmallIcon(notificationSmallIcon(this))
-      .setPriority(NotificationCompat.PRIORITY_LOW)
-      .setOngoing(true)
-      .build()
+  private fun launchTask(context: ReactContext, data: Bundle) {
+    val tasks = HeadlessJsTaskContext.getInstance(context)
+    taskContext = tasks
+    tasks.addTaskEventListener(this)
+    activeTasks.add(tasks.startTask(HeadlessJsTaskConfig("AstraCarCommand", Arguments.fromBundle(data), TIMEOUT_MS, true)))
   }
 
-  private fun ensureChannel() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-    val manager = getSystemService(NotificationManager::class.java) ?: return
-    if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-    manager.createNotificationChannel(
-      NotificationChannel(CHANNEL_ID, "Car controls", NotificationManager.IMPORTANCE_LOW).apply {
-        setShowBadge(false)
-      },
-    )
+  override fun onHeadlessJsTaskStart(taskId: Int) = Unit
+  override fun onHeadlessJsTaskFinish(taskId: Int) {
+    if (activeTasks.remove(taskId)) finishIfIdle()
   }
+
+  private fun finishIfIdle() {
+    waitingTasks.removeAll { !isActive(it.getString("requestId")) }
+    if (pending.isNotEmpty() || activeTasks.isNotEmpty() || waitingTasks.isNotEmpty()) return
+    if (wakeLock?.isHeld == true) wakeLock?.release()
+    removeForeground()
+    if (taskBinding) { taskBinding = false; applicationContext.unbindService(taskConnection) }
+    stopSelf() // An attached browser keeps the bound coordinator available.
+  }
+
+  override fun onDestroy() {
+    if (instance?.get() === this) {
+      instance = null
+      pending.keys.toList().forEach { complete(it, "Car controls disconnected. Please try again.") }
+    }
+    if (taskBinding) { taskBinding = false; applicationContext.unbindService(taskConnection) }
+    reactListener?.let { host?.removeReactInstanceEventListener(it) }
+    reactListener = null
+    waitingTasks.clear()
+    taskContext?.removeTaskEventListener(this)
+    activeTasks.toList().forEach { taskContext?.finishTask(it) }
+    activeTasks.clear()
+    if (wakeLock?.isHeld == true) wakeLock?.release()
+    removeForeground()
+    super.onDestroy()
+  }
+
+  private fun removeForeground() {
+    if (!foreground) return
+    stopForeground(STOP_FOREGROUND_REMOVE)
+    foreground = false
+  }
+
+  private fun promote(): Boolean = runCatching {
+    val manager = getSystemService(NotificationManager::class.java)
+    manager.createNotificationChannel(NotificationChannel(CHANNEL, "Car controls", NotificationManager.IMPORTANCE_LOW))
+    val icon = resources.getIdentifier("astra_notification_icon", "drawable", packageName).takeIf { it != 0 }
+      ?: android.R.drawable.ic_media_play
+    val notification = NotificationCompat.Builder(this, CHANNEL).setContentTitle("Astra")
+      .setContentText("Starting playback").setSmallIcon(icon).setOngoing(true).build()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+    else startForeground(NOTIFICATION_ID, notification)
+    foreground = true
+  }.isSuccess
 
   companion object {
-    private const val EXTRA_COMMAND = "command"
-    private const val EXTRA_MEDIA = "media"
-    private const val EXTRA_QUERY = "query"
-    private const val EXTRA_FOCUS = "focus"
-    private const val EXTRA_TITLE = "title"
-    private const val EXTRA_ARTIST = "artist"
-    private const val EXTRA_ALBUM = "album"
-    private const val EXTRA_PLAYLIST = "playlist"
-    private const val EXTRA_POSITION = "position"
-
-    private const val CHANNEL_ID = "astra_car_commands"
+    private const val CHANNEL = "astra_car_commands"
     private const val NOTIFICATION_ID = 0xACAB
+    private const val TIMEOUT_MS = 120_000L
+    private val main = Handler(Looper.getMainLooper())
+    private var instance: WeakReference<AstraCarCommandService>? = null
+    private data class Pending(val timeout: Runnable, val callback: ((String?) -> Unit)?)
+    private val pending = LinkedHashMap<String, Pending>()
 
-    fun startTransport(context: Context, command: String) {
-      start(context, Intent(context, AstraCarCommandService::class.java).putExtra(EXTRA_COMMAND, command))
+    fun isActive(id: String?): Boolean = id != null && pending.containsKey(id)
+
+    fun complete(id: String?, error: String?) {
+      if (Looper.myLooper() != Looper.getMainLooper()) { main.post { complete(id, error) }; return }
+      val request = pending.remove(id) ?: return
+      main.removeCallbacks(request.timeout)
+      AstraCarPlaybackBridge.reportError(error)
+      request.callback?.invoke(error)
+      instance?.get()?.finishIfIdle()
     }
 
-    fun startSeek(context: Context, positionMs: Long) {
-      start(
-        context,
-        Intent(context, AstraCarCommandService::class.java)
-          .putExtra(EXTRA_COMMAND, "seek")
-          .putExtra(EXTRA_POSITION, positionMs / 1000.0),
-      )
+    fun dispatch(context: Context, data: Bundle, callback: ((String?) -> Unit)? = null) {
+      check(Looper.myLooper() == Looper.getMainLooper())
+      val id = UUID.randomUUID().toString()
+      data.putString("requestId", id)
+      val timeout = Runnable { complete(id, "Car command timed out. Please try again.") }
+      pending[id] = Pending(timeout, callback)
+      main.postDelayed(timeout, TIMEOUT_MS)
+      val service = instance?.get()
+      if (service != null) runCatching { service.submit(data) }.onFailure { complete(id, "Unable to initialize car controls.") }
+      else runCatching {
+        ContextCompat.startForegroundService(context.applicationContext,
+          Intent(context, AstraCarCommandService::class.java).putExtra("data", data))
+      }.onFailure { complete(id, "Unable to start car controls. Open Astra on your phone and try again.") }
     }
 
-    fun startFavoriteAction(context: Context) {
-      start(context, Intent(context, AstraCarCommandService::class.java).putExtra(EXTRA_COMMAND, AstraCarFavoriteAction.COMMAND))
-    }
-
+    fun startTransport(context: Context, command: String) = dispatch(context, Bundle().apply { putString("command", command) })
+    fun startSeek(context: Context, positionMs: Long) = dispatch(context, Bundle().apply {
+      putString("command", "seek"); putDouble("position", positionMs.coerceAtLeast(0) / 1000.0)
+    })
+    fun startFavoriteAction(context: Context) = startTransport(context, "toggleFavorite")
     fun startPlayFromMediaId(context: Context, mediaId: String?) {
-      val media = AstraCarMediaIds.decode(mediaId) ?: return
-      start(
-        context,
-        Intent(context, AstraCarCommandService::class.java)
-          .putExtra(EXTRA_COMMAND, "playMediaId")
-          .putExtra(EXTRA_MEDIA, AstraCarMediaIds.toBundle(media)),
-      )
+      val media = AstraCarMediaIds.decode(mediaId)
+      if (media == null) { AstraCarPlaybackBridge.reportError("This item is no longer available."); return }
+      dispatch(context, Bundle().apply { putString("command", "playMediaId"); putBundle("media", AstraCarMediaIds.toBundle(media)) })
     }
-
-    fun startPlayFromSearch(context: Context, query: String?, extras: Bundle?) {
-      val focus = extras?.getString(MediaStore.EXTRA_MEDIA_FOCUS)?.let(::normalizeFocus)
-      start(
-        context,
-        Intent(context, AstraCarCommandService::class.java)
-          .putExtra(EXTRA_COMMAND, "playSearch")
-          .putExtra(EXTRA_QUERY, query)
-          .putExtra(EXTRA_FOCUS, focus)
-          .putExtra(EXTRA_TITLE, extras?.getString(MediaStore.EXTRA_MEDIA_TITLE))
-          .putExtra(EXTRA_ARTIST, extras?.getString(MediaStore.EXTRA_MEDIA_ARTIST))
-          .putExtra(EXTRA_ALBUM, extras?.getString(MediaStore.EXTRA_MEDIA_ALBUM))
-          .putExtra(EXTRA_PLAYLIST, extras?.getString(MediaStore.EXTRA_MEDIA_PLAYLIST)),
-      )
-    }
-
-    private fun start(context: Context, intent: Intent) {
-      HeadlessJsTaskService.acquireWakeLockNow(context)
-      runCatching { ContextCompat.startForegroundService(context.applicationContext, intent) }
-    }
-
-    private fun normalizeFocus(value: String): String =
-      when {
-        value.contains("artist", ignoreCase = true) -> "artist"
-        value.contains("album", ignoreCase = true) -> "album"
-        value.contains("playlist", ignoreCase = true) -> "playlist"
-        value.contains("genre", ignoreCase = true) -> "genre"
-        else -> value
-      }
+    fun startPlayFromSearch(context: Context, query: String?, extras: Bundle?) = dispatch(context, Bundle().apply {
+      putString("command", "playSearch"); putString("query", query)
+      putString("focus", extras?.getString(MediaStore.EXTRA_MEDIA_FOCUS)?.let { focus ->
+        listOf("artist", "album", "playlist", "genre").firstOrNull { focus.contains(it, true) } ?: "track"
+      })
+      putString("title", extras?.getString(MediaStore.EXTRA_MEDIA_TITLE))
+      putString("artist", extras?.getString(MediaStore.EXTRA_MEDIA_ARTIST))
+      putString("album", extras?.getString(MediaStore.EXTRA_MEDIA_ALBUM))
+      putString("playlist", extras?.getString(MediaStore.EXTRA_MEDIA_PLAYLIST))
+    })
   }
 }

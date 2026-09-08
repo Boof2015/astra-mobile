@@ -5,6 +5,13 @@ import {
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   pause,
+  cycleRepeat,
+  setRepeatMode,
+  setShuffleEnabled,
+  jumpToCarQueueEntry,
+  enqueueTop,
+  enqueueEnd,
+  enqueueLibraryQuery,
   playForCar,
   playLibraryQuery,
   playTracksForCar,
@@ -12,17 +19,24 @@ import {
   skipToNext,
   skipToPrevious,
 } from '@/audio/playbackController';
-import { syncCarNowPlayingFromTrackPlayer } from '@/audio/carSync';
+import { initializeCarContextSync } from '@/audio/carSync';
+import { setupPlayer } from '@/audio/trackPlayer';
+import { restoreSavedPlayback } from '@/session/restorePlayback';
+import { AstraCar } from '../../modules/astra-car';
+import { createCarCommandCoordinator, carCommandError } from './carCommandQueue';
+import { voiceIntent, constrainedTrackScore } from './carSearchPolicy';
 import { startAudioProcessingWarmup } from '@/audio/audioProcessingStartup';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { PlaybackSource } from '@/types/audio';
 import type { DbTrack } from '@/types/library';
 import type { Playlist } from '@/types/playlist';
 
 export interface CarMediaPayload {
+  session?: string;
   kind?: string;
   section?: string;
   key?: string;
@@ -35,6 +49,10 @@ export interface CarMediaPayload {
 }
 
 export interface CarCommandPayload {
+  requestId?: string;
+  enabled?: boolean;
+  repeat?: 'none' | 'all' | 'one';
+  placement?: 'next' | 'end';
   command?: string;
   media?: CarMediaPayload;
   query?: string;
@@ -55,6 +73,8 @@ async function initializeForCar(): Promise<void> {
       await useSettingsStore.getState().load();
       await usePlaylistStore.getState().refresh();
       await useRemoteSourcesStore.getState().init();
+      await restoreSavedPlayback();
+      initializeCarContextSync();
     })().catch((err) => {
       initPromise = null;
       throw err;
@@ -63,54 +83,64 @@ async function initializeForCar(): Promise<void> {
   return initPromise;
 }
 
-export async function handleAstraCarCommand(payload: CarCommandPayload): Promise<void> {
-  try {
-    // Warm DSP independently of catalog/library startup. Transport commands do
-    // not need to wait for a full library initialize; media-id/search commands do.
+export const handleAstraCarCommand = createCarCommandCoordinator<CarCommandPayload>({
+  isActive: (id) => AstraCar.isCommandActive(id),
+  complete: (id, error) => AstraCar.completeCommand(id, error),
+  formatError: carCommandError,
+  execute: async (payload) => {
+    const id = payload.requestId;
+    await initializeForCar();
+    if (id && !await AstraCar.isCommandActive(id)) return;
+    if (payload.command === 'initialize') return;
+    if (payload.command === 'toggleFavorite') return handleFavoriteCommand();
+    if (payload.command === 'pause' && usePlayerStore.getState().restoredSessionPending) return;
     void startAudioProcessingWarmup('car-command').catch(() => {});
-
+    // All car actions may arrive without an Activity. This does not start audio.
+    await setupPlayer({ allowBackgroundSetup: true });
     switch (payload.command) {
       case 'playMediaId':
-        await initializeForCar();
-        if (payload.media) await playMedia(payload.media);
-        break;
-      case 'playSearch':
-        await initializeForCar();
-        await playSearch(payload);
-        break;
-      case 'play':
-        await playForCar();
-        break;
-      case 'pause':
-        await pause();
-        break;
-      case 'next':
-        await skipToNext();
-        break;
-      case 'previous':
-        await skipToPrevious();
-        break;
+        if (!payload.media) throw new Error('This item is unavailable.');
+        await playMedia(payload.media); break;
+      case 'playSearch': await playSearch(payload); break;
+      case 'play': await playForCar(); break;
+      case 'pause': await pause(); break;
+      case 'next': await skipToNext(); break;
+      case 'previous': await skipToPrevious(); break;
       case 'seek':
-        if (typeof payload.position === 'number') await seekTo(payload.position);
-        break;
-      case 'toggleFavorite':
-        await initializeForCar();
-        await handleFavoriteCommand();
-        break;
-      default:
-        break;
+        if (typeof payload.position !== 'number' || !Number.isFinite(payload.position)) throw new Error('Invalid playback position.');
+        await seekTo(Math.max(0, payload.position)); break;
+      case 'setShuffle':
+        if (typeof payload.enabled !== 'boolean') throw new Error('Invalid shuffle mode.');
+        await setShuffleEnabled(payload.enabled); break;
+      case 'setRepeat':
+        if (!payload.repeat || !['none', 'all', 'one'].includes(payload.repeat)) throw new Error('Invalid repeat mode.');
+        await setRepeatMode(payload.repeat); break;
+      case 'cycleRepeat': await cycleRepeat(); break;
+      case 'enqueue': await enqueueMedia(payload); break;
+      default: throw new Error('This car control is unavailable.');
     }
-  } catch (err) {
-    console.warn('[car] command failed', err);
-  } finally {
-    await syncCarNowPlayingFromTrackPlayer();
+  },
+});
+
+async function enqueueMedia(payload: CarCommandPayload): Promise<void> {
+  const media = payload.media;
+  if (!media || !['next', 'end'].includes(payload.placement ?? '')) throw new Error('This action is unavailable.');
+  const placement = payload.placement!;
+  if (media.kind === 'track' && media.path) {
+    const track = await AstraLibraryData.getTrack<DbTrack>(media.path);
+    if (!track) throw new Error('This track is no longer available.');
+    await (placement === 'next' ? enqueueTop : enqueueEnd)(dbTrackToTrack(track));
+  } else {
+    const query = queryForMedia(media);
+    if (!query) throw new Error('This collection is no longer available.');
+    await enqueueLibraryQuery(query, placement);
   }
 }
 
 async function handleFavoriteCommand(): Promise<void> {
-  const activeTrack = await TrackPlayer.getActiveTrack();
-  const path = rntpTrackPath(activeTrack);
-  if (!path) return;
+  const activeTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+  const path = rntpTrackPath(activeTrack) ?? usePlayerStore.getState().currentTrack?.path;
+  if (!path) throw new Error('Choose a song before changing favorites.');
   await usePlaylistStore.getState().toggleFavorite({ path });
 }
 
@@ -121,6 +151,10 @@ function rntpTrackPath(track: RntpTrack | null | undefined): string | null {
 }
 
 async function playMedia(media: CarMediaPayload): Promise<void> {
+  if (media.kind === 'queueEntry') {
+    if (!media.session || !media.key) throw new Error('This queue item is no longer available.');
+    return jumpToCarQueueEntry(media.session, media.key);
+  }
   const contextMedia = media.kind === 'track' ? contextFromTrack(media) : media;
   const query = contextMedia ? queryForMedia(contextMedia) : null;
   if (query) {
@@ -128,16 +162,17 @@ async function playMedia(media: CarMediaPayload): Promise<void> {
       anchorPath: media.kind === 'track' ? media.path : null,
       source: await sourceForContext(contextMedia!),
       allowBackgroundSetup: true,
+      shuffle: (media.kind === 'shuffleAll' || (media.kind === 'section' && media.section === 'shuffleAll')),
     });
   } else if (media.path) {
     const track = await AstraLibraryData.getTrack<DbTrack>(media.path);
-    if (!track) return;
+    if (!track) throw new Error('This track is no longer available.');
     await playTracksForCar([dbTrackToTrack(track)], {
       startIndex: 0,
       source: { kind: 'android-auto', label: 'Android Auto' },
     });
   } else {
-    return;
+    throw new Error('This item is no longer available.');
   }
   if (media.kind === 'playlist' && media.id != null) {
     await AstraLibraryData.markPlaylistPlayed(media.id);
@@ -145,7 +180,9 @@ async function playMedia(media: CarMediaPayload): Promise<void> {
 }
 
 function queryForMedia(media: CarMediaPayload): LibraryQuery | null {
-  if (media.kind === 'section' && media.section === 'favorites') return { kind: 'favorites' };
+  if ((media.kind === 'shuffleAll' || (media.kind === 'section' && media.section === 'shuffleAll')) || (media.kind === 'section' && media.section === 'tracks')) return { kind: 'library', sort: 'title', direction: 'asc' };
+  if (media.kind === 'section' && media.section === 'favorites') return { kind: 'favorites', sort: 'title' };
+  if (media.kind === 'section' && media.section === 'recentFavorites') return { kind: 'favorites' };
   if (media.kind === 'section' && media.section === 'recent') return { kind: 'recent' };
   if (media.kind === 'playlist' && media.id != null) {
     return { kind: 'playlist', playlistId: media.id };
@@ -165,7 +202,7 @@ function queryForMedia(media: CarMediaPayload): LibraryQuery | null {
 async function sourceForContext(
   media: CarMediaPayload,
 ): Promise<PlaybackSource> {
-  if (media.kind === 'section' && media.section === 'favorites') {
+  if (media.kind === 'section' && (media.section === 'favorites' || media.section === 'recentFavorites')) {
     return { kind: 'favorites', label: 'Favorites' };
   }
   if (media.kind === 'section' && media.section === 'recent') {
@@ -200,50 +237,20 @@ function contextFromTrack(media: CarMediaPayload): CarMediaPayload | null {
 }
 
 async function playSearch(payload: CarCommandPayload): Promise<void> {
-  const playlistTerm = cleanSearchTerm(payload.playlist) || focusedTerm(payload, 'playlist');
-  if (playlistTerm) {
-    const playlist = bestMatch(
-      await AstraLibraryData.listPlaylists<Playlist>(),
-      playlistTerm,
-      (entry) => [entry.name],
-    );
-    if (playlist) return playMedia({ kind: 'playlist', id: playlist.id });
+  const intent = voiceIntent(payload);
+  if (!intent.term) return playForCar();
+  const { term, focus } = intent;
+  if (focus === 'track') {
+    const terms = [term, payload.artist, payload.album].filter(Boolean).join(' ');
+    const tracks = await AstraLibraryData.searchTracks<DbTrack>(terms, 100);
+    const ranked = tracks.map((track) => ({ track, score: constrainedTrackScore(track, term, payload.artist, payload.album) }))
+      .filter((entry) => Number.isFinite(entry.score)).sort((a, b) => a.score - b.score);
+    if (ranked[0]) return playMedia({ kind: 'track', path: ranked[0].track.path });
+  } else {
+    const candidate = await bestGeneralSearchCandidate(term, focus ?? undefined);
+    if (candidate) return playMedia(candidate);
   }
-
-  const albumTerm = cleanSearchTerm(payload.album) || focusedTerm(payload, 'album');
-  if (albumTerm) {
-    const albums = albumsFromTracks(await AstraLibraryData.searchTracks<DbTrack>(albumTerm, 100));
-    const album = bestMatch(albums, albumTerm, (entry) => [entry.album, entry.artist]);
-    if (album) return playMedia({ kind: 'album', key: album.key });
-  }
-
-  const artistTerm = cleanSearchTerm(payload.artist) || focusedTerm(payload, 'artist');
-  if (artistTerm) {
-    const artistName = bestArtistName(
-      await AstraLibraryData.searchTracks<DbTrack>(artistTerm, 100),
-      artistTerm,
-    );
-    if (artistName) return playMedia({ kind: 'artist', key: artistName });
-  }
-
-  const titleTerm = cleanSearchTerm(payload.title);
-  if (titleTerm) {
-    const track = bestMatch(
-      await AstraLibraryData.searchTracks<DbTrack>(titleTerm, 100),
-      titleTerm,
-      (entry) => [entry.title],
-    );
-    if (track) return playMedia({ kind: 'track', path: track.path });
-  }
-
-  const query = cleanSearchTerm(payload.query);
-  if (!query) {
-    await playForCar();
-    return;
-  }
-
-  const candidate = await bestGeneralSearchCandidate(query, payload.focus);
-  if (candidate) await playMedia(candidate);
+  throw new Error('No matching music found. Try the song, album, artist, or playlist name.');
 }
 
 async function bestGeneralSearchCandidate(
@@ -276,8 +283,9 @@ async function bestGeneralSearchCandidate(
     }
   }
 
-  candidates.sort((a, b) => a.score - b.score);
-  return candidates[0]?.media ?? null;
+  const matching = focused ? candidates.filter((candidate) => candidate.media.kind === focused) : candidates;
+  matching.sort((a, b) => a.score - b.score);
+  return matching[0]?.media ?? null;
 }
 
 function categoryPenalty(focus: string | null, category: string): number {
@@ -315,10 +323,6 @@ function bestArtistName(tracks: readonly DbTrack[], query: string): string | nul
     }
   }
   return bestMatch([...names.values()], query, (entry) => [entry.artist])?.artist ?? null;
-}
-
-function focusedTerm(payload: CarCommandPayload, focus: string): string | null {
-  return cleanSearchTerm(payload.focus) === focus ? cleanSearchTerm(payload.query) : null;
 }
 
 function cleanSearchTerm(value: string | null | undefined): string | null {

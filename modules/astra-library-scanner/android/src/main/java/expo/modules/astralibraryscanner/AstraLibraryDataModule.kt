@@ -39,6 +39,9 @@ class AstraLibraryDataModule : Module() {
       repository?.removeCatalogListener(catalogListener)
     }
 
+    // Queue chunk yields must resolve even when React's background timers are suspended.
+    AsyncFunction("yieldPlaybackQueue").Coroutine<Unit> { kotlinx.coroutines.delay(16) }
+
     AsyncFunction("initialize").Coroutine<Map<String, Any?>> {
       repository().initialize().toMap()
     }

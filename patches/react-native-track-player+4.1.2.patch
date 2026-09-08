@@ -1,3 +1,30 @@
+diff --git a/node_modules/react-native-track-player/android/build.gradle b/node_modules/react-native-track-player/android/build.gradle
+index ac33473..328f8e2 100644
+--- a/node_modules/react-native-track-player/android/build.gradle
++++ b/node_modules/react-native-track-player/android/build.gradle
+@@ -51,6 +51,7 @@ repositories {
+ 
+ dependencies {
+     implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
++    implementation project(':astra-car')
+     // used when building against local maven
+ //    implementation "com.github.doublesymmetry:kotlin-audio:2.1.0"
+ 
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/model/Track.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/model/Track.kt
+index 02d3cbe..89d6724 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/model/Track.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/model/Track.kt
+@@ -57,6 +57,9 @@ class Track(context: Context, bundle: Bundle, ratingType: Int) : TrackMetadata()
+         }
+         setMetadata(context, bundle, ratingType)
+         queueId = System.currentTimeMillis()
++        if (!bundle.containsKey("astraCarQueueEntryId")) {
++            bundle.putString("astraCarQueueEntryId", java.util.UUID.randomUUID().toString())
++        }
+         originalItem = bundle
+     }
+ }
+\ No newline at end of file
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
 index b2409a0..119caaf 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
@@ -469,18 +496,99 @@ index b2409a0..119caaf 100644
 +    }
  }
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-index afa6b0f..87af67c 100644
+index afa6b0f..7f31876 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-@@ -9,6 +9,7 @@ import android.os.Binder
+@@ -9,6 +9,14 @@ import android.os.Binder
  import android.os.Build
  import android.os.Bundle
  import android.os.IBinder
 +import android.os.Trace
++import android.os.SystemClock
++import com.google.android.exoplayer2.Player
++import com.google.android.exoplayer2.C
++import com.doublesymmetry.kotlinaudio.players.components.getAudioItemHolder
++import expo.modules.astracar.AstraCarPlaybackBridge
++import expo.modules.astracar.AstraCarPlaybackSnapshot
++import expo.modules.astracar.AstraCarTrack
  import android.support.v4.media.RatingCompat
  import androidx.annotation.MainThread
  import androidx.core.app.NotificationCompat
-@@ -300,6 +301,18 @@ class MusicService : HeadlessJsTaskService() {
+@@ -46,6 +54,8 @@ class MusicService : HeadlessJsTaskService() {
+     private val binder = MusicBinder()
+     private val scope = MainScope()
+     private var progressUpdateJob: Job? = null
++    private var carGeneration = 0L
++    private var carSequence = 0L
+ 
+     /**
+      * Use [appKilledPlaybackBehavior] instead.
+@@ -158,10 +168,64 @@ class MusicService : HeadlessJsTaskService() {
+ 
+         player = QueuedAudioPlayer(this@MusicService, playerConfig, bufferConfig, cacheConfig)
+         player.automaticallyUpdateNotificationMetadata = automaticallyUpdateNotificationMetadata
++        carGeneration = AstraCarPlaybackBridge.attach { offset, limit ->
++            player.nativeQueuePage(offset, limit).mapIndexed { index, item ->
++                carTrack(item as TrackAudioItem, offset + index)
++            }
++        }
++        player.nativePlaybackObserver = { native ->
++            val item = native.currentMediaItem?.getAudioItemHolder()?.audioItem as? TrackAudioItem
++            val error = native.playerError
++            AstraCarPlaybackBridge.publish(this, AstraCarPlaybackSnapshot(
++                generation = carGeneration,
++                sequence = ++carSequence,
++                track = item?.let { carTrack(it, native.currentMediaItemIndex) },
++                state = when {
++                    error != null -> "error"
++                    native.playbackState == Player.STATE_BUFFERING -> "loading"
++                    native.isPlaying -> "playing"
++                    native.playbackState == Player.STATE_ENDED -> "stopped"
++                    item != null -> "paused"
++                    else -> "stopped"
++                },
++                positionMs = native.currentPosition.coerceAtLeast(0),
++                durationMs = native.duration.takeIf { it != C.TIME_UNSET && it >= 0 }
++                    ?: item?.duration ?: 0,
++                speed = if (native.isPlaying) native.playbackParameters.speed else 0f,
++                updatedAt = SystemClock.elapsedRealtime(),
++                bufferedPositionMs = native.bufferedPosition.coerceAtLeast(0),
++                queueCount = native.mediaItemCount,
++                nativeIndex = if (item != null) native.currentMediaItemIndex else -1,
++                error = error?.let { "Unable to play this track. Check the file or server connection and try again." },
++            ))
++        }
+         observeEvents()
+         setupForegrounding()
+     }
+ 
++    private fun carTrack(item: TrackAudioItem, index: Int): AstraCarTrack {
++        val original = item.track.originalItem ?: Bundle.EMPTY
++        fun number(key: String): Long? = (original.get(key) as? Number)?.toLong()
++        return AstraCarTrack(
++            path = original.getString("astraPath")
++                ?: item.audioUrl.takeUnless { it.startsWith("http://") || it.startsWith("https://") }
++                ?: "runtime:${original.getString("astraCarQueueEntryId")}",
++            title = item.track.title ?: "Unknown title",
++            artist = item.track.artist ?: "Unknown artist",
++            album = item.track.album.orEmpty(),
++            // Notification artwork may be a small thumbnail; retain original identity.
++            artwork = original.getString("astraArtworkData")
++                ?: item.artwork?.takeIf { it.startsWith("file://") },
++            sourceId = number("sourceId"),
++            artworkSourceId = original.getString("artworkSourceId"),
++            entryId = number("astraQueueEntryId")?.toString()
++                ?: original.getString("astraCarQueueEntryId") ?: item.track.queueId.toString(),
++            queuePosition = number("astraQueuePosition") ?: index.toLong(),
++            durationMs = item.track.duration ?: 0,
++            sessionId = original.getString("astraQueueSessionId"),
++        )
++    }
++
+     @MainThread
+     fun updateOptions(options: Bundle) {
+         latestOptions = options
+@@ -300,6 +364,18 @@ class MusicService : HeadlessJsTaskService() {
          player.add(items, atIndex)
      }
  
@@ -499,7 +607,7 @@ index afa6b0f..87af67c 100644
      @MainThread
      fun load(track: Track) {
          player.load(track.toAudioItem())
-@@ -307,7 +320,9 @@ class MusicService : HeadlessJsTaskService() {
+@@ -307,7 +383,9 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun move(fromIndex: Int, toIndex: Int) {
@@ -510,7 +618,7 @@ index afa6b0f..87af67c 100644
      }
  
      @MainThread
-@@ -317,12 +332,25 @@ class MusicService : HeadlessJsTaskService() {
+@@ -317,12 +395,25 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun remove(indexes: List<Int>) {
@@ -538,7 +646,7 @@ index afa6b0f..87af67c 100644
      }
  
      @MainThread
-@@ -335,6 +363,10 @@ class MusicService : HeadlessJsTaskService() {
+@@ -335,6 +426,10 @@ class MusicService : HeadlessJsTaskService() {
          player.pause()
      }
  
@@ -549,7 +657,7 @@ index afa6b0f..87af67c 100644
      @MainThread
      fun stop() {
          player.stop()
-@@ -741,7 +773,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -741,7 +836,7 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      private fun emit(event: String, data: Bundle? = null) {
@@ -558,7 +666,7 @@ index afa6b0f..87af67c 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, data?.let { Arguments.fromBundle(it) })
      }
-@@ -751,7 +783,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -751,7 +846,7 @@ class MusicService : HeadlessJsTaskService() {
          val payload = Arguments.createArray()
          data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
  
@@ -567,3 +675,12 @@ index afa6b0f..87af67c 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, payload)
      }
+@@ -800,6 +895,8 @@ class MusicService : HeadlessJsTaskService() {
+     override fun onDestroy() {
+         super.onDestroy()
+         if (::player.isInitialized) {
++            player.nativePlaybackObserver = null
++            AstraCarPlaybackBridge.detach(this, carGeneration)
+             player.destroy()
+         }
+ 

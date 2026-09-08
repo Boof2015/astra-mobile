@@ -88,6 +88,18 @@ abstract class BaseAudioPlayer internal constructor(
 ) : AudioManager.OnAudioFocusChangeListener {
     protected val exoPlayer: ExoPlayer
 
+    /** Native consumers must not depend on React timers or the JS task lifecycle. */
+    var nativePlaybackObserver: ((Player) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(exoPlayer)
+        }
+
+    fun notifyNativePlaybackObservers() {
+        runCatching { nativePlaybackObserver?.invoke(exoPlayer) }
+            .onFailure { Timber.e(it, "Native playback observer failed") }
+    }
+
     private var cache: SimpleCache? = null
     private val scope = MainScope()
     private var playerConfig: PlayerConfig = playerConfig
@@ -459,6 +471,7 @@ abstract class BaseAudioPlayer internal constructor(
      */
     @CallSuper
     open fun destroy() {
+        nativePlaybackObserver = null
         abandonAudioFocusIfHeld()
         stop()
         notificationManager.destroy()
@@ -466,6 +479,7 @@ abstract class BaseAudioPlayer internal constructor(
         cache?.release()
         cache = null
         mediaSession.isActive = false
+        mediaSession.release()
     }
 
     open fun seek(duration: Long, unit: TimeUnit) {
@@ -793,6 +807,9 @@ abstract class BaseAudioPlayer internal constructor(
                     }
                 }
             }
+            // onEvents runs after the individual callbacks, so metadata, position,
+            // duration and play state all describe the same native transition.
+            notifyNativePlaybackObservers()
         }
 
         override fun onPlayerError(error: PlaybackException) {

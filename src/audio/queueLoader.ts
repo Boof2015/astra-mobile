@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import TrackPlayer, { type Track as RntpTrack } from 'react-native-track-player';
 import {
   cancelManualRecentPlayTransition,
@@ -56,8 +58,11 @@ export function absoluteIndexToNative(absoluteIndex: number): number | null {
   return absoluteIndex >= 0 && absoluteIndex < load.loadedCount ? absoluteIndex : null;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function yieldQueueChunk(): Promise<void> {
+  // Native coroutine delays keep resolving after Headless JS tasks finish.
+  // A JS timeout here can strand the fill with the Activity backgrounded.
+  if (Platform.OS === 'android') return AstraLibraryData.yieldPlaybackQueue();
+  return new Promise((resolve) => setTimeout(resolve, YIELD_MS));
 }
 
 async function supersedePreviousLoad(): Promise<number> {
@@ -160,7 +165,7 @@ export async function appendUpcomingChunked(tracks: RntpTrack[], baseCount: numb
 /** Append tracks[fromIndex..] in chunks. Returns normally when superseded. */
 async function fillTail(current: QueueLoad, tracks: RntpTrack[], fromIndex: number): Promise<void> {
   for (let i = fromIndex; i < tracks.length; i += CHUNK) {
-    await sleep(YIELD_MS);
+    await yieldQueueChunk();
     if (current.generation !== generation) return;
     const chunk = tracks.slice(i, i + CHUNK);
     await TrackPlayer.add(chunk);
