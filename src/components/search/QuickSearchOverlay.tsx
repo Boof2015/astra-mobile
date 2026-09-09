@@ -1170,6 +1170,7 @@ export function QuickSearchOverlay() {
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={close}
     >
       <View style={styles.modalRoot}>

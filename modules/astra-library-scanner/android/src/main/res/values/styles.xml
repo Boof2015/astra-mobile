@@ -1,0 +1,8 @@
+<resources>
+  <!-- Dialogs have their own window; the activity's edge-to-edge theme does not apply. -->
+  <style name="Theme.Astra.Queue.BottomSheetDialog" parent="Theme.Design.Light.BottomSheetDialog">
+    <item name="android:windowIsFloating">false</item>
+    <item name="enableEdgeToEdge">true</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+  </style>
+</resources>

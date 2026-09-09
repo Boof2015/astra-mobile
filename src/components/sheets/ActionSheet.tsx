@@ -21,7 +21,7 @@ export function ActionSheet({
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <GestureHandlerRootView style={styles.root}>
         <AppSheet onClose={onClose} scrollable>
           {title ? <AppSheetTitle title={title} /> : null}

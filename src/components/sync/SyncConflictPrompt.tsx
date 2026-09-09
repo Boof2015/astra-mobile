@@ -105,7 +105,7 @@ export function SyncConflictPrompt() {
   };
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={dismissConflictPrompt}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={dismissConflictPrompt}>
       <View style={styles.backdrop}>
         <Pressable
           style={StyleSheet.absoluteFill}

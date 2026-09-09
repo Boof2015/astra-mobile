@@ -44,6 +44,7 @@ function ArtistImageDisclosureContent({
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={() => undefined}
     >
       <View style={styles.backdrop}>

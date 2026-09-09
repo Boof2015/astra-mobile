@@ -67,7 +67,7 @@ export function PlaybackTargetPicker({ visible, onClose }: PlaybackTargetPickerP
     : 'Pair with Astra Desktop on your LAN';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
           style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}

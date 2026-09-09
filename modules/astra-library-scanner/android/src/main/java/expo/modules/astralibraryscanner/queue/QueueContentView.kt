@@ -414,6 +414,14 @@ class QueueContentView(
     addView(emptyView, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
 
     ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+      if (sheetMode) {
+        val sideInsets = insets.getInsets(
+          WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+        )
+        // Pad controls, not the sheet background. Embedded panes keep their
+        // existing host-owned horizontal insets.
+        setPadding(sideInsets.left, paddingTop, sideInsets.right, paddingBottom)
+      }
       val bottomInset =
         insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
       recycler.setPadding(0, 0, 0, dp(30) + bottomInset)

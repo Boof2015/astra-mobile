@@ -1,13 +1,15 @@
 package expo.modules.astralibraryscanner
 
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
+import android.content.res.ColorStateList
 import android.view.WindowManager
 import android.content.pm.ApplicationInfo
 import android.os.Trace
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.metrics.performance.JankStats
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -95,6 +97,7 @@ class AstraQueueModule : Module() {
       val palette = QueuePalette.from(values)
       appContext.mainQueue.launch {
         dialogContent?.palette = palette
+        dialog?.let { updateDialogPalette(it) }
       }
     }
 
@@ -154,7 +157,7 @@ class AstraQueueModule : Module() {
       }
       attach()
     }
-    val next = BottomSheetDialog(activity).apply {
+    val next = BottomSheetDialog(activity, R.style.Theme_Astra_Queue_BottomSheetDialog).apply {
       setContentView(content)
       setCanceledOnTouchOutside(true)
       setOnShowListener {
@@ -165,7 +168,6 @@ class AstraQueueModule : Module() {
           layoutParams = layoutParams.apply {
             height = ViewGroup.LayoutParams.MATCH_PARENT
           }
-          background = ColorDrawable(Color.TRANSPARENT)
         }
         content.layoutParams = content.layoutParams.apply {
           width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -214,10 +216,38 @@ class AstraQueueModule : Module() {
     }
     dialog = next
     dialogContent = content
+    updateDialogPalette(next)
     next.show()
     } finally {
       Trace.endSection()
     }
+  }
+
+  private fun updateDialogPalette(sheetDialog: BottomSheetDialog) {
+    val content = dialogContent ?: return
+    val window = sheetDialog.window ?: return
+    val sheet = sheetDialog.findViewById<FrameLayout>(
+      com.google.android.material.R.id.design_bottom_sheet,
+    ) ?: return
+    val palette = content.palette
+    val controller = WindowCompat.getInsetsController(window, window.decorView)
+    controller.isAppearanceLightNavigationBars = ColorUtils.calculateLuminance(palette.background) > 0.5
+
+    // Material reads the sheet container's tint to choose status-bar icons when
+    // expanded. Match the content's rounded background so its top-inset padding
+    // has the same surface, without filling the transparent outer corners.
+    sheet.background = content.background?.constantState?.newDrawable()?.mutate()
+    sheet.backgroundTintList = ColorStateList.valueOf(palette.background)
+
+    // Material captures the underlying status-bar appearance when insets arrive.
+    // Restore that baseline before rebuilding its callback for a changed palette.
+    appContext.currentActivity?.window?.let { activityWindow ->
+      controller.isAppearanceLightStatusBars =
+        WindowCompat.getInsetsController(activityWindow, activityWindow.decorView)
+          .isAppearanceLightStatusBars
+    }
+    ViewCompat.requestApplyInsets(sheet)
+    sheet.requestLayout()
   }
 
   private fun emitPlaybackRequest(entryId: Long, revision: Long) {

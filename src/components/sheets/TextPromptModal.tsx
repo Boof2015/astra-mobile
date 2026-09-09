@@ -52,7 +52,7 @@ function TextPromptModalInner({
   };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
         <Pressable style={styles.card}>
           <Text variant="heading" style={styles.title}>
