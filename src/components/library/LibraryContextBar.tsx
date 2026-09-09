@@ -82,7 +82,12 @@ export function LibraryContextBar({
   const { width, fontScale } = useWindowDimensions();
   const showActiveLabel = libraryDockShowsActiveLabel(width, fontScale);
   const modeIndex = LIBRARY_VIEW_MODES.findIndex((entry) => entry.key === mode);
-  const slide = useSelectionSlide(mode, 'horizontal', showActiveLabel ? 'labelled' : 'icons');
+  const selecting = selection !== undefined;
+  const slide = useSelectionSlide(
+    selecting ? null : mode,
+    'horizontal',
+    selecting ? 'selection' : showActiveLabel ? 'labelled' : 'icons',
+  );
   const dragX = useSharedValue(0);
   const primeProgress = useSharedValue(0);
   const swipePrimed = useSharedValue(false);
@@ -107,7 +112,8 @@ export function LibraryContextBar({
     dragX.value = withTiming(0, motion.quick);
     primeProgress.value = withTiming(0, motion.quick);
     swipePrimed.value = false;
-  }, [dragX, mode, primeProgress, swipePrimed]);
+    pendingSwipeDirection.value = 0;
+  }, [dragX, mode, pendingSwipeDirection, primeProgress, selecting, swipePrimed]);
 
   const commitSwipe = (direction: LibraryDockSwipeDirection) => {
     const next = adjacentLibraryViewMode(mode, direction);
@@ -236,7 +242,7 @@ export function LibraryContextBar({
           </>
         ) : (
           <>
-            <GestureDetector gesture={swipeGesture}>
+            <GestureDetector key={slide.surfaceKey} gesture={swipeGesture}>
               <View style={styles.sections} onLayout={onSectionLayout}>
                 <Animated.View
                   pointerEvents="none"

@@ -90,16 +90,13 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
   const split = shell.mode === 'split';
 
   // The mark follows the focused item's measured rect. It reads the same
-  // `focused` flag the item colours itself from, so the two cannot point at
-  // different tabs — and when nothing is focused there is deliberately no key to
-  // follow rather than a fallback slot. The mode is its shape key: changing
-  // shells invalidates every measurement at once, so the mark is re-placed from
-  // the new ones without travelling. Rotating should find it already in
-  // position, not watch it cross the screen diagonally.
+  // `focused` flag the item colours itself from. With no focused item there is
+  // no mark. Changing the shell or destination set invalidates measurements:
+  // the mark is placed from the new ones without travelling on rotation.
   const slide = useSelectionSlide(
     tabs.find((item) => item.focused)?.key ?? null,
     rail ? 'vertical' : 'horizontal',
-    shell.mode
+    JSON.stringify([shell.mode, tabs.map((item) => item.key)]),
   );
 
   const buttons = tabs.map((item) => {
@@ -136,7 +133,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
           },
         ]}
       >
-        <View style={styles.railNav}>
+        <View key={slide.surfaceKey} style={styles.railNav}>
           <SelectionMark key={shell.mode} slide={slide} rail />
           {buttons}
         </View>
@@ -184,7 +181,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
             {/* The mark is placed from the items' own measured offsets, so it
                 has to share a box with them that adds no padding or border of
                 its own — the card has both. */}
-            <View style={styles.splitRow}>
+            <View key={slide.surfaceKey} style={styles.splitRow}>
               <SelectionMark key={shell.mode} slide={slide} />
               {buttons}
             </View>
@@ -215,6 +212,7 @@ export function TabBar({ items, onPress, shell }: TabBarProps) {
         </View>
       )}
       <View
+        key={slide.surfaceKey}
         style={[
           styles.bar,
           { paddingBottom: insets.bottom, height: layout.tabBarHeight + insets.bottom },

@@ -52,7 +52,8 @@ export function SegmentedControl({ segments, value, onChange }: SegmentedControl
   const styles = useStyles();
   const slide = useSelectionSlide(
     segments.some((segment) => segment.key === value) ? value : null,
-    'horizontal'
+    'horizontal',
+    JSON.stringify(segments.map((segment) => segment.key)),
   );
   const { offset, extent, presence } = slide;
   const thumbStyle = useAnimatedStyle(() => ({
@@ -65,7 +66,7 @@ export function SegmentedControl({ segments, value, onChange }: SegmentedControl
     <View style={styles.track}>
       {/* The track carries the pill's inset as padding, so this row is the box
           both the pill and the segments are measured in. */}
-      <View style={styles.row}>
+      <View key={slide.surfaceKey} style={styles.row}>
         <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
         {segments.map((segment) => (
           <SegmentButton

@@ -37,7 +37,7 @@ export type MarkPlacement = ItemRect;
  * That flash was the whole symptom.
  */
 export function isMeasured(rect: ItemRect): boolean {
-  return rect.extent > 0;
+  return Number.isFinite(rect.offset) && Number.isFinite(rect.extent) && rect.extent > 0;
 }
 
 /**
