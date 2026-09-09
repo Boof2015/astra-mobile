@@ -177,7 +177,7 @@ export function AppSheetItem({
   };
 
   return (
-    <View style={[
+    <View collapsable={false} style={[
       styles.itemRow,
       selected && styles.selectedRow,
       !!trailing && styles.rowWithActions,
@@ -271,6 +271,7 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 14,
+    overflow: 'hidden',
   },
   selectedRow: {
     backgroundColor: mixHex(colors.bgTertiary, colors.accent, 0.18),
