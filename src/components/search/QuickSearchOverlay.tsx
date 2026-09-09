@@ -62,6 +62,7 @@ type RouteHref =
   | '/settings/appearance'
   | '/settings/library'
   | '/settings/audio'
+  | '/settings/audio-device'
   | '/settings/playback'
   | '/settings/services'
   | '/settings/lyrics'
@@ -153,6 +154,14 @@ const SETTING_ENTRIES: {
     href: '/settings/audio',
     icon: 'volume-high',
     keywords: ['audio', 'normalization', 'replaygain', 'loudness', 'gain', 'target lufs'],
+  },
+  {
+    id: 'setting:audio-device',
+    label: 'Audio device',
+    subtitle: 'Output formats / device capabilities',
+    href: SETTINGS_SEARCH_ROUTES.audioDevice,
+    icon: 'headset-outline',
+    keywords: ['audio', 'device', 'dac', 'output', 'device capabilities', 'sample rate', 'bit depth', 'usb', 'headphones'],
   },
   {
     id: 'setting:playback',

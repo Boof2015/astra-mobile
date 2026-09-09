@@ -52,6 +52,31 @@ class OutputDeviceSelectorTest {
   }
 
   @Test
+  fun usbProductNameRefreshKeepsExistingPresetIdentity() {
+    for (address in listOf("card=1;device=0", null)) {
+      for (routeLabel in listOf("USB", "USB audio", "My DAC")) {
+        val route = buildOutputRouteIdentity("usb", routeLabel, address, " SNOWSKY TINY B ")
+        assertEquals("SNOWSKY TINY B", route.label)
+        assertEquals(buildOutputRouteKey("usb", routeLabel, address), route.key)
+      }
+    }
+  }
+
+  @Test
+  fun usbMissingOrGenericProductRetainsUsefulRouteName() {
+    for (product in listOf(null, "", "  ", "USB", "usb audio", "USB device", "USB headset", "Headphones")) {
+      assertEquals("My DAC", buildOutputRouteIdentity("usb", "My DAC", null, product).label)
+    }
+  }
+
+  @Test
+  fun otherEqOutputLabelsStayUnchanged() {
+    assertEquals("My headphones", buildOutputRouteIdentity("bluetooth", "My headphones", "address", "Model name").label)
+    assertEquals("Phone speaker", buildOutputRouteIdentity("speaker", "Phone speaker", null, "SM-S908U1").label)
+    assertEquals("Wired headphones", buildOutputRouteIdentity("wired", "Wired headphones", null, "SM-S908U1").label)
+  }
+
+  @Test
   fun externalAddressProducesStablePrivacySafeKey() {
     val first = buildOutputRouteKey("bluetooth", "Sony WH-1000XM5", "AA:BB:CC:DD:EE:FF")
     val same = buildOutputRouteKey("bluetooth", "Renamed headphones", "aa:bb:cc:dd:ee:ff")

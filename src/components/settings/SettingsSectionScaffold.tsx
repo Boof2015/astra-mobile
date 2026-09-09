@@ -20,9 +20,11 @@ export type SettingsIconName = keyof typeof Ionicons.glyphMap;
 
 export function SettingsSectionScreen({
   title,
+  backLabel = 'Settings',
   children,
 }: {
   title: string;
+  backLabel?: string;
   children: ReactNode;
 }) {
   const styles = useStyles();
@@ -45,7 +47,7 @@ export function SettingsSectionScreen({
       <ScreenHeader
         header={header}
         title={title}
-        backLabel="Settings"
+        backLabel={backLabel}
         onBack={() => router.back()}
       />
     </Screen>

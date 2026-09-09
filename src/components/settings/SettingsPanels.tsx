@@ -4,6 +4,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { EQSlider } from '@/components/eq/EQSlider';
 import { ScanProgress } from '@/components/library/ScanProgress';
 import { ScanNotificationPermissionCard } from '@/components/library/ScanNotificationPermissionCard';
@@ -13,6 +14,7 @@ import { AccentSwatchRow } from '@/components/settings/AccentSwatchRow';
 import { ScopeStyleCards } from '@/components/settings/ScopeStyleCards';
 import {
   SettingsCard,
+  SettingsNavRow,
   SettingsSectionLabel,
   SettingsToggleRow,
 } from '@/components/settings/SettingsSectionScaffold';
@@ -498,6 +500,7 @@ export function LibrarySettingsPanel() {
 
 export function AudioSettingsPanel() {
   const styles = useStyles();
+  const router = useRouter();
   const normalizationEnabled = useAudioSettingsStore((s) => s.normalizationEnabled);
   const normalizationTargetLufs = useAudioSettingsStore((s) => s.normalizationTargetLufs);
   const replayGainEnabled = useAudioSettingsStore((s) => s.replayGainEnabled);
@@ -509,7 +512,14 @@ export function AudioSettingsPanel() {
 
   return (
     <>
-      <SettingsSectionLabel>LOUDNESS</SettingsSectionLabel>
+      <SettingsSectionLabel>OUTPUT</SettingsSectionLabel>
+      <SettingsNavRow
+        icon="headset-outline"
+        title="Audio device"
+        subtitle="Current device, playback formats, and reported capabilities."
+        onPress={() => router.push('/settings/audio-device' as never)}
+      />
+      <SettingsSectionLabel spaced>LOUDNESS</SettingsSectionLabel>
       <SettingsCard>
         <SettingsToggleRow
           title="Loudness normalization"

@@ -16,15 +16,17 @@ import com.google.android.exoplayer2.audio.DefaultAudioSink
  *   4. PostEqTapAudioProcessor — post-EQ tap → scope ring #2 (EQ screen overlay).
  * Float-output / playback-param capabilities are preserved by forwarding the flags.
  */
-fun buildScopeRenderersFactory(context: Context): DefaultRenderersFactory =
+fun buildScopeRenderersFactory(context: Context, diagnostics: AudioDiagnosticsObserver): DefaultRenderersFactory =
   object : DefaultRenderersFactory(context) {
     override fun buildAudioSink(
       context: Context,
       enableFloatOutput: Boolean,
       enableAudioTrackPlaybackParams: Boolean,
       enableOffload: Boolean
-    ): AudioSink =
-      DefaultAudioSink.Builder(context)
+    ): AudioSink {
+      val capture = DiagnosticBufferSizeProvider()
+      val sink = DefaultAudioSink.Builder(context)
+        .setAudioTrackBufferSizeProvider(capture)
         .setEnableFloatOutput(enableFloatOutput)
         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
         .setAudioProcessors(
@@ -36,4 +38,6 @@ fun buildScopeRenderersFactory(context: Context): DefaultRenderersFactory =
           )
         )
         .build()
+      return DiagnosticAudioSink(sink, capture, diagnostics.sinkObserver)
+    }
   }

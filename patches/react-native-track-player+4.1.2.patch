@@ -1,12 +1,13 @@
 diff --git a/node_modules/react-native-track-player/android/build.gradle b/node_modules/react-native-track-player/android/build.gradle
-index ac33473..328f8e2 100644
+index ac33473..12d53e6 100644
 --- a/node_modules/react-native-track-player/android/build.gradle
 +++ b/node_modules/react-native-track-player/android/build.gradle
-@@ -51,6 +51,7 @@ repositories {
+@@ -51,6 +51,8 @@ repositories {
  
  dependencies {
      implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
 +    implementation project(':astra-car')
++    implementation project(':astra-audio-route')
      // used when building against local maven
  //    implementation "com.github.doublesymmetry:kotlin-audio:2.1.0"
  
@@ -496,7 +497,7 @@ index b2409a0..119caaf 100644
 +    }
  }
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-index afa6b0f..7f31876 100644
+index afa6b0f..d2e89e0 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
 @@ -9,6 +9,14 @@ import android.os.Binder
@@ -523,7 +524,7 @@ index afa6b0f..7f31876 100644
  
      /**
       * Use [appKilledPlaybackBehavior] instead.
-@@ -158,10 +168,64 @@ class MusicService : HeadlessJsTaskService() {
+@@ -158,10 +168,89 @@ class MusicService : HeadlessJsTaskService() {
  
          player = QueuedAudioPlayer(this@MusicService, playerConfig, bufferConfig, cacheConfig)
          player.automaticallyUpdateNotificationMetadata = automaticallyUpdateNotificationMetadata
@@ -535,6 +536,31 @@ index afa6b0f..7f31876 100644
 +        player.nativePlaybackObserver = { native ->
 +            val item = native.currentMediaItem?.getAudioItemHolder()?.audioItem as? TrackAudioItem
 +            val error = native.playerError
++            // Read-only metadata publication; failures must not disrupt Android Auto.
++            runCatching {
++                val original = item?.track?.originalItem
++                fun positiveNumber(key: String): Int? = (original?.get(key) as? Number)?.toInt()?.takeIf { it > 0 }
++                expo.modules.astraaudioroute.AudioDiagnosticsBridge.state.source(
++                    player.audioDiagnosticsGeneration,
++                    item,
++                    item?.let {
++                        expo.modules.astraaudioroute.DiagnosticSource(
++                            original?.get("id")?.toString(), original?.getString("astraCarQueueEntryId"),
++                            it.title, it.artist, original?.getString("format"),
++                            positiveNumber("sampleRate"), positiveNumber("bitDepth"), positiveNumber("channels"),
++                            original?.getString("codec"),
++                        )
++                    },
++                    when {
++                        error != null -> "error"
++                        native.playbackState == Player.STATE_IDLE || native.playbackState == Player.STATE_ENDED -> "stopped"
++                        native.playbackState == Player.STATE_BUFFERING -> "loading"
++                        native.isPlaying -> "playing"
++                        item != null -> "paused"
++                        else -> "stopped"
++                    },
++                )
++            }
 +            AstraCarPlaybackBridge.publish(this, AstraCarPlaybackSnapshot(
 +                generation = carGeneration,
 +                sequence = ++carSequence,
@@ -588,7 +614,7 @@ index afa6b0f..7f31876 100644
      @MainThread
      fun updateOptions(options: Bundle) {
          latestOptions = options
-@@ -300,6 +364,18 @@ class MusicService : HeadlessJsTaskService() {
+@@ -300,6 +389,18 @@ class MusicService : HeadlessJsTaskService() {
          player.add(items, atIndex)
      }
  
@@ -607,7 +633,7 @@ index afa6b0f..7f31876 100644
      @MainThread
      fun load(track: Track) {
          player.load(track.toAudioItem())
-@@ -307,7 +383,9 @@ class MusicService : HeadlessJsTaskService() {
+@@ -307,7 +408,9 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun move(fromIndex: Int, toIndex: Int) {
@@ -618,7 +644,7 @@ index afa6b0f..7f31876 100644
      }
  
      @MainThread
-@@ -317,12 +395,25 @@ class MusicService : HeadlessJsTaskService() {
+@@ -317,12 +420,25 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun remove(indexes: List<Int>) {
@@ -646,7 +672,7 @@ index afa6b0f..7f31876 100644
      }
  
      @MainThread
-@@ -335,6 +426,10 @@ class MusicService : HeadlessJsTaskService() {
+@@ -335,6 +451,10 @@ class MusicService : HeadlessJsTaskService() {
          player.pause()
      }
  
@@ -657,7 +683,7 @@ index afa6b0f..7f31876 100644
      @MainThread
      fun stop() {
          player.stop()
-@@ -741,7 +836,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -741,7 +861,7 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      private fun emit(event: String, data: Bundle? = null) {
@@ -666,7 +692,7 @@ index afa6b0f..7f31876 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, data?.let { Arguments.fromBundle(it) })
      }
-@@ -751,7 +846,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -751,7 +871,7 @@ class MusicService : HeadlessJsTaskService() {
          val payload = Arguments.createArray()
          data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
  
@@ -675,7 +701,7 @@ index afa6b0f..7f31876 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, payload)
      }
-@@ -800,6 +895,8 @@ class MusicService : HeadlessJsTaskService() {
+@@ -800,6 +920,8 @@ class MusicService : HeadlessJsTaskService() {
      override fun onDestroy() {
          super.onDestroy()
          if (::player.isInitialized) {

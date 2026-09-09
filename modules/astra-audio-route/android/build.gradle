@@ -18,5 +18,6 @@ android {
 }
 
 dependencies {
+  implementation project(':astra-scope')
   testImplementation 'junit:junit:4.13.2'
 }

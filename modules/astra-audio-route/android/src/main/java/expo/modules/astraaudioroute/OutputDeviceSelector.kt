@@ -19,6 +19,28 @@ internal fun <T> selectPredictedOutputDevice(
     ?: connected.first()
 }
 
+/** Prefer the connected product over Android's generic external route label. */
+internal fun externalDeviceLabel(kind: String, productName: String?, routeLabel: String): String {
+  if (kind !in setOf("usb", "bluetooth", "hdmi")) return routeLabel
+  val product = productName?.trim()?.takeIf { it.isNotEmpty() } ?: return routeLabel
+  val generic = setOf("usb", "usb audio", "usb device", "usb headset", "bluetooth", "bluetooth audio", "hdmi", "hdmi audio", "headset", "headphones")
+  return if (product.lowercase() in generic) routeLabel else product
+}
+
+internal data class OutputRouteIdentity(val key: String, val label: String)
+
+internal fun buildOutputRouteIdentity(
+  kind: String,
+  routeLabel: String,
+  address: String?,
+  productName: String?,
+): OutputRouteIdentity = OutputRouteIdentity(
+  // Keep the pre-existing identity even on devices without an address. A better
+  // display name must not orphan preset assignments or trigger preset loading.
+  key = buildOutputRouteKey(kind, routeLabel, address),
+  label = if (kind == "usb") externalDeviceLabel(kind, productName, routeLabel) else routeLabel,
+)
+
 private fun slug(value: String): String =
   value
     .trim()

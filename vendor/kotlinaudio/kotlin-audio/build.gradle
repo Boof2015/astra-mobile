@@ -13,6 +13,7 @@
 //   5. nativePlaybackObserver after Player.onEvents, bounded nativeQueuePage,
 //      and MediaSession release on teardown for the Android Auto projection
 //   6. EQ format activation at flush + per-channel state resizing across tracks
+//   7. passive audio diagnostics via analytics + a forwarding sink/default buffer provider
 
 plugins {
   id 'com.android.library'
@@ -54,4 +55,5 @@ dependencies {
 
   // The PCM tap forwards to expo.modules.astrascope.ScopeBridge.
   implementation project(':astra-scope')
+  implementation project(':astra-audio-route')
 }

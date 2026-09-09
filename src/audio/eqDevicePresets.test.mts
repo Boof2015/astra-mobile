@@ -146,3 +146,25 @@ test('only a real transition to an assigned device requests preset application',
   assert.equal(presetForOutputRouteTransition('wired', 'bluetooth', assignments, exists), null);
   assert.equal(presetForOutputRouteTransition('wired', 'speaker', assignments, () => false), null);
 });
+
+test('USB product names refresh stored devices without losing or reapplying their presets', () => {
+  for (const key of ['usb:id:abc123', 'usb', 'usb:name:my-dac']) {
+    const previous = state({
+      devices: { [key]: { key, label: 'USB', kind: 'usb', lastSeenAt: 10 } },
+      assignments: { [key]: 'dac-preset' },
+    });
+    const observed = observeEQOutputDevice(previous, route({
+      key,
+      label: 'SNOWSKY TINY B',
+      kind: 'usb',
+      updatedAt: 20,
+    }));
+
+    assert.deepEqual(Object.keys(observed.devices), [key]);
+    assert.equal(observed.devices[key].label, 'SNOWSKY TINY B');
+    assert.deepEqual(observed.assignments, previous.assignments);
+    assert.equal(presetForOutputRouteTransition(key, key, observed.assignments, () => true), null);
+    assert.equal(presetForOutputRouteTransition('speaker', key, observed.assignments, () => true), 'dac-preset');
+    assert.deepEqual(parseEQDevicePresetStateJson(stringifyEQDevicePresetState(observed)), observed);
+  }
+});

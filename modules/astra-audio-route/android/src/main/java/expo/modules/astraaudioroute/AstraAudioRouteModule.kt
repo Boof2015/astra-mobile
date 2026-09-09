@@ -12,6 +12,8 @@ import android.os.Looper
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.astrascope.EqBridge
+import expo.modules.astrascope.GainBridge
 
 class AstraAudioRouteModule : Module() {
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -26,6 +28,10 @@ class AstraAudioRouteModule : Module() {
 
     Function("getCurrentRoute") {
       snapshotRoute()
+    }
+
+    Function("getAudioDiagnostics") {
+      snapshotDiagnostics()
     }
 
     Function("start") {
@@ -129,13 +135,21 @@ class AstraAudioRouteModule : Module() {
   private fun snapshotRoute(): Map<String, Any?> {
     val selectedRouteName = selectedRouteName()
     val device = selectOutputDevice()
+    return snapshotRoute(device, selectedRouteName)
+  }
+
+  private fun snapshotRoute(device: AudioDeviceInfo?, selectedRouteName: String?): Map<String, Any?> {
     val kind = device?.let { kindForType(it.type) } ?: "unknown"
-    val label = displayLabel(kind, device, selectedRouteName)
-    val key = buildOutputRouteKey(kind, label, deviceAddress(device))
+    val identity = buildOutputRouteIdentity(
+      kind,
+      displayLabel(kind, device, selectedRouteName),
+      deviceAddress(device),
+      device?.productName?.toString(),
+    )
 
     return mapOf(
-      "key" to key,
-      "label" to label,
+      "key" to identity.key,
+      "label" to identity.label,
       "kind" to kind,
       "nativeType" to device?.type,
       "nativeId" to device?.id,
@@ -157,7 +171,11 @@ class AstraAudioRouteModule : Module() {
     }
 
   private fun selectOutputDevice(): AudioDeviceInfo? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null
+    return selectDiagnosticDevice().first
+  }
+
+  private fun selectDiagnosticDevice(): Pair<AudioDeviceInfo?, String> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null to "unavailable"
     val outputs = try {
       audioManager().getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter { it.isSink }
     } catch (_: Throwable) {
@@ -176,7 +194,52 @@ class AstraAudioRouteModule : Module() {
     } else {
       emptyList()
     }
-    return selectPredictedOutputDevice(predicted, outputs) { kindForType(it.type) }
+    val device = selectPredictedOutputDevice(predicted, outputs) { kindForType(it.type) }
+    return device to when {
+      predicted.isNotEmpty() -> "media-prediction"
+      device != null -> "connected-device-fallback"
+      else -> "unavailable"
+    }
+  }
+
+  /** Getter only: never starts route synchronization or applies an EQ/device profile. */
+  private fun snapshotDiagnostics(): Map<String, Any?> {
+    val (device, provenance) = selectDiagnosticDevice()
+    return AudioDiagnosticsBridge.state.snapshot() + mapOf(
+      "route" to device?.let {
+        val route = snapshotRoute(it, selectedRouteName())
+        route + ("label" to externalDeviceLabel(kindForType(it.type), it.productName?.toString(), route["label"] as String))
+      },
+      "routeProvenance" to provenance,
+      "capabilities" to device?.let { runCatching { deviceCapabilities(it) }.getOrNull() },
+      "processing" to mapOf(
+        "eqEnabled" to EqBridge.enabled,
+        "preampDb" to (20.0 * kotlin.math.log10(EqBridge.preampLinear.toDouble())).takeIf { it.isFinite() },
+        "gainTargetDb" to (20.0 * kotlin.math.log10(GainBridge.targetGain.toDouble())).takeIf { it.isFinite() },
+      ),
+      "updatedAt" to System.currentTimeMillis(),
+    )
+  }
+
+  private fun deviceCapabilities(device: AudioDeviceInfo): Map<String, Any?> {
+    val profiles = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      runCatching {
+        device.audioProfiles.map { profile ->
+          mapOf(
+            "encoding" to diagnosticEncoding(profile.format),
+            "sampleRates" to profile.sampleRates.filter { it > 0 }.distinct().sorted(),
+            "channelCounts" to (profile.channelMasks.map { Integer.bitCount(it) } +
+              profile.channelIndexMasks.map { Integer.bitCount(it) }).filter { it > 0 }.distinct().sorted(),
+          )
+        }
+      }.getOrNull()
+    } else null
+    return mapOf(
+      "sampleRates" to device.sampleRates.filter { it > 0 }.distinct().sorted(),
+      "encodings" to device.encodings.map { diagnosticEncoding(it) }.filterNotNull().distinct(),
+      "channelCounts" to device.channelCounts.filter { it > 0 }.distinct().sorted(),
+      "profiles" to profiles,
+    )
   }
 
   private fun kindForType(type: Int): String =

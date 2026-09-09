@@ -5,6 +5,8 @@ import android.media.AudioManager
 import android.media.AudioManager.AUDIOFOCUS_LOSS
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.ResultReceiver
 import android.support.v4.media.RatingCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -87,6 +89,10 @@ abstract class BaseAudioPlayer internal constructor(
     private val cacheConfig: CacheConfig?
 ) : AudioManager.OnAudioFocusChangeListener {
     protected val exoPlayer: ExoPlayer
+    val audioDiagnosticsGeneration = expo.modules.astraaudioroute.AudioDiagnosticsBridge.state.attach()
+    private val audioDiagnostics = com.doublesymmetry.kotlinaudio.scope.AudioDiagnosticsObserver(
+        audioDiagnosticsGeneration, Handler(Looper.myLooper() ?: Looper.getMainLooper())
+    )
 
     /** Native consumers must not depend on React timers or the JS task lifecycle. */
     var nativePlaybackObserver: ((Player) -> Unit)? = null
@@ -259,9 +265,9 @@ abstract class BaseAudioPlayer internal constructor(
 
         exoPlayer = ExoPlayer.Builder(context)
             // ASTRA M3: insert the pre-EQ PCM tap into the audio sink's processor
-            // chain. This is the ONLY change vs upstream kotlin-audio v2.1.0.
+            // chain, with passive output diagnostics around the same sink.
             .setRenderersFactory(
-                com.doublesymmetry.kotlinaudio.scope.buildScopeRenderersFactory(context)
+                com.doublesymmetry.kotlinaudio.scope.buildScopeRenderersFactory(context, audioDiagnostics)
             )
             .setHandleAudioBecomingNoisy(playerConfig.handleAudioBecomingNoisy)
             .setWakeMode(
@@ -291,6 +297,7 @@ abstract class BaseAudioPlayer internal constructor(
         )
 
         exoPlayer.addListener(PlayerListener())
+        exoPlayer.addAnalyticsListener(audioDiagnostics)
 
         scope.launch {
             // Whether ExoPlayer should manage audio focus for us automatically
@@ -471,6 +478,8 @@ abstract class BaseAudioPlayer internal constructor(
      */
     @CallSuper
     open fun destroy() {
+        expo.modules.astraaudioroute.AudioDiagnosticsBridge.state.detach(audioDiagnosticsGeneration)
+        exoPlayer.removeAnalyticsListener(audioDiagnostics)
         nativePlaybackObserver = null
         abandonAudioFocusIfHeld()
         stop()
