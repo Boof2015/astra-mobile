@@ -88,6 +88,9 @@ namespace TagLib {
        */
       bool isEncrypted() const;
 
+      /*! Returns whether the EC-3 sample entry explicitly signals Atmos JOC. */
+      bool isAtmosJoc() const;
+
       /*!
        * Returns the codec used in the file.
        */

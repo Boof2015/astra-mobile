@@ -1700,7 +1700,7 @@ interface CatalogDao {
     TrackFtsEntity::class,
   ],
   views = [ActiveTrackView::class],
-  version = 4,
+  version = 5,
   exportSchema = true,
 )
 abstract class AstraCatalogDatabase : RoomDatabase() {
@@ -1735,5 +1735,12 @@ internal val CATALOG_MIGRATION_3_4 = object : Migration(3, 4) {
     database.execSQL("ALTER TABLE tracks ADD COLUMN resolved_artist_names_json TEXT")
     database.execSQL("ALTER TABLE tracks ADD COLUMN resolved_album_artist_names_json TEXT")
     database.execSQL("ALTER TABLE catalog_meta ADD COLUMN resolve_version INTEGER NOT NULL DEFAULT 0")
+  }
+}
+
+internal val CATALOG_MIGRATION_4_5 = object : Migration(4, 5) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    database.execSQL("ALTER TABLE tracks ADD COLUMN codec_profile TEXT")
+    database.execSQL("ALTER TABLE tracks ADD COLUMN is_atmos_joc INTEGER")
   }
 }

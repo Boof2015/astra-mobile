@@ -48,6 +48,8 @@ export function dbTrackToTrack(track: DbTrack): Track {
     bitrate: track.bitrate ?? undefined,
     channels: track.channels ?? undefined,
     codec: track.codec ?? undefined,
+    codecProfile: track.codec_profile ?? undefined,
+    isAtmosJoc: track.is_atmos_joc == null ? undefined : track.is_atmos_joc === 1,
     sourceType: track.source_type,
     sourceId: track.source_id ?? undefined,
     sourceTrackId: track.source_track_id ?? undefined,

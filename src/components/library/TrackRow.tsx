@@ -8,7 +8,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { FormatBadges } from '@/components/FormatBadge';
+import { AtmosBadge, FormatBadges } from '@/components/FormatBadge';
+import { hasAtmosMetadata } from '@/audio/atmos';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { SwipeableRow } from '@/components/SwipeableRow';
 import {
@@ -78,7 +79,12 @@ export function TrackRow({
   // plus the badges' own margin as dead space under the secondary line.
   const isRemote = !!track.source_type && track.source_type !== 'local';
   const hasFormat = !!(track.format || track.bit_depth || track.sample_rate);
-  const showBadges = isRemote || (showFormat && hasFormat);
+  const codecMetadata = {
+    codec: track.codec ?? undefined,
+    codecProfile: track.codec_profile ?? undefined,
+    isAtmosJoc: track.is_atmos_joc === 1,
+  };
+  const showBadges = isRemote || hasAtmosMetadata(codecMetadata) || (showFormat && hasFormat);
   const longPressAction = selectionMode ? onToggleSelect : (onLongPress ?? onOpenActions);
   const handleLongPress = longPressAction
     ? () => {
@@ -146,6 +152,7 @@ export function TrackRow({
         ) : null}
         {showBadges ? (
           <View style={styles.badges}>
+            <AtmosBadge track={codecMetadata} />
             <RemoteSourceBadge sourceType={track.source_type} />
             {showFormat ? (
               <FormatBadges

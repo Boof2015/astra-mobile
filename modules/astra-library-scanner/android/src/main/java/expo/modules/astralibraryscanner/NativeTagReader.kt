@@ -31,6 +31,7 @@ internal class NativeTagData {
   @JvmField var channels: Int = 0
   @JvmField var bitsPerSample: Int = 0
   @JvmField var codecMime: String? = null
+  @JvmField var isAtmosJoc: Boolean = false
 
   fun picture(): ByteArray? = pictures.firstOrNull(::isDecodableArtwork)
 }

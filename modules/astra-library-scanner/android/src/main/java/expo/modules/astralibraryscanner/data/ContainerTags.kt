@@ -3,7 +3,7 @@ package expo.modules.astralibraryscanner.data
 import java.util.Locale
 
 // Version 2 also retains single-entry explicit ARTISTS/ALBUMARTISTS lists.
-internal const val CURRENT_METADATA_READER_VERSION = 2
+internal const val CURRENT_METADATA_READER_VERSION = 3
 
 /** Normalization only: scalar credit punctuation is resolved later, using the catalog. */
 internal class ContainerTags(pairs: Array<String>) {

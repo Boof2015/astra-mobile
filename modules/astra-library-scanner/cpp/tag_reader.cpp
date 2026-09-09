@@ -143,7 +143,7 @@ const char *codecMime(TagLib::AudioProperties *properties) {
       case TagLib::MP4::Properties::FLAC: return "audio/flac";
       case TagLib::MP4::Properties::Opus: return "audio/opus";
       case TagLib::MP4::Properties::AC3: return "audio/ac3";
-      case TagLib::MP4::Properties::EAC3: return "audio/eac3";
+      case TagLib::MP4::Properties::EAC3: return p->isAtmosJoc() ? "audio/eac3-joc" : "audio/eac3";
       case TagLib::MP4::Properties::DTS: return "audio/dts";
       default: return nullptr;
     }
@@ -192,6 +192,9 @@ Java_expo_modules_astralibraryscanner_NativeTagReader_readDescriptor(
       put("sampleRate", audio->sampleRate());
       put("channels", audio->channels());
       put("bitsPerSample", bitsPerSample(audio));
+      if(auto mp4 = dynamic_cast<TagLib::MP4::Properties *>(audio)) {
+        env->SetBooleanField(result, env->GetFieldID(resultClass, "isAtmosJoc", "Z"), mp4->isAtmosJoc());
+      }
       if(const auto mime = codecMime(audio)) {
         auto value = env->NewStringUTF(mime);
         env->SetObjectField(result, env->GetFieldID(resultClass, "codecMime", "Ljava/lang/String;"), value);

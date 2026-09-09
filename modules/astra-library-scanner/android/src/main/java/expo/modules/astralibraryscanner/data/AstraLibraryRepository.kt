@@ -3282,6 +3282,8 @@ class AstraLibraryRepository private constructor(
       bitrate = metadata.bitrate,
       channels = metadata.channels,
       codec = codecFromMime(metadata.codecMime, metadata.mimeType),
+      codecProfile = metadata.codecProfile,
+      isAtmosJoc = metadata.isAtmosJoc?.let { if (it) 1 else 0 },
       fileName = file.name,
       parentUri = file.parentUri,
       size = file.size,
@@ -3311,7 +3313,7 @@ class AstraLibraryRepository private constructor(
       "audio/vorbis" -> "vorbis"
       "audio/raw" -> "pcm"
       "audio/ac3" -> "ac3"
-      "audio/eac3" -> "eac3"
+      "audio/eac3", "audio/eac3-joc" -> "eac3"
       else -> mime.removePrefix("audio/")
     }
   }
@@ -3378,6 +3380,8 @@ class AstraLibraryRepository private constructor(
       bitrate = int("bitrate"),
       channels = int("channels"),
       codec = string("codec"),
+      codecProfile = string("codec_profile"),
+      isAtmosJoc = int("is_atmos_joc"),
       sourceType = handle.sourceType,
       sourceId = handle.sourceId,
       sourceTrackId = string("source_track_id"),
@@ -3496,7 +3500,7 @@ class AstraLibraryRepository private constructor(
   private fun buildCatalogDatabase(): AstraCatalogDatabase =
     Room.databaseBuilder(applicationContext, AstraCatalogDatabase::class.java, CATALOG_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-      .addMigrations(CATALOG_MIGRATION_1_2, CATALOG_MIGRATION_2_3, CATALOG_MIGRATION_3_4)
+      .addMigrations(CATALOG_MIGRATION_1_2, CATALOG_MIGRATION_2_3, CATALOG_MIGRATION_3_4, CATALOG_MIGRATION_4_5)
       .fallbackToDestructiveMigration(true)
       .build()
 

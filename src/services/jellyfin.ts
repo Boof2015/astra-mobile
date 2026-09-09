@@ -5,6 +5,7 @@
 // self-contained — no per-track auth headers needed at playback time.
 
 import { sha1Hex } from '@/lib/hash';
+import { hasAtmosMetadata } from '@/audio/atmos';
 import type {
   RemoteCatalogTrack,
   RemoteConnectionConfig,
@@ -382,11 +383,6 @@ function normalizeJellyfinFormat(item: JellyfinAudioItem): string {
   return 'unknown';
 }
 
-function isAtmosJoc(codec: string | null, profile: string | null): boolean {
-  const combined = `${codec ?? ''} ${profile ?? ''}`.toLowerCase();
-  return combined.includes('atmos') || combined.includes('joc');
-}
-
 function mapJellyfinItemToCatalogTrack(
   sourceId: number,
   item: JellyfinAudioItem
@@ -447,7 +443,7 @@ function mapJellyfinItemToCatalogTrack(
     channels,
     codec,
     codec_profile: codecProfile,
-    is_atmos_joc: isAtmosJoc(codec, codecProfile) ? 1 : null,
+    is_atmos_joc: hasAtmosMetadata({ codec, codecProfile }) ? 1 : null,
     replaygain_track_gain_db: null,
     replaygain_album_gain_db: null,
     bpm: null,

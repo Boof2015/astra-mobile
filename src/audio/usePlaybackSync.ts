@@ -58,6 +58,8 @@ function sameTrack(a: Track | null, b: Track | null): boolean {
     a.bitrate === b.bitrate &&
     a.channels === b.channels &&
     a.codec === b.codec &&
+    a.codecProfile === b.codecProfile &&
+    a.isAtmosJoc === b.isAtmosJoc &&
     a.sourceType === b.sourceType &&
     a.sourceId === b.sourceId &&
     a.sourceTrackId === b.sourceTrackId &&

@@ -780,7 +780,7 @@ class AstraLibraryScannerModule : Module() {
         result["sampleRate"] = native.sampleRate.takeIf { it > 0 }
         result["channels"] = native.channels.takeIf { it > 0 }
         result["bitsPerSample"] = native.bitsPerSample.takeIf { it > 0 }
-        result["codecMime"] = native.codecMime
+        result.mergeAudioCodecMetadata(native.codecMime, native.isAtmosJoc)
         result["mimeType"] = native.codecMime
       }
       var embeddedPicture = native?.picture()
@@ -846,7 +846,7 @@ class AstraLibraryScannerModule : Module() {
           if (!trackMime.startsWith("audio/")) continue
 
           technicalRead = true
-          fill("codecMime", trackMime)
+          result.mergeAudioCodecMetadata(trackMime)
           fill("mimeType", trackMime)
           if (format.containsKey(MediaFormat.KEY_DURATION)) {
             fill("durationMs", format.getLong(MediaFormat.KEY_DURATION) / 1000)
@@ -928,6 +928,8 @@ class AstraLibraryScannerModule : Module() {
       channels = (this["channels"] as? Number)?.toInt(),
       bitsPerSample = (this["bitsPerSample"] as? Number)?.toInt(),
       codecMime = this["codecMime"] as? String,
+      codecProfile = this["codecProfile"] as? String,
+      isAtmosJoc = this["isAtmosJoc"] as? Boolean,
       artworkHash = this["artworkHash"] as? String,
       error = this["error"] as? String,
     )

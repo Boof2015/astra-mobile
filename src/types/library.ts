@@ -36,6 +36,8 @@ export interface DbTrack {
   bitrate: number | null;
   channels: number | null;
   codec: string | null;
+  codec_profile?: string | null;
+  is_atmos_joc?: number | null;
   bpm: number | null;
   musical_key: string | null;
   source_type: TrackSourceType;

@@ -6,6 +6,7 @@ import {
 } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 import type { Track } from '@/types/audio';
+import { hasAtmosMetadata } from '@/audio/atmos';
 
 /** A single mono pill (e.g. "FLAC", "24-BIT", "48.0 kHz"). */
 export function Badge({ label }: { label: string }) {
@@ -17,6 +18,14 @@ export function Badge({ label }: { label: string }) {
       </Text>
     </View>
   );
+}
+
+export function AtmosBadge({
+  track,
+}: {
+  track: Pick<Track, 'codec' | 'codecProfile' | 'isAtmosJoc'>;
+}) {
+  return hasAtmosMetadata(track) ? <Badge label="ATMOS" /> : null;
 }
 
 /**
@@ -78,6 +87,7 @@ const useStyles = createThemedStyles((colors) => ({
     flexWrap: 'nowrap',
   },
   badge: {
+    flexShrink: 0,
     backgroundColor: colors.glassBg,
     borderColor: colors.glassBorder,
     borderWidth: StyleSheet.hairlineWidth,
@@ -91,6 +101,8 @@ const useStyles = createThemedStyles((colors) => ({
     letterSpacing: 0.5,
   },
   plain: {
+    flexShrink: 1,
+    minWidth: 0,
     color: colors.textTertiary,
     fontSize: 10,
     letterSpacing: 0.3,

@@ -55,6 +55,8 @@ data class LocalAudioMetadata(
   val channels: Int? = null,
   val bitsPerSample: Int? = null,
   val codecMime: String? = null,
+  val codecProfile: String? = null,
+  val isAtmosJoc: Boolean? = null,
   val artworkHash: String? = null,
   val error: String? = null,
 )

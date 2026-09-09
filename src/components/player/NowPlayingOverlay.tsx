@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
-import { FormatBadges } from '@/components/FormatBadge';
+import { AtmosBadge, FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { MarqueeText } from '@/components/MarqueeText';
 import { NowPlayingWash } from '@/components/NowPlayingWash';
@@ -1758,6 +1758,13 @@ export function NowPlayingOverlay({
 
                   <View style={[styles.subRow, { height: deck.utilityRowHeight }]}>
                     <View style={styles.subBadges}>
+                      <AtmosBadge track={{
+                        codec: libraryTrack?.codec ?? track.codec,
+                        codecProfile: libraryTrack?.codec_profile ?? track.codecProfile,
+                        isAtmosJoc: libraryTrack?.is_atmos_joc == null
+                          ? track.isAtmosJoc
+                          : libraryTrack.is_atmos_joc === 1,
+                      }} />
                       <RemoteSourceBadge sourceType={track.sourceType} />
                       <FormatBadges track={track} wrap={false} variant="plain" />
                     </View>

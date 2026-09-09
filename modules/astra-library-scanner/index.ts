@@ -35,6 +35,8 @@ export interface ExtractedMetadata {
   mimeType?: string | null;
   /** Audio track mime type from MediaExtractor (e.g. "audio/flac"). */
   codecMime?: string | null;
+  codecProfile?: string | null;
+  isAtmosJoc?: boolean | null;
   durationMs?: number | null;
   bitrate?: number | null;
   trackNumber?: number | null;

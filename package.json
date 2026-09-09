@@ -85,6 +85,7 @@
     "test:eq-layout": "node --experimental-strip-types --test src/components/eq/eqLayout.test.mts",
     "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
     "test:audio-diagnostics": "node --experimental-strip-types --test src/audio/audioDiagnostics.test.mts",
+    "test:atmos": "node --experimental-strip-types --test src/audio/atmos.test.mts",
     "test:seek-bar": "node --experimental-strip-types --test src/audio/playbackClock.test.mts src/audio/playbackNavigation.test.mts src/audio/playbackProgressProjection.test.mts src/components/waveformScrubDetents.test.mts",
     "test:recent-play": "node --experimental-strip-types --test src/audio/recentPlayTracking.test.mts",
     "test:listening-stats": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/listeningHistoryState.test.mts src/components/listening/activityChartMath.test.mts",

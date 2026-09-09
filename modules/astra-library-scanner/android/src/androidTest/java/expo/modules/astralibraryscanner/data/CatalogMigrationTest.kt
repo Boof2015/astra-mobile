@@ -104,6 +104,35 @@ class CatalogMigrationTest {
     )
   }
 
+  @Test
+  fun atmosMigrationPreservesExistingTracksAndExposesNullableMetadata() {
+    helper.createDatabase(TEST_DATABASE, 4).apply {
+      insertSource("local:1", "local", 1)
+      execSQL("UPDATE catalog_sources SET active_generation_id = 'legacy' WHERE source_key = 'local:1'")
+      execSQL("""
+        INSERT INTO tracks (generation_id, source_key, path, title, artist, album,
+          album_identity_key, format, codec, file_name, added_at, modified_at,
+          title_sort_key, artist_sort_key, album_sort_key, file_name_sort_key,
+          disc_sort, track_sort, section_label, duration, mtime, source_type, rg_scanned,
+          metadata_reader_version)
+        VALUES ('legacy', 'local:1', 'content://legacy/song.m4a', 'Song', 'Artist',
+          'Album', 'album-key', 'M4A', 'eac3', 'song.m4a', 100, 200,
+          'song', 'artist', 'album', 'song.m4a', 0, 0, 'S', 180, 300, 'local', 0, 2)
+      """.trimIndent())
+      close()
+    }
+    val database = helper.runMigrationsAndValidate(TEST_DATABASE, 5, true, CATALOG_MIGRATION_4_5)
+    database.query("SELECT title, codec, added_at, metadata_reader_version, codec_profile, is_atmos_joc FROM active_tracks").use {
+      assertTrue(it.moveToFirst())
+      assertEquals("Song", it.getString(0))
+      assertEquals("eac3", it.getString(1))
+      assertEquals(100L, it.getLong(2))
+      assertEquals(2, it.getInt(3))
+      assertTrue(it.isNull(4))
+      assertTrue(it.isNull(5))
+    }
+  }
+
   private companion object {
     const val TEST_DATABASE = "artist-credit-migration-test"
   }

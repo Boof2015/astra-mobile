@@ -37,6 +37,70 @@ using namespace TagLib;
 
 namespace
 {
+  struct Ec3Properties {
+    int bitrate { 0 };
+    bool isAtmosJoc { false };
+  };
+
+  // Walk the first AudioSampleEntry's child boxes, never search arbitrary bytes
+  // for a fourcc. Dolby's EC3SpecificBox extension follows every independent
+  // substream description; EC-3 by itself does not indicate Atmos.
+  Ec3Properties readEc3Properties(const ByteVector &data)
+  {
+    if(data.size() < 52)
+      return {};
+    const auto entrySize = data.toUInt(16U);
+    if(entrySize < 36 || entrySize > data.size() - 16)
+      return {};
+    const auto end = 16 + entrySize;
+    unsigned int pos = 52;
+    switch(data.toUShort(32U)) {
+      case 0: break;
+      case 1: pos += 16; break;
+      case 2: pos += 36; break;
+      default: return {};
+    }
+    while(pos <= end && end - pos >= 8) {
+      unsigned long long size = data.toUInt(pos);
+      unsigned int header = 8;
+      if(size == 1) {
+        if(end - pos < 16)
+          return {};
+        size = data.toULongLong(pos + 8);
+        header = 16;
+      }
+      else if(size == 0)
+        size = end - pos;
+      if(size < header || size > end - pos)
+        return {};
+
+      if(data.containsAt("dec3", pos + 4)) {
+        const auto boxEnd = pos + static_cast<unsigned int>(size);
+        pos += header;
+        if(boxEnd - pos < 2)
+          return {};
+        Ec3Properties result;
+        const auto config = data.toUShort(pos);
+        result.bitrate = config >> 3;
+        const auto substreams = (config & 7) + 1;
+        pos += 2;
+        for(int i = 0; i < substreams; ++i) {
+          if(boxEnd - pos < 3)
+            return result;
+          const auto substreamSize = (data.at(pos + 2) & 0x1e) ? 4U : 3U;
+          if(boxEnd - pos < substreamSize)
+            return result;
+          pos += substreamSize;
+        }
+        // An asserted extension flag must include its complexity-index byte.
+        result.isAtmosJoc = boxEnd - pos >= 2 && (data.at(pos) & 1) != 0;
+        return result;
+      }
+      pos += static_cast<unsigned int>(size);
+    }
+    return {};
+  }
+
   // Calculate the total bytes used by audio data, used to calculate the bitrate
   long long calculateMdatLength(const MP4::AtomList &list)
   {
@@ -65,6 +129,7 @@ public:
   int channels { 0 };
   int bitsPerSample { 0 };
   bool encrypted { false };
+  bool isAtmosJoc { false };
   Codec codec { MP4::Properties::Unknown };
   String codecId;
 };
@@ -116,6 +181,12 @@ bool
 MP4::Properties::isEncrypted() const
 {
   return d->encrypted;
+}
+
+bool
+MP4::Properties::isAtmosJoc() const
+{
+  return d->isAtmosJoc;
 }
 
 MP4::Properties::Codec
@@ -308,12 +379,9 @@ MP4::Properties::read(File *file, const Atoms *atoms)
       }
     }
     else if(d->codec == EAC3) {
-      // The 'dec3' box (EC3SpecificBox) starts with the nominal data rate in
-      // kbit/s as a 13 bit value.
-      const auto dec3Pos = data.find("dec3");
-      if(const auto dec3Offset = static_cast<unsigned int>(dec3Pos);
-         dec3Pos >= 0 && data.size() >= dec3Offset + 6)
-        d->bitrate = data.toUShort(dec3Offset + 4) >> 3;
+      const auto ec3 = readEc3Properties(data);
+      d->bitrate = ec3.bitrate;
+      d->isAtmosJoc = ec3.isAtmosJoc;
     }
 
     if(d->bitrate == 0 && d->length > 0)

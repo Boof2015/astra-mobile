@@ -155,6 +155,8 @@ fun ActiveTrackView.toBridgeMap(): Map<String, Any?> = mapOf(
   "bitrate" to bitrate,
   "channels" to channels,
   "codec" to codec,
+  "codec_profile" to codecProfile,
+  "is_atmos_joc" to isAtmosJoc,
   "source_type" to sourceType,
   "source_id" to sourceId?.toDouble(),
   "source_track_id" to sourceTrackId,
