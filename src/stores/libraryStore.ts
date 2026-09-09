@@ -40,6 +40,7 @@ import {
   type LibraryLayout,
 } from '@/library/libraryLayout';
 import type { LibraryViewMode } from '@/library/libraryViewMode';
+import { usePlaylistStore } from './playlistStore';
 import { useSettingsStore } from './settingsStore';
 
 type ViewMode = LibraryViewMode;
@@ -699,6 +700,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         ),
         loadFolders(),
         AstraLibraryData.getRecentlyPlayed<DbTrack>(20),
+        // Hydrate saved playlists at startup and keep counts in step with scans.
+        usePlaylistStore.getState().refresh(),
       ]);
       const current = get();
       const canApplyTrackPage =

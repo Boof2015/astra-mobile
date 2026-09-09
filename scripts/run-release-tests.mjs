@@ -7,6 +7,7 @@ const TEST_SCRIPTS = [
   'test:car',
   'test:desktop-remote',
   'test:dynamic-playlists',
+  'test:playlist-hydration',
   'test:album-grouping',
   'test:artist-grouping',
   'test:resolve',

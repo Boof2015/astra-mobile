@@ -74,6 +74,7 @@
     "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/virtualPlaybackWindow.test.mts src/components/swipeableRowState.test.mts",
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts src/services/desktopRemoteTransport.test.mts",
     "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts",
+    "test:playlist-hydration": "node --experimental-strip-types --test src/stores/playlistHydration.test.mts",
     "test:album-grouping": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/library/albumGrouping.test.mts src/shared/library/albumEligibility.test.mts src/library/albumIdentity.test.mts src/library/albumSummary.test.mts",
     "test:artist-grouping": "node --experimental-strip-types --test src/library/artistGrouping.test.mts src/audio/artistCreditTransport.test.mts",
     "test:artist-images": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/services/artistImages/deezer.test.mts src/library/artistImagePolicy.test.mts",
