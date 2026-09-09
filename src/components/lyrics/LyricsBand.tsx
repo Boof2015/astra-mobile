@@ -320,7 +320,7 @@ export function LyricsBand({
           onPress={recenter}
           accessibilityLabel="Recenter lyrics on the current line"
           hitSlop={10}
-          variant="secondary"
+          variant="primary"
           label="Recenter"
           style={{ position: 'absolute', bottom: 8, alignSelf: 'center' }}
         />
