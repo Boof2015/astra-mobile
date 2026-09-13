@@ -1,3 +1,4 @@
+import { prepareDynamicPlaylistSyncState } from '@/shared/playlists/dynamicPlaylistSync';
 // Desktop LAN sync engine — the mobile side is the merge authority. One run:
 // pull the desktop's full favorites/playlists state, merge against local state
 // (two-way, deletion tombstones), apply the local half of the merge in one
@@ -234,7 +235,20 @@ async function runDesktopSyncOnce(): Promise<{
     throw new DesktopSyncUnsupportedError();
   }
 
-  const localState = await AstraLibraryData.getDesktopSyncState<NativeLocalSyncState>();
+  const remote = await fetchDesktopSyncState(connection.baseUrl, token, connection.certificateFingerprint);
+  if (remote.syncFormat !== DESKTOP_SYNC_FORMAT) throw new DesktopSyncUnsupportedError();
+  const localState = await prepareDynamicPlaylistSyncState(
+    remote.dynamicPlaylistRulesVersion,
+    remote.playlists,
+    async () => {
+      const playlists = await AstraLibraryData.listPlaylists<{ id: number; kind: string }>();
+      return Promise.all(playlists.filter((playlist) => playlist.kind === 'dynamic').map(async (playlist) => ({
+        kind: playlist.kind,
+        dynamicRules: await AstraLibraryData.getDynamicPlaylistRules(playlist.id),
+      })));
+    },
+    () => AstraLibraryData.getDesktopSyncState<NativeLocalSyncState>()
+  );
   const local = {
     favorites: new Map(localState.favorites.map((favorite) => [favorite.key, favorite])),
     favoriteTombstones: new Map(
@@ -245,10 +259,6 @@ async function runDesktopSyncOnce(): Promise<{
       localState.playlistTombstones.map((tombstone) => [tombstone.syncUid, tombstone.deletedAt])
     ),
   };
-  const remote = await fetchDesktopSyncState(connection.baseUrl, token, connection.certificateFingerprint);
-  if (remote.syncFormat !== DESKTOP_SYNC_FORMAT) {
-    throw new DesktopSyncUnsupportedError();
-  }
   if (Math.abs(remote.now - Date.now()) > CLOCK_SKEW_WARN_MS) {
     console.warn(
       `Desktop sync: clock skew of ${Math.round(Math.abs(remote.now - Date.now()) / 1000)}s detected; ` +

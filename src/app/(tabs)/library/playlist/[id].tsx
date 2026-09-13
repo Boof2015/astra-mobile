@@ -117,8 +117,11 @@ export default function PlaylistScreen() {
 
   useEffect(() => {
     if (playlistId == null || Number.isNaN(playlistId)) return;
-    void openPlaylist(playlistId);
-    return () => closePlaylist();
+    let canceled = false;
+    void openPlaylist(playlistId).catch((error) => {
+      if (!canceled) showAppDialog({ title: 'Playlist unavailable', message: error instanceof Error ? error.message : 'Playlist could not be loaded.' });
+    });
+    return () => { canceled = true; closePlaylist(); };
   }, [playlistId, openPlaylist, closePlaylist]);
 
   const playlist = isFavorites ? null : playlists.find((entry) => entry.id === playlistId);

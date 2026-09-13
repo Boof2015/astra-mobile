@@ -109,6 +109,24 @@ export interface DynamicPlaylistPreset {
   rules: DynamicPlaylistRulesV1;
 }
 
+
+export type DynamicPlaylistMatch = 'all' | 'any'
+export interface DynamicPlaylistGroup {
+  kind: 'group'
+  match: DynamicPlaylistMatch
+  children: DynamicPlaylistNode[]
+}
+export type DynamicPlaylistNode = DynamicPlaylistCondition | DynamicPlaylistGroup
+export interface DynamicPlaylistRulesV2 {
+  version: 2
+  filter: DynamicPlaylistGroup
+  sort: DynamicPlaylistSort
+  limit: number | null
+}
+export type DynamicPlaylistRules = DynamicPlaylistRulesV1 | DynamicPlaylistRulesV2
+export const DYNAMIC_PLAYLIST_MAX_GROUP_DEPTH = 8
+export const DYNAMIC_PLAYLIST_MAX_NODES = 256
+
 export const DYNAMIC_PLAYLIST_TEXT_FIELDS: readonly DynamicPlaylistTextField[] = [
   'title',
   'artist',
@@ -159,10 +177,10 @@ export const DEFAULT_DYNAMIC_PLAYLIST_SORT: DynamicPlaylistSort = {
   direction: 'asc',
 };
 
-export function createDefaultDynamicPlaylistRules(): DynamicPlaylistRulesV1 {
+export function createDefaultDynamicPlaylistRules(): DynamicPlaylistRulesV2 {
   return {
-    version: 1,
-    conditions: [],
+    version: 2,
+    filter: { kind: 'group', match: 'all', children: [] },
     sort: { ...DEFAULT_DYNAMIC_PLAYLIST_SORT },
     limit: null,
   };
@@ -365,27 +383,53 @@ export function normalizeDynamicPlaylistSort(value: unknown): DynamicPlaylistSor
   };
 }
 
-export function normalizeDynamicPlaylistRules(value: unknown): DynamicPlaylistRulesV1 {
-  if (!isRecord(value)) {
-    throw new Error('Dynamic playlist rules must be an object.');
+export function normalizeDynamicPlaylistRules(value: unknown): DynamicPlaylistRulesV2 {
+  if (!isRecord(value)) throw new Error('Dynamic playlist rules must be an object.')
+  if (value.version !== 1 && value.version !== 2) {
+    throw new Error('Dynamic playlist rule version is not supported.')
   }
-  if (value.version !== 1) {
-    throw new Error('Dynamic playlist rule version is not supported.');
+  let nodeCount = 0
+  const normalizeNode = (raw: unknown, depth: number): DynamicPlaylistNode => {
+    if (++nodeCount > DYNAMIC_PLAYLIST_MAX_NODES) {
+      throw new Error(`Use at most ${DYNAMIC_PLAYLIST_MAX_NODES} filter nodes.`)
+    }
+    if (!isRecord(raw)) throw new Error('Dynamic playlist filter must be an object.')
+    if (raw.kind !== 'group') return normalizeDynamicPlaylistCondition(raw)
+    if (depth > DYNAMIC_PLAYLIST_MAX_GROUP_DEPTH) {
+      throw new Error(`Use at most ${DYNAMIC_PLAYLIST_MAX_GROUP_DEPTH} group levels.`)
+    }
+    const match = requireArrayMember(raw.match, ['all', 'any'] as const, 'Group match')
+    if (!Array.isArray(raw.children)) throw new Error('Group children must be an array.')
+    if (depth > 1 && raw.children.length === 0) {
+      throw new Error('Add a filter to each group, or remove the empty group.')
+    }
+    return { kind: 'group', match, children: raw.children.map((child) => normalizeNode(child, depth + 1)) }
   }
+  if (value.version === 1 && !Array.isArray(value.conditions)) {
+    throw new Error('Dynamic playlist conditions must be an array.')
+  }
+  // A version 1 list contains only leaves: accepting groups here would silently
+  // change the meaning when an older app reads this same JSON.
+  const rawRoot = value.version === 1
+    ? { kind: 'group', match: 'all', children: (value.conditions as unknown[]).map(normalizeDynamicPlaylistCondition) }
+    : value.filter
+  if (!isRecord(rawRoot) || rawRoot.kind !== 'group') throw new Error('A root filter group is required.')
+  const filter = normalizeNode(rawRoot, 1) as DynamicPlaylistGroup
+  const limit = value.limit === null || typeof value.limit === 'undefined'
+    ? null : normalizePositiveInteger(value.limit, 'Result limit')
+  if (limit !== null && limit > 5000) throw new Error('Result limit must be 5000 or less.')
+  return { version: 2, filter, sort: normalizeDynamicPlaylistSort(value.sort), limit }
+}
 
-  const rawConditions = Array.isArray(value.conditions) ? value.conditions : [];
-  const limit =
-    value.limit === null || typeof value.limit === 'undefined'
-      ? null
-      : normalizePositiveInteger(value.limit, 'Result limit');
-  if (limit !== null && limit > 5000) {
-    throw new Error('Result limit must be 5000 or less.');
+/** Keep simple playlists readable by existing desktop and mobile releases. */
+export function serializeDynamicPlaylistRules(value: DynamicPlaylistRules): string {
+  const rules = normalizeDynamicPlaylistRules(value)
+  if (rules.filter.match === 'all' && rules.filter.children.every((node) => node.kind !== 'group')) {
+    return JSON.stringify({ version: 1, conditions: rules.filter.children, sort: rules.sort, limit: rules.limit })
   }
+  return JSON.stringify(rules)
+}
 
-  return {
-    version: 1,
-    conditions: rawConditions.map(normalizeDynamicPlaylistCondition),
-    sort: normalizeDynamicPlaylistSort(value.sort),
-    limit,
-  };
+export function dynamicPlaylistConditions(group: DynamicPlaylistGroup): DynamicPlaylistCondition[] {
+  return group.children.flatMap((node) => node.kind === 'group' ? dynamicPlaylistConditions(node) : [node])
 }

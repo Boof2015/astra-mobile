@@ -61,6 +61,7 @@ export interface SyncUidTombstone {
 }
 
 export interface DesktopSyncState {
+  dynamicPlaylistRulesVersion?: number
   syncFormat: number;
   now: number;
   favorites: SyncFavorite[];

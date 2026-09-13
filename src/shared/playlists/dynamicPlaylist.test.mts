@@ -8,8 +8,8 @@ import {
 
 test('normalizes dynamic playlist defaults', () => {
   assert.deepEqual(createDefaultDynamicPlaylistRules(), {
-    version: 1,
-    conditions: [],
+    version: 2,
+    filter: { kind: 'group', match: 'all', children: [] },
     sort: { field: 'title', direction: 'asc' },
     limit: null,
   });
@@ -29,13 +29,13 @@ test('normalizes supported condition kinds and trims text values', () => {
   });
 
   assert.deepEqual(rules, {
-    version: 1,
-    conditions: [
+    version: 2,
+    filter: { kind: 'group', match: 'all', children: [
       { kind: 'text', field: 'artist', operator: 'contains', value: 'Jane' },
       { kind: 'exact', field: 'favorite', operator: 'is', value: true },
       { kind: 'numeric', field: 'year', operator: 'gte', value: 2001 },
       { kind: 'date', field: 'last_played_at', operator: 'never' },
-    ],
+    ] },
     sort: { field: 'play_count', direction: 'desc' },
     limit: 25,
   });
@@ -53,7 +53,7 @@ test('rejects incomplete and unsupported dynamic playlist rules', () => {
   assert.throws(
     () =>
       normalizeDynamicPlaylistRules({
-        version: 2,
+        version: 3,
         conditions: [],
       }),
     /version is not supported/
@@ -81,6 +81,6 @@ test('ships validated starter presets', () => {
   ]);
 
   for (const preset of DYNAMIC_PLAYLIST_PRESETS) {
-    assert.equal(normalizeDynamicPlaylistRules(preset.rules).version, 1);
+    assert.equal(normalizeDynamicPlaylistRules(preset.rules).version, 2);
   }
 });

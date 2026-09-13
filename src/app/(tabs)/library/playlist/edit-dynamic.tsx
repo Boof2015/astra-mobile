@@ -1,3 +1,4 @@
+import { dynamicPlaylistNodeId, editDynamicPlaylistNode, dynamicPlaylistNodeCount } from '@/shared/playlists/dynamicPlaylistDraft';
 import { ActionButton } from '@/components/ActionButton';
 import {
   useEffect,
@@ -31,6 +32,11 @@ import { AppPressable } from '@/components/AppPressable';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import {
   DYNAMIC_PLAYLIST_PRESETS,
+  DYNAMIC_PLAYLIST_MAX_GROUP_DEPTH,
+  DYNAMIC_PLAYLIST_MAX_NODES,
+  type DynamicPlaylistGroup,
+  type DynamicPlaylistNode,
+  type DynamicPlaylistRulesV1,
   createDefaultDynamicPlaylistRules,
   normalizeDynamicPlaylistCondition,
   normalizeDynamicPlaylistRules,
@@ -43,7 +49,7 @@ import {
   type DynamicPlaylistNumericCondition,
   type DynamicPlaylistNumericField,
   type DynamicPlaylistPreview,
-  type DynamicPlaylistRulesV1,
+  type DynamicPlaylistRulesV2,
   type DynamicPlaylistSort,
   type DynamicPlaylistSortField,
   type DynamicPlaylistSourceCondition,
@@ -65,11 +71,11 @@ interface FieldOption {
 }
 
 type ConditionEditorTarget =
-  | { mode: 'new'; draft: DynamicPlaylistCondition }
-  | { mode: 'edit'; index: number; draft: DynamicPlaylistCondition };
+  | { mode: 'new'; parentId: number; draft: DynamicPlaylistCondition }
+  | { mode: 'edit'; nodeId: number; draft: DynamicPlaylistCondition };
 
 type EditorSheet =
-  | { kind: 'field-picker'; target: 'new' | ConditionEditorTarget }
+  | { kind: 'field-picker'; target: ConditionEditorTarget }
   | { kind: 'condition'; target: ConditionEditorTarget }
   | { kind: 'sort'; draftSort: DynamicPlaylistSort; limitText: string }
   | { kind: 'preview' }
@@ -184,23 +190,6 @@ function fieldGroupLabel(condition: DynamicPlaylistCondition): string {
   return FIELD_GROUP_LABELS[group];
 }
 
-function updateCondition(
-  rules: DynamicPlaylistRulesV1,
-  index: number,
-  condition: DynamicPlaylistCondition
-): DynamicPlaylistRulesV1 {
-  return {
-    ...rules,
-    conditions: rules.conditions.map((entry, entryIndex) => (entryIndex === index ? condition : entry)),
-  };
-}
-
-function removeCondition(rules: DynamicPlaylistRulesV1, index: number): DynamicPlaylistRulesV1 {
-  return {
-    ...rules,
-    conditions: rules.conditions.filter((_, entryIndex) => entryIndex !== index),
-  };
-}
 
 function updateTextOperator(
   condition: DynamicPlaylistTextCondition,
@@ -254,7 +243,7 @@ function validateCondition(condition: DynamicPlaylistCondition): string | null {
   }
 }
 
-function rulesEqual(a: DynamicPlaylistRulesV1, b: DynamicPlaylistRulesV1): boolean {
+function rulesEqual(a: DynamicPlaylistRulesV2, b: DynamicPlaylistRulesV2): boolean {
   return JSON.stringify(normalizeDynamicPlaylistRules(a)) === JSON.stringify(normalizeDynamicPlaylistRules(b));
 }
 
@@ -758,7 +747,7 @@ export default function DynamicPlaylistEditorScreen() {
 
   const playlist = isEditing ? playlists.find((entry) => entry.id === playlistId) : null;
   const [name, setName] = useState(() => (isEditing ? playlist?.name ?? 'Dynamic playlist' : ''));
-  const [rules, setRules] = useState<DynamicPlaylistRulesV1>(() => createDefaultDynamicPlaylistRules());
+  const [rules, setRules] = useState<DynamicPlaylistRulesV2>(() => createDefaultDynamicPlaylistRules());
   const [sheet, setSheet] = useState<EditorSheet>(null);
   const [isLoadingRules, setIsLoadingRules] = useState(isEditing);
   const [isSaving, setIsSaving] = useState(false);
@@ -802,7 +791,10 @@ export default function DynamicPlaylistEditorScreen() {
     }
   }, [rules]);
 
-  const rulesAreDefault = useMemo(() => rulesEqual(rules, createDefaultDynamicPlaylistRules()), [rules]);
+  const rulesAreDefault = useMemo(
+    () => normalizedRulesError === null && rulesEqual(rules, createDefaultDynamicPlaylistRules()),
+    [normalizedRulesError, rules]
+  );
 
   useEffect(() => {
     let didCancel = false;
@@ -871,48 +863,71 @@ export default function DynamicPlaylistEditorScreen() {
     });
   };
 
-  const openFieldPicker = (target: 'new' | ConditionEditorTarget) => {
+  const openFieldPicker = (target: ConditionEditorTarget) => {
     setSheet({ kind: 'field-picker', target });
   };
 
-  const openConditionEditor = (index: number) => {
-    setSheet({ kind: 'condition', target: { mode: 'edit', index, draft: rules.conditions[index] } });
+  const openConditionEditor = (condition: DynamicPlaylistCondition) => {
+    setSheet({ kind: 'condition', target: { mode: 'edit', nodeId: dynamicPlaylistNodeId(condition), draft: condition } });
   };
 
   const updateActiveConditionDraft = (condition: DynamicPlaylistCondition) => {
-    setSheet((current) => {
-      if (current?.kind !== 'condition') return current;
-      if (current.target.mode === 'edit') {
-        return { kind: 'condition', target: { mode: 'edit', index: current.target.index, draft: condition } };
-      }
-      return { kind: 'condition', target: { mode: 'new', draft: condition } };
-    });
+    setSheet((current) => current?.kind === 'condition'
+      ? { ...current, target: { ...current.target, draft: condition } } : current);
   };
 
   const selectField = (fieldKey: ConditionFieldKey) => {
     if (sheet?.kind !== 'field-picker') return;
-    const draft = createDefaultCondition(fieldKey);
-    if (sheet.target === 'new') {
-      setSheet({ kind: 'condition', target: { mode: 'new', draft } });
-      return;
-    }
-    if (sheet.target.mode === 'edit') {
-      setSheet({ kind: 'condition', target: { mode: 'edit', index: sheet.target.index, draft } });
-      return;
-    }
-    setSheet({ kind: 'condition', target: { mode: 'new', draft } });
+    setSheet({ kind: 'condition', target: { ...sheet.target, draft: createDefaultCondition(fieldKey) } });
   };
 
   const applyCondition = (target: ConditionEditorTarget) => {
     if (validateCondition(target.draft) !== null) return;
     const normalized = normalizeDynamicPlaylistCondition(target.draft);
-    setRules((current) =>
-      target.mode === 'new'
-        ? { ...current, conditions: [...current.conditions, normalized] }
-        : updateCondition(current, target.index, normalized)
-    );
+    setRules((current) => ({ ...current, filter: editDynamicPlaylistNode(
+      current.filter,
+      target.mode === 'new' ? target.parentId : target.nodeId,
+      (node) => target.mode === 'new' && node.kind === 'group'
+        ? { ...node, children: [...node.children, normalized] } : target.mode === 'edit' ? normalized : node
+    ) }));
     setSheet(null);
   };
+
+  const editNode = (node: DynamicPlaylistNode, edit: (node: DynamicPlaylistNode) => DynamicPlaylistNode | null) => {
+    const id = dynamicPlaylistNodeId(node);
+    setRules((current) => ({ ...current, filter: editDynamicPlaylistNode(current.filter, id, edit) }));
+  };
+  const canAdd = dynamicPlaylistNodeCount(rules.filter) < DYNAMIC_PLAYLIST_MAX_NODES;
+  const renderGroup = (group: DynamicPlaylistGroup, depth: number) => (
+    <View key={dynamicPlaylistNodeId(group)} style={[styles.filterGroup, depth > 3 && styles.deepFilterGroup]}>
+      <Text variant="caption" color={colors.textSecondary}>{depth === 1 ? 'Match tracks' : `Group · level ${depth}`}</Text>
+      <SegmentedControl
+        segments={[{ key: 'all', label: 'All (AND)' }, { key: 'any', label: 'Any (OR)' }]}
+        value={group.match}
+        onChange={(key) => editNode(group, (node) => node.kind === 'group' ? { ...node, match: key === 'any' ? 'any' : 'all' } : node)}
+      />
+      {group.children.length === 0 && <Text variant="label" color={colors.textTertiary}>
+        {depth === 1 ? 'No filters. All available tracks will match.' : 'Add a filter to this group.'}
+      </Text>}
+      {group.children.map((node, index) => (
+        <View key={dynamicPlaylistNodeId(node)} style={styles.cardStack}>
+          {index > 0 && <Text variant="caption" color={colors.accent}>{group.match === 'all' ? 'AND' : 'OR'}</Text>}
+          {node.kind === 'group' ? renderGroup(node, depth + 1) : (
+            <FilterCard condition={node} onPress={() => openConditionEditor(node)} onRemove={() => editNode(node, () => null)} />
+          )}
+        </View>
+      ))}
+      <View style={styles.groupActions}>
+        <ActionButton variant="secondary" label="Add filter" icon="add" disabled={!canAdd}
+          onPress={() => openFieldPicker({ mode: 'new', parentId: dynamicPlaylistNodeId(group), draft: createDefaultCondition() })} />
+        <ActionButton variant="secondary" label="Add group" icon="add" disabled={!canAdd || depth >= DYNAMIC_PLAYLIST_MAX_GROUP_DEPTH}
+          onPress={() => editNode(group, (node) => node.kind === 'group' ? { ...node, children: [...node.children, { kind: 'group', match: node.match === 'all' ? 'any' : 'all', children: [] }] } : node)} />
+        {depth > 1 && <AppPressable accessibilityRole="button" accessibilityLabel="Remove group" onPress={() => editNode(group, () => null)} style={styles.groupRemove}>
+          <Text variant="label" color={colors.textSecondary}>Remove group</Text>
+        </AppPressable>}
+      </View>
+    </View>
+  );
 
   const openSortSheet = () => {
     setSheet({
@@ -1005,7 +1020,7 @@ export default function DynamicPlaylistEditorScreen() {
           onChangeField={() => openFieldPicker(target)}
           onRemove={() => {
             if (target.mode === 'edit') {
-              setRules((current) => removeCondition(current, target.index));
+              setRules((current) => ({ ...current, filter: editDynamicPlaylistNode(current.filter, target.nodeId, () => null) }));
             }
             setSheet(null);
           }}
@@ -1109,35 +1124,10 @@ export default function DynamicPlaylistEditorScreen() {
               <Text variant="caption" style={styles.sectionLabel}>
                 FILTERS
               </Text>
-              <ActionButton
-                onPress={() => openFieldPicker('new')}
-                variant="secondary"
-                label="Add filter"
-                style={{ alignSelf: 'flex-start' }}
-                icon="add"
-                iconSize={16}
-              />
             </View>
 
-            {rules.conditions.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="filter-outline" size={18} color={colors.textTertiary} />
-                <Text variant="label" color={colors.textTertiary}>
-                  No filters
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.cardStack}>
-                {rules.conditions.map((condition, index) => (
-                  <FilterCard
-                    key={`${getConditionFieldKey(condition)}-${index}`}
-                    condition={condition}
-                    onPress={() => openConditionEditor(index)}
-                    onRemove={() => setRules((current) => removeCondition(current, index))}
-                  />
-                ))}
-              </View>
-            )}
+            <View pointerEvents={isLoadingRules || isSaving ? 'none' : 'auto'}>{renderGroup(rules.filter, 1)}</View>
+            {normalizedRulesError && <Text variant="label" color={colors.warning} accessibilityRole="alert">{normalizedRulesError}</Text>}
           </View>
 
           <View style={styles.section}>
@@ -1268,6 +1258,16 @@ const useStyles = createThemedStyles((colors) => ({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.glassBg,
   },
+  filterGroup: {
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: spacing.sm,
+  },
+  deepFilterGroup: { paddingHorizontal: 3 },
+  groupActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
+  groupRemove: { minHeight: 44, justifyContent: 'center' },
   cardStack: {
     gap: spacing.sm,
   },

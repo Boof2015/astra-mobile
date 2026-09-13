@@ -1775,9 +1775,9 @@ class AstraLibraryRepository private constructor(
     val catalogDao = requireCatalog().catalogDao()
     return userDao.getPlaylists().map { playlist ->
       if (playlist.kind == "dynamic") {
-        val queries = DynamicPlaylistCompiler.compile(playlist.dynamicRulesJson, 0, 1)
-        val count = catalogDao.runDynamicCountQuery(queries.count)
-        val first = catalogDao.runDynamicTrackQuery(queries.tracks).firstOrNull()
+        val queries = runCatching { DynamicPlaylistCompiler.compile(playlist.dynamicRulesJson, 0, 1) }.getOrNull()
+        val count = queries?.let { catalogDao.runDynamicCountQuery(it.count) } ?: 0L
+        val first = queries?.let { catalogDao.runDynamicTrackQuery(it.tracks).firstOrNull() }
         playlist.toBridgeMap(
           trackCount = count,
           missingCount = 0,
@@ -1806,6 +1806,7 @@ class AstraLibraryRepository private constructor(
     val trimmed = name.trim()
     require(trimmed.isNotEmpty()) { "Playlist name is required." }
     val now = System.currentTimeMillis()
+    if (kind == "dynamic") DynamicPlaylistCompiler.compile(rulesJson, 0, 1)
     val entity = PlaylistEntity(
       name = trimmed,
       createdAt = now,
@@ -1823,7 +1824,7 @@ class AstraLibraryRepository private constructor(
     val playlist = requireUser().userDao().getPlaylist(playlistId)
       ?: error("Playlist not found.")
     require(playlist.kind == "dynamic") { "Playlist is not dynamic." }
-    return playlist.dynamicRulesJson ?: """{"version":1,"conditions":[],"sort":{"field":"title","direction":"asc"},"limit":null}"""
+    return playlist.dynamicRulesJson ?: error("Dynamic playlist rules are missing.")
   }
 
   suspend fun updateDynamicPlaylistRules(playlistId: Long, rulesJson: String) {
@@ -1831,6 +1832,7 @@ class AstraLibraryRepository private constructor(
     val dao = requireUser().userDao()
     val playlist = dao.getPlaylist(playlistId) ?: error("Playlist not found.")
     require(playlist.kind == "dynamic") { "Playlist is not dynamic." }
+    DynamicPlaylistCompiler.compile(rulesJson, 0, 1)
     dao.putPlaylist(
       playlist.copy(
         dynamicRulesJson = rulesJson,

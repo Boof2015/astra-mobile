@@ -495,6 +495,83 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun dynamicGroupsApplyFavoriteToBothArtistsAndPaginateTheCombinedResult() = runBlocking {
+    publish("groups", listOf(
+      track("groups", 1, "A favorite").copy(artist = "Artist A"),
+      track("groups", 2, "B favorite").copy(artist = "Artist B"),
+      track("groups", 3, "C favorite").copy(artist = "Artist C"),
+      track("groups", 4, "A plain").copy(artist = "Artist A"),
+      track("groups", 5, "B plain").copy(artist = "Artist B"),
+    ))
+    catalog.catalogDao().putTrackUserFacts((1..3).map {
+      TrackUserFactEntity(path = "content://track/$it.flac", isFavorite = true)
+    })
+    // A staging track must remain excluded even from a root ANY expression.
+    catalog.catalogDao().insertGeneration(ScanGenerationEntity("pending-group", "local:1", "staging", 2))
+    catalog.catalogDao().putTracks(listOf(track("pending-group", 6, "Hidden").copy(artist = "Artist B")))
+    val artists = """{"kind":"group","match":"any","children":[
+      {"kind":"text","field":"artist","operator":"is","value":"Artist A"},
+      {"kind":"text","field":"artist","operator":"is","value":"Artist B"},
+      {"kind":"text","field":"artist","operator":"is","value":"Artist A"}
+    ]}"""
+    val filter = """{"kind":"group","match":"all","children":[
+      {"kind":"exact","field":"favorite","operator":"is","value":true}, $artists
+    ]}"""
+    fun rules(root: String, limit: String = "null") = """{"version":2,"filter":$root,"sort":{"field":"title","direction":"desc"},"limit":$limit}"""
+    val dao = catalog.catalogDao()
+    val query = DynamicPlaylistCompiler.compile(rules(filter), 0, 100)
+    assertEquals(listOf("B favorite", "A favorite"), dao.runDynamicTrackQuery(query.tracks).map { it.title })
+    assertEquals(2L, dao.runDynamicCountQuery(query.count))
+    assertFalse(query.tracks.sql.contains("Artist A"))
+    val first = DynamicPlaylistCompiler.compile(rules(filter), 0, 1)
+    val second = DynamicPlaylistCompiler.compile(rules(filter), 1, 1)
+    assertEquals(listOf("B favorite"), dao.runDynamicTrackQuery(first.tracks).map { it.title })
+    assertEquals(listOf("A favorite"), dao.runDynamicTrackQuery(second.tracks).map { it.title })
+    val limited = DynamicPlaylistCompiler.compile(rules(filter, "1"), 1, 100)
+    assertTrue(dao.runDynamicTrackQuery(limited.tracks).isEmpty())
+    assertEquals(1L, dao.runDynamicCountQuery(limited.count))
+    val allArtists = DynamicPlaylistCompiler.compile(rules(artists), 0, 100)
+    assertEquals(4L, dao.runDynamicCountQuery(allArtists.count))
+    assertEquals(4, dao.runDynamicTrackQuery(allArtists.tracks).map { it.path }.distinct().size)
+    val nested = """{"kind":"group","match":"any","children":[$filter,{"kind":"group","match":"all","children":[{"kind":"text","field":"artist","operator":"is","value":"Artist C"}]}]}"""
+    assertEquals(3L, dao.runDynamicCountQuery(DynamicPlaylistCompiler.compile(rules(nested), 0, 100).count))
+  }
+
+  @Test
+  fun dynamicCompilerRejectsIncompleteUnsupportedAndOversizedGroups() {
+    val leaf = """{"kind":"text","field":"artist","operator":"is","value":"Artist A"}"""
+    fun group(children: String) = """{"kind":"group","match":"all","children":[$children]}"""
+    fun rules(filter: String) = """{"version":2,"filter":$filter}"""
+    for (raw in listOf(
+      null, "not json", "{}", """{"version":3,"conditions":[]}""",
+      """{"version":1,"conditions":[${group(leaf)}]}""",
+      rules(group(group(""))), rules(group(leaf.replace("\"is\"", "\"bad\""))),
+      rules(group(leaf.replace("\"artist\"", "\"unknown\""))),
+      rules("""{"kind":"group","match":"xor","children":[$leaf]}"""),
+      rules("""{"kind":"group","match":"all","children":[null]}"""),
+      rules(group("""{"kind":"exact","field":"favorite","operator":"is","value":"true"}""")),
+    )) assertTrue("Should reject $raw", runCatching { DynamicPlaylistCompiler.compile(raw, 0, 10) }.isFailure)
+    var nested = group(leaf)
+    repeat(7) { nested = group(nested) }
+    DynamicPlaylistCompiler.compile(rules(nested), 0, 10)
+    assertTrue(runCatching { DynamicPlaylistCompiler.compile(rules(group(nested)), 0, 10) }.isFailure)
+    DynamicPlaylistCompiler.compile(rules(group(List(255) { leaf }.joinToString(","))), 0, 10)
+    assertTrue(runCatching { DynamicPlaylistCompiler.compile(rules(group(List(256) { leaf }.joinToString(","))), 0, 10) }.isFailure)
+  }
+
+  @Test
+  fun dynamicLegacyAndEmptyRootRulesPreserveTheirMeaning() = runBlocking {
+    publish("legacy-groups", listOf(track("legacy-groups", 1, "One"), track("legacy-groups", 2, "Two")))
+    val legacy = """{"version":1,"conditions":[{"kind":"text","field":"title","operator":"is","value":"One"}]}"""
+    val dao = catalog.catalogDao()
+    assertEquals(listOf("One"), dao.runDynamicTrackQuery(DynamicPlaylistCompiler.compile(legacy, 0, 10).tracks).map { it.title })
+    for (match in listOf("all", "any")) {
+      val empty = """{"version":2,"filter":{"kind":"group","match":"$match","children":[]}}"""
+      assertEquals(2L, dao.runDynamicCountQuery(DynamicPlaylistCompiler.compile(empty, 0, 10).count))
+    }
+  }
+
+  @Test
   fun dynamicRulesUseBoundArgumentsAndEscapeWildcards() = runBlocking {
     publish(
       "dynamic",
@@ -505,6 +582,7 @@ class RoomLibraryRepositoryTest {
     )
     val rules = """
       {
+        "version": 1,
         "conditions": [
           {"kind":"text","field":"title","operator":"contains","value":"%_"},
           {"kind":"exact","field":"favorite","operator":"is","value":true}

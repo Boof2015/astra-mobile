@@ -3,10 +3,10 @@ import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
 import {
-  createDefaultDynamicPlaylistRules,
+  serializeDynamicPlaylistRules,
   normalizeDynamicPlaylistRules,
   type DynamicPlaylistPreview,
-  type DynamicPlaylistRulesV1,
+  type DynamicPlaylistRulesV2,
 } from '@/shared/playlists/dynamicPlaylist';
 import {
   buildImportIndex,
@@ -45,10 +45,10 @@ interface PlaylistStore {
   loadNextEntries: () => Promise<void>;
   closePlaylist: () => void;
   createPlaylist: (name: string) => Promise<Playlist>;
-  createDynamicPlaylist: (name: string, rules: DynamicPlaylistRulesV1) => Promise<Playlist>;
-  getDynamicPlaylistRules: (id: number) => Promise<DynamicPlaylistRulesV1>;
-  updateDynamicPlaylistRules: (id: number, rules: DynamicPlaylistRulesV1) => Promise<void>;
-  previewDynamicPlaylist: (rules: DynamicPlaylistRulesV1) => Promise<DynamicPlaylistPreview>;
+  createDynamicPlaylist: (name: string, rules: DynamicPlaylistRulesV2) => Promise<Playlist>;
+  getDynamicPlaylistRules: (id: number) => Promise<DynamicPlaylistRulesV2>;
+  updateDynamicPlaylistRules: (id: number, rules: DynamicPlaylistRulesV2) => Promise<void>;
+  previewDynamicPlaylist: (rules: DynamicPlaylistRulesV2) => Promise<DynamicPlaylistPreview>;
   renamePlaylist: (id: number, name: string) => Promise<void>;
   deletePlaylist: (id: number) => Promise<void>;
   addTracksToPlaylist: (id: number, tracks: DbTrack[]) => Promise<number>;
@@ -79,12 +79,8 @@ function entryToExportEntry(entry: PlaylistTrackEntry): M3uExportEntry {
   };
 }
 
-function parseRules(raw: string): DynamicPlaylistRulesV1 {
-  try {
-    return normalizeDynamicPlaylistRules(JSON.parse(raw));
-  } catch {
-    return createDefaultDynamicPlaylistRules();
-  }
+function parseRules(raw: string): DynamicPlaylistRulesV2 {
+  return normalizeDynamicPlaylistRules(JSON.parse(raw));
 }
 
 async function candidatesForImport(entry: M3uEntry): Promise<DbTrack[]> {
@@ -171,7 +167,7 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
       const playlist = await AstraLibraryData.createPlaylist<Playlist>(
         name,
         'dynamic',
-        JSON.stringify(normalized)
+        serializeDynamicPlaylistRules(normalized)
       );
       await refreshAll();
       return playlist;
@@ -183,14 +179,14 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
     updateDynamicPlaylistRules: async (id, rules) => {
       await AstraLibraryData.updateDynamicPlaylistRules(
         id,
-        JSON.stringify(normalizeDynamicPlaylistRules(rules))
+        serializeDynamicPlaylistRules(rules)
       );
       await refreshAll();
     },
 
     previewDynamicPlaylist: async (rules) =>
       AstraLibraryData.previewDynamicPlaylist<DynamicPlaylistPreview>(
-        JSON.stringify(normalizeDynamicPlaylistRules(rules))
+        serializeDynamicPlaylistRules(rules)
       ),
 
     renamePlaylist: async (id, name) => {

@@ -311,7 +311,7 @@ export async function rotateDesktopRemoteCredentials(
 // calls get generous timeouts compared to the 8 s control default.
 
 export async function fetchDesktopSyncState(baseUrl: string, token: string, certificateFingerprint: string): Promise<DesktopSyncState> {
-  return fetchJson<DesktopSyncState>(baseUrl, '/v1/sync/state', { token, fingerprint: certificateFingerprint, timeoutMs: 30_000 });
+  return fetchJson<DesktopSyncState>(baseUrl, '/v1/sync/state?dynamicPlaylistRulesVersion=2', { token, fingerprint: certificateFingerprint, timeoutMs: 30_000 });
 }
 
 export async function postDesktopSyncApply(
@@ -320,7 +320,7 @@ export async function postDesktopSyncApply(
   certificateFingerprint: string,
   payload: DesktopSyncApplyPayload
 ): Promise<DesktopSyncApplyResult> {
-  return fetchJson<DesktopSyncApplyResult>(baseUrl, '/v1/sync/apply', {
+  return fetchJson<DesktopSyncApplyResult>(baseUrl, '/v1/sync/apply?dynamicPlaylistRulesVersion=2', {
     method: 'POST',
     token,
     fingerprint: certificateFingerprint,
@@ -335,7 +335,7 @@ export async function postDesktopSyncConflicts(
   certificateFingerprint: string,
   payload: DesktopSyncConflictReportPayload
 ): Promise<void> {
-  await fetchJson<{ ok: true }>(baseUrl, '/v1/sync/conflicts', {
+  await fetchJson<{ ok: true }>(baseUrl, '/v1/sync/conflicts?dynamicPlaylistRulesVersion=2', {
     method: 'POST',
     token,
     fingerprint: certificateFingerprint,
