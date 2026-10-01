@@ -47,13 +47,24 @@ class ResolveParityTest {
         ResolveAlbumTrack(row.getString("id"), credit(row), row.text("base_artwork_hash"),
           row.number("year"), row.number("track_number"), row.number("track_total"), row.number("disc_number"), row.number("disc_total"))
       }
-      val actual = AlbumResolve.group(tracks).associate { group -> group.identityKey to listOf(
-        group.albumKey, group.mode, group.displayArtist, group.tracks.map { it.id }.sorted(),
-      ) }
-      val expected = fixture.getJSONArray("expected").objects().associate { group -> group.getString("identityKey") to listOf(
-        group.getString("albumKey"), group.getString("mode"), group.getString("displayArtist"), group.getJSONArray("ids").strings().sorted(),
-      ) }
-      assertEquals("album case $i", expected, actual)
+      val orders = fixture.optJSONArray("orders")
+      val inputs = listOf(tracks) + (0 until (orders?.length() ?: 0)).map { n ->
+        val order = orders!!.getJSONArray(n)
+        (0 until order.length()).map { tracks[order.getInt(it)] }
+      }
+      for (input in inputs) {
+        val groups = AlbumResolve.group(input)
+        assertEquals("album case $i preserves every track exactly once", tracks.map { it.id }.sorted(),
+          groups.flatMap { it.tracks }.map { it.id }.sorted())
+        assertEquals("album case $i has unique identities", groups.size, groups.map { it.identityKey }.toSet().size)
+        val actual = groups.associate { group -> group.identityKey to listOf(
+          group.albumKey, group.mode, group.displayArtist, group.tracks.map { it.id }.sorted(),
+        ) }
+        val expected = fixture.getJSONArray("expected").objects().associate { group -> group.getString("identityKey") to listOf(
+          group.getString("albumKey"), group.getString("mode"), group.getString("displayArtist"), group.getJSONArray("ids").strings().sorted(),
+        ) }
+        assertEquals("album case $i", expected, actual)
+      }
     }
   }
 }

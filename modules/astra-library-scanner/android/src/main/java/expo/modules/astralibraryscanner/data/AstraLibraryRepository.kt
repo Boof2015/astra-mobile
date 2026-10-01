@@ -203,6 +203,9 @@ class AstraLibraryRepository private constructor(
 
   private var pendingSnapshot: Job? = null
   private var catalogRecoveredAtBootstrap = false
+  // Validate derived identities lazily during a scan, never during bootstrap.
+  // A revision only needs checking once per process; unchanged scans stay cheap.
+  private var resolveValidatedRevision: Long? = null
 
   suspend fun initialize(): LibraryStatusSnapshot {
     if (initialized) return currentStatus
@@ -536,11 +539,30 @@ class AstraLibraryRepository private constructor(
         throwIfScanCancelled(isCancelled)
 
         if (canReuse) {
-          val revision = dao.getRevision()
+          var revision = dao.getRevision()
+          var regrouped = false
+          if (resolveValidatedRevision != revision) {
+            onProgress("indexing", existing.size, existing.size, folder.displayName)
+            val readModelStarted = timing.now()
+            val models = withContext(Dispatchers.Default) {
+              CatalogReadModelBuilder.build(
+                dao.getActiveTrackEntitiesExcludingSource(""), revision + 1,
+                userDao.getFolders().associateBy(FolderEntity::id),
+              )
+            }
+            timing.readModelMs = timing.elapsedMs(readModelStarted)
+            throwIfScanCancelled(isCancelled)
+            if (models.identityUpdates.isNotEmpty()) {
+              revision = dao.publishResolve(models, System.currentTimeMillis())
+              regrouped = true
+            }
+            resolveValidatedRevision = revision
+          }
           userDao.updateFolderScanState(folderId, System.currentTimeMillis(), "ready", null)
           scheduleSnapshot()
           refreshReadyStatus()
-          timing.outcome = "unchanged"
+          if (regrouped) for (listener in catalogListeners) listener(revision)
+          timing.outcome = if (regrouped) "regrouped" else "unchanged"
           return@withLock NativeScanResult(
             added = 0,
             updated = 0,

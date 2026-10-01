@@ -2,7 +2,8 @@
 
 The Android scanner uses vendored TagLib 2.3.2 for container metadata. Native
 catalog construction and the shared TypeScript helpers follow desktop commit
-`7e9d3dd` for artist identities and album grouping.
+`7e9d3dd` for artist identities and the album grouping fixes in `565a451`
+(also present in the captured desktop checkout `6a1a006`).
 
 ## Review milestone 1: reliable tags
 
@@ -59,6 +60,20 @@ loaded pages. Album routes follow a track anchor when regrouping changes its
 album key. The existing `astra` / `fileTags` preference and default are retained;
 the label is now “Astra Resolve.”
 
+The September 22 desktop album fixes are also ported to TypeScript and Kotlin.
+Track totals are compared per disc, and coherent numbering with album ownership
+or source artwork can reconcile conflicting release years. Ambiguous editions
+remain separate; deterministic partitions and collision suffixes preserve every
+track regardless of input order.
+
+This port deliberately keeps Resolve version 1 and adds no startup migration.
+Run a normal manual scan to apply it to an existing catalog. The first unchanged
+scan of a catalog revision checks the complete stored catalog, including remote
+tracks, without rereading tags. If identities changed, it atomically publishes
+new summaries and memberships and emits the normal catalog revision event.
+Subsequent unchanged scans of that revision skip the check within the process.
+Changed-file scans and source rebuilds use the corrected resolver normally.
+
 Music files remain read-only. Playback decoding and the separate embedded-lyrics
 and ReplayGain readers retain their existing workflows.
 
@@ -75,6 +90,24 @@ documented desktop ASF/picture-selection discrepancies.
 not the mobile port. Both Kotlin and TypeScript consume the same expectations.
 Regenerate with `node scripts/generate-resolve-fixtures.mjs ../astra`. The copied
 desktop tests also run directly against the TypeScript port.
+The generator includes the complete desktop album regression suite and records
+shuffled inputs as compact index permutations over each fixture's `tracks`.
+Both parity runners replay those orders and assert that every track appears
+exactly once. The metadata-only tester corpus has 108 tracks in five albums:
+Carti Leaks (18), Scarlet 2 CLAUDE (24), 2014 Forest Hills Drive (21), The E•N•D
+(25), and Foundling (20).
+
+`ResolveScanTest` seeds the eleven legacy groups across local and remote sources,
+then exercises the real unchanged-scan path, cancellation before publication,
+album pages/details, current-track lookup, and preservation of source metadata,
+analysis, favorites, playlists, and listening history.
+
+Validation on October 1, 2026: 587 release tests (including 67 Resolve tests),
+54 scanner JVM tests, and 61 Android instrumentation tests passed on the Samsung
+SM-S908U1 running Android 16. The compact corpus contains 58 distinct album cases
+and 178 captured input orders; both parity runners passed after compaction.
+Typecheck, targeted ESLint, whitespace checks, and the preview build for ARMv7
+and ARM64 also passed.
 
 Commands used from the project root:
 
