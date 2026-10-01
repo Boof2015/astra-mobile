@@ -12,7 +12,8 @@ import {
 import type { EQBand } from '@/types/audio';
 import { VerticalEQSlider } from './VerticalEQSlider';
 import { CONSOLE_ADD_WIDTH } from './eqLayout';
-import type { EQEditableValue } from './BandDetailPanel';
+import { bandColor, useBandPalette } from './bandColors';
+import type { EQEditableValue } from './BandEditorPanel';
 import {
   BAND_TYPE_LABEL,
   formatFreq,
@@ -36,11 +37,9 @@ interface BandConsoleProps {
 /**
  * The wide-window band editor: one vertical strip per band, in array order.
  *
- * This is `BandStrip` and `BandDetailPanel` welded back together. The phone
- * splits one band across two components because it cannot show them at once —
- * the chip carries frequency and gain, the panel below carries everything else
- * for whichever chip you tapped. Given width, a strip carries the whole band,
- * and every band's values are readable without selecting anything.
+ * The phone shows one band at a time — whichever node is selected on the graph
+ * — in `BandEditorPanel`. Given width, a strip carries the whole band, and
+ * every band's values are readable without selecting anything.
  *
  * Horizontal, not a table, because the graph directly above it is a function of
  * frequency: a top-to-bottom list would fight the axis it belongs to. Strips
@@ -67,6 +66,7 @@ export function BandConsole({
 }: BandConsoleProps) {
   const styles = useStyles();
   const colors = useColors();
+  const palette = useBandPalette();
 
   return (
     <ScrollView
@@ -90,7 +90,8 @@ export function BandConsole({
             accessibilityLabel={`Band ${index + 1}`}
           >
             <View style={styles.header}>
-              <Text variant="label" color={isActive ? colors.accentText : colors.textSecondary}>
+              {/* The band's number in its graph color, so a strip and its node pair up. */}
+              <Text variant="label" color={bandColor(palette, band)}>
                 {index + 1}
               </Text>
               <HapticSwitch

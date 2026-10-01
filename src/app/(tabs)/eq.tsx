@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   InteractionManager,
   StyleSheet,
@@ -20,8 +20,10 @@ import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { EQGraph } from '@/components/eq/EQGraph';
-import { BandStrip } from '@/components/eq/BandStrip';
-import { BandDetailPanel, type EQEditableValue } from '@/components/eq/BandDetailPanel';
+import { BandEditorPanel, type EQEditableValue } from '@/components/eq/BandEditorPanel';
+import { BandColorSheet } from '@/components/eq/BandColorSheet';
+import { bandColor, useBandPalette } from '@/components/eq/bandColors';
+import { AccentColorSheet } from '@/components/settings/AccentColorSheet';
 import { BandConsole } from '@/components/eq/BandConsole';
 import { getEQLayout } from '@/components/eq/eqLayout';
 import { EQSlider } from '@/components/eq/EQSlider';
@@ -82,6 +84,8 @@ type SheetKind =
   | 'save'
   | 'overflow'
   | 'type'
+  | 'color'
+  | 'customColor'
   | 'shareName'
   | 'qr'
   | 'preview';
@@ -117,6 +121,30 @@ export default function EQScreen() {
   const [qrPreset, setQrPreset] = useState<{ name: string; value: string } | null>(null);
   const [actionPresetId, setActionPresetId] = useState<string | null>(null);
   const closeSheet = useCallback(() => setSheet('none'), []);
+  const bandPalette = useBandPalette();
+  // The free picker previews live on the band itself, so cancelling has to put
+  // the band's previous color back.
+  const customColorRef = useRef<{ id: string; original: EQBand['color']; applied: boolean } | null>(null);
+  const previewBandColor = useCallback((hex: string | null) => {
+    // The picker reports null as it unmounts, after an apply too; restoring is
+    // `closeCustomColor`'s job, which knows whether one happened.
+    const target = customColorRef.current;
+    if (hex && target) useEQStore.getState().setBandColor(target.id, hex);
+  }, []);
+  const applyBandColor = useCallback((hex: string) => {
+    const target = customColorRef.current;
+    if (!target) return;
+    target.applied = true;
+    useEQStore.getState().setBandColor(target.id, hex);
+  }, []);
+  const closeCustomColor = useCallback(() => {
+    const target = customColorRef.current;
+    customColorRef.current = null;
+    if (target && !target.applied) {
+      useEQStore.getState().setBandColor(target.id, target.original ?? 0);
+    }
+    setSheet('none');
+  }, []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sceneBottomInset = useSceneBottomInset();
@@ -352,23 +380,6 @@ export default function EQScreen() {
     </View>
   ) : null;
 
-  const stripEl = (
-    <BandStrip
-      bands={eq.bands}
-      activeBandId={eq.activeBandId}
-      canAdd={eq.bands.length < EQ_MAX_BANDS}
-      onSelect={(id) => {
-        if (id === eq.activeBandId) return;
-        playHaptic('selection');
-        eq.selectBand(id);
-      }}
-      onAdd={() => {
-        playHaptic('action');
-        eq.addBand();
-      }}
-    />
-  );
-
   // Wide-window editor: every band's parameters at once, so there is nothing to
   // select before editing. Sheets are shared with the detail panel, and they read
   // the *active* band — so a strip selects itself before opening one.
@@ -400,12 +411,26 @@ export default function EQScreen() {
     />
   );
 
+  // The graph is where a band is picked and shaped; this panel is the same band
+  // in numbers — scrub it, or tap a value to type it.
   const detailEl = (
-    <BandDetailPanel
+    <BandEditorPanel
       band={activeBand}
       bandNumber={activeBandNumber > 0 ? activeBandNumber : 1}
+      canAdd={eq.bands.length < EQ_MAX_BANDS}
+      canRemove={eq.bands.length > 1}
       onUpdate={(updates) => activeBand && eq.updateBand(activeBand.id, updates)}
+      onAdd={() => {
+        playHaptic('action');
+        eq.addBand();
+      }}
+      onRemove={() => {
+        if (!activeBand) return;
+        playHaptic('confirm');
+        eq.removeBand(activeBand.id);
+      }}
       onEditType={() => setSheet('type')}
+      onEditColor={() => setSheet('color')}
       onEditValue={setEditingValue}
     />
   );
@@ -492,12 +517,7 @@ export default function EQScreen() {
           <View style={{ width: eqLayout.sidePaneWidth }}>
             {modeSwitcherEl}
             {presetRowEl}
-            {isGraphic ? null : (
-              <>
-                {stripEl}
-                <View style={styles.sideDetail}>{detailEl}</View>
-              </>
-            )}
+            {isGraphic ? null : detailEl}
             <View style={styles.wideSpacer} />
             {bottomBarEl}
           </View>
@@ -516,10 +536,7 @@ export default function EQScreen() {
                   {consoleEl}
                 </View>
               ) : (
-                <>
-                  <View style={styles.section}>{stripEl}</View>
-                  <View style={styles.section}>{detailEl}</View>
-                </>
+                <View style={styles.section}>{detailEl}</View>
               )}
             </>
           )}
@@ -667,6 +684,31 @@ export default function EQScreen() {
             />
           ))}
         </EqSheet>
+      ) : null}
+
+      {sheet === 'color' && activeBand ? (
+        <BandColorSheet
+          bandNumber={activeBandNumber > 0 ? activeBandNumber : 1}
+          value={activeBand.color}
+          onSelect={(slot) => eq.setBandColor(activeBand.id, slot)}
+          onCustom={() => {
+            customColorRef.current = { id: activeBand.id, original: activeBand.color, applied: false };
+            setSheet('customColor');
+          }}
+          onClose={closeSheet}
+        />
+      ) : null}
+
+      {sheet === 'customColor' && activeBand ? (
+        <AccentColorSheet
+          initialHex={bandColor(bandPalette, activeBand)}
+          title={`Band ${activeBandNumber > 0 ? activeBandNumber : 1} color`}
+          subtitle="Drag to choose a color or enter an exact hex value."
+          subject={`Band ${activeBandNumber > 0 ? activeBandNumber : 1}`}
+          onPreview={previewBandColor}
+          onApply={applyBandColor}
+          onClose={closeCustomColor}
+        />
       ) : null}
 
       {valueEditConfig && editingValue ? (
@@ -901,9 +943,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   sideItem: {
     marginHorizontal: 0,
-  },
-  sideDetail: {
-    marginTop: spacing.md,
   },
   bottomBarWide: {
     paddingHorizontal: 0,

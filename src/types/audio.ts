@@ -89,6 +89,12 @@ export interface EQBand {
   // Per-band bypass (mobile addition vs desktop — the EQ screen's per-band On toggle).
   // A disabled band is passthrough and is skipped in the response curve.
   enabled: boolean;
+  // The color the band is drawn in (mobile addition, UI only — never sent to
+  // native or written into shared preset files). Usually a slot of the EQ band
+  // palette, so each theme can tune the actual color; a '#rrggbb' string when
+  // the user picked a custom one, used as-is in every theme. Stamped once when a
+  // band enters the store, so a band keeps its color as bands reorder.
+  color?: number | string;
 }
 
 // EQ editor mode — graphic is a fixed 5-band front-end compiled onto the same

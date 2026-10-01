@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { EQBand } from '../types/audio.ts';
 import {
+  EQ_BAND_COLOR_COUNT,
+  assignEQBandColors,
   computeCombinedEQMagnitude,
+  createNormalizedEQBand,
+  nextFreeEQBandColor,
+  suggestEQBandFrequency,
   computeEQFilterCoefficients,
   computeEQFilterMagnitude,
   type EQFilterCoefficients,
@@ -16,6 +21,7 @@ function band(overrides: Partial<EQBand> = {}): EQBand {
     gain: overrides.gain ?? 0,
     Q: overrides.Q ?? 1,
     enabled: overrides.enabled ?? true,
+    ...(overrides.color !== undefined ? { color: overrides.color } : {}),
   };
 }
 
@@ -118,4 +124,54 @@ test('combined response skips disabled bands', () => {
     computeCombinedEQMagnitude([enabled, disabled], 1000, 48000),
     computeEQFilterMagnitude(enabled, 1000, 48000)
   );
+});
+
+test('band colors: valid slots survive normalization, anything else is dropped', () => {
+  assert.equal(createNormalizedEQBand({ color: 3 }, 'a').color, 3);
+  assert.equal(createNormalizedEQBand({ color: '#FFAA00' }, 'a').color, '#ffaa00');
+  for (const bad of [-1, EQ_BAND_COLOR_COUNT, 1.5, '2', '#fff', 'red', null]) {
+    assert.equal(createNormalizedEQBand({ color: bad }, 'a').color, undefined, String(bad));
+  }
+});
+
+test('band colors: stamping fills gaps without moving existing colors', () => {
+  const bands = [band({ id: 'a' }), band({ id: 'b', color: 0 }), band({ id: 'c' }), band({ id: 'd', color: 2 })];
+  const stamped = assignEQBandColors(bands);
+  assert.deepEqual(stamped.map((b) => b.color), [1, 0, 3, 2]);
+  // Already complete: the very same array back, so the store sees no change.
+  assert.equal(assignEQBandColors(stamped), stamped);
+  assert.equal(nextFreeEQBandColor(stamped), 4);
+});
+
+test('band colors: a custom color counts as colored but takes no slot', () => {
+  const bands = [band({ id: 'a', color: '#ffaa00' }), band({ id: 'b' })];
+  assert.deepEqual(assignEQBandColors(bands).map((b) => b.color), ['#ffaa00', 0]);
+});
+
+test('band colors: every slot taken wraps instead of failing', () => {
+  const full = Array.from({ length: EQ_BAND_COLOR_COUNT }, (_, i) => band({ id: String(i), color: i }));
+  const slot = nextFreeEQBandColor(full);
+  assert.ok(slot >= 0 && slot < EQ_BAND_COLOR_COUNT);
+});
+
+test('new bands go in the widest gap, so repeated adds spread out', () => {
+  const bands = [60, 250, 1000, 4000, 12000].map((frequency, i) => band({ id: String(i), frequency }));
+  const added: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const frequency = suggestEQBandFrequency(bands);
+    added.push(frequency);
+    bands.push(band({ id: `new-${i}`, frequency }));
+  }
+  assert.deepEqual(added, [120, 500, 2000]);
+  // Every suggestion is new — nothing lands on an existing band.
+  assert.equal(new Set(bands.map((b) => b.frequency)).size, bands.length);
+});
+
+test('a new band uses the edge gaps too, and stays in range', () => {
+  // One band hard against the top leaves the low end as the widest gap.
+  assert.equal(suggestEQBandFrequency([band({ frequency: 20000 })]), 630);
+  // Stacked bands still leave somewhere sensible to go.
+  const stacked = [band({ id: 'a', frequency: 1000 }), band({ id: 'b', frequency: 1000 })];
+  const f = suggestEQBandFrequency(stacked);
+  assert.ok(f !== 1000 && f >= 20 && f <= 20000);
 });

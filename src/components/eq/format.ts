@@ -20,6 +20,11 @@ export function formatFreqHz(hz: number): string {
   return `${Math.round(hz)} Hz`;
 }
 
+/** Whole hertz, for the band panel's readout ("4327"). */
+export function formatFreqExact(hz: number): string {
+  return `${Math.round(hz)}`;
+}
+
 export function formatGain(db: number): string {
   if (Math.abs(db) < 0.05) return '0';
   return `${db > 0 ? '+' : ''}${db.toFixed(1)}`;

@@ -48,6 +48,11 @@ interface AccentColorSheetProps {
   onPreview: (hex: string | null) => void;
   onApply: (hex: string) => void;
   onClose: () => void;
+  /** Sheet title; the picker also serves EQ band colors. */
+  title?: string;
+  subtitle?: string;
+  /** What is being colored, for the controls' spoken labels ("Accent"). */
+  subject?: string;
 }
 
 export function AccentColorSheet({
@@ -55,6 +60,9 @@ export function AccentColorSheet({
   onPreview,
   onApply,
   onClose,
+  title = 'Custom accent',
+  subtitle = 'Drag to choose a color or enter an exact hex value.',
+  subject = 'Accent',
 }: AccentColorSheetProps) {
   const styles = useStyles();
   const colors = useColors();
@@ -149,10 +157,7 @@ export function AccentColorSheet({
     >
       <GestureHandlerRootView style={styles.modalRoot}>
       <AppSheet onClose={onClose}>
-      <AppSheetTitle
-        title="Custom accent"
-        subtitle="Drag to choose a color or enter an exact hex value."
-      />
+      <AppSheetTitle title={title} subtitle={subtitle} />
 
       <AppSheetBody>
         <GestureDetector gesture={svGesture}>
@@ -160,7 +165,7 @@ export function AccentColorSheet({
             style={styles.sv}
             onLayout={onPickerLayout}
             accessibilityRole="adjustable"
-            accessibilityLabel="Accent saturation and brightness"
+            accessibilityLabel={`${subject} saturation and brightness`}
           >
             <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Rect x={0} y={0} width={pickerWidth} height={SV_HEIGHT} color={hueColor} />
@@ -197,7 +202,7 @@ export function AccentColorSheet({
           <View
             style={styles.hue}
             accessibilityRole="adjustable"
-            accessibilityLabel="Accent hue"
+            accessibilityLabel={`${subject} hue`}
           >
             <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Rect x={0} y={0} width={pickerWidth} height={HUE_HEIGHT}>
@@ -232,7 +237,7 @@ export function AccentColorSheet({
             returnKeyType="done"
             selectionColor={colors.accent}
             onSubmitEditing={apply}
-            accessibilityLabel="Accent hex color"
+            accessibilityLabel={`${subject} hex color`}
           />
         </View>
         <Text

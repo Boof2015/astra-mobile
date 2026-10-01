@@ -85,6 +85,7 @@
     "test:signal": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/signalShare.test.mts src/audio/signalShareIntent.test.mts src/audio/signalScanGeometry.test.mts src/audio/signalLocalMatch.test.mts",
     "test:eq-math": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eq.test.mts",
     "test:eq-layout": "node --experimental-strip-types --test src/components/eq/eqLayout.test.mts",
+    "test:eq-graph": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/components/eq/peqGeometry.test.mts src/components/eq/workletOrder.test.mts",
     "test:audio-startup": "node --experimental-strip-types --test src/audio/dspStartupCoordinator.test.mts src/audio/dspStartupGain.test.mts",
     "test:audio-diagnostics": "node --experimental-strip-types --test src/audio/audioDiagnostics.test.mts",
     "test:atmos": "node --experimental-strip-types --test src/audio/atmos.test.mts",

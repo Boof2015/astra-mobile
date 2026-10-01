@@ -16,6 +16,8 @@ export const EQ_MIN_PREAMP_DB = -12;
 export const EQ_MAX_PREAMP_DB = 12;
 export const EQ_PRESET_VERSION = 1;
 export const EQ_GRAPHIC_BAND_COUNT = 5;
+/** Slots in the band color palette (`src/components/eq/bandColors.ts`). */
+export const EQ_BAND_COLOR_COUNT = 8;
 
 // Ordinals MUST match the Kotlin `EqBandType` enum order in EqBridge.kt.
 export const EQ_BAND_TYPE_ORDINAL: Record<EQBandType, number> = {
@@ -32,6 +34,7 @@ interface RawEQBand {
   gain?: unknown;
   Q?: unknown;
   enabled?: unknown;
+  color?: unknown;
 }
 
 type SerializedEQBand = Pick<EQBand, 'type' | 'frequency' | 'gain' | 'Q' | 'enabled'>;
@@ -46,6 +49,7 @@ export interface SerializedEQPresetData {
 }
 
 function clamp(value: number, min: number, max: number): number {
+  'worklet';
   return Math.max(min, Math.min(max, value));
 }
 
@@ -55,14 +59,17 @@ function coerceFiniteNumber(value: unknown, fallback: number): number {
 }
 
 export function clampEQGain(value: number): number {
+  'worklet';
   return clamp(value, EQ_MIN_GAIN_DB, EQ_MAX_GAIN_DB);
 }
 
 export function clampEQFrequency(value: number): number {
+  'worklet';
   return clamp(value, EQ_MIN_FREQUENCY, EQ_MAX_FREQUENCY);
 }
 
 export function clampEQQ(value: number): number {
+  'worklet';
   return clamp(value, EQ_MIN_Q, EQ_MAX_Q);
 }
 
@@ -84,6 +91,7 @@ export function normalizeEQBandType(value: unknown): EQBandType {
 }
 
 export function isPassEQBandType(type: EQBandType): boolean {
+  'worklet';
   return type === 'highpass' || type === 'lowpass';
 }
 
@@ -104,7 +112,60 @@ export function createNormalizedEQBand(rawBand: RawEQBand, id: string): EQBand {
     Q: clampEQQ(coerceFiniteNumber(rawBand.Q, 1.0)),
     enabled: rawBand.enabled === undefined ? true : rawBand.enabled !== false,
   };
+  const color = normalizeEQBandColor(rawBand.color);
+  if (color !== undefined) band.color = color;
   return normalizeEQBand(band);
+}
+
+/** A valid palette slot or '#rrggbb' custom color, or undefined for anything else. */
+export function normalizeEQBandColor(value: unknown): number | string | undefined {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value < EQ_BAND_COLOR_COUNT ? value : undefined;
+  }
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : undefined;
+}
+
+/**
+ * Where a newly added band should go: the middle (on the log axis) of the
+ * widest empty stretch of the spectrum, counting the gaps out to 20 Hz and
+ * 20 kHz, rounded to two significant figures. Repeated adds therefore spread
+ * out — 120 Hz, then 500 Hz, then 2 kHz on the default bands — instead of
+ * stacking on one spot. Ties go to the lower frequency.
+ */
+export function suggestEQBandFrequency(bands: readonly Pick<EQBand, 'frequency'>[]): number {
+  const logs = bands.map((band) => Math.log10(clampEQFrequency(band.frequency))).sort((a, b) => a - b);
+  const stops = [Math.log10(EQ_MIN_FREQUENCY), ...logs, Math.log10(EQ_MAX_FREQUENCY)];
+  let best = 0;
+  for (let i = 1; i < stops.length - 1; i++) {
+    if (stops[i + 1] - stops[i] > stops[best + 1] - stops[best]) best = i;
+  }
+  const frequency = 10 ** ((stops[best] + stops[best + 1]) / 2);
+  const step = 10 ** (Math.floor(Math.log10(frequency)) - 1);
+  return clampEQFrequency(Math.round(frequency / step) * step);
+}
+
+/** The lowest palette slot no band is using; wraps once every slot is taken. */
+export function nextFreeEQBandColor(bands: readonly Pick<EQBand, 'color'>[]): number {
+  for (let slot = 0; slot < EQ_BAND_COLOR_COUNT; slot++) {
+    if (!bands.some((band) => band.color === slot)) return slot;
+  }
+  return bands.length % EQ_BAND_COLOR_COUNT;
+}
+
+/**
+ * Stamp a color on every band that lacks one (built-in presets, shared files,
+ * installs from before band colors), in array order, without touching bands
+ * that already have one. Returns the same array when nothing was missing.
+ */
+export function assignEQBandColors<T extends EQBand>(bands: T[]): T[] {
+  if (bands.every((band) => normalizeEQBandColor(band.color) !== undefined)) return bands;
+  const out = bands.slice();
+  for (let i = 0; i < out.length; i++) {
+    if (normalizeEQBandColor(out[i].color) !== undefined) continue;
+    const others = out.filter((band, j) => j !== i && normalizeEQBandColor(band.color) !== undefined);
+    out[i] = { ...out[i], color: nextFreeEQBandColor(others) };
+  }
+  return out;
 }
 
 function parseEQGraphicGains(value: unknown): number[] | null {
@@ -201,6 +262,7 @@ function normalizeCoefficientSet(
   a1: number,
   a2: number
 ): EQFilterCoefficients {
+  'worklet';
   const invA0 = 1 / a0;
   return {
     b0: b0 * invA0,
@@ -212,6 +274,7 @@ function normalizeCoefficientSet(
 }
 
 export function computeEQFilterCoefficients(band: EQBand, sampleRate: number): EQFilterCoefficients {
+  'worklet';
   if (sampleRate <= 0) {
     return { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
   }
@@ -281,6 +344,7 @@ export function computeEQFilterCoefficients(band: EQBand, sampleRate: number): E
 }
 
 export function computeEQFilterMagnitude(band: EQBand, testFreq: number, sampleRate: number): number {
+  'worklet';
   if (sampleRate <= 0) return 0;
 
   const w = (2 * Math.PI * testFreq) / sampleRate;

@@ -4,6 +4,7 @@ import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { getNativeSettings, setNativeSetting } from '@/db/nativeSettings';
 import {
   EQ_MAX_BANDS,
+  assignEQBandColors,
   clampEQFrequency,
   clampEQGain,
   clampEQQ,
@@ -11,6 +12,9 @@ import {
   createNormalizedEQBand,
   dbToLinear,
   flattenBandsForNative,
+  nextFreeEQBandColor,
+  normalizeEQBandColor,
+  suggestEQBandFrequency,
 } from '@/audio/eq';
 import { createBuiltInPresets, createDefaultBands, FLAT_PRESET_ID, genEqId } from '@/audio/eqPresets';
 import {
@@ -114,7 +118,7 @@ interface EQStore {
   graphicGains: number[]; // graphic-mode slider gains (dB), independent of `bands`
   presets: EQPreset[]; // built-in + custom
   activePresetId: string | null; // null = manually edited ("Custom")
-  activeBandId: string | null; // UI selection shared by curve / strip / panel
+  activeBandId: string | null; // UI selection shared by the graph and the band panel
   activeOutputRoute: AudioOutputRoute | null;
   knownOutputDevices: Record<string, KnownEQOutputDevice>;
   devicePresetAssignments: Record<string, string>;
@@ -129,6 +133,8 @@ interface EQStore {
   addBand: (band?: Partial<EQBand>) => void;
   removeBand: (id: string) => void;
   updateBand: (id: string, updates: Partial<EQBand>) => void;
+  /** Recolor a band. Cosmetic: the active preset still describes what's audible. */
+  setBandColor: (id: string, color: number | string) => void;
   selectBand: (id: string | null) => void;
   applyPreset: (presetId: string) => void;
   resetToFlat: () => void;
@@ -221,7 +227,7 @@ export const useEQStore = create<EQStore>((set, get) => {
   return {
     enabled: false,
     preamp: 0,
-    bands: createDefaultBands(),
+    bands: assignEQBandColors(createDefaultBands()),
     mode: 'parametric',
     graphicGains: createFlatGraphicGains(),
     presets: createBuiltInPresets(),
@@ -255,7 +261,7 @@ export const useEQStore = create<EQStore>((set, get) => {
       const devicePresetsRaw = values[DEVICE_PRESETS_KEY];
       const routeProfilesRaw = values[ROUTE_PROFILES_KEY];
 
-      const bands = parseBands(bandsRaw) ?? createDefaultBands();
+      const bands = assignEQBandColors(parseBands(bandsRaw) ?? createDefaultBands());
       const presets = [...createBuiltInPresets(), ...parseCustomPresets(customRaw)];
       const storedActive = activeRaw && activeRaw.length > 0 ? activeRaw : null;
       const parsedDeviceState = devicePresetsRaw === null
@@ -331,10 +337,11 @@ export const useEQStore = create<EQStore>((set, get) => {
       const band = createNormalizedEQBand(
         {
           type: partial?.type ?? 'peaking',
-          frequency: partial?.frequency ?? 1000,
+          frequency: partial?.frequency ?? suggestEQBandFrequency(bands),
           gain: partial?.gain ?? 0,
           Q: partial?.Q ?? 1.0,
           enabled: partial?.enabled ?? true,
+          color: partial?.color ?? nextFreeEQBandColor(bands),
         },
         genEqId()
       );
@@ -359,11 +366,19 @@ export const useEQStore = create<EQStore>((set, get) => {
         if (updates.frequency !== undefined) merged.frequency = clampEQFrequency(updates.frequency);
         if (updates.gain !== undefined) merged.gain = clampEQGain(updates.gain);
         if (updates.Q !== undefined) merged.Q = clampEQQ(updates.Q);
+        if (updates.color !== undefined) merged.color = normalizeEQBandColor(updates.color) ?? b.color;
         return merged;
       });
       markEdited({
         bands: updates.frequency !== undefined ? next.sort((a, b) => a.frequency - b.frequency) : next,
       });
+    },
+
+    setBandColor: (id, color) => {
+      const slot = normalizeEQBandColor(color);
+      if (slot === undefined) return;
+      set({ bands: get().bands.map((b) => (b.id === id ? { ...b, color: slot } : b)) });
+      schedulePersist();
     },
 
     selectBand: (id) => set({ activeBandId: id }),
@@ -392,7 +407,7 @@ export const useEQStore = create<EQStore>((set, get) => {
           activePresetId: presetId,
         });
       } else {
-        const bands = preset.bands.map((b) => createNormalizedEQBand(b, genEqId()));
+        const bands = assignEQBandColors(preset.bands.map((b) => createNormalizedEQBand(b, genEqId())));
         set({
           mode: 'parametric',
           bands,
