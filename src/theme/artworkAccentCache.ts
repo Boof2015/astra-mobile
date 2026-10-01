@@ -1,3 +1,6 @@
+import type { AdaptiveAccentTarget } from './adaptiveAccent.ts';
+import type { CoverArtAccentMethod } from './artworkAccentPreferences.ts';
+
 export interface ArtworkAccentCacheResult {
   found: boolean;
   value: string | null;
@@ -32,4 +35,16 @@ export class ArtworkAccentCache {
   get size(): number {
     return this.entries.size;
   }
+}
+
+export function artworkAccentCacheKey(
+  artworkIdentity: string,
+  artworkSourceHash: string,
+  method: CoverArtAccentMethod,
+  target: AdaptiveAccentTarget,
+): string {
+  const themeKey = method === 'adaptive'
+    ? `${target.isLight ? 'light' : 'dark'}:${target.onAccent}:`
+    : '';
+  return `${method}:${themeKey}${artworkIdentity}:${artworkSourceHash}`;
 }

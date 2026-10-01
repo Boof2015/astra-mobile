@@ -80,6 +80,7 @@ const NOW_PLAYING_ACCENT_SEGMENTS = [
 ];
 
 const COVER_ART_METHOD_SEGMENTS = [
+  { key: 'adaptive', label: 'Adaptive' },
   { key: 'dominant', label: 'Dominant' },
   { key: 'vibrant', label: 'Vibrant' },
   { key: 'average', label: 'Average' },

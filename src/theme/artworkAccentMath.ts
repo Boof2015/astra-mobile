@@ -1,4 +1,7 @@
-import type { CoverArtAccentMethod } from '@/stores/themeStore';
+import type { CoverArtAccentMethod } from './artworkAccentPreferences.ts';
+import { extractAdaptiveAccent, type AdaptiveAccentTarget } from './adaptiveAccent.ts';
+
+const DEFAULT_ADAPTIVE_TARGET: AdaptiveAccentTarget = { isLight: false, onAccent: '#050505' };
 
 const MIN_ALPHA = 24;
 const VIBRANT_MIN_ALPHA = 48;
@@ -259,7 +262,16 @@ function extractVibrantColor(pixels: Uint8Array): string | null {
 export function extractArtworkAccentFromPixels(
   pixels: Uint8Array,
   method: CoverArtAccentMethod,
+  target: AdaptiveAccentTarget = DEFAULT_ADAPTIVE_TARGET,
 ): string | null {
+  if (method === 'adaptive') {
+    // Desktop emits a neutral for both greyscale and empty samples. On mobile,
+    // no visible artwork must retain the app accent; 48 is Adaptive's alpha cutoff.
+    for (let i = 0; i + 3 < pixels.length; i += 4) {
+      if (pixels[i + 3] >= 48) return extractAdaptiveAccent(pixels, target).hex;
+    }
+    return null;
+  }
   if (method === 'average') return extractAverageColor(pixels);
   if (method === 'vibrant') return extractVibrantColor(pixels);
   return extractDominantColor(pixels);

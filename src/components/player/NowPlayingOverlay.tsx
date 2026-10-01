@@ -290,6 +290,7 @@ export function NowPlayingOverlay({
     artworkUri: activePresentation.artworkUri,
     artworkIdentity,
     method: coverArtAccentMethod,
+    target: { isLight: !themeIsDark, onAccent: appColors.bgPrimary },
   });
   const colors = useMemo(
     () => paletteWithAccent(appColors, coverArtAccent, themeIsDark),

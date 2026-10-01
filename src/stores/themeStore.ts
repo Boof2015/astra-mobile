@@ -11,6 +11,11 @@ import {
 } from '@/theme/accents';
 import { normalizeHexColor } from '@/theme/colorUtils';
 import {
+  DEFAULT_COVER_ART_ACCENT_METHOD,
+  parseCoverArtAccentMethod,
+  type CoverArtAccentMethod,
+} from '@/theme/artworkAccentPreferences';
+import {
   parseBaseTheme,
   parsePreferredDark,
   resolveTheme,
@@ -33,7 +38,7 @@ const COVER_ART_ACCENT_METHOD_KEY = 'now_playing_cover_art_method';
 
 type SystemScheme = 'light' | 'dark';
 export type NowPlayingAccentSource = 'app' | 'cover-art';
-export type CoverArtAccentMethod = 'dominant' | 'vibrant' | 'average';
+export type { CoverArtAccentMethod } from '@/theme/artworkAccentPreferences';
 
 function currentSystemScheme(): SystemScheme {
   return Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
@@ -84,10 +89,6 @@ function parseNowPlayingAccentSource(value: string | null): NowPlayingAccentSour
   return value === 'cover-art' ? 'cover-art' : 'app';
 }
 
-function parseCoverArtAccentMethod(value: string | null): CoverArtAccentMethod {
-  return value === 'average' || value === 'vibrant' ? value : 'dominant';
-}
-
 function effectiveInputs(state: ThemeStore): ResolutionInputs {
   return {
     baseTheme: state.baseTheme,
@@ -104,7 +105,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   materialYouAvailable: AstraSystemColors.isAvailable(),
   accentPreviewHex: null,
   nowPlayingAccentSource: 'app',
-  coverArtAccentMethod: 'dominant',
+  coverArtAccentMethod: DEFAULT_COVER_ART_ACCENT_METHOD,
   theme: recompute(DEFAULT_INPUTS),
   loaded: false,
 

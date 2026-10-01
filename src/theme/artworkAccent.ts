@@ -5,7 +5,8 @@ import {
   rect,
   type SkData,
 } from '@shopify/react-native-skia';
-import type { CoverArtAccentMethod } from '@/stores/themeStore';
+import type { CoverArtAccentMethod } from './artworkAccentPreferences';
+import type { AdaptiveAccentTarget } from './adaptiveAccent';
 import { extractArtworkAccentFromPixels } from './artworkAccentMath';
 
 const SAMPLE_SIZE = 128;
@@ -20,6 +21,7 @@ async function encodedArtworkData(uri: string) {
 export async function extractArtworkAccent(
   artworkUri: string,
   method: CoverArtAccentMethod,
+  target?: AdaptiveAccentTarget,
 ): Promise<string | null> {
   if (!artworkUri) return null;
   let encoded: SkData | null = null;
@@ -49,7 +51,7 @@ export async function extractArtworkAccent(
               alphaType: AlphaType.Unpremul,
             });
             if (!pixels || pixels instanceof Float32Array) return null;
-            return extractArtworkAccentFromPixels(pixels, method);
+            return extractArtworkAccentFromPixels(pixels, method, target);
           } finally {
             snapshot.dispose();
           }

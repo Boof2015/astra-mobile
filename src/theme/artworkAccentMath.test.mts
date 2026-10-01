@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ArtworkAccentCache } from './artworkAccentCache.ts';
+import { ArtworkAccentCache, artworkAccentCacheKey } from './artworkAccentCache.ts';
 import { extractArtworkAccentFromPixels } from './artworkAccentMath.ts';
+import { extractAdaptiveAccent } from './adaptiveAccent.ts';
+import { parseCoverArtAccentMethod } from './artworkAccentPreferences.ts';
+import { paletteWithAccent } from './scopedAccent.ts';
+import { resolveTheme } from './resolve.ts';
+
+const DARK = { isLight: false, onAccent: '#080a0f' };
+const LIGHT = { isLight: true, onAccent: '#ffffff' };
 
 type Pixel = [number, number, number, number?];
 
@@ -28,6 +35,89 @@ test('transparent artwork has no usable accent', () => {
   assert.equal(extractArtworkAccentFromPixels(transparent, 'average'), null);
   assert.equal(extractArtworkAccentFromPixels(transparent, 'dominant'), null);
   assert.equal(extractArtworkAccentFromPixels(transparent, 'vibrant'), null);
+  assert.equal(extractArtworkAccentFromPixels(transparent, 'adaptive', DARK), null);
+});
+
+test('Adaptive defaults only missing or invalid preferences, preserving saved methods', () => {
+  for (const value of [null, '', 'unknown']) {
+    assert.equal(parseCoverArtAccentMethod(value), 'adaptive');
+  }
+  for (const method of ['adaptive', 'dominant', 'vibrant', 'average']) {
+    assert.equal(parseCoverArtAccentMethod(method), method);
+  }
+});
+
+test('Adaptive retains the app fallback for empty samples and pixels below its alpha cutoff', () => {
+  assert.equal(extractArtworkAccentFromPixels(new Uint8Array(), 'adaptive', DARK), null);
+  const invisible = pixels([{ pixel: [255, 0, 0, 47], count: 100 }]);
+  assert.equal(extractArtworkAccentFromPixels(invisible, 'adaptive', DARK), null);
+  const visible = pixels([{ pixel: [255, 0, 0, 48], count: 100 }]);
+  assert.equal(
+    extractArtworkAccentFromPixels(visible, 'adaptive', DARK),
+    extractAdaptiveAccent(visible, DARK).hex,
+  );
+});
+
+test('Adaptive keeps visible grayscale neutral throughout scoped palette derivation', () => {
+  const sample = pixels([
+    { pixel: [0, 0, 0], count: 20 },
+    { pixel: [255, 255, 255], count: 20 },
+    { pixel: [120, 120, 120], count: 20 },
+  ]);
+  for (const baseTheme of ['midnight', 'dark', 'amoled', 'light'] as const) {
+    const theme = resolveTheme({
+      baseTheme,
+      preferredDark: 'midnight',
+      accentPreference: { kind: 'preset', id: 'indigo' },
+      systemScheme: 'dark',
+      materialYouRamps: null,
+    });
+    const accent = extractArtworkAccentFromPixels(sample, 'adaptive', {
+      isLight: !theme.isDark,
+      onAccent: theme.colors.bgPrimary,
+    });
+    assert.ok(accent);
+    const scoped = paletteWithAccent(theme.colors, accent, theme.isDark);
+    assert.equal(scoped.accent, accent);
+    assert.equal(scoped.bgPrimary, theme.colors.bgPrimary);
+    for (const token of [scoped.accent, scoped.accentHover, scoped.accentText, scoped.accentTextStrong]) {
+      const channels = rgb(token);
+      assert.ok(Math.max(...channels) - Math.min(...channels) <= 2, token);
+    }
+  }
+});
+
+test('Adaptive caches distinguish theme, foreground, artwork source, identity, and method', () => {
+  const key = artworkAccentCacheKey('phone:album', 'source-a', 'adaptive', DARK);
+  const cache = new ArtworkAccentCache();
+  cache.set(key, '#abcdef');
+  assert.equal(cache.get(artworkAccentCacheKey('phone:album', 'source-a', 'adaptive', { ...DARK })).value, '#abcdef');
+  for (const changedKey of [
+    artworkAccentCacheKey('phone:album', 'source-a', 'adaptive', { ...DARK, isLight: true }),
+    artworkAccentCacheKey('phone:album', 'source-a', 'adaptive', { ...DARK, onAccent: '#000000' }),
+    artworkAccentCacheKey('phone:album', 'source-b', 'adaptive', DARK),
+    artworkAccentCacheKey('desktop:album', 'source-a', 'adaptive', DARK),
+    artworkAccentCacheKey('phone:album', 'source-a', 'dominant', DARK),
+  ]) {
+    assert.equal(cache.get(changedKey).found, false);
+  }
+});
+
+test('legacy methods remain independent of Adaptive theme targets', () => {
+  const sample = pixels([
+    { pixel: [30, 100, 200], count: 100 },
+    { pixel: [240, 60, 100], count: 40 },
+  ]);
+  for (const method of ['dominant', 'vibrant', 'average'] as const) {
+    assert.equal(
+      artworkAccentCacheKey('album', 'source', method, DARK),
+      artworkAccentCacheKey('album', 'source', method, LIGHT),
+    );
+    assert.equal(
+      extractArtworkAccentFromPixels(sample, method, DARK),
+      extractArtworkAccentFromPixels(sample, method, LIGHT),
+    );
+  }
 });
 
 test('dominant extraction favors the largest usable color bucket', () => {
