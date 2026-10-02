@@ -136,7 +136,7 @@ jobs:
           grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
           grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
-          grep -Fq 'org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
+          grep -Fq 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
 
       - name: Decode app-signing keystore
@@ -160,7 +160,7 @@ jobs:
           ASTRA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_APP_SIGNING_KEYSTORE_PASSWORD }}
           ASTRA_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_APP_SIGNING_KEY_ALIAS }}
           ASTRA_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_APP_SIGNING_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon --stacktrace
 
       - name: Verify release dependency substitution
         working-directory: android
@@ -301,7 +301,7 @@ jobs:
           grep -Fq "ASTRA VENDORED KOTLIN AUDIO" android/settings.gradle
           grep -Fq "ASTRA KOTLIN AUDIO SUBSTITUTION" android/build.gradle
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
-          grep -Fq 'org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
+          grep -Fq 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
 
       - name: Run Astra native unit tests

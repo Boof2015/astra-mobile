@@ -76,7 +76,7 @@ test('appendBlock adds a native block exactly once', () => {
   assert.equal(once.split(_internal.SETTINGS_MARKER).length - 1, 1);
 });
 
-test('raises the generated Gradle Metaspace cap while preserving unrelated properties', () => {
+test('raises the generated Gradle heap and Metaspace caps while preserving unrelated properties', () => {
   const properties = [
     { type: 'comment', value: 'Project-wide Gradle settings.' },
     {
@@ -98,7 +98,7 @@ test('raises the generated Gradle Metaspace cap while preserving unrelated prope
       {
         type: 'property',
         key: _internal.GRADLE_JVM_ARGS_PROPERTY,
-        value: '-Xmx2048m -XX:MaxMetaspaceSize=1024m',
+        value: '-Xmx4096m -XX:MaxMetaspaceSize=1024m',
       },
       properties[2],
     ]

@@ -18,7 +18,7 @@ const CAMERA_FEATURE = 'android.hardware.camera';
 const NOTIFICATION_ICON_FILE = 'astra_notification_icon.xml';
 const NOTIFICATION_OVERRIDE_FILE = 'astra_notification_icon_overrides.xml';
 const GRADLE_JVM_ARGS_PROPERTY = 'org.gradle.jvmargs';
-const GRADLE_JVM_ARGS_VALUE = '-Xmx2048m -XX:MaxMetaspaceSize=1024m';
+const GRADLE_JVM_ARGS_VALUE = '-Xmx4096m -XX:MaxMetaspaceSize=1024m';
 
 // A notification small icon is an alpha mask: Android supplies the color for
 // the status bar, lock screen and media controls. Keep only the main Astra mark
