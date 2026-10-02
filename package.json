@@ -80,6 +80,8 @@
     "test:artist-grouping": "node --experimental-strip-types --test src/library/artistGrouping.test.mts src/audio/artistCreditTransport.test.mts",
     "test:artist-images": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/services/artistImages/deezer.test.mts src/library/artistImagePolicy.test.mts src/library/artistImageLookup.test.mts",
     "test:waveform-math": "node --experimental-strip-types --test src/scope/waveformMath.test.mts",
+    "test:analysis": "node --experimental-strip-types --test src/audio/analysisCoordinator.test.mts src/audio/trackAnalysisRunner.test.mts src/scope/waveformMath.test.mts src/lib/cacheInvalidation.test.mts",
+    "test:analysis-native": "sh scripts/test-native-analysis.sh",
     "test:desktop-sync": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/library/importMatching.test.mts src/services/desktopSyncPlaylistMerge.test.mts src/services/desktopSyncPolicy.test.mts src/shared/sync/conflictPreview.test.mts",
     "test:eq-share": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/eqShare.test.mts",
     "test:signal": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/signalShare.test.mts src/audio/signalShareIntent.test.mts src/audio/signalScanGeometry.test.mts src/audio/signalLocalMatch.test.mts",

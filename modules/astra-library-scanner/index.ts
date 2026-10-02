@@ -105,6 +105,7 @@ export interface NativeScanResult {
  * what they've received so far and accept a slight rescale as louder material arrives.
  */
 export interface WaveformProgressEvent {
+  attemptId: string;
   /** Track URI this partial belongs to — callers must filter, decodes overlap. */
   uri: string;
   filledBins: number;
@@ -119,6 +120,9 @@ type AstraLibraryScannerEvents = {
 
 /** One decode pass: waveform peaks + (optionally) loudness, plus timing. */
 export interface TrackAnalysis {
+  completed: boolean;
+  decoderRoute: string;
+  fallbackReason: string | null;
   /** `bins` RMS peaks normalized to [0,1]; empty on failure. */
   peaks: number[];
   /** Integrated LUFS; null when unmeasured (withLoudness false) or unmeasurable. */
@@ -163,12 +167,12 @@ declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibrarySca
    * measure it separately. Heavy; concurrency is capped natively at 2 and results
    * should be cached. Emits `onWaveformProgress` as bins finalize.
    */
-  analyzeTrack(uri: string, bins: number, withLoudness: boolean): Promise<TrackAnalysis>;
+  analyzeTrack(uri: string, bins: number, withLoudness: boolean, attemptId: string, durationMs: number): Promise<TrackAnalysis>;
   /**
-   * Stop an in-flight (or still-queued) `analyzeTrack` for this URI so a skipped-past
-   * track stops burning CPU. Safe to call when nothing is running.
+   * Stop one analysis attempt, including a request still entering the native queue.
+   * Attempt IDs prevent late cancellation from affecting a newer run for the same URI.
    */
-  cancelAnalysis(uri: string): Promise<void>;
+  cancelAnalysis(attemptId: string): Promise<void>;
   /**
    * Read ReplayGain track/album gain (dB) + peak (linear) from container tags
    * (ID3 TXXX / Vorbis comments / MP4 freeform) without decoding audio. All fields

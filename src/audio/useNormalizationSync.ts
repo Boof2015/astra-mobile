@@ -1,12 +1,7 @@
-// Fire-and-forget analysis half of normalization. Bulk registration of every
-// ALREADY-ANALYZED queued track's gain lives in gainRegistry.ts (started below);
-// this hook covers what the registry can't know synchronously: it measures the
-// current track + the next few queued tracks on demand (decode-ahead) and registers
-// each late-arriving result natively by URL, so the player picks it up at the media
-// transition — or, for the current track, via a smooth native glide (the track is
-// already playing at the fallback "temp" gain from sample zero; activation never
-// yanks the volume). Also owns the oscilloscope's per-track display gain. Renders
-// nothing — mount once near the root.
+// Analyze the current track and prefetch upcoming waveforms, including when
+// normalization is disabled. Register measured gains for native playback and update
+// the oscilloscope's display gain. gainRegistry handles cached gains for the full queue.
+// Mount once near the root; this hook renders nothing.
 
 import { useEffect } from 'react';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -14,8 +9,10 @@ import { useQueueStore } from '@/stores/queueStore';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { resolveNormalizationGain, type LoudnessFacts } from '@/audio/normalization';
 import {
+  reconcileAnalysisPrefetch,
   activeAnalysisPaths,
   cancelTrackAnalysis,
+  setCurrentAnalysisPath,
   ensureTrackAnalysis,
 } from '@/audio/trackAnalysis';
 import {
@@ -57,21 +54,20 @@ export function useNormalizationSync(): void {
         return;
       }
 
-      // Disabled means unity immediately and no metadata/decode work. The seek bar owns
-      // waveform-on-demand independently, so normalization must not precompute it here.
+      // Remote sources never enter the offline analysis coordinator.
+      if (current?.sourceType && current.sourceType !== 'local') {
+        setNormalizationGainNative(1);
+        useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
+        return;
+      }
+      // Waveforms are independent of normalization. Restore unity immediately while
+      // the waveform-only job continues in the background.
       if (!settings.enabled) {
         setNormalizationGainNative(1);
         setTrackGainNative(path, 1);
         activateTrackGainNative(path);
         useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
-        return;
-      }
-
-      // Remote tracks have no local file to decode and no synced loudness/RG facts,
-      // so normalization is unity. Skip analysis (it would try to download the stream).
-      if (current?.sourceType && current.sourceType !== 'local') {
-        setNormalizationGainNative(1);
-        useScopeStore.getState().setOscGain(DEFAULT_OSC_GAIN);
+        void ensureTrackAnalysis(path, { durationMs: (current?.duration ?? 0) * 1000 }).catch(() => {});
         return;
       }
 
@@ -81,7 +77,9 @@ export function useNormalizationSync(): void {
       // (gainRegistry) — never at unity/full volume.
       let facts = EMPTY_FACTS;
       try {
-        ({ facts } = await ensureTrackAnalysis(path));
+        const result = await ensureTrackAnalysis(path, { durationMs: (current?.duration ?? 0) * 1000 });
+        if (result.cancelled) return;
+        facts = result.facts;
         if (cancelled) return;
         // Track changed during the await — let the newer recompute win.
         if (usePlayerStore.getState().currentTrack?.path !== path) return;
@@ -89,7 +87,7 @@ export function useNormalizationSync(): void {
         /* fall back to unity via EMPTY_FACTS */
       }
 
-      const resolved = resolveNormalizationGain(facts, settings);
+      const resolved = resolveNormalizationGain(facts, useAudioSettingsStore.getState().asNormalizationSettings());
       // Seed the native map (so transitioning back to this track picks it up) and make
       // it active now (mount / settings change / late measurement fire no media-item
       // transition). Activation glides natively (~1.2s) — usually a small upward
@@ -105,60 +103,30 @@ export function useNormalizationSync(): void {
       useScopeStore.getState().setOscGain(computeOscilloscopeGain(basePeak, resolved.linearGain));
     }
 
-    // ANALYZE the next several upcoming tracks while the current one plays (decode-ahead
-    // for tracks with no facts yet), and register each late-arriving gain natively by URL —
-    // so when the player advances, the gain is in the map and applies at the transition with
-    // no JS in the loop. Already-analyzed tracks are bulk-registered by gainRegistry;
-    // re-registering them here is a harmless cheap DB hit with the same value. Looking a few
-    // ahead (not just the immediate next) means a song added several positions back is still
-    // analyzed with plenty of lead time. Derived from the queue mirror, so it re-runs on
-    // reorder / add-next / advance. Deduped + DB-cached + native-semaphore-capped.
-    //
-    // The same pass fills the seek bar's waveform, which is why the waveform is usually
-    // already cached by the time you open now-playing: it used to only start decoding when
-    // WaveformSeekBar mounted, from cold, queued behind these very decodes.
+    // Reconcile the prefetch window before submitting work so skips, reorders, and
+    // removals release obsolete jobs. Waveforms and any needed loudness share a pass;
+    // registering gains by URL makes them available at the native track transition.
     function prefetchUpcoming(): void {
       const { tracks, activeIndex } = useQueueStore.getState();
-      if (activeIndex < 0) return;
-      const settings = useAudioSettingsStore.getState().asNormalizationSettings();
-      if (!settings.enabled) {
-        // A settings change may land while decode-ahead is already running. Preserve the
-        // current track (the visible seek bar may be awaiting it), but release queue work.
-        const currentPath = usePlayerStore.getState().currentTrack?.path;
-        for (const path of activeAnalysisPaths()) {
-          if (path !== currentPath) cancelTrackAnalysis(path);
-        }
-        return;
-      }
-
-      // The set of tracks worth spending a decode on right now. Everything else that is
-      // still decoding has been skipped past.
-      const wanted = new Set<string>();
+      const upcoming = activeIndex < 0
+        ? []
+        : tracks.slice(activeIndex + 1, activeIndex + 1 + PREFETCH_AHEAD).filter((track) =>
+          typeof track.url === 'string' &&
+          (track.url.startsWith('file://') || track.url.startsWith('content://')) &&
+          (!track.sourceType || track.sourceType === 'local')
+        );
+      reconcileAnalysisPrefetch(upcoming.map((track) => track.url as string));
       const currentPath = usePlayerStore.getState().currentTrack?.path;
-      if (currentPath) wanted.add(currentPath);
-
-      for (let i = 1; i <= PREFETCH_AHEAD; i++) {
-        const queued = tracks[activeIndex + i];
-        const url = queued?.url;
-        if (typeof url !== 'string' || url.length === 0) continue;
-        // Remote tracks: unity gain, and decoding the stream URL would download it.
-        if (queued?.sourceType && queued.sourceType !== 'local') continue;
-        wanted.add(url);
-        void ensureTrackAnalysis(url)
-          .then(({ facts }) => {
-            if (cancelled) return;
-            const resolved = resolveNormalizationGain(facts, settings);
-            setTrackGainNative(url, resolved.linearGain);
-          })
-          .catch(() => {
-            /* leave unregistered — defaults to unity at the transition */
-          });
-      }
-
-      // Free the native decode permits: a decode for a track the user has skipped past is
-      // pure waste, and it would otherwise block the track they're actually on.
-      for (const path of activeAnalysisPaths()) {
-        if (!wanted.has(path)) cancelTrackAnalysis(path);
+      for (const queued of upcoming) {
+        const url = queued.url as string;
+        if (url === currentPath) continue;
+        void ensureTrackAnalysis(url, {
+          priority: 'prefetch', durationMs: (queued.duration ?? 0) * 1000,
+        }).then(({ facts, cancelled: analysisCancelled }) => {
+          if (cancelled || analysisCancelled) return;
+          const settings = useAudioSettingsStore.getState().asNormalizationSettings();
+          setTrackGainNative(url, resolveNormalizationGain(facts, settings).linearGain);
+        }).catch(() => {});
       }
     }
 
@@ -172,18 +140,12 @@ export function useNormalizationSync(): void {
       }, 250);
     }
 
-    // Deferred past the transition frame: the track already plays at its
-    // natively-registered (or fallback) gain from sample zero, so recompute
-    // only late-corrects unanalyzed tracks — no need to compete with the
-    // skip/play burst. Rapid skips coalesce into one recompute.
-    let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
+    // Register foreground intent synchronously; prefetch remains debounced.
     const unsubTrack = usePlayerStore.subscribe((state, prev) => {
       if (state.currentTrack?.path !== prev.currentTrack?.path) {
-        if (recomputeTimer) clearTimeout(recomputeTimer);
-        recomputeTimer = setTimeout(() => {
-          recomputeTimer = null;
-          void recompute();
-        }, 300);
+        setCurrentAnalysisPath(state.currentTrack?.path ?? null);
+        void recompute();
+        schedulePrefetch();
       }
     });
     const unsubQueue = useQueueStore.subscribe((state, prev) => {
@@ -199,18 +161,23 @@ export function useNormalizationSync(): void {
         state.replayGainEnabled !== prev.replayGainEnabled ||
         state.replayGainMode !== prev.replayGainMode
       ) {
+        if (state.normalizationEnabled !== prev.normalizationEnabled || state.replayGainEnabled !== prev.replayGainEnabled) {
+          // A waveform-only pass cannot retroactively meter samples already consumed.
+          // Re-request under the new requirements after the old attempts drain.
+          for (const path of activeAnalysisPaths()) cancelTrackAnalysis(path);
+        }
         void recompute();
         // Upcoming tracks' gains depend on the same settings — re-register them.
         schedulePrefetch();
       }
     });
+    setCurrentAnalysisPath(usePlayerStore.getState().currentTrack?.path ?? null);
     void recompute();
-    prefetchUpcoming();
+    schedulePrefetch();
 
     return () => {
       cancelled = true;
       if (prefetchTimer) clearTimeout(prefetchTimer);
-      if (recomputeTimer) clearTimeout(recomputeTimer);
       unsubTrack();
       unsubQueue();
       unsubSettings();

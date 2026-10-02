@@ -23,3 +23,12 @@ target_compile_options(astratags PRIVATE -Wall -Wextra -fvisibility=hidden)
 target_compile_definitions(astratags PRIVATE _FILE_OFFSET_BITS=64)
 # Match Android's 16 KB page-size packaging requirements on every ABI.
 target_link_options(astratags PRIVATE "-Wl,-z,max-page-size=16384")
+
+add_library(astraanalysis SHARED
+  ../cpp/audio_analysis.cpp
+  ../cpp/audio_decoder.cpp
+  ../cpp/audio_analysis_jni.cpp)
+target_include_directories(astraanalysis PRIVATE ../third_party/dr_libs)
+target_compile_options(astraanalysis PRIVATE -Wall -Wextra -fvisibility=hidden -ffp-contract=off)
+target_compile_definitions(astraanalysis PRIVATE _FILE_OFFSET_BITS=64)
+target_link_options(astraanalysis PRIVATE "-Wl,-z,max-page-size=16384")

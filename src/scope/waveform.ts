@@ -8,6 +8,9 @@ import {
   WAVEFORM_BINS,
   clearWaveformCache,
   ensureTrackAnalysis,
+  isCurrentAnalysisAttempt,
+  isCurrentAnalysisPath,
+  setCurrentAnalysisPath,
 } from '@/audio/trackAnalysis';
 
 export { WAVEFORM_BINS };
@@ -15,11 +18,15 @@ export { downsampleWaveform, normalizeProgressiveWaveform } from '@/scope/wavefo
 
 export function getWaveform(trackPath: string): Promise<Float32Array | null> {
   if (!isLocalWaveformPath(trackPath)) return Promise.resolve(null);
+  setCurrentAnalysisPath(trackPath);
   return loadWaveform(trackPath);
 }
 
 async function loadWaveform(trackPath: string): Promise<Float32Array | null> {
   const cached = await AstraLibraryData.getWaveform(trackPath).catch(() => null);
+  // The UI may have skipped while this cache lookup was pending. Do not let its
+  // late cache miss promote the obsolete song and cancel the newest foreground job.
+  if (!isCurrentAnalysisPath(trackPath)) return null;
   if (cached && cached.length > 0) return Float32Array.from(cached);
 
   // Shares one decode pass with loudness, and may already be running from the queue
@@ -62,6 +69,7 @@ export function subscribeWaveformProgress(
 ): () => void {
   if (!nativeProgressSub) {
     nativeProgressSub = AstraLibraryScanner.addListener('onWaveformProgress', (event) => {
+      if (!isCurrentAnalysisAttempt(event.uri, event.attemptId)) return;
       const listeners = progressListeners.get(event.uri);
       if (!listeners || listeners.size === 0) return;
       const partial = {

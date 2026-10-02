@@ -19,6 +19,7 @@ const TEST_SCRIPTS = [
   'test:eq-layout',
   'test:audio-startup',
   'test:audio-diagnostics',
+  'test:analysis',
   'test:atmos',
   'test:seek-bar',
   'test:lyrics',

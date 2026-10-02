@@ -22,6 +22,10 @@ def prepareMetadataNotices = tasks.register("prepareMetadataNotices", Copy) {
   from("$projectDir/../third_party/taglib") { include "COPYING.*", "AUTHORS" }
   from("$projectDir/../third_party/taglib/3rdparty/utfcpp/LICENSE") { rename { "utf8cpp-LICENSE" } }
 }
+def prepareAnalysisNotices = tasks.register("prepareAnalysisNotices", Copy) {
+  into(metadataNoticeAssetsDir.map { it.dir("notices/dr_libs") })
+  from("$projectDir/../third_party/dr_libs") { include "LICENSE", "REVISION" }
+}
 def prepareQueueFontAssets = tasks.register("prepareQueueFontAssets", Copy) {
   from(
     "$rootDir/../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf",
@@ -33,6 +37,7 @@ def prepareQueueFontAssets = tasks.register("prepareQueueFontAssets", Copy) {
 
 android {
   namespace "expo.modules.astralibraryscanner"
+  testBuildType providers.gradleProperty("astraAnalysisTestBuildType").getOrElse("debug")
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
@@ -50,6 +55,9 @@ android {
   sourceSets {
     androidTest.assets.srcDirs += files("$projectDir/schemas")
     androidTest.assets.srcDirs += files("$projectDir/../../../test/fixtures")
+    if (project.hasProperty("astraAnalysisBenchmarkAssets")) {
+      androidTest.assets.srcDir(project.property("astraAnalysisBenchmarkAssets"))
+    }
     main.assets.srcDir(queueFontAssetsDir)
     main.assets.srcDir(metadataNoticeAssetsDir)
   }
@@ -61,6 +69,7 @@ android {
 tasks.named("preBuild").configure {
   dependsOn(prepareQueueFontAssets)
   dependsOn(prepareMetadataNotices)
+  dependsOn(prepareAnalysisNotices)
 }
 
 dependencies {

@@ -6,21 +6,12 @@
 import TrackPlayer from 'react-native-track-player';
 import { useAudioSettingsStore } from '@/stores/audioSettingsStore';
 import { resolveNormalizationGain, type LoudnessFacts } from '@/audio/normalization';
-import { ensureTrackLoudness } from '@/audio/trackAnalysis';
+import { ensureTrackLoudness, setCurrentAnalysisPath } from '@/audio/trackAnalysis';
 import {
   activateTrackGainNative,
   setNormalizationGainNative,
   setTrackGainNative,
 } from '@/audio/eqNative';
-
-const EMPTY_FACTS: LoudnessFacts = {
-  loudnessLufs: null,
-  samplePeak: null,
-  replayGainTrackDb: null,
-  replayGainAlbumDb: null,
-  replayGainTrackPeak: null,
-  replayGainAlbumPeak: null,
-};
 
 /**
  * Resolve + apply the active RNTP track's normalization gain natively. Idempotent and safe
@@ -30,6 +21,7 @@ const EMPTY_FACTS: LoudnessFacts = {
 export async function applyNormalizationForActiveTrack(): Promise<void> {
   const track = await TrackPlayer.getActiveTrack();
   const url = typeof track?.url === 'string' ? track.url : null;
+  setCurrentAnalysisPath(url);
   if (!url) {
     setNormalizationGainNative(1);
     return;
@@ -42,6 +34,7 @@ export async function applyNormalizationForActiveTrack(): Promise<void> {
   }
 
   await useAudioSettingsStore.getState().load();
+  if ((await TrackPlayer.getActiveTrack())?.url !== url) return;
   const settings = useAudioSettingsStore.getState().asNormalizationSettings();
   if (!settings.enabled) {
     setNormalizationGainNative(1);
@@ -50,17 +43,18 @@ export async function applyNormalizationForActiveTrack(): Promise<void> {
     return;
   }
 
-  let facts = EMPTY_FACTS;
+  let facts: LoudnessFacts;
   try {
     facts = await ensureTrackLoudness(url);
     // Track advanced while we were analyzing — let the newer change win.
     const now = await TrackPlayer.getActiveTrack();
     if (typeof now?.url !== 'string' || now.url !== url) return;
   } catch {
-    /* fall back to unity via EMPTY_FACTS */
+    // Cancellation must leave the native registered/fallback gain in place.
+    return;
   }
 
-  const resolved = resolveNormalizationGain(facts, settings);
+  const resolved = resolveNormalizationGain(facts, useAudioSettingsStore.getState().asNormalizationSettings());
   // Register by URL (the key the native player swaps on at the media transition) and
   // activate it now, since no transition fires for the already-current track. The
   // track has been playing at the fallback "temp" gain (gainRegistry) meanwhile, and

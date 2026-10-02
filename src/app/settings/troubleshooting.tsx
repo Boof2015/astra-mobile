@@ -226,8 +226,11 @@ function AnalysisTimingPanel() {
           <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
             {`${timing.decoderName ?? 'unknown decoder'}${
               timing.withLoudness ? ' · loudness folded in' : ''
-            } · wait ${Math.round(timing.nativeQueueWaitMs ?? 0)}ms`}
+            } · wait ${Math.round(timing.schedulerWaitMs + (timing.nativeQueueWaitMs ?? 0))}ms${timing.promoted ? ' · promoted' : ''}`}
           </Text>
+          {timing.fallbackReason ? (
+            <Text variant="caption" color={colors.textTertiary}>{timing.fallbackReason}</Text>
+          ) : null}
           <Text variant="caption" color={colors.textTertiary} numberOfLines={2}>
             prep {Math.round(timing.preparationMs ?? 0)} · setup {Math.round(timing.setupMs ?? 0)} · first PCM {Math.round(timing.firstPcmMs ?? 0)} · first fill {timing.firstProgressEndToEndMs == null ? '—' : Math.round(timing.firstProgressEndToEndMs)} · persist {Math.round(timing.persistenceMs ?? 0)} · total {Math.round(timing.endToEndMs)}ms
           </Text>
