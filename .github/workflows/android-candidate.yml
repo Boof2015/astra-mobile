@@ -69,7 +69,6 @@ jobs:
     env:
       ASTRA_DISTRIBUTION: github
       ASTRA_DISCORD_ENABLED: 'true'
-      ASTRA_DISCORD_SDK_DIR: ${{ runner.temp }}/astra-discord-sdk
     steps:
       - uses: actions/checkout@v6
 
@@ -117,7 +116,10 @@ jobs:
           show-progress: false
 
       - name: Verify and stage pinned Discord SDK privately
-        run: python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input
+        run: |
+          sdk_dir="$RUNNER_TEMP/astra-discord-sdk"
+          python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input --output-dir "$sdk_dir"
+          printf 'ASTRA_DISCORD_SDK_DIR=%s\n' "$sdk_dir" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -232,7 +234,6 @@ jobs:
     env:
       ASTRA_DISTRIBUTION: google-play
       ASTRA_DISCORD_ENABLED: 'true'
-      ASTRA_DISCORD_SDK_DIR: ${{ runner.temp }}/astra-discord-sdk
     steps:
       - uses: actions/checkout@v6
 
@@ -280,7 +281,10 @@ jobs:
           show-progress: false
 
       - name: Verify and stage pinned Discord SDK privately
-        run: python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input
+        run: |
+          sdk_dir="$RUNNER_TEMP/astra-discord-sdk"
+          python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input --output-dir "$sdk_dir"
+          printf 'ASTRA_DISCORD_SDK_DIR=%s\n' "$sdk_dir" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
