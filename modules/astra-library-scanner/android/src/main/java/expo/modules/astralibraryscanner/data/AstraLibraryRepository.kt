@@ -160,11 +160,6 @@ private data class RemoteSyncHandle(
   val seenPaths: MutableSet<String> = ConcurrentHashMap.newKeySet(),
 )
 
-private data class OrderedQueueItem(
-  val entryId: Long,
-  val trackPath: String,
-)
-
 /**
  * Single owner for both Room files. Every app surface—including Android Auto—
  * reaches SQLite through this repository so connection and recovery policy
@@ -1153,18 +1148,7 @@ class AstraLibraryRepository private constructor(
     val original = availablePaths.mapIndexed { index, path ->
       OrderedQueueItem(index.toLong(), path)
     }
-    val ordered = original.toMutableList()
-    var activePosition = anchorPath
-      ?.let { anchor -> ordered.indexOfFirst { it.trackPath == anchor } }
-      ?.takeIf { it >= 0 }
-      ?: 0
-    if (shuffle && ordered.size > 1) {
-      val anchor = ordered.getOrNull(activePosition)
-      if (anchor != null) ordered.removeAt(activePosition)
-      ordered.shuffle(Random(seed))
-      if (anchor != null) ordered.add(0, anchor)
-      activePosition = 0
-    }
+    val (ordered, activePosition) = createPlaybackQueueOrder(original, anchorPath, shuffle, seed)
     val existingContext = userDao.getPlaybackSession(ACTIVE_PLAYBACK_CONTEXT_ID)
     val now = maxOf(System.currentTimeMillis(), (existingContext?.createdAt ?: 0L) + 1)
     val reusableCatalogContext = contextKind in setOf(
