@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 
 class AnalysisFixtureProvider : ContentProvider() {
   override fun onCreate() = true
-  override fun getType(uri: Uri) = "audio/wav"
+  override fun getType(uri: Uri) = if (uri.lastPathSegment == "opus") "audio/opus" else "audio/wav"
   override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor? = null
   override fun insert(uri: Uri, values: ContentValues?): Uri? = null
   override fun delete(uri: Uri, selection: String?, args: Array<out String>?) = 0
@@ -32,7 +32,8 @@ class AnalysisFixtureProvider : ContentProvider() {
   override fun openAssetFile(uri: Uri, mode: String): AssetFileDescriptor {
     require(mode == "r")
     val context = requireNotNull(context)
-    val bytes = context.assets.open("analysis/signal.wav").use { it.readBytes() }
+    val name = if (uri.lastPathSegment == "opus") "signal.opus" else "signal.wav"
+    val bytes = context.assets.open("analysis/$name").use { it.readBytes() }
     if (uri.lastPathSegment == "pipe") {
       val pipe = ParcelFileDescriptor.createPipe()
       kotlin.concurrent.thread {
@@ -40,7 +41,7 @@ class AnalysisFixtureProvider : ContentProvider() {
       }
       return AssetFileDescriptor(pipe[0], 0, -1)
     }
-    val file = File(context.cacheDir, "analysis-offset.wav")
+    val file = File(context.cacheDir, "analysis-offset-$name")
     file.outputStream().use { it.write(ByteArray(127) { 0x5a }); it.write(bytes); it.write(ByteArray(97)) }
     return AssetFileDescriptor(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY), 127, bytes.size.toLong())
   }
@@ -79,7 +80,7 @@ class AudioAnalysisTest {
   }
 
   @Test fun nativeDecodesSupportedFixturesAndRetainsWaveformOnlyMode() = runBlocking {
-    for (name in listOf("signal.flac", "signal.mp3", "signal.wav", "no-xing.mp3")) {
+    for (name in listOf("signal.flac", "signal.mp3", "signal.wav", "no-xing.mp3", "signal.opus")) {
       val result = analyze(fixture(name), AnalysisBackend.NATIVE, false)
       assertTrue("$name: ${result.fallbackReason}", result.completed)
       assertEquals(512, result.peaks.size)
@@ -90,7 +91,7 @@ class AudioAnalysisTest {
   }
 
   @Test fun nativeAndPlatformHaveCompatibleDecodedResults() = runBlocking {
-    for (name in listOf("signal.flac", "signal.mp3", "signal.wav")) {
+    for (name in listOf("signal.flac", "signal.mp3", "signal.wav", "signal.opus")) {
       val file = fixture(name)
       val native = analyze(file, AnalysisBackend.NATIVE)
       val platform = analyze(file, AnalysisBackend.PLATFORM)
@@ -107,12 +108,50 @@ class AudioAnalysisTest {
   }
 
   @Test fun descriptorOffsetAndDeclaredLengthAreRespected() = runBlocking {
-    val expected = analyze(fixture("signal.wav"), AnalysisBackend.NATIVE)
-    val actual = AudioAnalyzer.analyze(context,
-      Uri.parse("content://expo.modules.astralibraryscanner.test.analysis/offset"),
-      512, true, AtomicBoolean(false), backend = AnalysisBackend.NATIVE)
-    assertTrue(actual.fallbackReason, actual.completed)
-    assertArrayEquals(expected.peaks, actual.peaks, 0f)
+    for ((name, endpoint) in listOf("signal.wav" to "offset", "signal.opus" to "opus")) {
+      val expected = analyze(fixture(name), AnalysisBackend.NATIVE)
+      val actual = AudioAnalyzer.analyze(context,
+        Uri.parse("content://expo.modules.astralibraryscanner.test.analysis/$endpoint"),
+        512, true, AtomicBoolean(false), backend = AnalysisBackend.NATIVE)
+      assertTrue(actual.fallbackReason, actual.completed)
+      assertArrayEquals(expected.peaks, actual.peaks, 0f)
+    }
+  }
+
+  @Test fun opusLayoutsPaddingAndCancellation() = runBlocking {
+    for ((name, channels) in listOf("mono.opus" to 1, "surround.opus" to 6, "short.opus" to 2,
+                                    "silent.opus" to 2, "long-packet.opus" to 2)) {
+      val native = analyze(fixture(name), AnalysisBackend.AUTO, duration = 0.0)
+      assertTrue("$name: ${native.fallbackReason}", native.completed)
+      assertEquals("native", native.decoderRoute)
+      assertEquals("libopusfile", native.decoderName)
+      assertEquals(channels, native.channelCount)
+      assertEquals(48000, native.sampleRate)
+      if (name == "short.opus") assertEquals(3.0, native.durationMs!!, 0.00001)
+      if (name == "silent.opus") { assertEquals(-70.0, native.lufs!!, 0.0); assertEquals(0.0, native.peak!!, 0.0) }
+    }
+    val file = fixture("signal.opus")
+    val flag = AtomicBoolean(false)
+    val interrupted = AudioAnalyzer.analyze(context, Uri.fromFile(file), 512, true, flag,
+      onProgress = { _, _ -> flag.set(true) })
+    assertTrue(interrupted.cancelled); assertFalse(interrupted.completed)
+    assertEquals("native", interrupted.decoderRoute)
+    val truncated = File(context.cacheDir, "truncated-analysis.opus").apply {
+      writeBytes(file.readBytes().let { it.copyOf(it.size - 100) })
+    }
+    assertFalse(analyze(truncated, AnalysisBackend.NATIVE).completed)
+  }
+
+  @Test fun opusHeaderGainMatchesPlaybackWithoutApplyingNormalizationTags() = runBlocking {
+    val original = analyze(fixture("signal.opus"), AnalysisBackend.NATIVE)
+    val native = analyze(fixture("gain.opus"), AnalysisBackend.NATIVE)
+    val platform = analyze(fixture("gain.opus"), AnalysisBackend.PLATFORM)
+    assertTrue(native.fallbackReason, native.completed); assertTrue(platform.completed)
+    assertEquals(original.lufs!! - 6.0, native.lufs!!, 0.001)
+    assertEquals(original.peak!! * 10.0.pow(-6.0 / 20.0), native.peak!!, 0.0001)
+    assertArrayEquals(original.peaks, native.peaks, 0.00001f)
+    assertEquals(platform.lufs!!, native.lufs!!, 0.1)
+    assertEquals(platform.peak!!, native.peak!!, 0.003)
   }
 
   @Test fun failuresCancellationAndTimeoutNeverProduceCacheableResults() = runBlocking {
@@ -137,6 +176,9 @@ class AudioAnalysisTest {
     val fallback = analyze(fixture("signal.m4a"), AnalysisBackend.AUTO)
     assertTrue(fallback.completed); assertEquals("platform", fallback.decoderRoute)
     assertEquals("Unsupported native container", fallback.fallbackReason)
+    val vorbis = analyze(fixture("tags.ogg", "metadata"), AnalysisBackend.AUTO)
+    assertTrue(vorbis.completed); assertEquals("platform", vorbis.decoderRoute)
+    assertTrue(vorbis.fallbackReason!!.startsWith("Ogg Opus initialization failed"))
     val badHint = analyze(fixture("no-xing.mp3"), AnalysisBackend.AUTO, duration = 60000.0)
     assertTrue(badHint.completed); assertEquals("platform", badHint.decoderRoute)
     assertEquals("Duration hint does not match decoded stream", badHint.fallbackReason)
@@ -159,7 +201,10 @@ class AudioAnalysisTest {
   /** Opt in with -e analysisBenchmark true and generated 180s assets. No app caches used. */
   @Test fun benchmarkDecoders() = runBlocking {
     assumeTrue(InstrumentationRegistry.getArguments().getString("analysisBenchmark") == "true")
-    val files = listOf("signal.flac", "signal.mp3", "signal.wav").associateWith { fixture(it, "analysis-benchmark") }
+    val formats = InstrumentationRegistry.getArguments().getString("analysisBenchmarkFormats")
+      ?.split(",") ?: listOf("flac", "mp3", "wav", "opus")
+    require(formats.all { it in listOf("flac", "mp3", "wav", "opus") })
+    val files = formats.map { "signal.$it" }.associateWith { fixture(it, "analysis-benchmark") }
     val playbackFile = fixture("signal.m4a", "analysis-benchmark")
     val player = MediaPlayer().apply { setDataSource(playbackFile.path); setVolume(0f, 0f); isLooping = true; prepare(); start() }
     val lines = mutableListOf("format,loudness,prefetch,backend,iteration,totalMs,firstFillMs,peakPssKb,pssDeltaKb,completed")

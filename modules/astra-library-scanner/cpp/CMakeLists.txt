@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.22)
+project(astra_analysis_tests LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(opus_dependencies.cmake)
+add_executable(astra_analysis_tests audio_analysis.cpp audio_decoder.cpp audio_analysis_test.cpp)
+target_include_directories(astra_analysis_tests PRIVATE ../third_party/dr_libs)
+target_link_libraries(astra_analysis_tests PRIVATE astra_opusfile)
+# Keep assertions enabled in the optimized test executable.
+target_compile_options(astra_analysis_tests PRIVATE -Wall -Wextra -ffp-contract=off -UNDEBUG)

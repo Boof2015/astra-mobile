@@ -8,7 +8,7 @@ internal enum class AnalysisBackend { AUTO, NATIVE, PLATFORM }
 
 /** Both routes are offline analysis only; playback never enters this class. */
 internal object AudioAnalyzer {
-  // FLAC/MP3/WAV passed release-mode correctness and throughput comparisons on
+  // FLAC/MP3/WAV/Ogg Opus passed release-mode correctness and throughput comparisons on
   // SM-S908U1; see docs/waveform-analysis.md. Other containers fall back below.
   internal const val NATIVE_ENABLED = true
 

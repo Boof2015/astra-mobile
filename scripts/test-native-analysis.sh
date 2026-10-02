@@ -1,11 +1,9 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-binary=$(mktemp /tmp/astra-analysis-tests.XXXXXX)
-trap 'rm -f "$binary"' EXIT
-clang++ -std=c++17 -O2 -ffp-contract=off -Wall -Wextra \
-  -I"$root/modules/astra-library-scanner/third_party/dr_libs" \
-  "$root/modules/astra-library-scanner/cpp/audio_analysis.cpp" \
-  "$root/modules/astra-library-scanner/cpp/audio_decoder.cpp" \
-  "$root/modules/astra-library-scanner/cpp/audio_analysis_test.cpp" -o "$binary"
-"$binary" "$root/test/fixtures/analysis"
+build=$(mktemp -d /tmp/astra-analysis-tests.XXXXXX)
+trap 'rm -rf "$build"' EXIT
+cmake -S "$root/modules/astra-library-scanner/cpp" -B "$build" \
+  -DCMAKE_BUILD_TYPE=Release > "$build/configure.log" 2>&1 || { cat "$build/configure.log"; exit 1; }
+cmake --build "$build" --parallel 4 > "$build/build.log" 2>&1 || { cat "$build/build.log"; exit 1; }
+"$build/astra_analysis_tests" "$root/test/fixtures/analysis"

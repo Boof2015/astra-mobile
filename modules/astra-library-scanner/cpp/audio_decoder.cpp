@@ -9,6 +9,7 @@
 #include "dr_flac.h"
 #include "dr_mp3.h"
 #include "dr_wav.h"
+#include <opusfile.h>
 
 #include <algorithm>
 #include <array>
@@ -78,17 +79,44 @@ drmp3_bool32 tellMp3(void* user, drmp3_int64* cursor) {
 drwav_bool32 tellWav(void* user, drwav_int64* cursor) {
   *cursor = static_cast<Source*>(user)->cursor; return DRWAV_TRUE;
 }
+int readOpus(void* user, unsigned char* output, int count) {
+  auto& source = *static_cast<Source*>(user);
+  if (!source.check()) return -1;
+  const auto read = source.read(output, static_cast<size_t>(count));
+  return source.failed || source.stopped ? -1 : static_cast<int>(read);
+}
+int seekOpus(void* user, opus_int64 offset, int origin) {
+  return static_cast<Source*>(user)->seek(offset, origin) ? 0 : -1;
+}
+opus_int64 tellOpus(void* user) {
+  return static_cast<Source*>(user)->cursor;
+}
 struct Decoder {
   drflac* flac = nullptr;
+  OggOpusFile* opus = nullptr;
+  Source* source = nullptr;
+  unsigned opusChannels = 0;
+  std::vector<bool> opusEndOfStream;
   drmp3 mp3{};
   drwav wav{};
   bool hasMp3 = false, hasWav = false;
   ~Decoder() {
     if (flac) drflac_close(flac);
+    if (opus) op_free(opus);
     if (hasMp3) drmp3_uninit(&mp3);
     if (hasWav) drwav_uninit(&wav);
   }
   uint64_t read(float* pcm, uint64_t frames) {
+    if (opus) {
+      const int decoded = op_read_float(opus, pcm, static_cast<int>(frames * opusChannels), nullptr);
+      // Holes, bad packets, and read errors must not become a successful partial cache.
+      if (decoded < 0) throw std::runtime_error("Opus decode failed: " + std::to_string(decoded));
+      // libopus injects an inaudible denormal guard into digital silence. Do not
+      // amplify that numerical residue into a full-height normalized waveform.
+      for (size_t i = 0; i < static_cast<size_t>(decoded) * opusChannels; ++i)
+        if (std::abs(pcm[i]) < 1e-20f) pcm[i] = 0;
+      return static_cast<uint64_t>(decoded);
+    }
     if (flac) return drflac_read_pcm_frames_f32(flac, frames, pcm);
     if (hasMp3) return drmp3_read_pcm_frames_f32(&mp3, frames, pcm);
     return drwav_read_pcm_frames_f32(&wav, frames, pcm);
@@ -124,7 +152,37 @@ DecodeResult decode(int fd, int64_t offset, int64_t length, unsigned bins,
     Decoder decoder;
     uint64_t exactFrames = 0;
     if (!source.seek(audioStart, 0)) throw std::runtime_error("Cannot rewind source");
-    if (std::memcmp(header.data(), "fLaC", 4) == 0) {
+    if (std::memcmp(header.data(), "OggS", 4) == 0 && audioStart == 0) {
+      const OpusFileCallbacks callbacks{readOpus, seekOpus, tellOpus, nullptr};
+      int error = 0;
+      decoder.opus = op_open_callbacks(&source, &callbacks, nullptr, 0, &error);
+      if (!decoder.opus) throw std::runtime_error("Ogg Opus initialization failed: " + std::to_string(error));
+      result.decoder = "libopusfile"; result.mime = "audio/opus";
+      result.sampleRate = 48000; // Opus granule positions and float output always use 48 kHz.
+      const auto* head = op_head(decoder.opus, 0);
+      result.channels = decoder.opusChannels = head->channel_count;
+      const int links = op_link_count(decoder.opus);
+      for (int link = 0; link < links; ++link) {
+        const auto* linkedHead = op_head(decoder.opus, link);
+        if (linkedHead->channel_count != head->channel_count || linkedHead->mapping_family > 1)
+          throw std::runtime_error("Unsupported Opus channel layout");
+      }
+      const auto frames = op_pcm_total(decoder.opus, -1);
+      if (frames <= 0) throw std::runtime_error("Missing Opus frame count");
+      exactFrames = static_cast<uint64_t>(frames); // Includes pre-skip and final granule trimming.
+      // Match decoded playback level without applying R128 track/album tags a second time.
+      op_set_gain_offset(decoder.opus, OP_HEADER_GAIN, 0);
+      decoder.source = &source;
+      decoder.opusEndOfStream.resize(links, false);
+      op_set_decode_callback(decoder.opus,
+        [](void* user, OpusMSDecoder*, void*, const ogg_packet* packet, int, int, int, int link) {
+          auto& decoder = *static_cast<Decoder*>(user);
+          if (!decoder.source->check()) return OP_EREAD;
+          if (link < 0 || static_cast<size_t>(link) >= decoder.opusEndOfStream.size()) return OP_EBADLINK;
+          if (packet->e_o_s) decoder.opusEndOfStream[link] = true;
+          return OP_DEC_USE_DEFAULT;
+        }, &decoder);
+    } else if (std::memcmp(header.data(), "fLaC", 4) == 0) {
       // Normalize a possible leading ID3 block away for the FLAC callbacks.
       source.offset += audioStart; source.length -= audioStart; source.cursor = 0;
       decoder.flac = drflac_open(readSource, seekFlac, tellFlac, &source, nullptr);
@@ -187,6 +245,9 @@ DecodeResult decode(int fd, int64_t offset, int64_t length, unsigned bins,
     if (!source.check()) throw std::runtime_error(source.stopped ? "Cancelled or timed out" : "Source read failed");
     if (!accumulator.frames() || (exactFrames && accumulator.frames() != exactFrames))
       throw std::runtime_error("Incomplete PCM stream");
+    if (decoder.opus && std::any_of(decoder.opusEndOfStream.begin(), decoder.opusEndOfStream.end(),
+                                    [](bool eos) { return !eos; }))
+      throw std::runtime_error("Incomplete Opus stream");
     const auto difference = accumulator.frames() > totalFrames ? accumulator.frames() - totalFrames : totalFrames - accumulator.frames();
     if (!exactFrames && difference > std::max<uint64_t>(4096, totalFrames / 100))
       throw std::runtime_error("Duration hint does not match decoded stream");

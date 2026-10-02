@@ -23,8 +23,14 @@ def prepareMetadataNotices = tasks.register("prepareMetadataNotices", Copy) {
   from("$projectDir/../third_party/taglib/3rdparty/utfcpp/LICENSE") { rename { "utf8cpp-LICENSE" } }
 }
 def prepareAnalysisNotices = tasks.register("prepareAnalysisNotices", Copy) {
-  into(metadataNoticeAssetsDir.map { it.dir("notices/dr_libs") })
-  from("$projectDir/../third_party/dr_libs") { include "LICENSE", "REVISION" }
+  into(metadataNoticeAssetsDir.map { it.dir("notices") })
+  from("$projectDir/../third_party/dr_libs") { into "dr_libs"; include "LICENSE", "REVISION" }
+  ["ogg", "opus", "opusfile"].each { dependency ->
+    from("$projectDir/../third_party/$dependency") {
+      into dependency
+      include "COPYING", "AUTHORS", "REVISION"
+    }
+  }
 }
 def prepareQueueFontAssets = tasks.register("prepareQueueFontAssets", Copy) {
   from(
