@@ -1,8 +1,32 @@
-const { withMainActivity, withAndroidManifest } = require('expo/config-plugins');
+const { withMainActivity, withAndroidManifest, withProjectBuildGradle } = require('expo/config-plugins');
 
 const ACTIVITY_INIT = 'expo.modules.astradiscord.DiscordPresenceManager.onActivityCreated(this)';
+const SDK_REPOSITORY_MARKER = '// ASTRA DISCORD SDK REPOSITORY';
+const SDK_REPOSITORY = `${SDK_REPOSITORY_MARKER}
+// Register before subprojects are evaluated, including Expo's configure-on-demand builds.
+def astraDiscordSdkDir = new File(System.getenv('ASTRA_DISCORD_SDK_DIR') ?: new File(rootDir, '../.local/discord-sdk').absolutePath)
+if (System.getenv('ASTRA_DISCORD_ENABLED') != 'false' && new File(astraDiscordSdkDir, 'discord_partner_sdk.aar').isFile()) {
+  allprojects {
+    repositories {
+      flatDir {
+        dirs astraDiscordSdkDir
+        content { includeModule('', 'discord_partner_sdk') }
+      }
+    }
+  }
+}
+`;
 
 function withAstraDiscord(config) {
+  config = withProjectBuildGradle(config, (mod) => {
+    if (mod.modResults.language !== 'groovy') throw new Error('Astra Discord expects a Groovy root build.gradle.');
+    if (!mod.modResults.contents.includes(SDK_REPOSITORY_MARKER)) {
+      const anchor = '\nallprojects {';
+      if (!mod.modResults.contents.includes(anchor)) throw new Error('Could not locate root Gradle repositories for Astra Discord.');
+      mod.modResults.contents = mod.modResults.contents.replace(anchor, `\n${SDK_REPOSITORY}${anchor}`);
+    }
+    return mod;
+  });
   config = withMainActivity(config, (mod) => {
     if (mod.modResults.language !== 'kt') throw new Error('Astra Discord expects a Kotlin MainActivity.');
     if (!mod.modResults.contents.includes(ACTIVITY_INIT)) {

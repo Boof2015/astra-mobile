@@ -29,8 +29,8 @@ if (sdkEnabled) {
       !sdkNotices.isFile() || sha256(sdkNotices) != sdkLock.noticesSha256) {
     throw new GradleException('Discord SDK or notices differ from discord-sdk.lock.json. Run scripts/prepare-discord-sdk.py again.')
   }
-  // Named AAR dependency supports Android library consumers, unlike files(...).
-  rootProject.allprojects { repositories { flatDir { dirs sdkDir } } }
+  // withAstraDiscord registers the AAR repository in the root project before
+  // dependency resolution starts, including configure-on-demand builds.
 }
 
 def legalAssetsDir = layout.buildDirectory.dir('generated/legalAssets')
