@@ -72,7 +72,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:car": "node --experimental-strip-types --test src/car/carCommandQueue.test.mts src/audio/queueLoader.test.mts",
-    "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/virtualPlaybackWindow.test.mts src/components/swipeableRowState.test.mts",
+    "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/virtualPlaybackWindow.test.mts src/audio/playbackController.test.mts src/components/swipeableRowState.test.mts",
     "test:desktop-remote": "node --experimental-strip-types --test src/services/desktopRemotePairing.test.mts src/services/desktopRemoteTransport.test.mts",
     "test:dynamic-playlists": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/shared/playlists/dynamicPlaylist.test.mts src/shared/playlists/dynamicPlaylistGroups.test.mts",
     "test:playlist-hydration": "node --experimental-strip-types --test src/stores/playlistHydration.test.mts",

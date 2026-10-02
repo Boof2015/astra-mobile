@@ -1033,15 +1033,27 @@ export async function skipToNext(): Promise<void> {
   ]);
   const playbackStateAtIntent = mapRntpState(nativePlaybackState.state);
   const resumeAfterSkip = shouldResumeAfterExplicitNext(playbackStateAtIntent);
-  const virtualState = getVirtualQueueState();
+  const context = virtualContext;
   if (
-    virtualState &&
+    context &&
     nativeIndex != null &&
-    nativeIndex >= nativeQueue.length - 1 &&
-    virtualState.activePosition + 1 < virtualState.totalCount
+    nativeIndex >= 0 &&
+    nativeIndex === nativeQueue.length - 1
   ) {
-    await jumpToQueueIndex(virtualState.activePosition + 1, { virtualPosition: true });
-    return;
+    // The UI mirror can lag native playback. Resolve the logical position from
+    // the transport window, whose native repeat-all is deliberately disabled.
+    const activePosition = context.windowStart + nativeIndex;
+    if (activePosition + 1 < context.totalCount) {
+      await jumpToQueueIndex(activePosition + 1, { virtualPosition: true });
+      return;
+    }
+    if (
+      activePosition === context.totalCount - 1 &&
+      usePlayerStore.getState().repeat === 'all'
+    ) {
+      await jumpToQueueIndex(0, { virtualPosition: true });
+      return;
+    }
   }
   const playbackTarget = dspTargetFromTrack(
     nativeIndex == null ? undefined : nativeQueue[nativeIndex + 1],
