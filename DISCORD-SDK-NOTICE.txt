@@ -1,0 +1,34 @@
+Discord Social SDK in Astra Mobile
+
+SDK-enabled Android builds include Discord Social SDK 1.10.19337, provided by
+Discord Inc. under the Discord Social SDK Terms. It is proprietary software and
+is not licensed under Astra Mobile's GNU GPL license. Astra Mobile's separate,
+Discord-only GPLv3 section 7 permission is in LICENSE-DISCORD-EXCEPTION.
+
+The SDK is used only for optional Rich Presence through the installed Discord
+Android app. The integration is off by default and requires a signed-in Discord
+account and Discord activity sharing. Astra does not request Discord account
+credentials, contact lists, messages, voice access, or an OAuth account link.
+
+Discord Rich Presence is available only to people at least 13 years old who
+meet Discord's minimum age requirement in their country. Use of Discord and
+this integration is subject to Discord's applicable terms.
+
+Discord Social SDK Terms:
+https://support-dev.discord.com/hc/en-us/articles/30225844245271-Discord-Social-SDK-Terms
+Discord Developer Terms:
+https://support-dev.discord.com/hc/en-us/articles/8562894815383-Discord-Developer-Terms-of-Service
+Discord Terms of Service:
+https://discord.com/terms
+Discord Privacy Policy:
+https://discord.com/privacy
+
+The SDK's unmodified open-source dependency notices are packaged as
+assets/notices/discord/License-Notices.txt and can be read in Settings > Info >
+Licenses. Those notices describe third-party components; they are not a license
+for the proprietary Discord SDK itself. Astra is not endorsed by Discord.
+
+SDK-free builds contain no Discord SDK binary or SDK dependency notices.
+Obtain the SDK through Discord's Developer Portal if you wish to build a version
+that includes it. The raw SDK, headers, and AAR must not be published in Astra's
+source repository or as standalone release or CI artifacts.

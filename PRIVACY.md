@@ -1,6 +1,6 @@
 # Privacy Policy — Astra
 
-**Last updated: July 30, 2026**
+**Last updated: October 1, 2026**
 
 ## Overview
 
@@ -23,6 +23,8 @@ Depending on the features you enable, Astra may send data to the following desti
 - **Remote music servers:** If you add a Subsonic-compatible or Jellyfin server, Astra sends connection details, credentials, catalog requests, and playback requests directly to the server you configured.
 - **Scrobbling services:** If you enable Last.fm-compatible scrobbling, ListenBrainz, or another configured destination, Astra sends track and playback information to that service.
 - **Paired Astra Desktop:** If you pair a desktop, Astra exchanges remote-control, library-sync, playlist, favorite, queue, and playback data directly with that paired desktop.
+- **Discord Rich Presence:** This feature is off by default. When enabled in a build that includes the Discord Social SDK, Astra shares your current track title, artist, album or audio-quality information, playback timing, and selected public links with the installed Discord app to display on your Discord profile. Visibility also depends on your Discord activity-sharing settings. Astra does not request Discord credentials, access to your messages or contacts, or voice access. Discord processes shared activity under its [privacy policy](https://discord.com/privacy).
+- **Discord cover art:** Internet Cover Art is a separate, optional setting. It sends artist, album, and track metadata to iTunes Search, MusicBrainz / Cover Art Archive, and TheAudioDB to find a public cover URL. The selected public URL may be sent to Discord. Astra does not upload music files, embedded artwork, or private music-server URLs. Matches and unsuccessful searches are cached locally; you can clear this cache in Settings > Services > Discord.
 - **External links:** Opening repository, community, license, support, or other web links transfers you to the selected website or app.
 
 Those services may receive ordinary connection information such as your IP address and may handle data under their own privacy policies. Astra does not control user-selected servers or third-party services.
@@ -44,9 +46,13 @@ Astra does not request microphone access.
 
 Local data remains until you remove it in Astra, clear Astra's app data, or uninstall the app. Disconnecting an optional service removes its locally stored credentials where the feature provides that action, but it does not delete data already received by that service. Use the service's own controls for that data.
 
+Disabling Discord Rich Presence stops new activity updates and requests that Discord clear Astra's activity. Discord controls when its clients reflect that change and how it retains previously received data.
+
 ## Children's privacy
 
 Astra is not designed for or directed to children. Astra does not knowingly collect children's personal information through an Astra account or telemetry service because neither exists.
+
+The optional Discord integration is only for people who are at least 13 and meet Discord's minimum age requirement in their country.
 
 ## Changes to this policy
 

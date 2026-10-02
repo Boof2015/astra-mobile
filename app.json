@@ -56,7 +56,8 @@
         }
       ],
       "expo-sharing",
-      "./plugins/withAstraAndroidRelease"
+      "./plugins/withAstraAndroidRelease",
+      "./plugins/withAstraDiscord"
     ],
     "experiments": {
       "typedRoutes": true,

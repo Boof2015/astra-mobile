@@ -1,0 +1,28 @@
+Astra Mobile — additional permission under GNU GPL version 3, section 7
+Copyright (C) 2026 Boof2015
+
+Astra Mobile remains licensed under the GNU General Public License, version 3
+only, as reproduced in LICENSE.
+
+Boof2015 grants you additional permission to link or combine the Astra Mobile
+code for which Boof2015 holds copyright with the Discord Social SDK, which
+contains parts governed by the Discord Social SDK Terms, and to convey the
+resulting combined work.
+
+This permission applies only to the Discord Social SDK. It does not grant an
+exception for any other proprietary library. It grants no rights in Discord's
+code or trademarks and does not change the SDK's own license terms. Use and
+redistribution of the SDK must be authorized separately under its applicable
+terms. Discord's proprietary SDK source is not required as Corresponding Source
+under this additional permission; the GNU GPL obligations for Astra Mobile's
+covered source remain in effect.
+
+This permission does not override the licenses of third-party components or
+grant rights on behalf of their copyright holders. A contributor who holds
+copyright in changes to Astra Mobile may extend this permission to those changes.
+You may remove this additional permission from your copy as provided in GNU GPL
+version 3, section 7; a copy distributed without this permission cannot rely on
+it to convey a combination with the Discord Social SDK.
+
+Discord Social SDK Terms:
+https://support-dev.discord.com/hc/en-us/articles/30225844245271-Discord-Social-SDK-Terms

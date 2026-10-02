@@ -52,6 +52,7 @@ import type { Playlist } from '@/types/playlist';
 import { SETTINGS_SEARCH_ROUTES } from '@/components/search/settingsSearchRoutes';
 import { AstraLibraryData } from '../../../modules/astra-library-scanner';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { discordAvailable } from '../../../modules/astra-discord';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type RouteHref =
@@ -66,6 +67,7 @@ type RouteHref =
   | '/settings/playback'
   | '/settings/services'
   | '/settings/lyrics'
+  | '/settings/discord'
   | '/settings/experimental'
   | '/settings/troubleshooting'
   | '/settings/info'
@@ -244,6 +246,17 @@ const SETTING_ENTRIES: {
     keywords: ['troubleshooting', 'support', 'rescan', 'rebuild index', 'clear lyrics cache', 'clear waveform cache', 'onboarding'],
   },
 ];
+
+if (discordAvailable) {
+  SETTING_ENTRIES.push({
+    id: 'setting:discord',
+    label: 'Discord Rich Presence',
+    subtitle: 'Share your current track',
+    href: '/settings/discord',
+    icon: 'logo-discord',
+    keywords: ['discord', 'rpc', 'presence', 'listening', 'activity', 'cover art', 'pause timeout', 'music links'],
+  });
+}
 
 const EMPTY_SHORTCUT_IDS = ['nav:library', 'nav:eq', 'setting:sources', 'setting:lastfm'];
 

@@ -13,6 +13,13 @@ data class AstraCarTrack(
   val queuePosition: Long,
   val durationMs: Long = 0,
   val sessionId: String? = null,
+  val albumArtist: String = "",
+  val format: String = "",
+  val codec: String = "",
+  val codecProfile: String = "",
+  val isAtmosJoc: Boolean = false,
+  val sampleRate: Long = 0,
+  val bitDepth: Long = 0,
 )
 
 data class AstraCarPlaybackSnapshot(

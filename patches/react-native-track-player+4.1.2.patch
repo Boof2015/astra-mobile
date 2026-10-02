@@ -1,12 +1,13 @@
 diff --git a/node_modules/react-native-track-player/android/build.gradle b/node_modules/react-native-track-player/android/build.gradle
-index ac33473..12d53e6 100644
+index ac33473..b4059a8 100644
 --- a/node_modules/react-native-track-player/android/build.gradle
 +++ b/node_modules/react-native-track-player/android/build.gradle
-@@ -51,6 +51,8 @@ repositories {
+@@ -51,6 +51,9 @@ repositories {
  
  dependencies {
      implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
 +    implementation project(':astra-car')
++    implementation project(':astra-discord')
 +    implementation project(':astra-audio-route')
      // used when building against local maven
  //    implementation "com.github.doublesymmetry:kotlin-audio:2.1.0"
@@ -497,10 +498,10 @@ index b2409a0..119caaf 100644
 +    }
  }
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-index afa6b0f..d2e89e0 100644
+index afa6b0f..eadab05 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
-@@ -9,6 +9,14 @@ import android.os.Binder
+@@ -9,6 +9,15 @@ import android.os.Binder
  import android.os.Build
  import android.os.Bundle
  import android.os.IBinder
@@ -510,12 +511,13 @@ index afa6b0f..d2e89e0 100644
 +import com.google.android.exoplayer2.C
 +import com.doublesymmetry.kotlinaudio.players.components.getAudioItemHolder
 +import expo.modules.astracar.AstraCarPlaybackBridge
++import expo.modules.astradiscord.DiscordPresenceManager
 +import expo.modules.astracar.AstraCarPlaybackSnapshot
 +import expo.modules.astracar.AstraCarTrack
  import android.support.v4.media.RatingCompat
  import androidx.annotation.MainThread
  import androidx.core.app.NotificationCompat
-@@ -46,6 +54,8 @@ class MusicService : HeadlessJsTaskService() {
+@@ -46,6 +55,8 @@ class MusicService : HeadlessJsTaskService() {
      private val binder = MusicBinder()
      private val scope = MainScope()
      private var progressUpdateJob: Job? = null
@@ -524,7 +526,7 @@ index afa6b0f..d2e89e0 100644
  
      /**
       * Use [appKilledPlaybackBehavior] instead.
-@@ -158,10 +168,89 @@ class MusicService : HeadlessJsTaskService() {
+@@ -158,10 +169,97 @@ class MusicService : HeadlessJsTaskService() {
  
          player = QueuedAudioPlayer(this@MusicService, playerConfig, bufferConfig, cacheConfig)
          player.automaticallyUpdateNotificationMetadata = automaticallyUpdateNotificationMetadata
@@ -533,6 +535,7 @@ index afa6b0f..d2e89e0 100644
 +                carTrack(item as TrackAudioItem, offset + index)
 +            }
 +        }
++        DiscordPresenceManager.startService(this, carGeneration)
 +        player.nativePlaybackObserver = { native ->
 +            val item = native.currentMediaItem?.getAudioItemHolder()?.audioItem as? TrackAudioItem
 +            val error = native.playerError
@@ -569,7 +572,7 @@ index afa6b0f..d2e89e0 100644
 +                    error != null -> "error"
 +                    native.playbackState == Player.STATE_BUFFERING -> "loading"
 +                    native.isPlaying -> "playing"
-+                    native.playbackState == Player.STATE_ENDED -> "stopped"
++                    native.playbackState == Player.STATE_IDLE || native.playbackState == Player.STATE_ENDED -> "stopped"
 +                    item != null -> "paused"
 +                    else -> "stopped"
 +                },
@@ -608,13 +611,20 @@ index afa6b0f..d2e89e0 100644
 +            queuePosition = number("astraQueuePosition") ?: index.toLong(),
 +            durationMs = item.track.duration ?: 0,
 +            sessionId = original.getString("astraQueueSessionId"),
++            albumArtist = original.getString("astraAlbumArtist").orEmpty(),
++            format = original.getString("format").orEmpty(),
++            codec = original.getString("codec").orEmpty(),
++            codecProfile = original.getString("codecProfile").orEmpty(),
++            isAtmosJoc = original.getBoolean("isAtmosJoc", false),
++            sampleRate = number("sampleRate") ?: 0,
++            bitDepth = number("bitDepth") ?: 0,
 +        )
 +    }
 +
      @MainThread
      fun updateOptions(options: Bundle) {
          latestOptions = options
-@@ -300,6 +389,18 @@ class MusicService : HeadlessJsTaskService() {
+@@ -300,6 +398,18 @@ class MusicService : HeadlessJsTaskService() {
          player.add(items, atIndex)
      }
  
@@ -633,7 +643,7 @@ index afa6b0f..d2e89e0 100644
      @MainThread
      fun load(track: Track) {
          player.load(track.toAudioItem())
-@@ -307,7 +408,9 @@ class MusicService : HeadlessJsTaskService() {
+@@ -307,7 +417,9 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun move(fromIndex: Int, toIndex: Int) {
@@ -644,7 +654,7 @@ index afa6b0f..d2e89e0 100644
      }
  
      @MainThread
-@@ -317,12 +420,25 @@ class MusicService : HeadlessJsTaskService() {
+@@ -317,12 +429,25 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      fun remove(indexes: List<Int>) {
@@ -672,7 +682,7 @@ index afa6b0f..d2e89e0 100644
      }
  
      @MainThread
-@@ -335,6 +451,10 @@ class MusicService : HeadlessJsTaskService() {
+@@ -335,6 +460,10 @@ class MusicService : HeadlessJsTaskService() {
          player.pause()
      }
  
@@ -683,7 +693,7 @@ index afa6b0f..d2e89e0 100644
      @MainThread
      fun stop() {
          player.stop()
-@@ -741,7 +861,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -741,7 +870,7 @@ class MusicService : HeadlessJsTaskService() {
  
      @MainThread
      private fun emit(event: String, data: Bundle? = null) {
@@ -692,7 +702,7 @@ index afa6b0f..d2e89e0 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, data?.let { Arguments.fromBundle(it) })
      }
-@@ -751,7 +871,7 @@ class MusicService : HeadlessJsTaskService() {
+@@ -751,7 +880,7 @@ class MusicService : HeadlessJsTaskService() {
          val payload = Arguments.createArray()
          data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
  
@@ -701,11 +711,12 @@ index afa6b0f..d2e89e0 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, payload)
      }
-@@ -800,6 +920,8 @@ class MusicService : HeadlessJsTaskService() {
+@@ -800,6 +929,9 @@ class MusicService : HeadlessJsTaskService() {
      override fun onDestroy() {
          super.onDestroy()
          if (::player.isInitialized) {
 +            player.nativePlaybackObserver = null
++            DiscordPresenceManager.stopService(carGeneration)
 +            AstraCarPlaybackBridge.detach(this, carGeneration)
              player.destroy()
          }

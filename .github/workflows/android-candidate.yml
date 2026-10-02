@@ -47,6 +47,11 @@ jobs:
       - name: Validate release identity
         run: npm run release:validate
 
+      - name: Verify Discord supply and packaging checks
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_discord*.py'
+          python3 scripts/verify-discord-artifact.py
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -63,6 +68,8 @@ jobs:
     environment: android-release
     env:
       ASTRA_DISTRIBUTION: github
+      ASTRA_DISCORD_ENABLED: 'true'
+      ASTRA_DISCORD_SDK_DIR: ${{ runner.temp }}/astra-discord-sdk
     steps:
       - uses: actions/checkout@v6
 
@@ -80,6 +87,37 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          # SDK AAR transforms/headers must never enter this public repo's caches.
+          cache-disabled: true
+
+      - name: Require private SDK configuration
+        env:
+          DISCORD_SDK_REPOSITORY: ${{ vars.DISCORD_SDK_REPOSITORY }}
+          DISCORD_SDK_REVISION: ${{ vars.DISCORD_SDK_REVISION }}
+          DISCORD_SDK_DEPLOY_KEY: ${{ secrets.DISCORD_SDK_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          if [[ ! "$DISCORD_SDK_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+             [[ ! "$DISCORD_SDK_REVISION" =~ ^[0-9a-f]{40}$ ]] ||
+             [[ -z "$DISCORD_SDK_DEPLOY_KEY" ]]; then
+            echo "Configure DISCORD_SDK_REPOSITORY, DISCORD_SDK_REVISION (full commit SHA), and the read-only DISCORD_SDK_DEPLOY_KEY in android-release." >&2
+            exit 1
+          fi
+
+      - name: Checkout private SDK build inputs
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.DISCORD_SDK_REPOSITORY }}
+          ref: ${{ vars.DISCORD_SDK_REVISION }}
+          ssh-key: ${{ secrets.DISCORD_SDK_DEPLOY_KEY }}
+          path: .local/discord-sdk-input
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Verify and stage pinned Discord SDK privately
+        run: python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input
 
       - name: Install dependencies
         run: npm ci
@@ -160,6 +198,10 @@ jobs:
           for permission in \
             android.permission.READ_EXTERNAL_STORAGE \
             android.permission.RECORD_AUDIO \
+            android.permission.FOREGROUND_SERVICE_MICROPHONE \
+            android.permission.BLUETOOTH \
+            android.permission.BLUETOOTH_CONNECT \
+            android.permission.MODIFY_AUDIO_SETTINGS \
             android.permission.SYSTEM_ALERT_WINDOW \
             android.permission.WRITE_EXTERNAL_STORAGE; do
             if $AAPT dump permissions "$APK" | grep -Fq "$permission"; then
@@ -167,6 +209,9 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Verify Discord SDK and packaged licenses
+        run: python3 scripts/verify-discord-artifact.py android/app/build/outputs/apk/release/app-release.apk
 
       - name: Prepare GitHub artifact bundle
         run: node scripts/release/android-release.mjs prepare github android/app/build/outputs/apk/release/app-release.apk dist/android/github
@@ -186,6 +231,8 @@ jobs:
     environment: android-release
     env:
       ASTRA_DISTRIBUTION: google-play
+      ASTRA_DISCORD_ENABLED: 'true'
+      ASTRA_DISCORD_SDK_DIR: ${{ runner.temp }}/astra-discord-sdk
     steps:
       - uses: actions/checkout@v6
 
@@ -203,6 +250,37 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          # SDK AAR transforms/headers must never enter this public repo's caches.
+          cache-disabled: true
+
+      - name: Require private SDK configuration
+        env:
+          DISCORD_SDK_REPOSITORY: ${{ vars.DISCORD_SDK_REPOSITORY }}
+          DISCORD_SDK_REVISION: ${{ vars.DISCORD_SDK_REVISION }}
+          DISCORD_SDK_DEPLOY_KEY: ${{ secrets.DISCORD_SDK_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          if [[ ! "$DISCORD_SDK_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+             [[ ! "$DISCORD_SDK_REVISION" =~ ^[0-9a-f]{40}$ ]] ||
+             [[ -z "$DISCORD_SDK_DEPLOY_KEY" ]]; then
+            echo "Configure DISCORD_SDK_REPOSITORY, DISCORD_SDK_REVISION (full commit SHA), and the read-only DISCORD_SDK_DEPLOY_KEY in android-release." >&2
+            exit 1
+          fi
+
+      - name: Checkout private SDK build inputs
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.DISCORD_SDK_REPOSITORY }}
+          ref: ${{ vars.DISCORD_SDK_REVISION }}
+          ssh-key: ${{ secrets.DISCORD_SDK_DEPLOY_KEY }}
+          path: .local/discord-sdk-input
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Verify and stage pinned Discord SDK privately
+        run: python3 scripts/prepare-discord-sdk.py --from-directory .local/discord-sdk-input
 
       - name: Install dependencies
         run: npm ci
@@ -228,9 +306,12 @@ jobs:
           ./gradlew
           :astra-audio-route:testDebugUnitTest
           :astra-desktop-transport:testDebugUnitTest
+          :astra-car:testDebugUnitTest
+          :astra-discord:testDebugUnitTest
           :astra-library-scanner:testDebugUnitTest
           :astra-scope:testDebugUnitTest
           :kotlin-audio:testDebugUnitTest
+          -PreactNativeArchitectures=arm64-v8a
           --no-daemon
 
       - name: Reclaim native test build space
@@ -284,6 +365,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify Discord SDK and packaged licenses
+        run: python3 scripts/verify-discord-artifact.py android/app/build/outputs/bundle/release/app-release.aab
+
       - name: Prepare Google Play artifact bundle
         run: node scripts/release/android-release.mjs prepare google-play android/app/build/outputs/bundle/release/app-release.aab dist/android/google-play
 
@@ -294,3 +378,30 @@ jobs:
           path: dist/android/google-play/
           if-no-files-found: error
           retention-days: 30
+
+  sdk-free:
+    name: Build without proprietary Discord SDK
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      ASTRA_DISCORD_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install --clean
+      - name: Test and build SDK-free app
+        working-directory: android
+        run: ./gradlew :astra-discord:testDebugUnitTest :app:assemblePreview -PreactNativeArchitectures=arm64-v8a --no-daemon
+      - name: Verify SDK-free app and packaged licenses
+        run: python3 scripts/verify-discord-artifact.py --sdk-free android/app/build/outputs/apk/preview/app-preview.apk

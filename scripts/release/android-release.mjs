@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,13 +91,56 @@ export function getReleaseIdentity(distribution) {
   };
 }
 
+export function createSourceBundle(outputDirectory, { root = ROOT, expectedCommit = process.env.GITHUB_SHA } = {}) {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  const commit = git('rev-parse', 'HEAD');
+  if (expectedCommit && expectedCommit !== commit) {
+    throw new Error('The source checkout differs from the candidate commit.');
+  }
+  if (git('status', '--porcelain', '--untracked-files=all')) {
+    throw new Error('Candidate source must be committed and clean so its archive matches the app.');
+  }
+  if (git('ls-files', '--stage').split('\n').some((line) => line.startsWith('160000 '))) {
+    throw new Error('Source archiving must include submodule contents before releasing this checkout.');
+  }
+  const fileName = `Astra-source-${commit}.tar.gz`;
+  const archivePath = path.join(outputDirectory, fileName);
+  execFileSync('git', ['archive', '--format=tar.gz', '--prefix=Astra-source/', '-o', archivePath, commit], { cwd: root });
+  const sha256 = createHash('sha256').update(readFileSync(archivePath)).digest('hex');
+  writeFileSync(`${archivePath}.sha256`, `${sha256}  ${fileName}\n`);
+  return { commit, fileName, sha256, sizeBytes: statSync(archivePath).size };
+}
+
 export function prepareArtifact(distribution, sourcePath, outputDirectory) {
   const identity = getReleaseIdentity(distribution);
   const absoluteSource = path.resolve(ROOT, sourcePath);
   const absoluteOutput = path.resolve(ROOT, outputDirectory);
   const artifactPath = path.join(absoluteOutput, identity.artifactFileName);
 
+  if (existsSync(absoluteOutput) && readdirSync(absoluteOutput).length) {
+    throw new Error('Candidate output directory must be empty to avoid publishing stale files.');
+  }
+  const discordEnabled = process.env.ASTRA_DISCORD_ENABLED === 'true';
+  const sdkLock = discordEnabled ? readJson('discord-sdk.lock.json') : null;
+  execFileSync('python3', [
+    path.join(ROOT, 'scripts/verify-discord-artifact.py'),
+    ...(discordEnabled ? [] : ['--sdk-free']), absoluteSource,
+  ], { cwd: ROOT, stdio: 'inherit' });
   mkdirSync(absoluteOutput, { recursive: true });
+  const sourceArchive = createSourceBundle(absoluteOutput);
+  const noticesDirectory = path.join(absoluteOutput, 'licenses');
+  mkdirSync(noticesDirectory);
+  for (const file of ['LICENSE', 'LICENSE-DISCORD-EXCEPTION', ...(discordEnabled ? ['DISCORD-SDK-NOTICE.txt'] : [])]) {
+    copyFileSync(path.join(ROOT, file), path.join(noticesDirectory, file));
+  }
+  if (discordEnabled) {
+    const sdkDir = process.env.ASTRA_DISCORD_SDK_DIR ?? path.join(ROOT, '.local/discord-sdk');
+    const notices = readFileSync(path.join(sdkDir, 'assets/notices/discord/License-Notices.txt'));
+    if (createHash('sha256').update(notices).digest('hex') !== sdkLock.noticesSha256) {
+      throw new Error('Discord upstream notices differ from the pinned release.');
+    }
+    writeFileSync(path.join(noticesDirectory, 'Discord-Third-Party-Notices.txt'), notices);
+  }
   copyFileSync(absoluteSource, artifactPath);
 
   const artifactBytes = readFileSync(artifactPath);
@@ -104,14 +148,21 @@ export function prepareArtifact(distribution, sourcePath, outputDirectory) {
   writeFileSync(`${artifactPath}.sha256`, `${sha256}  ${identity.artifactFileName}\n`, 'utf8');
 
   const metadata = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...identity,
     source: {
-      commit: process.env.GITHUB_SHA ?? null,
+      commit: sourceArchive.commit,
       repository: process.env.GITHUB_REPOSITORY ?? null,
       runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
       runId: process.env.GITHUB_RUN_ID ?? null,
     },
+    sourceArchive,
+    discordSdk: sdkLock ? {
+      version: sdkLock.version,
+      archiveSha256: sdkLock.archiveSha256,
+      aarSha256: sdkLock.aarSha256,
+      noticesSha256: sdkLock.noticesSha256,
+    } : null,
     artifact: {
       fileName: identity.artifactFileName,
       sha256,

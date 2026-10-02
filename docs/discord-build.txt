@@ -1,0 +1,110 @@
+Discord-enabled Android builds
+==============================
+
+Astra Mobile's own code is GPL-3.0-only with the narrowly scoped additional
+permission in LICENSE-DISCORD-EXCEPTION. LICENSE is the unmodified GPL text.
+Third-party code retains its own license. When contributing changes, preserve
+these notices and identify third-party code whose terms differ; do not assume
+that Astra's permission can relicense another author's code.
+
+SDK supply
+----------
+Download Discord Social SDK 1.10.19337 from the application's Social SDK Downloads
+page in the Discord Developer Portal. This requires your own authorization under
+Discord's terms. The repository contains integration source and a hash lock, not
+the SDK. Do not commit the SDK archive, its headers, native libraries, or its AAR.
+
+  python3 scripts/prepare-discord-sdk.py /path/to/DiscordSocialSdk-1.10.19337.zip
+
+The script verifies discord-sdk.lock.json and stages only the unmodified release
+Android AAR, upstream notices, and non-secret provenance in .local/discord-sdk.
+ASTRA_DISCORD_SDK_DIR can select another private directory. To build locally:
+
+  npm ci
+  npx expo prebuild --platform android --no-install
+  cd android
+  ASTRA_DISCORD_ENABLED=true ./gradlew :app:assemblePreview -PreactNativeArchitectures=arm64-v8a
+
+Use JDK 17 and the Android SDK/NDK versions selected by the project. The preview
+is signed with a development key and installs as Astra Dev, separately from the
+release app. A rebuild modified by a recipient can use their own signing key;
+Astra does not require the maintainer's private signing keys to run.
+
+  ASTRA_DISCORD_ENABLED=false ./gradlew :app:assemblePreview -PreactNativeArchitectures=arm64-v8a
+
+The SDK-free build does not require a Discord download. Its Discord integration
+is unavailable and hidden in settings. This path remains available to forks.
+
+GitHub Actions
+--------------
+Discord's portal download links expire, so CI reads a pinned copy from a separate
+private GitHub repository. Store only the unmodified Android AAR, upstream notices,
+and sdk-origin.json produced by the preparation script in that private repository:
+
+  discord_partner_sdk.aar
+  assets/notices/discord/License-Notices.txt
+  sdk-origin.json
+
+Keep the repository private, with access limited to the maintainer and authorized
+build infrastructure. Do not put these files in Astra Mobile's public repository,
+a public release, or a public Actions artifact. The SDK's own terms still apply.
+
+In the existing android-release environment, configure:
+
+  variable DISCORD_SDK_REPOSITORY = owner/private-sdk-repository
+  variable DISCORD_SDK_REVISION = full 40-character commit SHA containing the SDK
+  secret DISCORD_SDK_DEPLOY_KEY = private half of a read-only SSH deploy key
+
+Add the key's public half as a deploy key on that private SDK repository, leaving
+"Allow write access" disabled. The key is limited to that single repository; do
+not reuse a personal account token or another repository's deploy key. Deploy
+keys have no automatic expiry. Rotate or revoke this key through the private
+repository and update the environment secret when needed.
+
+Actions checks out the exact revision under ignored .local/discord-sdk-input with
+persist-credentials disabled. The preparation script checks provenance, AAR, and
+notice hashes against discord-sdk.lock.json, then copies only those verified
+inputs into the runner's private temporary directory. The private checkout and
+its Git metadata never enter the source archive or uploaded candidate bundle.
+
+  python3 scripts/prepare-discord-sdk.py --from-directory /path/to/private-sdk-checkout
+
+The manually triggered Android Candidate workflow builds from main. Official
+APK and AAB candidates require the SDK and fail if the private repository
+configuration, read-only key, pinned SDK libraries, or required notices are
+missing or incorrect. A separate SDK-free native build exercises the optional
+path. Gradle cache uploads are disabled in SDK-bearing jobs: dependency transforms
+can otherwise put Discord's proprietary AAR or extracted headers into a public
+repository's Actions cache. The full portal archive is not needed by CI.
+Only the integrated app, legal notices, source archive, and build metadata are
+uploaded by the workflow.
+
+Each candidate includes the exact checked-out source revision with build scripts,
+lockfiles, patches, and vendored source. Publish that source archive and its legal
+files alongside the matching app, and keep the referenced source revision
+publicly accessible. Dependencies are pinned by package-lock.json, Gradle
+coordinates, and discord-sdk.lock.json; upstream dependency terms still apply.
+Never upload the unfiltered checkout, runner temporary directory, Gradle home,
+SDK staging directory, native intermediates, or debug-symbol bundles containing
+standalone Discord libraries.
+
+SDK upgrades must update the archive/AAR/notice hashes and native library hashes
+in discord-sdk.lock.json, retain upstream notices verbatim, and recheck terms.
+Stage the new official download locally, commit its verified Android inputs to
+the private SDK repository, and update DISCORD_SDK_REVISION to that commit SHA.
+Old public source revisions still require their matching SDK version; retain the
+corresponding private SDK commits while supporting those builds.
+SDK terms: https://support-dev.discord.com/hc/en-us/articles/30225844245271-Discord-Social-SDK-Terms
+GPL exception guidance: https://www.gnu.org/licenses/gpl-faq.en.html#GPLIncompatibleLibs
+
+Release review
+--------------
+Check that the Discord developer application has accurate application and privacy
+information, that your access to the SDK remains authorized, and that any CI or
+storage provider satisfies Discord's Service Provider requirements. The code and
+packaging checks cannot establish those account/contract facts for you.
+
+This work addresses Discord SDK integration and distribution. It is not a full
+copyright audit of every dependency or external artwork provider. Album art is
+not relicensed by Astra's GPL exception. The existing artwork lookup behavior is
+unchanged by the Discord SDK licensing work.

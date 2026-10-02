@@ -8,6 +8,7 @@ import {
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { discordAvailable } from '../../../modules/astra-discord';
 
 export default function ServicesSettingsScreen() {
   const router = useRouter();
@@ -44,6 +45,17 @@ export default function ServicesSettingsScreen() {
         subtitle={lastFmScrobbleSubtitle(lastFmStatus)}
         onPress={() => router.push('/lastfm')}
       />
+      {discordAvailable ? (
+        <>
+          <SettingsSectionLabel spaced>DISCORD</SettingsSectionLabel>
+          <SettingsNavRow
+            icon="logo-discord"
+            title="Discord Rich Presence"
+            subtitle="Show what you’re listening to on your profile."
+            onPress={() => router.push('/settings/discord' as never)}
+          />
+        </>
+      ) : null}
     </SettingsSectionScreen>
   );
 }

@@ -1,0 +1,15 @@
+{
+  "version": "1.10.19337",
+  "archiveName": "DiscordSocialSdk-1.10.19337.zip",
+  "archiveSha256": "d784097504685953849cc2842561d8a8013326fe0b8df65a1de63ddefde62045",
+  "aarPath": "discord_social_sdk/lib/release/discord_partner_sdk.aar",
+  "aarSha256": "b1b2491f1e1848c79fd6f1986d5aa1e0c8019e88a6e62c7be06b89e8e4870933",
+  "noticesPath": "discord_social_sdk/License-Notices.txt",
+  "noticesSha256": "e8afa66340c225431e69768543cc34a7240f3494a9d759189fe118620ea8eebf",
+  "libraries": {
+    "jni/armeabi-v7a/libdiscord_partner_sdk.so": "f3d15e9fb954fceb4e73d7b0e1c16a6807b79f1a7df20c7eb3acb0388fea210f",
+    "jni/arm64-v8a/libdiscord_partner_sdk.so": "3ea9205cbab2074209ca7658187b50b748226657c7b5ba8266e435a1dfee7095",
+    "jni/x86_64/libdiscord_partner_sdk.so": "aa0666c9a419a2d0154e9ed0612c2b663072d1fbe17180bd9bae8f1cd7f4d0c8",
+    "jni/x86/libdiscord_partner_sdk.so": "a7c5b0ed86b8e0a4b9b3239d2d4f0dfceced6ba3140d83371ba19d9c09d2287d"
+  }
+}

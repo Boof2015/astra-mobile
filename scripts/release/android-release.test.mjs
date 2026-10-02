@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { getReleaseIdentity } from './android-release.mjs';
+import { createSourceBundle, getReleaseIdentity } from './android-release.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const readJson = (relativePath) =>
@@ -51,4 +53,45 @@ test('distribution channels differ in package format', () => {
 
 test('rejects unknown distribution channels', () => {
   assert.throws(() => getReleaseIdentity('nightly'), /Unsupported distribution/);
+});
+
+function sourceFixture(t) {
+  const directory = mkdtempSync(path.join(tmpdir(), 'astra-source-test-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const root = path.join(directory, 'repo');
+  const output = path.join(directory, 'output');
+  mkdirSync(root);
+  mkdirSync(output);
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init');
+  writeFileSync(path.join(root, '.gitignore'), '.local/\n');
+  writeFileSync(path.join(root, 'source.txt'), 'candidate source');
+  git('add', '.');
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Fixture');
+  return { root, output, git };
+}
+
+test('source archive matches the commit and excludes ignored SDK downloads', (t) => {
+  const { root, output, git } = sourceFixture(t);
+  mkdirSync(path.join(root, '.local'));
+  writeFileSync(path.join(root, '.local', 'discord_partner_sdk.aar'), 'private binary');
+  const result = createSourceBundle(output, { root, expectedCommit: git('rev-parse', 'HEAD') });
+  const entries = execFileSync('tar', ['-tzf', path.join(output, result.fileName)], { encoding: 'utf8' });
+  assert.match(entries, /Astra-source\/source.txt/u);
+  assert.doesNotMatch(entries, /\.local|\.aar/u);
+  assert.match(result.sha256, /^[a-f0-9]{64}$/u);
+  assert.ok(result.sizeBytes > 0);
+});
+
+test('candidate refuses a different or dirty source revision', (t) => {
+  const { root, output } = sourceFixture(t);
+  assert.throws(() => createSourceBundle(output, { root, expectedCommit: '0'.repeat(40) }), /differs from the candidate/u);
+  writeFileSync(path.join(root, 'source.txt'), 'uncommitted change');
+  assert.throws(() => createSourceBundle(output, { root, expectedCommit: null }), /committed and clean/u);
+});
+
+test('candidate refuses new source omitted from its commit', (t) => {
+  const { root, output } = sourceFixture(t);
+  writeFileSync(path.join(root, 'new-source.txt'), 'untracked source');
+  assert.throws(() => createSourceBundle(output, { root, expectedCommit: null }), /committed and clean/u);
 });

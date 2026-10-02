@@ -2,6 +2,12 @@
 
 # dependencies
 node_modules/
+.local/
+# Proprietary SDK downloads must never enter the public source tree.
+DiscordSocialSdk*.zip
+discord_partner_sdk.aar
+libdiscord_partner_sdk.so
+discordpp.h
 
 # Expo
 .expo/
@@ -37,6 +43,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+__pycache__/
 
 example
 

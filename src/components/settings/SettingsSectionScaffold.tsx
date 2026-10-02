@@ -145,6 +145,7 @@ export function SettingsToggleRow({
         </Text>
       </View>
       <HapticSwitch
+        accessibilityLabel={title}
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: colors.glassBorder, true: colors.accent }}

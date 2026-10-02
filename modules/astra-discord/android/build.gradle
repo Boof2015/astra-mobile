@@ -1,0 +1,88 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.astradiscord'
+version = '0.1.0'
+
+// The proprietary SDK is supplied outside the source tree and verified before use.
+def repoDir = new File(projectDir, '../../..')
+def sdkLock = new groovy.json.JsonSlurper().parse(new File(repoDir, 'discord-sdk.lock.json'))
+def sha256 = { File file ->
+  def digest = java.security.MessageDigest.getInstance('SHA-256')
+  file.withInputStream { input ->
+    byte[] buffer = new byte[1024 * 1024]
+    int count
+    while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+  }
+  digest.digest().encodeHex().toString()
+}
+def sdkDir = new File(System.getenv('ASTRA_DISCORD_SDK_DIR') ?: new File(rootProject.projectDir, '../.local/discord-sdk').absolutePath)
+def sdkEnabled = System.getenv('ASTRA_DISCORD_ENABLED') != 'false' && new File(sdkDir, 'discord_partner_sdk.aar').isFile()
+if (System.getenv('ASTRA_DISCORD_ENABLED') == 'true' && !sdkEnabled) {
+  throw new GradleException('Discord was requested but discord_partner_sdk.aar is missing. Run scripts/prepare-discord-sdk.py with your SDK archive.')
+}
+if (sdkEnabled) {
+  def sdkNotices = new File(sdkDir, 'assets/notices/discord/License-Notices.txt')
+  if (sha256(new File(sdkDir, 'discord_partner_sdk.aar')) != sdkLock.aarSha256 ||
+      !sdkNotices.isFile() || sha256(sdkNotices) != sdkLock.noticesSha256) {
+    throw new GradleException('Discord SDK or notices differ from discord-sdk.lock.json. Run scripts/prepare-discord-sdk.py again.')
+  }
+  // Named AAR dependency supports Android library consumers, unlike files(...).
+  rootProject.allprojects { repositories { flatDir { dirs sdkDir } } }
+}
+
+def legalAssetsDir = layout.buildDirectory.dir('generated/legalAssets')
+def prepareLegalNotices = tasks.register('prepareLegalNotices', Sync) {
+  into(legalAssetsDir)
+  from(repoDir) {
+    include 'LICENSE', 'LICENSE-DISCORD-EXCEPTION'
+    into 'notices/astra'
+  }
+  if (sdkEnabled) {
+    from(repoDir) { include 'DISCORD-SDK-NOTICE.txt'; into 'notices/astra' }
+    from(new File(sdkDir, 'assets/notices/discord/License-Notices.txt')) { into 'notices/discord' }
+  }
+}
+
+android {
+  namespace 'expo.modules.astradiscord'
+  buildFeatures { buildConfig true; prefab sdkEnabled }
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+    consumerProguardFiles 'consumer-rules.pro'
+    buildConfigField 'boolean', 'SDK_AVAILABLE', sdkEnabled.toString()
+    if (sdkEnabled) {
+      externalNativeBuild {
+        cmake {
+          cppFlags '-std=c++20 -fexceptions -frtti'
+          arguments '-DANDROID_STL=c++_shared'
+          abiFilters(*(project.findProperty('reactNativeArchitectures') ?: 'armeabi-v7a,arm64-v8a,x86,x86_64').split(','))
+        }
+      }
+    }
+  }
+  sourceSets.main.java.srcDirs += sdkEnabled ? 'src/sdk/java' : 'src/stub/java'
+  sourceSets.main.assets.srcDir legalAssetsDir
+  if (sdkEnabled) {
+    externalNativeBuild { cmake { path 'CMakeLists.txt' } }
+  }
+  packagingOptions {
+    jniLibs {
+      pickFirsts += ['**/libc++_shared.so']
+      // Preserve Discord's shipped binary so candidates can verify its pinned hash.
+      keepDebugSymbols += ['**/libdiscord_partner_sdk.so']
+    }
+  }
+}
+
+dependencies {
+  implementation project(':astra-car')
+  if (sdkEnabled) implementation(name: 'discord_partner_sdk', ext: 'aar')
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.json:json:20240303'
+}
+
+tasks.named('preBuild').configure { dependsOn(prepareLegalNotices) }

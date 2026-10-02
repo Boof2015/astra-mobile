@@ -3,6 +3,7 @@ import {
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import {
   SettingsCard,
   SettingsNavRow,
@@ -95,9 +96,15 @@ export default function InfoSettingsScreen() {
       <SettingsSectionLabel spaced>LICENSE</SettingsSectionLabel>
       <SettingsCard>
         <Text variant="body" style={styles.paragraph}>
-          Astra is distributed under GPL-3.0-only.
+          Astra is distributed under GPL-3.0-only with an additional permission to link the Discord Social SDK. Discord’s SDK is licensed separately.
         </Text>
       </SettingsCard>
+      <SettingsNavRow
+        icon="library-outline"
+        title="Licenses"
+        subtitle="Bundled license texts and Discord notices"
+        onPress={() => router.push('/settings/licenses')}
+      />
       <SettingsNavRow
         icon="document-text-outline"
         title="View LICENSE"
