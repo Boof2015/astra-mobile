@@ -492,6 +492,11 @@ class AstraLibraryDataModule : Module() {
       repository().clearArtistImageLookupFailures().toDouble()
     }
 
+    AsyncFunction("clearArtistImages") Coroutine { source: String ->
+      repository().clearArtistImages(source)
+      sendEvent("onArtistImagesChanged", mapOf("all" to true))
+    }
+
     AsyncFunction("getArtistImageStats") Coroutine { groupingMode: String, now: Double ->
       repository().getArtistImageStats(groupingMode, now.toLong())
     }

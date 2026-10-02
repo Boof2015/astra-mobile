@@ -58,6 +58,29 @@ interface UserDao {
   )
   suspend fun deleteFailedArtistImageLookups(): Int
 
+  @Query("""
+    UPDATE artist_images SET automatic_image_hash = NULL, automatic_provider = NULL,
+      automatic_source_id = NULL, lookup_status = 'never', retry_count = 0,
+      last_attempt_at = NULL, next_retry_at = NULL, updated_at = :now
+  """)
+  suspend fun clearDeezerArtistImages(now: Long)
+
+  @Query("UPDATE artist_images SET manual_image_hash = NULL, updated_at = :now WHERE manual_image_hash IS NOT NULL")
+  suspend fun clearCustomArtistImages(now: Long)
+
+  /** Keep the download policy and the cleared portraits in the same transaction. */
+  @Transaction
+  suspend fun clearArtistImages(source: String, now: Long) {
+    when (source) {
+      "deezer" -> {
+        clearDeezerArtistImages(now)
+        putSettings(listOf(SettingEntity("artist_image_auto_policy", "off")))
+      }
+      "manual" -> clearCustomArtistImages(now)
+      else -> error("Invalid artist image source")
+    }
+  }
+
   @Upsert
   suspend fun putArtistImage(image: ArtistImageEntity)
 

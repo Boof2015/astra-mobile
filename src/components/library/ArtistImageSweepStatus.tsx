@@ -15,7 +15,7 @@ const n = (value: number) => value.toLocaleString();
  * the pending query: without it, re-checking those artists would mean rescanning
  * the whole library.
  */
-export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
+export function ArtistImageSweepStatus({ enabled, disabled = false }: { enabled: boolean; disabled?: boolean }) {
   const styles = useStyles();
   const colors = useColors();
   const running = useArtistImageStore((s) => s.running);
@@ -57,7 +57,7 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
   if (missing <= 0) return null;
 
   const retry = async () => {
-    if (retrying) return;
+    if (retrying || disabled) return;
     setRetrying(true);
     try {
       await requeueMissingArtistImages();
@@ -73,7 +73,7 @@ export function ArtistImageSweepStatus({ enabled }: { enabled: boolean }) {
       </Text>
       <ActionButton
         style={styles.button}
-        disabled={retrying}
+        disabled={retrying || disabled}
         onPress={() => void retry()}
         accessibilityLabel="Look for missing artist images now"
         variant="primary"

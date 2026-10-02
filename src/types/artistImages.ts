@@ -1,4 +1,5 @@
 export type ArtistImageAutoPolicy = 'off' | 'wifi' | 'any';
+export type ArtistImageSource = 'deezer' | 'manual';
 export type ArtistGroupingMode = 'astra' | 'fileTags';
 
 export interface DeezerArtistCandidate {

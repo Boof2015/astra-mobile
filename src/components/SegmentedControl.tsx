@@ -37,6 +37,7 @@ interface SegmentedControlProps {
   segments: Segment[];
   value: string;
   onChange: (key: string) => void;
+  disabled?: boolean;
 }
 
 /**
@@ -48,7 +49,7 @@ interface SegmentedControlProps {
  * so it can never claim a selection the caller doesn't have. Labels still
  * cross-fade via Animated.Text.
  */
-export function SegmentedControl({ segments, value, onChange }: SegmentedControlProps) {
+export function SegmentedControl({ segments, value, onChange, disabled = false }: SegmentedControlProps) {
   const styles = useStyles();
   const slide = useSelectionSlide(
     segments.some((segment) => segment.key === value) ? value : null,
@@ -73,6 +74,7 @@ export function SegmentedControl({ segments, value, onChange }: SegmentedControl
             key={segment.key}
             label={segment.label}
             focused={segment.key === value}
+            disabled={disabled}
             onLayout={slide.measure(segment.key)}
             onPress={() => onChange(segment.key)}
           />
@@ -85,11 +87,13 @@ export function SegmentedControl({ segments, value, onChange }: SegmentedControl
 function SegmentButton({
   label,
   focused,
+  disabled,
   onPress,
   onLayout,
 }: {
   label: string;
   focused: boolean;
+  disabled: boolean;
   onPress: () => void;
   onLayout: (event: LayoutChangeEvent) => void;
 }) {
@@ -121,9 +125,10 @@ function SegmentButton({
 
       style={styles.segment}
       onPress={handlePress}
+      disabled={disabled}
       onLayout={onLayout}
       accessibilityRole="tab"
-      accessibilityState={{ selected: focused }}
+      accessibilityState={{ selected: focused, disabled }}
     >
       <Animated.Text
         style={[styles.label, labelStyle]}

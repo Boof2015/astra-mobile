@@ -2644,6 +2644,12 @@ class AstraLibraryRepository private constructor(
     return cleared
   }
 
+  suspend fun clearArtistImages(source: String) {
+    initialize()
+    requireUser().userDao().clearArtistImages(source, System.currentTimeMillis())
+    scheduleSnapshot()
+  }
+
   suspend fun recordArtistImageLookup(
     artistKey: String,
     artistName: String,

@@ -124,7 +124,7 @@ export function useNativeArtistDetail(
     const imageSubscription = AstraLibraryData.addListener(
       'onArtistImagesChanged',
       (event) => {
-        if (event.artistKey === artistKey && event.groupingMode === groupingMode) {
+        if ('all' in event || (event.artistKey === artistKey && event.groupingMode === groupingMode)) {
           void reset();
         }
       }

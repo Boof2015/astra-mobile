@@ -10,6 +10,7 @@ const TEST_SCRIPTS = [
   'test:playlist-hydration',
   'test:album-grouping',
   'test:artist-grouping',
+  'test:artist-images',
   'test:resolve',
   'test:desktop-sync',
   'test:eq-share',

@@ -350,7 +350,7 @@ type AstraLibraryDataEvents = {
     folderName: string;
   }) => void;
   onCatalogChanged: (event: { catalogRevision: string }) => void;
-  onArtistImagesChanged: (event: {
+  onArtistImagesChanged: (event: { all: true } | {
     artistKey: string;
     groupingMode: 'astra' | 'fileTags';
   }) => void;
@@ -569,6 +569,8 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
    * became pending. `not_found` is otherwise terminal.
    */
   clearArtistImageLookupFailures(): Promise<number>;
+  /** Clears one portrait layer across both grouping modes. Deezer also disables automatic downloads. */
+  clearArtistImages(source: 'deezer' | 'manual'): Promise<void>;
   /**
    * `pending` = distinct artists awaiting a lookup across both grouping modes
    * (the denominator for sweep progress). `missing` = artists in `groupingMode`

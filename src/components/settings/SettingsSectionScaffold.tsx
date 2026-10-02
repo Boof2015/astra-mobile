@@ -128,11 +128,13 @@ export function SettingsToggleRow({
   description,
   value,
   onValueChange,
+  disabled = false,
 }: {
   title: string;
   description: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   const styles = useStyles();
   const colors = useColors();
@@ -145,6 +147,7 @@ export function SettingsToggleRow({
         </Text>
       </View>
       <HapticSwitch
+        disabled={disabled}
         accessibilityLabel={title}
         value={value}
         onValueChange={onValueChange}
