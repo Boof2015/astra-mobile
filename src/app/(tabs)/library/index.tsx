@@ -138,8 +138,6 @@ import type {
 const TRACK_SORT_OPTIONS: TrackSort[] = ['artist', 'title', 'recently_added', 'duration'];
 const ALBUM_SORT_OPTIONS: AlbumSort[] = ['artist', 'name', 'recently_added', 'year'];
 const ARTIST_SORT_OPTIONS: ArtistSort[] = ['name', 'track_count'];
-/** How long the finger has to settle on a rail letter before the list jumps. */
-const JUMP_DEBOUNCE_MS = 100;
 /**
  * Screens of runway to keep ahead of the scroll. The old 0.6 was less than a fling
  * covers before a page comes back, so the list hit a wall that looked like the end.
@@ -259,7 +257,7 @@ export default function LibraryScreen() {
     onScrollOffset: syncScrollOffset,
     setScrollAtTop,
   } = scrollTop;
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
 
   // One ref per view mode so a tab re-tap can send whichever list is on screen
   // back to the top. The `key` prop already remounts these on sort/layout
@@ -376,65 +374,31 @@ export default function LibraryScreen() {
     [sectionAnchors]
   );
 
-  // A jump refills the window and remounts the list, so firing one per letter crossed
-  // made a fast scrub ~27 rebuilds. The bubble and haptic still track every letter
-  // (they live in the rail); only the jump itself waits for the finger to settle, and
-  // lifting off flushes it immediately.
-  const pendingJump = useRef<{ letter: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-  const runJump = useCallback((letter: string) => {
-    const anchor = useLibraryStore.getState().sectionAnchors.find((entry) => entry.label === letter);
-    if (!anchor) return;
-    void jumpToSection(anchor.cursor).then((applied) => {
-      // A jump usually lands with a page of rows above it, so the list is not at true
-      // top and pull-to-search must stay disarmed.
-      if (!applied) return;
-      const atHead = useLibraryStore.getState().jumpAnchorIndex === 0;
-      scrollTop.setScrollAtTop(atHead);
-      // A positive anchor is logically mid-catalog and FlashList will position
-      // it after mount; its native event deliberately keeps the header compact.
-      // Only the first anchor represents the actual head.
-      if (atHead) resetHeader();
-    });
-  }, [jumpToSection, resetHeader, scrollTop]);
-
+  // Submit every crossed letter immediately. The store retains only the latest
+  // request while fetching or mounting; finger release has nothing to debounce.
+  const railFocused = useRef(false);
   const jumpToLetter = useCallback((letter: string) => {
-    if (pendingJump.current) clearTimeout(pendingJump.current.timer);
-    pendingJump.current = {
-      letter,
-      timer: setTimeout(() => {
-        pendingJump.current = null;
-        runJump(letter);
-      }, JUMP_DEBOUNCE_MS),
+    if (!railFocused.current || useLibraryStore.getState().sectionAnchors !== sectionAnchors) return;
+    const anchor = sectionAnchors.find((entry) => entry.label === letter);
+    if (anchor) void jumpToSection(anchor.cursor);
+  }, [jumpToSection, sectionAnchors]);
+
+  useFocusEffect(useCallback(() => {
+    railFocused.current = true;
+    return () => {
+      railFocused.current = false;
+      useLibraryStore.getState().cancelSectionJump();
     };
-  }, [runJump]);
-
-  const flushJump = useCallback(() => {
-    const pending = pendingJump.current;
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    pendingJump.current = null;
-    runJump(pending.letter);
-  }, [runJump]);
-
-  useEffect(() => () => {
-    if (pendingJump.current) clearTimeout(pendingJump.current.timer);
-    pendingJump.current = null;
-  }, []);
+  }, []));
 
   // Re-tapping the Library tab while already on the list means "back to the
   // top" — which is also the only offset where pull-to-search arms, so this is
   // the quick way to reach it.
   const scrollToLibraryTop = useCallback(() => {
-    // A rail scrub still inside its debounce would otherwise land after this
-    // and drop the list straight back down the alphabet.
-    if (pendingJump.current) {
-      clearTimeout(pendingJump.current.timer);
-      pendingJump.current = null;
-    }
+    useLibraryStore.getState().cancelSectionJump();
 
     const state = useLibraryStore.getState();
-    if (!needsWindowRewind(state.viewMode, state)) {
+    if (!needsWindowRewind(state.viewMode, state) && state.jumpAnchorIndex === 0) {
       const list =
         state.viewMode === 'albums'
           ? albumListRef.current
@@ -612,6 +576,16 @@ export default function LibraryScreen() {
   const settledHeadListIdentity = useRef<string | null>(null);
   const activeListMountIdentityUi = useSharedValue(listMountIdentity);
   const settledHeadListIdentityUi = useSharedValue<string | null>(null);
+  // Geometry changes cancel the old intent, but a jump's own remount must keep
+  // the latest pending letter. Keep this separate from the per-mount effect.
+  useLayoutEffect(() => {
+    useLibraryStore.getState().cancelSectionJump();
+  }, [surfaceHeadIdentity, windowHeight, windowWidth]);
+
+  useLayoutEffect(() => {
+    useLibraryStore.getState().sectionJumpListMounting(sectionJumpRevision);
+  }, [listMountIdentity, sectionJumpRevision]);
+
   useLayoutEffect(() => {
     activeListMountIdentity.current = listMountIdentity;
     activeListMountIdentityUi.value = listMountIdentity;
@@ -633,7 +607,10 @@ export default function LibraryScreen() {
   ]);
 
   useEffect(() => {
-    if (jumpAnchorIndex > 0) return;
+    if (jumpAnchorIndex > 0) {
+      setScrollAtTop(false);
+      return;
+    }
     setScrollAtTop(true);
     resetHeader();
   }, [
@@ -649,32 +626,40 @@ export default function LibraryScreen() {
     if (viewMode === 'artists') setArtistLayout(layout);
   };
 
-  const settleActiveFlashListAtHead = useCallback(() => {
+  const onActiveFlashListLoad = useCallback(() => {
     const state = useLibraryStore.getState();
     if (
       activeListMountIdentity.current !== listMountIdentity ||
-      state.jumpAnchorIndex > 0 ||
+      state.sectionJumpRevision !== sectionJumpRevision ||
+      state.viewMode !== viewMode ||
       (state.viewMode !== 'albums' &&
         state.viewMode !== 'artists' &&
         state.viewMode !== 'tracks')
     ) {
       return;
     }
-    const list = state.viewMode === 'albums'
-      ? albumListRef.current
-      : state.viewMode === 'artists'
-        ? artistListRef.current
-        : trackListRef.current;
-    list?.scrollToOffset({ offset: 0, animated: false });
-    settledHeadListIdentity.current = listMountIdentity;
-    settledHeadListIdentityUi.value = listMountIdentity;
-    setScrollAtTop(true);
-    resetHeader();
+    if (state.jumpAnchorIndex === 0) {
+      const list = state.viewMode === 'albums'
+        ? albumListRef.current
+        : state.viewMode === 'artists'
+          ? artistListRef.current
+          : trackListRef.current;
+      list?.scrollToOffset({ offset: 0, animated: false });
+      settledHeadListIdentity.current = listMountIdentity;
+      settledHeadListIdentityUi.value = listMountIdentity;
+      setScrollAtTop(true);
+      resetHeader();
+    }
+    // Finish this mount's header work first: releasing the gate may immediately
+    // commit a cached destination and replace this very list.
+    state.sectionJumpListReady(sectionJumpRevision);
   }, [
     listMountIdentity,
     resetHeader,
+    sectionJumpRevision,
     setScrollAtTop,
     settledHeadListIdentityUi,
+    viewMode,
   ]);
 
   const resetFolderBrowserLocation = useCallback(() => {
@@ -896,7 +881,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
-                  onLoad={settleActiveFlashListAtHead}
+                  onLoad={onActiveFlashListLoad}
                   onEndReached={() => void loadNextAlbums()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousAlbums()}
@@ -950,7 +935,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
-                  onLoad={settleActiveFlashListAtHead}
+                  onLoad={onActiveFlashListLoad}
                   onEndReached={() => void loadNextArtists()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousArtists()}
@@ -1003,7 +988,7 @@ export default function LibraryScreen() {
                   onScroll={onListScroll}
                   scrollEventThrottle={scrollTop.scrollEventThrottle}
                   {...initialAnchorProps}
-                  onLoad={settleActiveFlashListAtHead}
+                  onLoad={onActiveFlashListLoad}
                   onEndReached={() => void loadNextTracks()}
                   onEndReachedThreshold={END_REACHED_THRESHOLD}
                   onStartReached={() => void loadPreviousTracks()}
@@ -1075,7 +1060,6 @@ export default function LibraryScreen() {
                     activeLetters={railLetters}
                     direction={sortDirection}
                     onJumpToLetter={jumpToLetter}
-                    onScrubEnd={flushJump}
                   />
                 </View>
                 ) : null}

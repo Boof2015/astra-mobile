@@ -23,12 +23,6 @@ interface AlphabetRailProps {
   activeLetters: ReadonlySet<string>;
   direction: SortDirection;
   onJumpToLetter: (letter: string) => void;
-  /**
-   * Fired when the finger lifts. The screen debounces `onJumpToLetter` so a fast
-   * scrub does not rebuild the list once per letter crossed; this is its cue to
-   * commit the last letter immediately instead of waiting out the debounce.
-   */
-  onScrubEnd?: () => void;
 }
 
 /**
@@ -43,7 +37,6 @@ export function AlphabetRail({
   activeLetters,
   direction,
   onJumpToLetter,
-  onScrubEnd,
 }: AlphabetRailProps) {
   const styles = useStyles();
   const pullSearchRef = usePullSearchGestureRef();
@@ -72,7 +65,6 @@ export function AlphabetRail({
   };
   const endScrub = () => {
     setScrubLetter(null);
-    onScrubEnd?.();
   };
 
   const pan = useMemo(() => {
@@ -110,7 +102,7 @@ export function AlphabetRail({
       });
     return pullSearchRef ? gesture.blocksExternalGesture(pullSearchRef) : gesture;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scrubTo/endScrub capture the latest props via render closure
-  }, [layout, lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, railLetters, onJumpToLetter, onScrubEnd]);
+  }, [layout, lastLetter, bubbleY, railTop, pullSearchRef, activeLetters, railLetters, onJumpToLetter]);
 
   const bubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: Math.max(0, Math.min(
