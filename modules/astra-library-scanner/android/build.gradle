@@ -79,6 +79,7 @@ tasks.named("preBuild").configure {
 }
 
 dependencies {
+  implementation 'com.facebook.react:react-android'
   // ExoPlayer 2.19.0 (same version the vendored kotlin-audio fork pulls in) for
   // MetadataRetriever — parses ID3/Vorbis/MP4 container tags (ReplayGain) without
   // decoding audio. Transitively brings exoplayer-extractor (the frame classes).

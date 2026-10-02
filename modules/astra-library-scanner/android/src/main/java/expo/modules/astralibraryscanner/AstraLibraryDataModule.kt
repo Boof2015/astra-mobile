@@ -1,6 +1,7 @@
 package expo.modules.astralibraryscanner
 
 import android.content.Context
+import com.facebook.react.bridge.ReadableMap
 import expo.modules.astralibraryscanner.data.AstraLibraryRepository
 import expo.modules.astralibraryscanner.data.LibraryStatusSnapshot
 import expo.modules.astralibraryscanner.data.StaleRevisionException
@@ -372,16 +373,20 @@ class AstraLibraryDataModule : Module() {
       repositoryCall { getDesktopSyncState() }
     }
 
-    AsyncFunction("applyDesktopSyncPlan") Coroutine { plan: Map<String, Any?> ->
-      repositoryCall { applyDesktopSyncPlan(plan) }
+    // Expo's Map<String, Any?> JSI converter loses nullability inside nested
+    // objects/arrays. ReadableMap preserves nullable playlist rules and entries.
+    AsyncFunction("applyDesktopSyncPlan") Coroutine { plan: ReadableMap ->
+      repositoryCall { applyDesktopSyncPlan(plan.toHashMap()) }
     }
 
     AsyncFunction("resolveDesktopSyncConflict") Coroutine {
-        conflict: Map<String, Any?>,
+        conflict: ReadableMap,
         resolution: String,
-        mergedPlaylist: Map<String, Any?>?,
+        mergedPlaylist: ReadableMap?,
       ->
-      repositoryCall { resolveDesktopSyncConflict(conflict, resolution, mergedPlaylist) }
+      repositoryCall {
+        resolveDesktopSyncConflict(conflict.toHashMap(), resolution, mergedPlaylist?.toHashMap())
+      }
     }
 
     AsyncFunction("clearDesktopSyncBaselines").Coroutine<Unit> {
