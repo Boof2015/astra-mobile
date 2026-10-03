@@ -41,6 +41,9 @@ interface PlayerStore {
   reset: () => void;
 }
 
+/** Below this, a reported track length is treated as the one already known. */
+const DURATION_EPSILON_S = 0.5;
+
 export const usePlayerStore = create<PlayerStore>((set) => ({
   currentTrack: null,
   playbackState: 'stopped',
@@ -55,7 +58,17 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
   setCurrentTrack: (currentTrack) => set({ currentTrack }),
   setPlaybackState: (playbackState) => set({ playbackState }),
-  setProgress: (currentTime, duration) => set({ currentTime, duration }),
+  // Native progress reports 0 while a track loads and then refines a known
+  // length by fractions of a second. Each distinct value re-renders every
+  // duration reader (waveform, lyric peek, scrobbler, mini player) — 3-4 extra
+  // passes per skip in the trace (2026-10-02) — for no visible change.
+  setProgress: (currentTime, duration) =>
+    set((state) =>
+      (duration <= 0 && state.duration > 0) ||
+      Math.abs(duration - state.duration) < DURATION_EPSILON_S
+        ? { currentTime }
+        : { currentTime, duration }
+    ),
   setPendingSeek: (target) => set({ pendingSeek: { target, startedAt: Date.now() } }),
   clearPendingSeek: () => set({ pendingSeek: null }),
   setVolume: (volume) => set({ volume }),

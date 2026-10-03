@@ -158,16 +158,23 @@ export function usePlaybackSync(): void {
       activeTrackPath,
       stablePlayback.current
     );
+    const stableState = stablePlayback.current.state;
+    // A skip while playing passes Loading → Ready → Playing, and Ready maps to
+    // 'paused'. Surfacing either flaps the play icon and costs every
+    // playbackState subscriber two full re-render passes per skip (the trace
+    // caught playing → paused → playing ~50ms apart on every skip, 2026-10-02).
+    // A real pause arrives as State.Paused, never Ready, so holding Ready here
+    // cannot mask one.
+    const transientReady = playbackState.state === State.Ready && stableState === 'playing';
     if (
-      mappedPlaybackState === 'loading' &&
-      (stablePlayback.current.state === 'playing' || stablePlayback.current.state === 'paused')
+      transientReady ||
+      (mappedPlaybackState === 'loading' && (stableState === 'playing' || stableState === 'paused'))
     ) {
       // Cross-track loading (skip/advance): local transitions resolve almost
-      // instantly, so surfacing 'loading' immediately just flaps the play icon
-      // and re-renders every playbackState subscriber twice per skip. Hold the
-      // previous state and only show the spinner if the load actually drags
-      // (e.g. a slow remote stream). Cleanup cancels on the next state event.
-      const timer = setTimeout(() => setPlaybackState('loading'), 250);
+      // instantly. Hold the previous state and only surface this one if it
+      // actually drags (e.g. a slow remote stream). Cleanup cancels on the next
+      // state event.
+      const timer = setTimeout(() => setPlaybackState(mappedPlaybackState), 250);
       return () => clearTimeout(timer);
     }
     setPlaybackState(mappedPlaybackState);
@@ -177,7 +184,7 @@ export function usePlaybackSync(): void {
         state: mappedPlaybackState,
       };
     }
-  }, [activeTrack, rawPlaybackState, restoredSessionPending, setPlaybackState]);
+  }, [activeTrack, playbackState.state, rawPlaybackState, restoredSessionPending, setPlaybackState]);
 
   // Natural advances and headless Android Auto playback do not pass through the
   // UI controller helpers. Reconcile the mirror's active index (and cold queue)

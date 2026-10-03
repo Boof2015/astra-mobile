@@ -21,11 +21,7 @@ async function encodedArtworkData(uri: string) {
     : Skia.Data.fromURI(uri);
 }
 
-/**
- * Decode the artwork and read it back as RGBA_8888 at `size`x`size`. Shared by
- * the accent and the backdrop field so neither carries its own copy of the
- * Skia resource handling.
- */
+/** Decode the artwork and read it back as RGBA_8888 at `size`x`size`, entirely on the CPU. */
 async function readArtworkPixels(artworkUri: string, size: number): Promise<Uint8Array | null> {
   let encoded: SkData | null = null;
   try {
@@ -33,7 +29,12 @@ async function readArtworkPixels(artworkUri: string, size: number): Promise<Uint
     const source = Skia.Image.MakeImageFromEncoded(encoded);
     if (!source) return null;
     try {
-      const surface = Skia.Surface.MakeOffscreen(size, size);
+      // CPU raster, not MakeOffscreen: a GPU surface on the JS thread contends
+      // with the UI thread's rendering, and readPixels then forces a GPU sync.
+      // The trace caught each extraction stalling the UI thread for as long as
+      // the extraction took (device pass, 2026-10-02). At 128px the CPU is
+      // cheaper anyway.
+      const surface = Skia.Surface.Make(size, size);
       if (!surface) return null;
       try {
         const paint = Skia.Paint();

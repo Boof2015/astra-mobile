@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { Keyframe, ReduceMotion } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { TactilePressable } from '@/components/player/TactilePressable';
-import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
+import {
+  applyPlaybackSnapshot,
+  createPlaybackClock,
+  projectPlaybackClock,
+} from '@/audio/playbackClock';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
 import {
   getActiveSyncedLyricsLine,
@@ -15,7 +19,7 @@ import { createThemedStyles } from '@/theme/themed';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useLyricsStore } from '@/stores/lyricsStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import type { LyricsLookupResult } from '@/lyrics/types';
+import type { LyricsLine, LyricsLookupResult } from '@/lyrics/types';
 import type { Track } from '@/types/audio';
 
 const ENTERING = new Keyframe({
@@ -31,6 +35,54 @@ const EXITING = new Keyframe({
 })
   .duration(160)
   .reduceMotion(ReduceMotion.System);
+
+/**
+ * How often the active line is re-checked while playing. The check is cheap;
+ * what matters is that the component only re-renders when the line changes.
+ * It used to follow a 15Hz smooth clock and re-render on every tick (~33
+ * renders per skip in the trace, 2026-10-02) to show a line that changes every
+ * few seconds.
+ */
+const LINE_POLL_MS = 100;
+
+/**
+ * The synced line at the current playback position, re-rendering only when it
+ * changes. Reads the position from the store directly rather than through a
+ * selector, so the 2Hz progress mirror does not re-render the peek either.
+ */
+function useActiveLyricLine(
+  lines: LyricsLine[] | null,
+  duration: number,
+  isPlaying: boolean
+): LyricsLine | null {
+  const [line, setLine] = useState<LyricsLine | null>(null);
+  useEffect(() => {
+    if (!lines) {
+      queueMicrotask(() => setLine(null));
+      return undefined;
+    }
+    let clock = createPlaybackClock(usePlayerStore.getState().currentTime, duration, isPlaying);
+    const update = () => {
+      const time = projectPlaybackClock(clock, duration, Date.now());
+      const next = getActiveSyncedLyricsLine(lines, time + LYRICS_DISPLAY_LEAD_MS / 1000, {
+        durationSeconds: duration,
+      });
+      setLine((previous) => (previous === next ? previous : next));
+    };
+    const unsubscribe = usePlayerStore.subscribe((state, previous) => {
+      if (state.currentTime === previous.currentTime) return;
+      clock = applyPlaybackSnapshot(clock, state.currentTime, duration, Date.now());
+      update();
+    });
+    queueMicrotask(update);
+    const poll = isPlaying ? setInterval(update, LINE_POLL_MS) : null;
+    return () => {
+      unsubscribe();
+      if (poll) clearInterval(poll);
+    };
+  }, [duration, isPlaying, lines]);
+  return line;
+}
 
 /** Matches what the deck reserves when a caller doesn't pass a height. */
 const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT + 4;
@@ -71,12 +123,10 @@ export function CachedLyricPeek({
     path: string;
     result: LyricsLookupResult | null;
   } | null>(null);
-  const currentTime = usePlayerStore((s) => (active ? s.currentTime : 0));
   const duration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore(
     (s) => active && s.playbackState === 'playing'
   );
-  const smoothTime = useSmoothPlaybackTime(currentTime, duration, isPlaying);
 
   useEffect(() => {
     if (!active || memoryResult) return;
@@ -108,14 +158,9 @@ export function CachedLyricPeek({
 
   const storedResult = cached?.path === track.path ? cached.result : null;
   const result = memoryResult?.status === 'hit' ? memoryResult : storedResult;
-  const activeLine = useMemo(() => {
-    if (hidden || result?.status !== 'hit') return null;
-    return getActiveSyncedLyricsLine(
-      result.lyrics.syncedLines,
-      smoothTime + LYRICS_DISPLAY_LEAD_MS / 1000,
-      { durationSeconds: duration }
-    );
-  }, [duration, hidden, result, smoothTime]);
+  const syncedLines =
+    active && !hidden && result?.status === 'hit' ? result.lyrics.syncedLines : null;
+  const activeLine = useActiveLyricLine(syncedLines, duration, isPlaying);
   const text = activeLine?.text.trim() || null;
   const lineKey = text
     ? `${track.path}:${activeLine?.timestampMs ?? -1}:${text}`

@@ -1,14 +1,13 @@
 import { useEffect } from 'react';
 import {
   Canvas,
-  Group,
   LinearGradient,
-  Paint,
   RadialGradient,
   Rect,
   vec,
 } from '@shopify/react-native-skia';
-import {
+import Animated, {
+  useAnimatedStyle,
   useDerivedValue,
   useFrameCallback,
   useReducedMotion,
@@ -29,12 +28,20 @@ import { fieldStrength } from '@/theme/fieldContrast';
  * The drift runs on the UI thread, eases to rest on pause, and stops entirely
  * while the player is off screen or backgrounded.
  *
- * The blobs are drawn into one layer and that layer is composited at a fixed
- * strength. Blending each blob on its own (additively, at first) let overlaps
- * stack until a bright cover turned the field pale lavender and swallowed the
- * quieter text (device pass, 2026-10-02). As a single layer, the brightest the
- * field can get is known from its colors, which is what `paletteOverField`
- * lifts the text tokens against.
+ * The field is composited at a fixed strength as a whole. Blending each blob
+ * on its own (additively, at first) let overlaps stack until a bright cover
+ * turned the field pale lavender and swallowed the quieter text (device pass,
+ * 2026-10-02). As one surface, the brightest the field can get is known from
+ * its colors, which is what `paletteOverField` lifts the text tokens against.
+ *
+ * Cost (Perfetto on an S22 Ultra, 2026-10-02): an animated Skia canvas renders
+ * and presents from the UI thread on every frame it changes. At full screen,
+ * 120Hz, with an offscreen layer, this one competed with every animation on the
+ * screen. So: the strength is the view's opacity (the compositor applies it;
+ * every element here is a blend toward the background, so view alpha gives the
+ * same pixels a layer did), the canvas draws at 1/RENDER_SCALE resolution and
+ * is scaled up (the blobs are soft, the upscale is invisible), and the drift
+ * steps at DRIFT_STEP_MS rather than every frame.
  */
 
 /** Radians of drift per second at full speed; ~25-40s per blob orbit. */
@@ -43,6 +50,10 @@ const DRIFT_RATE = 0.26;
 const SETTLE_MS = 900;
 /** Track-to-track color change. */
 const CROSSFADE_MS = 450;
+/** The canvas draws at 1/RENDER_SCALE of the screen in each dimension. */
+const RENDER_SCALE = 4;
+/** Drift redraw interval: ~30Hz is smooth for a blob that takes ~30s to orbit. */
+const DRIFT_STEP_MS = 33;
 /**
  * The controls sit in the lower half; the field dissolves back into the theme
  * background there so text contrast is the theme's own.
@@ -120,53 +131,70 @@ export function NowPlayingBackdrop({
 
   // Declared after the effects that write shared values: the compiler treats a
   // value as frozen once a hook has captured it.
+  const pendingMs = useSharedValue(0);
   const drift = useFrameCallback((frame) => {
-    const dt = frame.timeSincePreviousFrame ?? 0;
-    phase.value += (dt / 1000) * DRIFT_RATE * speed.value;
+    pendingMs.value += frame.timeSincePreviousFrame ?? 0;
+    if (pendingMs.value < DRIFT_STEP_MS) return;
+    const step = (pendingMs.value / 1000) * DRIFT_RATE * speed.value;
+    pendingMs.value = 0;
+    // At rest, skip the write: a write is a redraw.
+    if (step > 0) phase.value += step;
   }, false);
 
   useEffect(() => {
     drift.setActive(active && !reduceMotion);
   }, [active, drift, reduceMotion]);
 
+  const strengthStyle = useAnimatedStyle(() => ({ opacity: strength.value }));
+  // Canvas units: the whole field at 1/RENDER_SCALE, scaled back up by the view.
+  const w = width / RENDER_SCALE;
+  const h = height / RENDER_SCALE;
+
   return (
     // Absolute children of the content node are placed against its outer edge,
     // not inside its padding, so 0/0 already is the true screen corner. (Negative
     // insets pushed the field 20dp off the left and left a bare strip down the
     // right — device pass, 2026-10-02.)
-    <Canvas
+    <Animated.View
       pointerEvents="none"
-      style={{ position: 'absolute', top: 0, left: 0, width, height }}
+      style={[{ position: 'absolute', top: 0, left: 0, width, height }, strengthStyle]}
     >
-      <Rect x={0} y={0} width={width} height={height} color={colors.bgPrimary} />
-      <Group layer={<Paint opacity={strength} />}>
+      <Canvas
+        style={{
+          width: w,
+          height: h,
+          transform: [{ scale: RENDER_SCALE }],
+          transformOrigin: 'top left',
+        }}
+      >
+        <Rect x={0} y={0} width={w} height={h} color={colors.bgPrimary} />
         {BLOBS.map((blob, index) => (
           <Blob
             key={blob.seed}
             index={index}
-            width={width}
-            height={height}
+            width={w}
+            height={h}
             phase={phase}
             fade={fade}
             fromRgb={fromRgb}
             toRgb={toRgb}
           />
         ))}
-      </Group>
-      <Rect x={0} y={0} width={width} height={height}>
-        <LinearGradient
-          start={vec(0, 0)}
-          end={vec(0, height)}
-          colors={[
-            `${colors.bgPrimary}00`,
-            `${colors.bgPrimary}00`,
-            `${colors.bgPrimary}${FADE_MID_ALPHA}`,
-            colors.bgPrimary,
-          ]}
-          positions={FADE_STOPS}
-        />
-      </Rect>
-    </Canvas>
+        <Rect x={0} y={0} width={w} height={h}>
+          <LinearGradient
+            start={vec(0, 0)}
+            end={vec(0, h)}
+            colors={[
+              `${colors.bgPrimary}00`,
+              `${colors.bgPrimary}00`,
+              `${colors.bgPrimary}${FADE_MID_ALPHA}`,
+              colors.bgPrimary,
+            ]}
+            positions={FADE_STOPS}
+          />
+        </Rect>
+      </Canvas>
+    </Animated.View>
   );
 }
 

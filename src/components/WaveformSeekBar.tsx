@@ -5,6 +5,7 @@ import {
   useState
 } from 'react';
 import {
+  PixelRatio,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent
@@ -20,6 +21,7 @@ import {
 import {
   Easing,
   cancelAnimation,
+  useAnimatedReaction,
   useDerivedValue,
   useReducedMotion,
   useSharedValue,
@@ -309,21 +311,36 @@ export function WaveformSeekBar({
     return path;
   }, [height]);
 
+  // The playhead only moves when it crosses a device pixel. `progress` is a
+  // linear timing that changes every frame, and every change redraws this
+  // canvas: on a 3-minute track that was 120 redraws a second for ~0.015dp of
+  // movement each, on the UI thread (Perfetto, S22 Ultra, 2026-10-02). Gated
+  // here it is a few redraws a second; a scrub still follows the finger.
+  const pixelRatio = PixelRatio.get();
+  const splitX = useSharedValue(0);
+  useAnimatedReaction(
+    () => Math.round(progress.value * barWidth * pixelRatio) / pixelRatio,
+    (next, previous) => {
+      if (next !== previous) splitX.value = next;
+    },
+    [barWidth, pixelRatio]
+  );
   const playedClip = useDerivedValue(
-    () => rect(0, 0, progress.value * barWidth, height),
+    () => rect(0, 0, splitX.value, height),
+    [height]
+  );
+  const unplayedClip = useDerivedValue(
+    () => rect(splitX.value, 0, Math.max(0, barWidth - splitX.value), height),
     [barWidth, height]
   );
-  const unplayedClip = useDerivedValue(() => {
-    const splitX = progress.value * barWidth;
-    return rect(splitX, 0, Math.max(0, barWidth - splitX), height);
-  }, [barWidth, height]);
-  const playheadX = useDerivedValue(() => {
-    const splitX = progress.value * barWidth;
-    return Math.min(
-      Math.max(0, barWidth - PLAYHEAD_WIDTH),
-      Math.max(0, splitX - PLAYHEAD_WIDTH / 2)
-    );
-  }, [barWidth]);
+  const playheadX = useDerivedValue(
+    () =>
+      Math.min(
+        Math.max(0, barWidth - PLAYHEAD_WIDTH),
+        Math.max(0, splitX.value - PLAYHEAD_WIDTH / 2)
+      ),
+    [barWidth]
+  );
 
   return (
     <View>

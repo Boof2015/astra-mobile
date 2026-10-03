@@ -172,7 +172,9 @@ function setOptimisticTrack(track: RntpTrack | undefined, playbackState?: Playba
   const current = rntpToTrack(track);
   const player = usePlayerStore.getState();
   player.setCurrentTrack(current);
-  player.setProgress(0, current.duration);
+  // A new track: set its length outright. setProgress deliberately ignores a 0
+  // or near-equal length, which would keep the previous track's here.
+  usePlayerStore.setState({ currentTime: 0, duration: current.duration });
   player.clearPendingSeek();
   if (playbackState) player.setPlaybackState(playbackState);
 }
