@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import {
   Canvas,
   LinearGradient,
@@ -104,33 +104,35 @@ export function NowPlayingBackdrop({
   const strength = useSharedValue(0);
 
   useEffect(() => {
-    speed.value = withTiming(playing ? 1 : 0, { duration: SETTLE_MS });
+    speed.set(withTiming(playing ? 1 : 0, { duration: SETTLE_MS }));
   }, [playing, speed]);
 
   const fieldKey = field ? `${field.colors.join()}:${field.neutral}` : null;
-  useEffect(() => {
+  // An effect event so the effect can key on `fieldKey` rather than `field`,
+  // whose object identity changes with every resolve, without hiding `field`
+  // from the deps (a suppression would drop this component from the compiler).
+  const applyField = useEffectEvent(() => {
     if (!field) {
-      strength.value = withTiming(0, { duration: CROSSFADE_MS });
+      strength.set(withTiming(0, { duration: CROSSFADE_MS }));
       return;
     }
     // Start from whatever is on screen right now, so a skip mid-fade never jumps.
-    const k = fade.value;
-    const from = fromRgb.value;
-    const to = toRgb.value;
+    const k = fade.get();
+    const from = fromRgb.get();
+    const to = toRgb.get();
     const shown = from.map((value, index) => value + (to[index] - value) * k);
     const next = field.colors.flatMap(hexToRgbTriplet);
     // First field after nothing was showing: no point fading from black.
-    fromRgb.value = strength.value < 0.01 ? next : shown;
-    toRgb.value = next;
-    fade.value = 0;
-    fade.value = withTiming(1, { duration: CROSSFADE_MS });
-    strength.value = withTiming(fieldStrength(isDark, field.neutral), { duration: CROSSFADE_MS });
-    // fieldKey stands in for `field`, whose object identity changes with every resolve.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fromRgb.set(strength.get() < 0.01 ? next : shown);
+    toRgb.set(next);
+    fade.set(0);
+    fade.set(withTiming(1, { duration: CROSSFADE_MS }));
+    strength.set(withTiming(fieldStrength(isDark, field.neutral), { duration: CROSSFADE_MS }));
+  });
+  useEffect(() => {
+    applyField();
   }, [fieldKey, isDark]);
 
-  // Declared after the effects that write shared values: the compiler treats a
-  // value as frozen once a hook has captured it.
   const pendingMs = useSharedValue(0);
   const drift = useFrameCallback((frame) => {
     pendingMs.value += frame.timeSincePreviousFrame ?? 0;

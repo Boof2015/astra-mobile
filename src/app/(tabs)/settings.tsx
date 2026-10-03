@@ -29,7 +29,7 @@ import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
 import { createBuildInfo } from '@/release/buildInfo';
 import { useThemeStore } from '@/stores/themeStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
-import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
+import { formatSleepTimerRemaining } from '@/audio/sleepTimerState';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSceneBottomInset, useShellShowsScreenTitle } from '@/navigation/useShellLayout';
 
@@ -62,7 +62,6 @@ export default function SettingsScreen() {
   const sleepTimer = useSleepTimerStore((s) => s.timer);
   const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
   const listeningHistoryEnabled = useSettingsStore((s) => s.listeningHistoryEnabled);
-  void sleepRemainingMs;
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -127,7 +126,7 @@ export default function SettingsScreen() {
           title="Playback"
           subtitle={
             sleepTimer
-              ? `Sleep timer: ${formatSleepTimerStatus(sleepTimer)}. Listening history ${formatEnabled(listeningHistoryEnabled)}.`
+              ? `Sleep timer: ${formatSleepTimerRemaining(sleepTimer, sleepRemainingMs)}. Listening history ${formatEnabled(listeningHistoryEnabled)}.`
               : `Listening history ${formatEnabled(listeningHistoryEnabled)}. Sleep timer and playback behavior.`
           }
           onPress={() => router.push('/settings/playback' as never)}

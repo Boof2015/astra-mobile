@@ -1,10 +1,8 @@
-/* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
 import { useCatalogTrack } from '@/library/useCatalogTrack';
 import { ActionButton } from '@/components/ActionButton';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import {
   BackHandler,
-  PixelRatio,
   View,
   Pressable,
   StyleSheet,
@@ -119,16 +117,10 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
-import {
-  NowPlayingArtCarousel,
-  type NowPlayingArtCover,
-} from '@/components/player/NowPlayingArtCarousel';
-import {
-  predictNeighborArtCover,
-  prefetchNeighborArtwork,
-} from '@/components/player/nowPlayingArtNeighbors';
+import { NowPlayingArtCarousel } from '@/components/player/NowPlayingArtCarousel';
+import { prefetchNeighborArtwork } from '@/components/player/nowPlayingArtNeighbors';
+import { useArtSwipeHandoff } from '@/components/player/useArtSwipeHandoff';
 import { resolveMiniPlayerSwipe } from '@/components/miniPlayerSwipe';
-import { playHaptic } from '@/lib/haptics';
 import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
@@ -140,7 +132,6 @@ import {
   seekTo,
   skipToNext,
   skipToPrevious,
-  skipToPreviousTrack,
   synchronizeVirtualQueueRevision,
   togglePlay,
   toggleShuffle
@@ -148,6 +139,7 @@ import {
 import {
   AstraQueue,
   toNativeQueuePalette,
+  type NativeQueuePlaybackRequest,
 } from '../../../modules/astra-library-scanner';
 import {
   desktopConnectionLabel,
@@ -156,7 +148,7 @@ import {
   getPhonePlaybackPresentation,
   hostFromBaseUrl,
 } from '@/playback/playbackTargetPresentation';
-import { formatSleepTimerStatus } from '@/audio/sleepTimerState';
+import { formatSleepTimerRemaining } from '@/audio/sleepTimerState';
 
 const HEADER_HEIGHT = NOW_PLAYING_HEADER_HEIGHT;
 const CONTENT_TOP_PADDING = NOW_PLAYING_CONTENT_TOP_PADDING;
@@ -177,11 +169,24 @@ const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
 const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
 const PAN_TOUCH_END_BACKSTOP_MS = 80;
 const PAN_GESTURE_RECOVERY_MS = 1200;
-/**
- * Swipe-to-skip on the artwork. No track change by then (end of queue, a failed
- * skip) slides the predicted cover back out and the real one back in.
- */
-const ART_SWIPE_HANDOFF_TIMEOUT_MS = 1200;
+
+/** The native queue tray asked to play an entry; answer it once the jump lands or fails. */
+async function handleQueuePlaybackRequest(request: NativeQueuePlaybackRequest): Promise<void> {
+  try {
+    const position = await AstraQueue.resolveEntryPosition(
+      request.entryId,
+      request.queueRevision,
+    );
+    if (position == null) {
+      throw new Error('The queue changed. Try that song again.');
+    }
+    await jumpToQueueIndex(position, { virtualPosition: true });
+    AstraQueue.resolvePlaybackRequest(request.requestId, true);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not play that song';
+    AstraQueue.resolvePlaybackRequest(request.requestId, false, message);
+  }
+}
 
 interface NowPlayingMenuItem {
   key: string;
@@ -233,7 +238,7 @@ export function NowPlayingOverlay({
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
   const rawInsets = useSafeAreaInsets();
-  const { width: rawWindowWidth, height: windowHeight } = useWindowDimensions();
+  const { width: rawWindowWidth, height: windowHeight, fontScale } = useWindowDimensions();
   // The whole layout is a function of these two. Pointing them at the dock's
   // box is what lets the pane reuse every line of geometry below rather than
   // growing a parallel set: its leading edge is interior so it carries no
@@ -290,7 +295,6 @@ export function NowPlayingOverlay({
   const reconnectDesktop = useDesktopRemoteStore((s) => s.reconnect);
   const sleepTimer = useSleepTimerStore((s) => s.timer);
   const sleepRemainingMs = useSleepTimerStore((s) => s.remainingMs);
-  void sleepRemainingMs;
   const phonePresentation = getPhonePlaybackPresentation({
     track,
     playbackState,
@@ -376,9 +380,9 @@ export function NowPlayingOverlay({
   // The rack style swaps the art card's face in place, so only the rail style
   // reserves stage height for a scope strip below the art.
   const layoutScopeVisible = effectiveScopeStageVisible && railStyle;
-  // Deck rows reserve real line boxes, so the font scale is an input to the
-  // geometry rather than something the estimates silently got wrong.
-  const fontScale = PixelRatio.getFontScale();
+  // Deck rows reserve real line boxes, so the font scale (from the window
+  // dimensions, so a system font change re-renders) is an input to the geometry
+  // rather than something the estimates silently got wrong.
   const standardLayout = getNowPlayingLayout(
     effectiveWidth,
     availableHeight,
@@ -506,64 +510,7 @@ export function NowPlayingOverlay({
   // current cover — no neighbor preview. A commit predicts the neighbor from the
   // queue mirror so the carousel slides it in at once, before the skip lands.
   const artSwipeX = useSharedValue(0);
-  const [artPrediction, setArtPrediction] = useState<{
-    fromKey: string;
-    cover: NowPlayingArtCover;
-    direction: 1 | -1;
-  } | null>(null);
-  const swipePendingRef = useRef<{ fromKey: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const transitionKeyRef = useRef(transitionTrackKey);
-
-  const rejectArtSwipe = useCallback(() => {
-    const pending = swipePendingRef.current;
-    if (pending) clearTimeout(pending.timer);
-    swipePendingRef.current = null;
-    // Dropping the prediction returns the carousel to the real track, which
-    // reverses the slide it just made.
-    setArtPrediction(null);
-    artSwipeX.value = withTiming(0, motion.quick);
-    playHaptic('reject');
-  }, [artSwipeX]);
-
-  const commitArtSwipe = useCallback((direction: 'next' | 'previous') => {
-    if (swipePendingRef.current) return;
-    const fromKey = transitionKeyRef.current;
-    const neighbor = predictNeighborArtCover(direction);
-    if (neighbor) {
-      setArtPrediction({ fromKey, cover: neighbor, direction: direction === 'next' ? 1 : -1 });
-    }
-    const timer = setTimeout(() => {
-      if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
-    }, ART_SWIPE_HANDOFF_TIMEOUT_MS);
-    swipePendingRef.current = { fromKey, timer };
-    // Previous always means the previous *track* here: its cover is already on
-    // screen, so restarting the song instead would show the wrong one.
-    const command = direction === 'next' ? skipToNext() : skipToPreviousTrack();
-    void command.catch(() => {
-      if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
-    });
-  }, [rejectArtSwipe]);
-
-  // The new track has landed. The prediction is keyed to the track it left, so
-  // it already stopped applying; clear it so returning to that track later
-  // can't revive it.
-  useLayoutEffect(() => {
-    transitionKeyRef.current = transitionTrackKey;
-    const pending = swipePendingRef.current;
-    if (!pending || pending.fromKey === transitionTrackKey) return;
-    clearTimeout(pending.timer);
-    swipePendingRef.current = null;
-    queueMicrotask(() => setArtPrediction(null));
-    // The carousel (a child, so its effect ran first) took any drag offset. The
-    // rack face has no carousel; bring it home.
-    if (artSwipeX.value !== 0) artSwipeX.value = withTiming(0, motion.quick);
-    playHaptic('confirm');
-  }, [artSwipeX, transitionTrackKey]);
-
-  useEffect(() => () => {
-    const pending = swipePendingRef.current;
-    if (pending) clearTimeout(pending.timer);
-  }, []);
+  const { artPrediction, commitArtSwipe } = useArtSwipeHandoff(transitionTrackKey, artSwipeX);
 
   // Warm both neighbors' covers once the switch has settled, so the next skip
   // either way slides in a decoded image.
@@ -574,11 +521,11 @@ export function NowPlayingOverlay({
   }, [foreground, isDesktopTarget, transitionTrackKey]);
 
   const suspendPanForChildTransition = () => {
-    panEnabled.value = false;
-    panDismissRequested.value = false;
+    panEnabled.set(false);
+    panDismissRequested.set(false);
     cancelAnimation(panRecoveryLease);
     cancelAnimation(translateY);
-    translateY.value = 0;
+    translateY.set(0);
   };
 
   useEffect(() => {
@@ -673,7 +620,7 @@ export function NowPlayingOverlay({
   if (!isDesktopTarget) {
     menuItems.push({
       key: 'sleep-timer',
-      label: sleepTimer ? `Sleep timer · ${formatSleepTimerStatus(sleepTimer)}` : 'Sleep timer',
+      label: sleepTimer ? `Sleep timer · ${formatSleepTimerRemaining(sleepTimer, sleepRemainingMs)}` : 'Sleep timer',
       icon: 'moon-outline',
       onPress: () => {
         closeMenu();
@@ -748,28 +695,28 @@ export function NowPlayingOverlay({
   };
 
   useEffect(() => {
-    panEnabled.value = shouldEnableNowPlayingPan(
+    panEnabled.set(shouldEnableNowPlayingPan(
       playerOpen && !dock,
       queueOpen,
       lyricsBodySwitching
-    );
+    ));
   }, [dock, lyricsBodySwitching, panEnabled, playerOpen, queueOpen]);
 
   useEffect(() => {
-    screenHeight.value = windowHeight;
+    screenHeight.set(windowHeight);
   }, [screenHeight, windowHeight]);
 
   useEffect(() => {
-    companionTouchStartX.value = companionStartX;
+    companionTouchStartX.set(companionStartX);
   }, [companionStartX, companionTouchStartX]);
 
   useEffect(() => {
     const paneWidth = companionFit?.companionWidth ?? 0;
-    companionShift.value = withTiming(
+    companionShift.set(withTiming(
       hasTabletCompanion ? -companionFootprint / 2 : 0,
       motion.snap
-    );
-    companionSlide.value = withTiming(hasTabletCompanion ? 0 : paneWidth, motion.snap);
+    ));
+    companionSlide.set(withTiming(hasTabletCompanion ? 0 : paneWidth, motion.snap));
     // `companionFootprint` retargets when the companion changes as well as when
     // it opens, so switching queue → lyrics animates the width difference too
     // rather than jumping between two shells.
@@ -782,7 +729,7 @@ export function NowPlayingOverlay({
   ]);
 
   useEffect(() => {
-    stageProgress.value = withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap);
+    stageProgress.set(withTiming(effectiveScopeStageVisible ? 1 : 0, motion.snap));
   }, [effectiveScopeStageVisible, stageProgress]);
   const commitClosed = useCallback(
     () => usePlayerUiStore.getState().commitClosed(),
@@ -802,20 +749,20 @@ export function NowPlayingOverlay({
     // `true`: this path drives the sheet away itself, so the effect below must
     // not overwrite the offset with a competing generic slide-out.
     usePlayerUiStore.getState().closePlayer(true);
-  }, [dock]);
+  }, [dock, setMenuOpen, setQueueOpen]);
   const finishCloseMenu = () => setMenuOpen(false);
 
   function openMenu() {
     if (menuItems.length === 0) return;
-    menuProgress.value = 0;
+    menuProgress.set(0);
     setMenuOpen(true);
-    menuProgress.value = withTiming(1, { duration: MENU_ANIMATION_IN_MS });
+    menuProgress.set(withTiming(1, { duration: MENU_ANIMATION_IN_MS }));
   }
 
   function closeMenu() {
-    menuProgress.value = withTiming(0, { duration: MENU_ANIMATION_OUT_MS }, (finished) => {
+    menuProgress.set(withTiming(0, { duration: MENU_ANIMATION_OUT_MS }, (finished) => {
       if (finished) runOnJS(finishCloseMenu)();
-    });
+    }));
   }
 
   // Closing is a store transition, not navigation. The phase moves to `closing`
@@ -826,7 +773,7 @@ export function NowPlayingOverlay({
   // a fallback timer commits it otherwise.
   const dismissSheet = (velocity = 0) => {
     beginDismiss();
-    translateY.value = withSpring(
+    translateY.set(withSpring(
       windowHeight,
       {
         damping: 28,
@@ -837,7 +784,7 @@ export function NowPlayingOverlay({
       (finished) => {
         if (finished) runOnJS(commitClosed)();
       }
-    );
+    ));
   };
 
   // Enter animation. Keyed on `openRequest` as well as the phase, so asking for
@@ -845,22 +792,22 @@ export function NowPlayingOverlay({
   // is the recovery path for a sheet stranded off-screen by an interrupted
   // close. `queueOpen` re-anchors the player before its modal BottomSheet
   // appears, and `lyricsMode` provides the same backstop after the phone body
-  // swap. `windowHeight` is deliberately NOT a dependency: a dimension change
-  // (rotation, or an RN Modal like the output picker) would re-run this effect
-  // and cancel an in-flight exit spring. NOTE: this effect must stay BELOW every
-  // direct `translateY.value` write — the react compiler forbids mutations
-  // after an effect that depends on the value.
-  useEffect(() => {
+  // swap. `windowHeight` deliberately does NOT re-run it: a dimension change
+  // (rotation, or an RN Modal like the output picker) would cancel an in-flight
+  // exit spring. The effect event reads the current height without keying on it.
+  const settleSheet = useEffectEvent(() => {
     if (phase === 'closing') {
       // Gesture/button paths attach their own exit animation. Only animate here
       // when `closing` arrived from a direct closePlayer() call.
       if (!exitAnimated) {
-        translateY.value = withTiming(windowHeight, { duration: 200 });
+        translateY.set(withTiming(windowHeight, { duration: 200 }));
       }
       return;
     }
-    translateY.value = withTiming(0, { duration: 240 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- windowHeight excluded on purpose (see above)
+    translateY.set(withTiming(0, { duration: 240 }));
+  });
+  useEffect(() => {
+    settleSheet();
   }, [
     phase,
     openRequest,
@@ -901,13 +848,13 @@ export function NowPlayingOverlay({
     beginDismiss();
     cancelAnimation(panRecoveryLease);
     cancelAnimation(translateY);
-    translateY.value = withTiming(
+    translateY.set(withTiming(
       screenHeight.value,
       motion.snap,
       (finished) => {
         if (finished) runOnJS(commitClosed)();
       }
-    );
+    ));
   }, [beginDismiss, commitClosed, panRecoveryLease, screenHeight, translateY]);
 
   const pan = useMemo(
@@ -932,36 +879,36 @@ export function NowPlayingOverlay({
       })
       .onTouchesUp(() => {
         if (panDismissRequested.value) return;
-        translateY.value = withDelay(
+        translateY.set(withDelay(
           PAN_TOUCH_END_BACKSTOP_MS,
           withTiming(0, motion.snap)
-        );
+        ));
       })
       .onTouchesCancelled(() => {
         if (panDismissRequested.value) return;
-        translateY.value = withTiming(0, motion.snap);
+        translateY.set(withTiming(0, motion.snap));
       })
       .onStart(() => {
-        panDismissRequested.value = false;
+        panDismissRequested.set(false);
         cancelAnimation(translateY);
         cancelAnimation(panRecoveryLease);
-        panRecoveryLease.value = withDelay(
+        panRecoveryLease.set(withDelay(
           PAN_GESTURE_RECOVERY_MS,
           withTiming(panRecoveryLease.value + 1, { duration: 0 }, (finished) => {
             if (!finished || panDismissRequested.value) return;
             // This lease is independent of RNGH's terminal callbacks. If a
             // nested native gesture drops the handler, the partial drag still
             // repairs itself on the UI thread.
-            translateY.value = withTiming(0, motion.snap);
+            translateY.set(withTiming(0, motion.snap));
           })
-        );
+        ));
       })
       .onUpdate((event) => {
         if (!panEnabled.value) {
-          translateY.value = 0;
+          translateY.set(0);
           return;
         }
-        translateY.value = event.translationY > 0 ? event.translationY : 0;
+        translateY.set(event.translationY > 0 ? event.translationY : 0);
       })
       .onEnd((event, success) => {
         const release = resolveNowPlayingPanRelease(
@@ -970,28 +917,28 @@ export function NowPlayingOverlay({
           success && panEnabled.value
         );
         if (release === 'dismiss') {
-          panDismissRequested.value = true;
+          panDismissRequested.set(true);
           cancelAnimation(panRecoveryLease);
           // If the RN handoff is ever dropped, restore the partial drag instead
           // of leaving an open player stranded. dismissFromPan cancels this
           // delayed animation after synchronously entering `closing`.
-          translateY.value = withDelay(
+          translateY.set(withDelay(
             PAN_DISMISS_HANDOFF_BACKSTOP_MS,
             withTiming(0, motion.snap)
-          );
+          ));
           runOnJS(dismissFromPan)();
           return;
         }
-        panDismissRequested.value = false;
+        panDismissRequested.set(false);
         cancelAnimation(panRecoveryLease);
-        translateY.value = withTiming(0, motion.snap);
+        translateY.set(withTiming(0, motion.snap));
       })
       .onFinalize(() => {
         // Successful dismissals retain the short handoff backstop above. Every
         // other terminal path, including cancellation, re-anchors immediately.
         if (!panDismissRequested.value) {
           cancelAnimation(panRecoveryLease);
-          translateY.value = withTiming(0, motion.snap);
+          translateY.set(withTiming(0, motion.snap));
         }
       }),
     [
@@ -1004,36 +951,20 @@ export function NowPlayingOverlay({
     ]
   );
 
-  // Stable identity: RemoteQueueSheet is memo'd, so a fresh arrow would defeat it.
-  const closeQueue = useCallback(() => {
+  // RemoteQueueSheet is memo'd, so this needs a stable identity. The compiler
+  // gives it one: everything it captures is stable except `isDesktopTarget`.
+  const closeQueue = () => {
     suspendPanForChildTransition();
     if (!isDesktopTarget) AstraQueue.dismiss();
     setQueueOpen(false);
-    // Shared values and the state setter remain stable for this overlay mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesktopTarget]);
+  };
 
   useEffect(() => {
     const dismissed = AstraQueue.addListener('onDismissed', () => {
       setQueueOpen(false);
     });
     const playbackRequest = AstraQueue.addListener('onPlaybackRequest', (request) => {
-      void (async () => {
-        try {
-          const position = await AstraQueue.resolveEntryPosition(
-            request.entryId,
-            request.queueRevision,
-          );
-          if (position == null) {
-            throw new Error('The queue changed. Try that song again.');
-          }
-          await jumpToQueueIndex(position, { virtualPosition: true });
-          AstraQueue.resolvePlaybackRequest(request.requestId, true);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Could not play that song';
-          AstraQueue.resolvePlaybackRequest(request.requestId, false, message);
-        }
-      })();
+      void handleQueuePlaybackRequest(request);
     });
     const revision = AstraQueue.addListener('onQueueRevision', (event) => {
       void synchronizeVirtualQueueRevision(
@@ -1061,41 +992,45 @@ export function NowPlayingOverlay({
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
   // — e.g. the library-detail back interceptor underneath.
+  const onHardwareBack = useEffectEvent((): boolean => {
+    if (menuOpen) {
+      closeMenu();
+      return true;
+    }
+    if (targetPickerOpen) {
+      setTargetPickerOpen(false);
+      return true;
+    }
+    if (sleepTimerOpen) {
+      setSleepTimerOpen(false);
+      return true;
+    }
+    if (artistPickerOpen) {
+      setArtistPickerOpen(false);
+      return true;
+    }
+    if (playlistActionTrack) {
+      setPlaylistActionTrack(null);
+      return true;
+    }
+    if (queueOpen) {
+      closeQueue();
+      return true;
+    }
+    // Overlay only. A docked pane is not a thing you can back out of, so the
+    // press belongs to whatever screen is beside it.
+    if (dock) return false;
+    dismissSheet();
+    return true;
+  });
+  // The handler always reads the current layers. The deps are only the
+  // re-subscribe schedule, kept as it was: each layer change (and a rotation, or
+  // a target switch) re-registers the player, putting it back on top of the
+  // LIFO chain.
   useEffect(() => {
     if (!playerOpen) return undefined;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (menuOpen) {
-        closeMenu();
-        return true;
-      }
-      if (targetPickerOpen) {
-        setTargetPickerOpen(false);
-        return true;
-      }
-      if (sleepTimerOpen) {
-        setSleepTimerOpen(false);
-        return true;
-      }
-      if (artistPickerOpen) {
-        setArtistPickerOpen(false);
-        return true;
-      }
-      if (playlistActionTrack) {
-        setPlaylistActionTrack(null);
-        return true;
-      }
-      if (queueOpen) {
-        closeQueue();
-        return true;
-      }
-      // Overlay only. A docked pane is not a thing you can back out of, so the
-      // press belongs to whatever screen is beside it.
-      if (dock) return false;
-      dismissSheet();
-      return true;
-    });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => onHardwareBack());
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeMenu/dismissSheet are re-created every render; re-subscribing on each would thrash the LIFO chain. windowHeight is listed because dismissSheet captures it.
   }, [
     dock,
     playerOpen,
@@ -1105,7 +1040,7 @@ export function NowPlayingOverlay({
     artistPickerOpen,
     playlistActionTrack,
     queueOpen,
-    closeQueue,
+    isDesktopTarget,
     windowHeight,
   ]);
 
@@ -1163,9 +1098,8 @@ export function NowPlayingOverlay({
       .activeOffsetX([-16, 16])
       .failOffsetY([-14, 14])
       .onUpdate((event) => {
-        artSwipeX.value = event.translationX;
+        artSwipeX.set(event.translationX);
       })
-      // eslint-disable-next-line react-hooks/refs -- commitArtSwipe reads its refs when the gesture ends (a JS event), never during render.
       .onEnd((event, success) => {
         const direction = success
           ? resolveMiniPlayerSwipe({
@@ -1175,7 +1109,7 @@ export function NowPlayingOverlay({
             })
           : null;
         if (!direction) {
-          artSwipeX.value = withTiming(0, motion.quick);
+          artSwipeX.set(withTiming(0, motion.quick));
           return;
         }
         // The card holds where the finger left it; the carousel slides it out
@@ -2086,7 +2020,7 @@ export function NowPlayingOverlay({
       />
       {sleepTimerOpen ? (
         <AppSheet onClose={() => setSleepTimerOpen(false)} scrollable>
-          <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerStatus(sleepTimer) : undefined} />
+          <AppSheetTitle title="Sleep timer" subtitle={sleepTimer ? formatSleepTimerRemaining(sleepTimer, sleepRemainingMs) : undefined} />
           <SleepTimerControls inputContext="bottom-sheet" />
         </AppSheet>
       ) : null}

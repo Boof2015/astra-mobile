@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Text } from '@/components/Text';
-import { SLEEP_TIMER_PRESETS, formatSleepTimerStatus, normalizeSleepTimerMinutes } from '@/audio/sleepTimerState';
+import { SLEEP_TIMER_PRESETS, formatSleepTimerRemaining, normalizeSleepTimerMinutes } from '@/audio/sleepTimerState';
 import { supportsNativePauseAtEndOfItem } from '@/audio/trackPlayerExtensions';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
@@ -33,7 +33,6 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
   const [feedback, setFeedback] = useState<string | null>(null);
   const available = target === 'phone' && Boolean(track);
   const MinutesInput = inputContext === 'bottom-sheet' ? BottomSheetTextInput : TextInput;
-  void remainingMs;
 
   useEffect(() => {
     void hydrate();
@@ -67,7 +66,7 @@ export function SleepTimerControls({ inputContext = 'screen' }: SleepTimerContro
   return (
     <View style={styles.container}>
       <View style={styles.statusBlock}>
-        <Text variant="body">{timer ? formatSleepTimerStatus(timer) : 'No sleep timer'}</Text>
+        <Text variant="body">{timer ? formatSleepTimerRemaining(timer, remainingMs) : 'No sleep timer'}</Text>
         <Text variant="caption" color={colors.textSecondary}>
           {!available
             ? target === 'desktop'

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  formatSleepTimerRemaining,
   formatSleepTimerStatus,
   getSleepTimerRemainingMs,
   normalizePersistedSleepTimer,
@@ -24,6 +25,16 @@ test('minute timers use an absolute wall-clock deadline', () => {
   assert.equal(getSleepTimerRemainingMs(timer, 31_000), 30_000);
   assert.equal(getSleepTimerRemainingMs(timer, 80_000), 0);
   assert.equal(formatSleepTimerStatus(timer, 31_000), '0:30 remaining');
+});
+
+test('the status line formats from the remaining time it is given', () => {
+  const timer = transitionSleepTimer(null, { type: 'start-minutes', minutes: 90 }, 0);
+  assert.equal(formatSleepTimerRemaining(timer, 90 * 60_000), '1:30:00 remaining');
+  assert.equal(formatSleepTimerRemaining(timer, 29_001), '0:30 remaining');
+  assert.equal(formatSleepTimerRemaining(timer, null), '0:00 remaining');
+  assert.equal(formatSleepTimerRemaining(null, 5_000), 'Off');
+  const endOfTrack = transitionSleepTimer(null, { type: 'start-end-of-track' }, 0);
+  assert.equal(formatSleepTimerRemaining(endOfTrack, null), 'Ends after this track');
 });
 
 test('stale or corrupt persisted timers are rejected while end-of-track is normalized', () => {

@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/immutability -- the carousel's slot positions and the overlay's drag offset are Reanimated shared values: mutable cells driven on the UI thread, written from the layout effect by design. */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, {
@@ -95,9 +94,9 @@ export function NowPlayingArtCarousel({
     });
   };
 
-  // useLayoutEffect: the incoming card is parked off screen before the frame
-  // that mounts its image, so it can never flash in place.
-  useLayoutEffect(() => {
+  // An effect event so the slide can key on the cover's fields: the cover
+  // object's identity changes with every parent render.
+  const showCover = useEffectEvent(() => {
     const key = cover?.key ?? null;
     const last = shown.current;
     if (key === last.key) {
@@ -124,27 +123,30 @@ export function NowPlayingArtCarousel({
     cancelAnimation(dragX);
     cancelAnimation(xOut);
     cancelAnimation(xIn);
-    xOut.value += dragX.value;
-    dragX.value = 0;
-    xIn.value = dir * travel;
+    xOut.set(xOut.get() + dragX.get());
+    dragX.set(0);
+    xIn.set(dir * travel);
     front.current = incoming;
-    frontIndex.value = incoming;
+    frontIndex.set(incoming);
 
     setSlots((current) => {
       const next: typeof current = [current[0], current[1]];
       next[incoming] = cover;
       return next;
     });
-    xOut.value = withTiming(-dir * travel, SLIDE, (finished) => {
+    xOut.set(withTiming(-dir * travel, SLIDE, (finished) => {
       if (!finished) return;
       // Off screen now; park it far away so its empty frame can never show.
-      xOut.value = PARKED;
+      xOut.set(PARKED);
       runOnJS(releaseSlot)(outgoing, gen);
-    });
-    xIn.value = withTiming(0, SLIDE);
-    // releaseSlot is recreated each render but only reads refs; cover identity
-    // changes with every parent render, so key on the cover's key instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }));
+    xIn.set(withTiming(0, SLIDE));
+  });
+
+  // useLayoutEffect: the incoming card is parked off screen before the frame
+  // that mounts its image, so it can never flash in place.
+  useLayoutEffect(() => {
+    showCover();
   }, [cover?.key, cover?.uri, cover?.thumb]);
 
   const style0 = useAnimatedStyle(() => ({

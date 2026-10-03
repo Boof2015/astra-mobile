@@ -86,11 +86,20 @@ export function getSleepTimerRemainingMs(timer: PersistedSleepTimerState | null,
   return Math.max(0, timer.expiresAtMs - nowMs);
 }
 
-export function formatSleepTimerStatus(timer: PersistedSleepTimerState | null, nowMs = Date.now()): string {
+export function formatSleepTimerStatus(timer: PersistedSleepTimerState | null, nowMs: number): string {
+  return formatSleepTimerRemaining(timer, getSleepTimerRemainingMs(timer, nowMs));
+}
+
+/**
+ * The status line from a remaining time the caller already holds: in a
+ * component, the store's ticking `remainingMs`. Never read the clock while
+ * rendering instead. The compiler caches the result alongside the timer it was
+ * computed for, and the countdown freezes.
+ */
+export function formatSleepTimerRemaining(timer: PersistedSleepTimerState | null, remainingMs: number | null): string {
   if (!timer) return 'Off';
   if (timer.mode === 'end-of-track') return 'Ends after this track';
-  const remaining = getSleepTimerRemainingMs(timer, nowMs) ?? 0;
-  const totalSeconds = Math.max(0, Math.ceil(remaining / 1000));
+  const totalSeconds = Math.max(0, Math.ceil((remainingMs ?? 0) / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
