@@ -1,20 +1,21 @@
 import type { AdaptiveAccentTarget } from './adaptiveAccent.ts';
 import type { CoverArtAccentMethod } from './artworkAccentPreferences.ts';
 
-export interface ArtworkAccentCacheResult {
+export interface ArtworkAccentCacheResult<T = string | null> {
   found: boolean;
-  value: string | null;
+  value: T | null;
 }
 
-export class ArtworkAccentCache {
-  private readonly entries = new Map<string, string | null>();
+/** Small LRU. Holds accents by default; the backdrop field reuses it for its own values. */
+export class ArtworkAccentCache<T = string | null> {
+  private readonly entries = new Map<string, T | null>();
   private readonly maxEntries: number;
 
   constructor(maxEntries = 256) {
     this.maxEntries = maxEntries;
   }
 
-  get(key: string): ArtworkAccentCacheResult {
+  get(key: string): ArtworkAccentCacheResult<T> {
     if (!this.entries.has(key)) return { found: false, value: null };
     const value = this.entries.get(key) ?? null;
     this.entries.delete(key);
@@ -22,7 +23,7 @@ export class ArtworkAccentCache {
     return { found: true, value };
   }
 
-  set(key: string, value: string | null): void {
+  set(key: string, value: T | null): void {
     this.entries.delete(key);
     this.entries.set(key, value);
     while (this.entries.size > this.maxEntries) {

@@ -281,8 +281,15 @@ const TIERS: readonly DensityTier[] = [
 /** Line box the cached-lyric peek reserves per line, before font scaling. */
 export const NOW_PLAYING_LYRIC_LINE_HEIGHT = 22;
 const LYRIC_LINE_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT;
-/** Slack inside the lyric row so descenders on the second line aren't clipped. */
+/** Slack inside the lyric row so descenders aren't clipped. */
 const LYRIC_ROW_PADDING = spacing.xs;
+/**
+ * Air a wrapped lyric keeps from the artwork or scope rail's box above it. The
+ * rail's trace sits well inside its box, so this can be tight: at 8dp the S22
+ * Ultra missed a second line under the rail by 2dp with ~40dp of visibly empty
+ * space (device pass, 2026-10-02).
+ */
+const LYRIC_OVERFLOW_CLEARANCE = spacing.xs;
 
 export interface NowPlayingDeck {
   density: NowPlayingDensity;
@@ -290,6 +297,8 @@ export interface NowPlayingDeck {
   height: number;
   /** 0 when this tier has no room for the cached-lyric peek. */
   lyricRowHeight: number;
+  /** One lyric line box at the current font scale. */
+  lyricLineHeight: number;
   lyricGap: number;
   identityRowHeight: number;
   titleLineHeight: number;
@@ -329,6 +338,12 @@ export interface NowPlayingLayout {
   railBottomOffset: number;
   /** False when the stage has no room for the rail, so the caller skips it. */
   scopeRailFits: boolean;
+  /**
+   * Empty height directly above the deck, by what the stage is showing: the
+   * gap under a centred artwork, or under the scope rail. A wrapped lyric may
+   * draw its second line here (see `getLyricPeekLines`).
+   */
+  roomAboveDeck: { scopeOff: number; rail: number };
   artSize: number;
   /** Art size with the scope rail shown / hidden, regardless of the current
    * state — both are returned so the rail toggle can animate between them. */
@@ -366,6 +381,24 @@ export function getNowPlayingLyricsToggleLayout(layout: NowPlayingLayout, availa
     // Keep the lyrics list and its Recenter button above the persistent toggle.
     lyricsBottomClearance: Math.max(deck.utilityRowHeight, deckBottom + deck.utilityRowHeight),
   };
+}
+
+/**
+ * How many lines the cached-lyric peek may show right now. The deck reserves
+ * one line; a long lyric wraps to a second line that draws upward into empty
+ * space above the deck — but only where that space is genuinely empty, so the
+ * second line never costs the artwork a pixel or moves a control. On a phone
+ * whose artwork already fills its stage (the S22), the peek stays one line.
+ *
+ * `railShown` is the scope rail being up: the rail sits lower than the
+ * artwork's bottom edge, so it leaves less room.
+ */
+export function getLyricPeekLines(layout: NowPlayingLayout, railShown: boolean): 0 | 1 | 2 {
+  const { deck } = layout;
+  if (deck.lyricRowHeight <= 0) return 0;
+  const overflow = deck.lyricLineHeight * 2 - deck.lyricRowHeight;
+  const room = railShown ? layout.roomAboveDeck.rail : layout.roomAboveDeck.scopeOff;
+  return room >= overflow + LYRIC_OVERFLOW_CLEARANCE ? 2 : 1;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -418,6 +451,7 @@ export function getDeckHeight(tier: DensityTier, fontScale: number): NowPlayingD
     density: tier.density,
     height,
     lyricRowHeight,
+    lyricLineHeight: Math.ceil(LYRIC_LINE_HEIGHT * scale),
     lyricGap: lyricRowHeight > 0 ? tier.lyricGap : 0,
     identityRowHeight,
     titleLineHeight,
@@ -582,6 +616,11 @@ export function getNowPlayingLayout(
       scopeBlockHeight: solved.scopeBlockHeight,
       railBottomOffset: 0,
       scopeRailFits: solved.scopeRailFits,
+      // The deck pane is centred in the column; the stage is beside it, not above.
+      roomAboveDeck: {
+        scopeOff: Math.max(0, (columnHeight - deck.height) / 2),
+        rail: Math.max(0, (columnHeight - deck.height) / 2),
+      },
       artSize,
       artSizeScopeOn: solved.artScopeOn,
       artSizeScopeOff: solved.artScopeOff,
@@ -683,6 +722,12 @@ export function getNowPlayingLayout(
     scopeBlockHeight,
     railBottomOffset: stageInset + tier.scopeBottomGap,
     scopeRailFits,
+    roomAboveDeck: {
+      scopeOff: Math.max(0, (stageHeight - artSizeScopeOff) / 2),
+      rail: scopeRailFits
+        ? stageInset + tier.scopeBottomGap
+        : Math.max(0, (stageHeight - artSizeScopeOff) / 2),
+    },
     artSize: showVisualizer ? artSizeScopeOn : artSizeScopeOff,
     artSizeScopeOn,
     artSizeScopeOff,

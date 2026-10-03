@@ -25,6 +25,7 @@ import type { PlaybackPresentation } from '@/playback/playbackTargetPresentation
 import type { PlaybackTarget } from '@/stores/playbackTargetStore';
 import {
   resolveNowPlayingTrackTransitionDirection,
+  takeNowPlayingSwipeHandoff,
   useNowPlayingTrackTransitionStore,
   type NowPlayingTrackTransitionDirection,
 } from '@/stores/nowPlayingTrackTransitionStore';
@@ -59,6 +60,11 @@ interface NowPlayingTrackFadeThroughProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  /**
+   * Set on the artwork only: the overlay id whose swipe-to-skip may hand this
+   * layer an exit it already performed (see `markNowPlayingSwipeHandoff`).
+   */
+  swipeHandoffOwner?: string;
 }
 
 /**
@@ -95,6 +101,7 @@ export function NowPlayingTrackFadeThrough({
   children,
   style,
   contentStyle,
+  swipeHandoffOwner,
 }: NowPlayingTrackFadeThroughProps) {
   const directionHint = useNowPlayingTrackTransitionStore((state) => state.hint);
   const requestedDirection = resolveNowPlayingTrackTransitionDirection(
@@ -219,6 +226,20 @@ export function NowPlayingTrackFadeThrough({
       return undefined;
     }
 
+    // The swipe already carried the old cover away, so there is nothing left to
+    // fade: hide it now and go straight to the incoming entrance.
+    if (swipeHandoffOwner && takeNowPlayingSwipeHandoff(swipeHandoffOwner, display.key)) {
+      const token = ++animationToken.current;
+      phase.current = 'exiting';
+      exitDirection.current = latestRequest.current.direction;
+      cancelAnimation(visibility);
+      cancelAnimation(translateX);
+      visibility.value = 0;
+      translateX.value = 0;
+      commitLatestRequest(token);
+      return undefined;
+    }
+
     const token = ++animationToken.current;
     const direction = latestRequest.current.direction;
     phase.current = 'exiting';
@@ -235,6 +256,7 @@ export function NowPlayingTrackFadeThrough({
     display.key,
     finishEntrance,
     requestedDirection,
+    swipeHandoffOwner,
     transitionKey,
     translateX,
     visibility,

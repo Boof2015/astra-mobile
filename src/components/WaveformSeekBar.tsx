@@ -17,7 +17,14 @@ import {
   Skia,
   rect
 } from '@shopify/react-native-skia';
-import { useDerivedValue } from 'react-native-reanimated';
+import {
+  Easing,
+  cancelAnimation,
+  useDerivedValue,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { Text } from './Text';
 import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
@@ -32,6 +39,11 @@ import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress
 import { usePlayerStore } from '@/stores/playerStore';
 import { playHaptic } from '@/lib/haptics';
 import {
+  getWaveformBarScale,
+  getWaveformTransitionDurationMs,
+  interpolateWaveformBarHeight,
+} from './waveformTransition';
+import {
   beginScrubDetents,
   updateScrubDetents,
   type ScrubDetentState,
@@ -42,6 +54,8 @@ const BAR_WIDTH = 3;
 const BAR_GAP = 2;
 const MIN_BAR = 0.05; // floor so silent/idle sections still show a sliver
 const PLAYHEAD_WIDTH = 2;
+/** Every bar change morphs with desktop's handoff timing (stagger included). */
+const MORPH_MS = getWaveformTransitionDurationMs('handoff');
 /** Ascending confidence — a partial result never overwrites an accurate cache hit. */
 type WaveformQuality = 'partial' | 'accurate';
 
@@ -207,24 +221,93 @@ export function WaveformSeekBar({
 
   const barCount = Math.max(1, Math.floor(barWidth / (BAR_WIDTH + BAR_GAP)));
 
-  // Build one Skia path of all bars (rounded rects). Drawn twice with a clip
-  // split at the playhead: played in accent, unplayed in glassBorder.
-  const barsPath = useMemo(() => {
+  // Bar amplitudes for what *should* be showing. No peaks yet is a row of
+  // slivers, the same baseline the bars collapse toward while a track loads.
+  const placeholder = !source;
+  const targetAmps = useMemo(() => {
+    if (barWidth <= 0) return null;
+    const display = source ? downsampleWaveform(source, barCount) : null;
+    const amps = new Array<number>(barCount);
+    for (let i = 0; i < barCount; i++) amps[i] = Math.max(MIN_BAR, display?.[i] ?? MIN_BAR);
+    return amps;
+  }, [source, barCount, barWidth]);
+
+  // Track-change motion, ported from desktop: each bar eases from the height it
+  // has on screen to its new one, left to right. One elapsed clock drives every
+  // bar, so a retarget mid-flight never has to reconcile per-bar animations.
+  const reduceMotion = useReducedMotion();
+  const fromAmps = useSharedValue<number[]>([]);
+  const toAmps = useSharedValue<number[]>([]);
+  const morphElapsed = useSharedValue(MORPH_MS);
+  const morphRef = useRef<{ key: string | undefined; placeholder: boolean }>({
+    key: undefined,
+    placeholder: true,
+  });
+
+  useEffect(() => {
+    if (!targetAmps) return;
+    const previous = morphRef.current;
+    morphRef.current = { key: trackPath, placeholder };
+    const elapsed = morphElapsed.value;
+    const from = fromAmps.value;
+    const to = toAmps.value;
+
+    // Width change (or first layout): bar counts differ, nothing to morph between.
+    if (to.length !== targetAmps.length || reduceMotion) {
+      cancelAnimation(morphElapsed);
+      fromAmps.value = targetAmps;
+      toAmps.value = targetAmps;
+      morphElapsed.value = MORPH_MS;
+      return;
+    }
+
+    // A new track, or real peaks replacing the loading baseline: morph from
+    // exactly what is on screen now, so an interrupted morph never jumps.
+    if (previous.key !== trackPath || (previous.placeholder && !placeholder)) {
+      const onScreen = to.map((target, i) =>
+        interpolateWaveformBarHeight(
+          from[i] ?? target,
+          target,
+          getWaveformBarScale('handoff', elapsed, i, to.length),
+        ),
+      );
+      fromAmps.value = onScreen;
+      toAmps.value = targetAmps;
+      cancelAnimation(morphElapsed);
+      morphElapsed.value = 0;
+      morphElapsed.value = withTiming(MORPH_MS, { duration: MORPH_MS, easing: Easing.linear });
+      return;
+    }
+
+    // Same track filling in progressively: retarget a running morph, otherwise
+    // swap in place (the decode already resolves left to right on its own).
+    toAmps.value = targetAmps;
+    if (elapsed >= MORPH_MS) fromAmps.value = targetAmps;
+  }, [targetAmps, trackPath, placeholder, reduceMotion, fromAmps, toAmps, morphElapsed]);
+
+  // One Skia path of all bars (rounded rects), rebuilt on the UI thread only
+  // while a morph is running. Drawn twice with a clip split at the playhead:
+  // played in accent, unplayed in glassBorder.
+  const barsPath = useDerivedValue(() => {
     const path = Skia.Path.Make();
-    if (barWidth <= 0) return path;
-    const display = source
-      ? downsampleWaveform(source, barCount)
-      : new Float32Array(barCount).fill(MIN_BAR);
+    const from = fromAmps.value;
+    const to = toAmps.value;
+    const elapsed = morphElapsed.value;
+    const count = to.length;
     const r = BAR_WIDTH / 2;
-    for (let i = 0; i < barCount; i++) {
-      const amp = Math.max(MIN_BAR, display[i] ?? MIN_BAR);
+    for (let i = 0; i < count; i++) {
+      const amp = interpolateWaveformBarHeight(
+        from[i] ?? to[i],
+        to[i],
+        getWaveformBarScale('handoff', elapsed, i, count),
+      );
       const h = amp * height;
       const x = i * (BAR_WIDTH + BAR_GAP);
       const y = (height - h) / 2;
       path.addRRect(Skia.RRectXY(Skia.XYWHRect(x, y, BAR_WIDTH, h), r, r));
     }
     return path;
-  }, [source, barCount, barWidth, height]);
+  }, [height]);
 
   const playedClip = useDerivedValue(
     () => rect(0, 0, progress.value * barWidth, height),

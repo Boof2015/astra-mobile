@@ -33,26 +33,33 @@ const EXITING = new Keyframe({
   .reduceMotion(ReduceMotion.System);
 
 /** Matches what the deck reserves when a caller doesn't pass a height. */
-const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT * 2;
+const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT + 4;
 
 interface CachedLyricPeekProps {
   track: Track;
   active: boolean;
   hidden?: boolean;
-  /** Row height the caller reserved for this slot. */
+  /** Row height the caller reserved for this slot (one line). */
   height?: number;
+  /**
+   * Lines a long lyric may wrap to. The row only ever reserves one; a second
+   * line draws upward into empty space the caller has checked is free
+   * (`getLyricPeekLines`), so wrapping can never move the title below it.
+   */
+  lines?: 1 | 2;
   onOpenLyrics: () => void;
 }
 
 /**
- * Two-line synced lyric display. Online lookup opt-in uses the shared lyrics
- * resolver; otherwise the passive preview remains a cache-only SQLite read.
+ * Synced lyric peek above the title. Online lookup opt-in uses the shared
+ * lyrics resolver; otherwise the passive preview remains a cache-only SQLite read.
  */
 export function CachedLyricPeek({
   track,
   active,
   hidden = false,
   height = DEFAULT_ROW_HEIGHT,
+  lines = 1,
   onOpenLyrics,
 }: CachedLyricPeekProps) {
   const styles = useStyles();
@@ -115,9 +122,9 @@ export function CachedLyricPeek({
     : null;
 
   return (
-    <View style={[styles.wrap, { height }]}>
+    <View style={[styles.wrap, lines > 1 && styles.overflowing, { height }]}>
       <TactilePressable
-        style={styles.pressable}
+        style={[styles.pressable, lines > 1 && styles.overflowing]}
         disabled={!text}
         haptic="selection"
         onPress={onOpenLyrics}
@@ -133,7 +140,7 @@ export function CachedLyricPeek({
             style={styles.lineFrame}
           >
             <Text
-              numberOfLines={1}
+              numberOfLines={lines}
               ellipsizeMode="tail"
               style={styles.line}
             >
@@ -158,13 +165,18 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     overflow: 'hidden',
   },
+  // A wrapped lyric draws its first line above the row, so neither box may clip.
+  overflowing: {
+    overflow: 'visible',
+  },
+  // Bottom-anchored: a single line always sits right above the title, and a
+  // wrapped one grows upward, away from it.
   lineFrame: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    bottom: 2,
     left: 0,
     right: 0,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   line: {
     color: colors.textSecondary,

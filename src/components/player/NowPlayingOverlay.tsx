@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
 import { useCatalogTrack } from '@/library/useCatalogTrack';
 import { ActionButton } from '@/components/ActionButton';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   PixelRatio,
@@ -16,6 +16,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
+  ReduceMotion,
   cancelAnimation,
   runOnJS,
   useAnimatedStyle,
@@ -30,7 +32,6 @@ import { AstraLogo } from '@/components/AstraLogo';
 import { AtmosBadge, FormatBadges } from '@/components/FormatBadge';
 import { RemoteSourceBadge } from '@/components/RemoteSourceBadge';
 import { MarqueeText } from '@/components/MarqueeText';
-import { NowPlayingWash } from '@/components/NowPlayingWash';
 import { SeekBar } from '@/components/SeekBar';
 import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { Visualizer } from '@/components/Visualizer';
@@ -44,7 +45,13 @@ import { ScopeRack } from '@/components/player/ScopeRack';
 import { NowPlayingCompanionPane } from '@/components/player/NowPlayingCompanionPane';
 import type { NowPlayingCompanion } from '@/components/player/nowPlayingPreferences';
 import { PlayerStateIcon } from '@/components/player/PlayerStateIcon';
+import {
+  PlayPauseMorphIcon,
+  RepeatFlowIcon,
+  ShuffleForkIcon,
+} from '@/components/player/DrawnTransportIcons';
 import { CachedLyricPeek } from '@/components/player/CachedLyricPeek';
+import { NowPlayingBackdrop } from '@/components/player/NowPlayingBackdrop';
 import { NowPlayingArtistCredits } from '@/components/player/NowPlayingArtistCredits';
 import {
   getNowPlayingTrackTransitionKey,
@@ -79,8 +86,11 @@ import {
 import { motion } from '@/theme/motion';
 import { paletteWithAccent } from '@/theme/scopedAccent';
 import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
+import { useArtworkField } from '@/theme/useArtworkField';
+import { paletteOverField } from '@/theme/fieldContrast';
 import {
   getNowPlayingLayout,
+  getLyricPeekLines,
   getNowPlayingLyricsToggleLayout,
   getTabletCompanionLayout,
   NOW_PLAYING_CONTENT_BOTTOM_PADDING,
@@ -107,7 +117,13 @@ import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
-import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
+import {
+  clearNowPlayingSwipeHandoff,
+  markNowPlayingSwipeHandoff,
+  markNowPlayingTrackTransitionDirection,
+} from '@/stores/nowPlayingTrackTransitionStore';
+import { resolveMiniPlayerSwipe } from '@/components/miniPlayerSwipe';
+import { playHaptic } from '@/lib/haptics';
 import { isPlayerOnScreen } from '@/stores/playerPresence';
 import { useSettingsStore, type ScopeMode } from '@/stores/settingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
@@ -146,6 +162,8 @@ const SUB_BUTTON_SIZE = NOW_PLAYING_SUB_BUTTON_SIZE;
 const SUB_ICON_SIZE = 20;
 /** Comfortable thumb span for the transport row; see styles.transport. */
 const TRANSPORT_MAX_WIDTH = 400;
+/** Favoriting pops the heart; un-favoriting just takes the press. */
+const FAVORITE_POP_SCALE = 1.22;
 const MENU_ANIMATION_IN_MS = 130;
 const MENU_ANIMATION_OUT_MS = 100;
 const MENU_ENTER_OFFSET_Y = -8;
@@ -153,6 +171,22 @@ const NOW_PLAYING_SPECTRUM_SMOOTHING = 0.85;
 const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
 const PAN_TOUCH_END_BACKSTOP_MS = 80;
 const PAN_GESTURE_RECOVERY_MS = 1200;
+/**
+ * Swipe-to-skip on the artwork. No neighbor preview: only the current cover
+ * moves, fading a little as it goes. On commit it carries on out (the same
+ * 110ms ease-in as the fade-through's exit) and the incoming cover makes the
+ * normal entrance — see the swipe handoff in nowPlayingTrackTransition.
+ */
+const ART_SWIPE_EXIT_DISTANCE = 48;
+const ART_SWIPE_EXIT = {
+  duration: 110,
+  easing: Easing.in(Easing.cubic),
+  reduceMotion: ReduceMotion.System,
+} as const;
+/** Fade at a full-width drag; never below this, so the cover stays readable mid-drag. */
+const ART_SWIPE_MIN_OPACITY = 0.45;
+/** No track change by then (end of queue, previous-restarts-the-song) brings the cover back. */
+const ART_SWIPE_HANDOFF_TIMEOUT_MS = 900;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -292,9 +326,27 @@ export function NowPlayingOverlay({
     method: coverArtAccentMethod,
     target: { isLight: !themeIsDark, onAccent: appColors.bgPrimary },
   });
-  const colors = useMemo(
+  // `baseColors` is the accent-scoped theme: sheets and the native queue sit on
+  // their own surfaces and use it as is. `colors` is what the player's own
+  // content uses — the same palette with its quiet tokens lifted just enough to
+  // stay readable over this cover's backdrop field.
+  const baseColors = useMemo(
     () => paletteWithAccent(appColors, coverArtAccent, themeIsDark),
     [appColors, coverArtAccent, themeIsDark],
+  );
+  // The backdrop field and the rack's blurred art both read a low-res thumbnail:
+  // currentTrack only carries the full-size artworkData, so derive the thumb from it.
+  const backdropArtworkUri = isDesktopTarget
+    ? artworkThumbFromSource(activePresentation.artworkUri)
+    : playerBackdropArtworkSource(track);
+  const artworkField = useArtworkField({
+    enabled: true,
+    artworkUri: backdropArtworkUri,
+    isDark: themeIsDark,
+  });
+  const colors = useMemo(
+    () => paletteOverField(baseColors, artworkField, themeIsDark),
+    [baseColors, artworkField, themeIsDark],
   );
   const styles = useStyles(colors);
   const effectiveScopeStageVisible = !isDesktopTarget && scopeStageVisible;
@@ -319,13 +371,6 @@ export function NowPlayingOverlay({
   );
   const isPlaying = activePresentation.playbackState === 'playing';
   const isLoading = activePresentation.playbackState === 'loading';
-  // Wash off a low-res thumbnail (like the album/artist detail headers do) so the
-  // blur reads as pure colors — full-res art keeps its detail at any blur radius.
-  // currentTrack only carries the full-size artworkData, so derive the thumb from it.
-  const backdropArtworkUri = isDesktopTarget
-    ? artworkThumbFromSource(activePresentation.artworkUri)
-    : playerBackdropArtworkSource(track);
-  const washArtworkUri = backdropArtworkUri;
   const availableHeight = windowHeight - insets.top - insets.bottom;
   const effectiveWidth = windowWidth - insets.left - insets.right;
   // The rack style swaps the art card's face in place, so only the rail style
@@ -383,6 +428,12 @@ export function NowPlayingOverlay({
   // chosen without reference to the scope state — so this can never change
   // while the screen is open and shift the deck.
   const lyricPeekEnabled = !isDesktopTarget && deck.lyricRowHeight > 0;
+  // Whether a long lyric may wrap: only where the space above the deck is
+  // empty in the stage's current state. Never changes the deck itself.
+  const lyricPeekLines = getLyricPeekLines(
+    layout,
+    railStyle && effectiveScopeStageVisible && layout.scopeRailFits
+  );
   const contentPadding = tabletCompanionLayout ? spacing.lg : layout.contentPadding;
   const shellWidth = tabletCompanionLayout?.shellWidth ?? layout.contentWidth;
   // Lyrics takes over only on the phone. Roomy tablets keep the player visible
@@ -451,6 +502,59 @@ export function NowPlayingOverlay({
   // rack = art face crossfading to the instrument rack. The presence gates keep
   // both faces for the 220 ms transition, then release the invisible surface.
   const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
+  // Swipe-to-skip on the artwork (phone target).
+  const artSwipeX = useSharedValue(0);
+  const artSwipeOpacity = useSharedValue(1);
+  const swipeOwner = useId();
+  const swipePendingRef = useRef<{ fromKey: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const transitionKeyRef = useRef(transitionTrackKey);
+
+  const rejectArtSwipe = useCallback(() => {
+    const pending = swipePendingRef.current;
+    if (pending) clearTimeout(pending.timer);
+    swipePendingRef.current = null;
+    clearNowPlayingSwipeHandoff(swipeOwner);
+    artSwipeX.value = withTiming(0, motion.quick);
+    artSwipeOpacity.value = withTiming(1, motion.quick);
+    playHaptic('reject');
+  }, [artSwipeOpacity, artSwipeX, swipeOwner]);
+
+  const commitArtSwipe = useCallback((direction: 'next' | 'previous') => {
+    if (swipePendingRef.current) return;
+    const fromKey = transitionKeyRef.current;
+    markNowPlayingSwipeHandoff(swipeOwner, fromKey);
+    const timer = setTimeout(() => {
+      if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
+    }, ART_SWIPE_HANDOFF_TIMEOUT_MS);
+    swipePendingRef.current = { fromKey, timer };
+    const command = direction === 'next' ? skipToNext() : skipToPrevious();
+    void command.catch(() => {
+      if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
+    });
+  }, [rejectArtSwipe, swipeOwner]);
+
+  // The new track has landed. The artwork's fade-through (a child, so its layout
+  // effect already ran this commit) has hidden the outgoing layer, so the cover
+  // can snap home invisibly and the incoming one enters from the opposite side.
+  useLayoutEffect(() => {
+    transitionKeyRef.current = transitionTrackKey;
+    const pending = swipePendingRef.current;
+    if (!pending || pending.fromKey === transitionTrackKey) return;
+    clearTimeout(pending.timer);
+    swipePendingRef.current = null;
+    // Already taken if the artwork face is mounted; the rack face never takes it.
+    clearNowPlayingSwipeHandoff(swipeOwner);
+    cancelAnimation(artSwipeX);
+    cancelAnimation(artSwipeOpacity);
+    artSwipeX.value = 0;
+    artSwipeOpacity.value = 1;
+    playHaptic('confirm');
+  }, [artSwipeOpacity, artSwipeX, swipeOwner, transitionTrackKey]);
+
+  useEffect(() => () => {
+    const pending = swipePendingRef.current;
+    if (pending) clearTimeout(pending.timer);
+  }, []);
 
   const suspendPanForChildTransition = () => {
     panEnabled.value = false;
@@ -505,7 +609,7 @@ export function NowPlayingOverlay({
     suspendPanForChildTransition();
     setQueueOpen(true);
     if (!isDesktopTarget) {
-      void AstraQueue.present({ palette: toNativeQueuePalette(colors) }).catch((error) => {
+      void AstraQueue.present({ palette: toNativeQueuePalette(baseColors) }).catch((error) => {
         console.warn('[queue] native presentation failed', error);
         setQueueOpen(false);
       });
@@ -934,8 +1038,8 @@ export function NowPlayingOverlay({
   // wearing the previous track's accent.
   useEffect(() => {
     if (isDesktopTarget || !queueOpen) return;
-    AstraQueue.updatePalette(toNativeQueuePalette(colors));
-  }, [colors, isDesktopTarget, queueOpen]);
+    AstraQueue.updatePalette(toNativeQueuePalette(baseColors));
+  }, [baseColors, isDesktopTarget, queueOpen]);
 
   // Hardware back, innermost layer first: menu → queue tray → player. Registered
   // only while open, so it sits above the focused screen's own handlers (LIFO)
@@ -1033,8 +1137,47 @@ export function NowPlayingOverlay({
   // the rail block higher — independent of either art size, so the two states
   // can never disagree about where the stage's middle is.
   const railArtShift = railChoreographed ? -layout.scopeBlockHeight / 2 : 0;
+  const artSwipeEnabled = !isDesktopTarget && !!track && !lyricsMode;
+  const artSwipe = useMemo(
+    () => Gesture.Pan()
+      .enabled(artSwipeEnabled)
+      // Horizontal only, and decided before the dismiss pan (which fails past
+      // 24dp sideways) or a vertical drag (which fails this one) can claim it.
+      .activeOffsetX([-16, 16])
+      .failOffsetY([-14, 14])
+      .onUpdate((event) => {
+        artSwipeX.value = event.translationX;
+        const travel = Math.abs(event.translationX) / Math.max(1, artBoxSize);
+        artSwipeOpacity.value = Math.max(ART_SWIPE_MIN_OPACITY, 1 - travel * 0.7);
+      })
+      // eslint-disable-next-line react-hooks/refs -- commitArtSwipe reads its refs when the gesture ends (a JS event), never during render.
+      .onEnd((event, success) => {
+        const direction = success
+          ? resolveMiniPlayerSwipe({
+              translationX: event.translationX,
+              velocityX: event.velocityX,
+              mediaWidth: artBoxSize,
+            })
+          : null;
+        if (!direction) {
+          artSwipeX.value = withTiming(0, motion.quick);
+          artSwipeOpacity.value = withTiming(1, motion.quick);
+          return;
+        }
+        const away = direction === 'next' ? -1 : 1;
+        artSwipeX.value = withTiming(
+          event.translationX + away * ART_SWIPE_EXIT_DISTANCE,
+          ART_SWIPE_EXIT
+        );
+        artSwipeOpacity.value = withTiming(0, ART_SWIPE_EXIT);
+        runOnJS(commitArtSwipe)(direction);
+      }),
+    [artBoxSize, artSwipeEnabled, artSwipeOpacity, artSwipeX, commitArtSwipe]
+  );
   const artStageTransitionStyle = useAnimatedStyle(() => ({
+    opacity: artSwipeOpacity.value,
     transform: [
+      { translateX: artSwipeX.value },
       { translateY: stageProgress.value * railArtShift },
       {
         scale: 1 + stageProgress.value * (railArtScale - 1),
@@ -1065,11 +1208,12 @@ export function NowPlayingOverlay({
   // fills the window and is draggable away, a dock is a sized column that is
   // simply there. Everything inside is identical.
   return (
-    <ScopedPaletteProvider colors={colors}>
+    <ScopedPaletteProvider colors={baseColors}>
     <View
       style={dock ? styles.dockFrame : StyleSheet.absoluteFill}
       pointerEvents={playerOpen || dock ? 'box-none' : 'none'}
     >
+      <ScopedPaletteProvider colors={colors}>
       <MaybePan enabled={!dock} gesture={pan}>
         <Animated.View
           style={[
@@ -1084,13 +1228,13 @@ export function NowPlayingOverlay({
           ]}
         >
           <AppPressableGestureScope>
-          <NowPlayingWash
-            artworkUri={washArtworkUri}
-            offset={{
-              top: -(insets.top + CONTENT_TOP_PADDING),
-              left: -(insets.left + contentPadding),
-              right: -(insets.right + contentPadding),
-            }}
+          <NowPlayingBackdrop
+            field={artworkField}
+            active={surfacesLive}
+            playing={isPlaying}
+            isDark={themeIsDark}
+            width={windowWidth}
+            height={windowHeight}
           />
           <View style={[styles.shell, { width: shellWidth }]}>
             <Animated.View
@@ -1243,7 +1387,7 @@ export function NowPlayingOverlay({
                         hitSlop={10}
                         style={styles.inlineActionBtn}
                         haptic={activeTrack.isFavorite ? 'toggleOff' : 'toggleOn'}
-                        confirmationScale={1.08}
+                        confirmationScale={activeTrack.isFavorite ? undefined : FAVORITE_POP_SCALE}
                         onPress={() => void sendDesktopControl('toggle-favorite')}
                         accessibilityLabel={activeTrack.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                         accessibilityState={{ selected: activeTrack.isFavorite }}
@@ -1290,15 +1434,11 @@ export function NowPlayingOverlay({
                         accessibilityLabel="Shuffle"
                         accessibilityState={{ selected: Boolean(desktopSnapshot?.shuffle) }}
                       >
-                        <PlayerStateIcon
-                          selected={Boolean(desktopSnapshot?.shuffle)}
+                        <ShuffleForkIcon
+                          on={Boolean(desktopSnapshot?.shuffle)}
                           size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                          }
-                          active={
-                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.accent} />
-                          }
+                          inactiveColor={colors.textTertiary}
+                          activeColor={colors.accent}
                         />
                       </TactilePressable>
                       <TactilePressable
@@ -1326,11 +1466,11 @@ export function NowPlayingOverlay({
 
                         accessibilityLabel={isPlaying ? 'Pause desktop' : 'Play desktop'}
                       >
-                        <Ionicons
-                          name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                          size={PLAY_ICON_SIZE}
-                          color={colors.bgPrimary}
-                        />
+                        {isLoading ? (
+                          <Ionicons name="ellipsis-horizontal" size={PLAY_ICON_SIZE} color={colors.bgPrimary} />
+                        ) : (
+                          <PlayPauseMorphIcon playing={isPlaying} size={PLAY_ICON_SIZE} color={colors.bgPrimary} />
+                        )}
                       </TactilePressable>
                       <TactilePressable
                         onPress={() => {
@@ -1361,21 +1501,11 @@ export function NowPlayingOverlay({
                         accessibilityLabel="Repeat"
                         accessibilityState={{ selected: desktopSnapshot?.repeat !== 'none' }}
                       >
-                        <PlayerStateIcon
-                          selected={desktopSnapshot?.repeat !== 'none'}
+                        <RepeatFlowIcon
+                          mode={desktopSnapshot?.repeat ?? 'none'}
                           size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                          }
-                          active={desktopSnapshot?.repeat === 'one' ? (
-                            <MaterialCommunityIcons
-                              name="repeat-once"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.accent}
-                            />
-                          ) : (
-                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.accent} />
-                          )}
+                          inactiveColor={colors.textTertiary}
+                          activeColor={colors.accent}
                         />
                       </TactilePressable>
                     </View>
@@ -1469,6 +1599,7 @@ export function NowPlayingOverlay({
                       : styles.stageFill,
                   ]}
                 >
+                  <GestureDetector gesture={artSwipe}>
                   <Animated.View
                     style={[
                       styles.artButton,
@@ -1494,6 +1625,7 @@ export function NowPlayingOverlay({
                           transitionKey={transitionTrackKey}
                           style={StyleSheet.absoluteFill}
                           contentStyle={styles.trackVisualLayer}
+                          swipeHandoffOwner={swipeOwner}
                         >
                           {track.artworkData ? (
                             <Image
@@ -1525,6 +1657,7 @@ export function NowPlayingOverlay({
                       </Animated.View>
                     )}
                   </Animated.View>
+                  </GestureDetector>
 
                   {railStyle && !layout.isWide && layout.scopeRailFits && renderScopeSurfaces && (
                     <Animated.View
@@ -1587,6 +1720,7 @@ export function NowPlayingOverlay({
                     <CachedLyricPeek
                       track={track}
                       height={deck.lyricRowHeight}
+                      lines={lyricPeekLines === 2 ? 2 : 1}
                       active={surfacesLive && !queueOpen}
                       hidden={
                         hasTabletCompanion && nowPlayingCompanion === 'lyrics'
@@ -1630,7 +1764,7 @@ export function NowPlayingOverlay({
                       style={[styles.inlineActionBtn, subButtonSizing]}
 
                       haptic={isFavorite ? 'toggleOff' : 'toggleOn'}
-                      confirmationScale={1.08}
+                      confirmationScale={isFavorite ? undefined : FAVORITE_POP_SCALE}
                       onPress={() => void toggleFavorite(track)}
                       accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                       accessibilityState={{ selected: isFavorite }}
@@ -1677,15 +1811,11 @@ export function NowPlayingOverlay({
                         accessibilityLabel="Shuffle"
                         accessibilityState={{ selected: shuffle }}
                       >
-                        <PlayerStateIcon
-                          selected={shuffle}
+                        <ShuffleForkIcon
+                          on={shuffle}
                           size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                          }
-                          active={
-                            <Ionicons name="shuffle" size={SUB_ICON_SIZE + 2} color={colors.accent} />
-                          }
+                          inactiveColor={colors.textTertiary}
+                          activeColor={colors.accent}
                         />
                       </TactilePressable>
                       <TactilePressable
@@ -1710,11 +1840,11 @@ export function NowPlayingOverlay({
 
                         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
                       >
-                        <Ionicons
-                          name={isLoading ? 'ellipsis-horizontal' : isPlaying ? 'pause' : 'play'}
-                          size={PLAY_ICON_SIZE}
-                          color={colors.bgPrimary}
-                        />
+                        {isLoading ? (
+                          <Ionicons name="ellipsis-horizontal" size={PLAY_ICON_SIZE} color={colors.bgPrimary} />
+                        ) : (
+                          <PlayPauseMorphIcon playing={isPlaying} size={PLAY_ICON_SIZE} color={colors.bgPrimary} />
+                        )}
                       </TactilePressable>
                       <TactilePressable
                         onPress={skipToNext}
@@ -1737,21 +1867,11 @@ export function NowPlayingOverlay({
                         accessibilityLabel="Repeat"
                         accessibilityState={{ selected: repeat !== 'none' }}
                       >
-                        <PlayerStateIcon
-                          selected={repeat !== 'none'}
+                        <RepeatFlowIcon
+                          mode={repeat}
                           size={SUB_ICON_SIZE + 2}
-                          inactive={
-                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
-                          }
-                          active={repeat === 'one' ? (
-                            <MaterialCommunityIcons
-                              name="repeat-once"
-                              size={SUB_ICON_SIZE + 2}
-                              color={colors.accent}
-                            />
-                          ) : (
-                            <Ionicons name="repeat" size={SUB_ICON_SIZE + 2} color={colors.accent} />
-                          )}
+                          inactiveColor={colors.textTertiary}
+                          activeColor={colors.accent}
                         />
                       </TactilePressable>
                     </View>
@@ -1914,6 +2034,7 @@ export function NowPlayingOverlay({
           </AppPressableGestureScope>
         </Animated.View>
       </MaybePan>
+      </ScopedPaletteProvider>
       {menuOpen && menuItems.length > 0 && (
         <Animated.View
           pointerEvents="box-none"
@@ -2061,10 +2182,10 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
     backgroundColor: colors.bgPrimary,
     alignItems: 'center',
-    // Clip the sheet to its own bounds. The NowPlayingWash bleeds up via negative
+    // Clip the sheet to its own bounds. The backdrop bleeds up via negative
     // offsets to reach the true screen edges — fine at rest (this box is full-screen),
     // but while swiping the sheet down that overflow would spill above its top edge
-    // onto the screen behind. Clipping contains the wash to the sheet in both states.
+    // onto the screen behind. Clipping contains the backdrop to the sheet in both states.
     overflow: 'hidden',
   },
   shell: {

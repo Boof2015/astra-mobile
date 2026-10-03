@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getLyricPeekLines,
   getNowPlayingLayout,
   getNowPlayingLyricsToggleLayout,
   getScopeHeight,
@@ -689,4 +690,63 @@ test('keeps calculated dimensions finite and non-negative', () => {
       }
     }
   }
+});
+
+test('a long lyric wraps to two lines only into space that is already empty', () => {
+  for (const device of DEVICES) {
+    for (const scale of FONT_SCALES) {
+      const layout = layoutFor(device, scale, false);
+      const { deck } = layout;
+      for (const railShown of [false, true]) {
+        const lines = getLyricPeekLines(layout, railShown);
+        if (deck.lyricRowHeight === 0) {
+          assert.equal(lines, 0, `${device.name}: no lyric row, no lines`);
+          continue;
+        }
+        if (lines < 2) continue;
+        // The second line draws above the reserved row. It must fit inside the
+        // empty band above the deck with air to spare, or it would sit on the
+        // artwork or the rail.
+        const overflow = deck.lyricLineHeight * 2 - deck.lyricRowHeight;
+        const room = railShown ? layout.roomAboveDeck.rail : layout.roomAboveDeck.scopeOff;
+        assert.ok(
+          room - overflow >= 4,
+          `${device.name} @${scale} rail=${railShown}: wrapped lyric leaves ${room - overflow}dp`
+        );
+      }
+    }
+  }
+});
+
+test('the two-line peek never changes the deck, so it can never move a control', () => {
+  for (const device of DEVICES) {
+    const off = layoutFor(device, 1, false);
+    const on = layoutFor(device, 1, true);
+    assert.deepEqual(off.deck, on.deck, `${device.name}: deck must not depend on the scope`);
+    assert.equal(off.deck.lyricRowHeight > 0 ? off.deck.lyricRowHeight : 0, on.deck.lyricRowHeight);
+  }
+});
+
+test('roomy phones get two lines with the scope off; a full stage keeps one', () => {
+  const lines = (name: string) => {
+    const device = DEVICES.find((candidate) => candidate.name === name);
+    assert.ok(device);
+    return getLyricPeekLines(layoutFor(device, 1, false), false);
+  };
+  // These sit on the artwork cap with stage to spare.
+  assert.equal(lines('Pixel 7 Pro'), 2);
+  assert.equal(lines('Galaxy S25 Ultra'), 2);
+  assert.equal(lines('OnePlus 7 Pro'), 2);
+  // The S22's artwork already fills its stage: a second line would touch it.
+  assert.equal(lines('Galaxy S22'), 1);
+});
+
+test('the S22 Ultra wraps under the scope rail too', () => {
+  const device = DEVICES.find((candidate) => candidate.name === 'Galaxy S22 Ultra');
+  assert.ok(device);
+  const layout = layoutFor(device, 1, true);
+  assert.ok(layout.scopeRailFits);
+  assert.equal(getLyricPeekLines(layout, true), 2);
+  // At the largest font scale the second line no longer fits under the rail.
+  assert.equal(getLyricPeekLines(layoutFor(device, 1.3, true), true), 1);
 });
