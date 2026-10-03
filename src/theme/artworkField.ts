@@ -148,11 +148,23 @@ export function toneField(sources: Oklab[], isDark: boolean): string[] {
   );
 }
 
-/** RGBA_8888 pixels (any size) → the backdrop field, or null for an empty image. */
-export function fieldFromPixels(pixels: ArrayLike<number>, isDark: boolean): ArtworkField | null {
+/**
+ * The extractor's clusters for a pixel buffer: the expensive part of both the
+ * accent and the field, so callers that want both should cluster once.
+ */
+export function clusterArtworkPixels(pixels: ArrayLike<number>): WeightedColor[] {
   const histogram = buildHistogram(pixels);
-  if (histogram.total <= 0) return null;
-  const { sources, neutral } = pickFieldSources(refineInOklab(histogram, quantizeWu(histogram)));
+  if (histogram.total <= 0) return [];
+  return refineInOklab(histogram, quantizeWu(histogram));
+}
+
+export function fieldFromClusters(clusters: WeightedColor[], isDark: boolean): ArtworkField | null {
+  const { sources, neutral } = pickFieldSources(clusters);
   if (sources.length === 0) return null;
   return { colors: toneField(sources, isDark), neutral };
+}
+
+/** RGBA_8888 pixels (any size) → the backdrop field, or null for an empty image. */
+export function fieldFromPixels(pixels: ArrayLike<number>, isDark: boolean): ArtworkField | null {
+  return fieldFromClusters(clusterArtworkPixels(pixels), isDark);
 }

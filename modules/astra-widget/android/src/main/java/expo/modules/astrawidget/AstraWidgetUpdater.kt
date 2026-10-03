@@ -21,6 +21,9 @@ import android.view.View
 import android.widget.RemoteViews
 import java.io.File
 import java.util.LinkedHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 object AstraWidgetUpdater {
   private const val REQUEST_OPEN_APP = 100
@@ -56,6 +59,42 @@ object AstraWidgetUpdater {
     R.id.astra_widget_recent_8_label,
   )
 
+  /**
+   * Building RemoteViews decodes covers and renders every responsive size
+   * bucket, then ships them to the launcher over Binder. Done synchronously from
+   * JS it stalled now-playing's track-change animations (~250ms on S22U,
+   * 2026-10-02). JS updates are therefore built on one background thread, and a
+   * burst — a skip pushes "loading" then "playing" within milliseconds —
+   * collapses into a single launcher update.
+   */
+  private val updateExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+    Thread(runnable, "astra-widget-update").apply {
+      isDaemon = true
+      priority = Thread.NORM_PRIORITY - 1
+    }
+  }
+  private var pendingUpdate: ScheduledFuture<*>? = null
+  private const val UPDATE_COALESCE_MS = 150L
+
+  /**
+   * Every render holds this. The bitmap cache recycles on eviction, so two
+   * renders interleaving (this executor and a launcher-driven onUpdate on the
+   * main thread) could recycle a bitmap the other is still placing.
+   */
+  private val renderLock = Any()
+
+  fun requestUpdateAll(context: Context) {
+    val appContext = context.applicationContext
+    synchronized(this) {
+      pendingUpdate?.cancel(false)
+      pendingUpdate = updateExecutor.schedule(
+        { runCatching { updateAll(appContext) } },
+        UPDATE_COALESCE_MS,
+        TimeUnit.MILLISECONDS,
+      )
+    }
+  }
+
   fun updateAll(context: Context) {
     val appContext = context.applicationContext
     val manager = AppWidgetManager.getInstance(appContext)
@@ -67,22 +106,26 @@ object AstraWidgetUpdater {
   fun updateWidgets(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
     if (appWidgetIds.isEmpty()) return
 
-    val state = AstraWidgetStateStore.load(context)
-    appWidgetIds.forEach { appWidgetId ->
-      val options = manager.getAppWidgetOptions(appWidgetId)
+    synchronized(renderLock) {
+      val state = AstraWidgetStateStore.load(context)
+      appWidgetIds.forEach { appWidgetId ->
+        val options = manager.getAppWidgetOptions(appWidgetId)
+        manager.updateAppWidget(
+          appWidgetId,
+          buildRemoteViews(context, state, options, artworkBitmaps),
+        )
+      }
+    }
+  }
+
+  fun updateWidget(context: Context, manager: AppWidgetManager, appWidgetId: Int, options: Bundle) {
+    synchronized(renderLock) {
+      val state = AstraWidgetStateStore.load(context)
       manager.updateAppWidget(
         appWidgetId,
         buildRemoteViews(context, state, options, artworkBitmaps),
       )
     }
-  }
-
-  fun updateWidget(context: Context, manager: AppWidgetManager, appWidgetId: Int, options: Bundle) {
-    val state = AstraWidgetStateStore.load(context)
-    manager.updateAppWidget(
-      appWidgetId,
-      buildRemoteViews(context, state, options, artworkBitmaps),
-    )
   }
 
   private fun buildRemoteViews(

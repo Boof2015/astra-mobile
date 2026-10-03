@@ -20,10 +20,11 @@ function mapRntpState(state?: State): PlaybackState {
   }
 }
 
-// Last payload actually handed to the native module. Every widget push builds
-// RemoteViews + a Binder IPC to the launcher on the main thread, and seek/skip
-// fire several state events carrying identical resolved payloads — dedupe here
-// so both callers (UI hook + headless service) collapse to real changes only.
+// Last payload actually handed to the native module. Every real change rebuilds
+// RemoteViews and ships them to the launcher (natively on a background thread,
+// coalesced), and seek/skip fire several state events carrying identical
+// resolved payloads — dedupe here so both callers (UI hook + headless service)
+// collapse to real changes only.
 let lastPushed: {
   title: string | null;
   artist: string | null;

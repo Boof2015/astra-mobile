@@ -401,6 +401,31 @@ export function getLyricPeekLines(layout: NowPlayingLayout, railShown: boolean):
   return room >= overflow + LYRIC_OVERFLOW_CLEARANCE ? 2 : 1;
 }
 
+/** Space between the two covers mid-slide, as in the Look Lab. */
+const ART_SLIDE_GAP = 28;
+
+/**
+ * Distance a cover slides on a track change, in the art box's own units.
+ *
+ * Covers sit a page apart (`ART_SLIDE_GAP`) where the screen allows it, but the
+ * outgoing one must end fully off screen: on a 411dp phone two 320dp covers a
+ * gap apart still leave 17dp of the old one at the edge. The art box can also
+ * be scaled down (the scope rail), and in the wide layout the cover is not
+ * centred, so the clearance is measured from its real centre to the farther
+ * screen edge, at the scale it is drawn.
+ */
+export function getNowPlayingArtSlideTravel(
+  artSize: number,
+  artCenterX: number,
+  screenWidth: number,
+  visualScale: number,
+): number {
+  const scale = Math.max(0.1, visualScale);
+  const farthestEdge = Math.max(artCenterX, screenWidth - artCenterX);
+  const clearScreen = farthestEdge / scale + artSize / 2 + 4;
+  return Math.ceil(Math.max(artSize + ART_SLIDE_GAP, clearScreen));
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

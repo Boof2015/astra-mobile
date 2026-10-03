@@ -5,14 +5,14 @@ import {
   rect,
   type SkData,
 } from '@shopify/react-native-skia';
-import type { CoverArtAccentMethod } from './artworkAccentPreferences';
-import type { AdaptiveAccentTarget } from './adaptiveAccent';
-import { extractArtworkAccentFromPixels } from './artworkAccentMath';
-import { fieldFromPixels, type ArtworkField } from './artworkField';
+import {
+  artworkColorsFromPixels,
+  type ArtworkAccentRequest,
+  type ArtworkColors,
+} from './artworkColors';
 
+/** Callers pass the 128px thumbnail; reading it back at its own size costs no resample. */
 const SAMPLE_SIZE = 128;
-/** The field only needs area colors, and it decodes once per track change. */
-const FIELD_SAMPLE_SIZE = 64;
 
 async function encodedArtworkData(uri: string) {
   const dataUrl = /^data:[^;,]+;base64,(.+)$/s.exec(uri);
@@ -74,21 +74,13 @@ async function readArtworkPixels(artworkUri: string, size: number): Promise<Uint
   }
 }
 
-export async function extractArtworkAccent(
+/** Accent and backdrop field for a cover, from one small decode and one clustering pass. */
+export async function extractArtworkColors(
   artworkUri: string,
-  method: CoverArtAccentMethod,
-  target?: AdaptiveAccentTarget,
-): Promise<string | null> {
+  accent: ArtworkAccentRequest | null,
+  isDark: boolean,
+): Promise<ArtworkColors | null> {
   if (!artworkUri) return null;
   const pixels = await readArtworkPixels(artworkUri, SAMPLE_SIZE);
-  return pixels ? extractArtworkAccentFromPixels(pixels, method, target) : null;
-}
-
-export async function extractArtworkField(
-  artworkUri: string,
-  isDark: boolean,
-): Promise<ArtworkField | null> {
-  if (!artworkUri) return null;
-  const pixels = await readArtworkPixels(artworkUri, FIELD_SAMPLE_SIZE);
-  return pixels ? fieldFromPixels(pixels, isDark) : null;
+  return pixels ? artworkColorsFromPixels(pixels, accent, isDark) : null;
 }

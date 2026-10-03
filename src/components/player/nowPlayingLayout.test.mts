@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getLyricPeekLines,
+  getNowPlayingArtSlideTravel,
   getNowPlayingLayout,
   getNowPlayingLyricsToggleLayout,
   getScopeHeight,
@@ -749,4 +750,32 @@ test('the S22 Ultra wraps under the scope rail too', () => {
   assert.equal(getLyricPeekLines(layout, true), 2);
   // At the largest font scale the second line no longer fits under the rail.
   assert.equal(getLyricPeekLines(layoutFor(device, 1.3, true), true), 1);
+});
+
+test('a sliding cover always ends fully off screen', () => {
+  for (const device of DEVICES) {
+    for (const scope of [false, true]) {
+      const layout = layoutFor(device, 1, scope);
+      const scale = scope && !layout.isWide && layout.artSizeScopeOff > 0
+        ? layout.artSizeScopeOn / layout.artSizeScopeOff
+        : 1;
+      const box = scope && !layout.isWide ? layout.artSizeScopeOff : layout.artSize;
+      // Portrait centres the cover; wide puts it in the left pane.
+      const centerX = layout.isWide
+        ? (device.width - layout.contentWidth) / 2 + layout.leftPaneWidth / 2
+        : device.width / 2;
+      const travel = getNowPlayingArtSlideTravel(box, centerX, device.width, scale);
+      for (const direction of [-1, 1]) {
+        const parkedCenter = centerX + direction * travel * scale;
+        const near = parkedCenter - (box * scale) / 2;
+        const far = parkedCenter + (box * scale) / 2;
+        assert.ok(
+          far <= 0 || near >= device.width,
+          `${device.name} scope=${scope} dir=${direction}: card parks at ${near.toFixed(0)}..${far.toFixed(0)}`
+        );
+      }
+      // Where the screen allows it, the two covers stay a page apart.
+      assert.ok(travel >= box + 28);
+    }
+  }
 });

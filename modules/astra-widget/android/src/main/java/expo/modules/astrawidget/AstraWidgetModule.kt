@@ -71,7 +71,8 @@ class AstraWidgetModule : Module() {
         recentlyPlayed = recentlyPlayed,
       )
       AstraWidgetStateStore.save(context, next)
-      if (previous != next) AstraWidgetUpdater.updateAll(context)
+      // Built off the JS thread and coalesced; see requestUpdateAll.
+      if (previous != next) AstraWidgetUpdater.requestUpdateAll(context)
     }
   }
 

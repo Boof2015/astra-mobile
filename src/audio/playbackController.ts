@@ -1106,7 +1106,16 @@ export async function skipToPrevious(): Promise<void> {
     await seekTo(0);
     return;
   }
+  await skipToPreviousTrack();
+}
 
+/**
+ * Go to the previous track even mid-song. Swiping the now-playing cover back
+ * is an explicit "that one": the carousel has already slid the previous cover
+ * in, so a restart-the-song here would leave it showing the wrong track.
+ */
+export async function skipToPreviousTrack(): Promise<void> {
+  await ensurePlayerReady();
   markNowPlayingTrackTransitionDirection('previous', 'phone');
   const [nativeQueue, nativeIndex] = await Promise.all([
     TrackPlayer.getQueue(),

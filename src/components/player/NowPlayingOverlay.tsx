@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/immutability, react-hooks/preserve-manual-memoization -- Reanimated gesture state is intentionally mutable, and the pan recognizer must retain identity across renders. */
 import { useCatalogTrack } from '@/library/useCatalogTrack';
 import { ActionButton } from '@/components/ActionButton';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   PixelRatio,
@@ -16,8 +16,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
-  ReduceMotion,
   cancelAnimation,
   runOnJS,
   useAnimatedStyle,
@@ -85,10 +83,13 @@ import {
 } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { paletteWithAccent } from '@/theme/scopedAccent';
-import { useNowPlayingArtworkAccent } from '@/theme/useNowPlayingArtworkAccent';
-import { useArtworkField } from '@/theme/useArtworkField';
+import {
+  ARTWORK_COLORS_SETTLE_MS,
+  useNowPlayingArtworkColors,
+} from '@/theme/useNowPlayingArtworkColors';
 import { paletteOverField } from '@/theme/fieldContrast';
 import {
+  getNowPlayingArtSlideTravel,
   getNowPlayingLayout,
   getLyricPeekLines,
   getNowPlayingLyricsToggleLayout,
@@ -117,11 +118,15 @@ import { useQueueStore } from '@/stores/queueStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
+import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import {
-  clearNowPlayingSwipeHandoff,
-  markNowPlayingSwipeHandoff,
-  markNowPlayingTrackTransitionDirection,
-} from '@/stores/nowPlayingTrackTransitionStore';
+  NowPlayingArtCarousel,
+  type NowPlayingArtCover,
+} from '@/components/player/NowPlayingArtCarousel';
+import {
+  predictNeighborArtCover,
+  prefetchNeighborArtwork,
+} from '@/components/player/nowPlayingArtNeighbors';
 import { resolveMiniPlayerSwipe } from '@/components/miniPlayerSwipe';
 import { playHaptic } from '@/lib/haptics';
 import { isPlayerOnScreen } from '@/stores/playerPresence';
@@ -135,6 +140,7 @@ import {
   seekTo,
   skipToNext,
   skipToPrevious,
+  skipToPreviousTrack,
   synchronizeVirtualQueueRevision,
   togglePlay,
   toggleShuffle
@@ -172,21 +178,10 @@ const PAN_DISMISS_HANDOFF_BACKSTOP_MS = 120;
 const PAN_TOUCH_END_BACKSTOP_MS = 80;
 const PAN_GESTURE_RECOVERY_MS = 1200;
 /**
- * Swipe-to-skip on the artwork. No neighbor preview: only the current cover
- * moves, fading a little as it goes. On commit it carries on out (the same
- * 110ms ease-in as the fade-through's exit) and the incoming cover makes the
- * normal entrance — see the swipe handoff in nowPlayingTrackTransition.
+ * Swipe-to-skip on the artwork. No track change by then (end of queue, a failed
+ * skip) slides the predicted cover back out and the real one back in.
  */
-const ART_SWIPE_EXIT_DISTANCE = 48;
-const ART_SWIPE_EXIT = {
-  duration: 110,
-  easing: Easing.in(Easing.cubic),
-  reduceMotion: ReduceMotion.System,
-} as const;
-/** Fade at a full-width drag; never below this, so the cover stays readable mid-drag. */
-const ART_SWIPE_MIN_OPACITY = 0.45;
-/** No track change by then (end of queue, previous-restarts-the-song) brings the cover back. */
-const ART_SWIPE_HANDOFF_TIMEOUT_MS = 900;
+const ART_SWIPE_HANDOFF_TIMEOUT_MS = 1200;
 
 interface NowPlayingMenuItem {
   key: string;
@@ -319,13 +314,28 @@ export function NowPlayingOverlay({
           : track?.artworkHash ?? activePresentation.trackKey
       }`
     : null;
-  const coverArtAccent = useNowPlayingArtworkAccent({
-    enabled: playerOpen && nowPlayingAccentSource === 'cover-art',
-    artworkUri: activePresentation.artworkUri,
+  // The backdrop field, the accent and the rack's blurred art all read a low-res
+  // thumbnail: currentTrack only carries the full-size artworkData, so derive the
+  // thumb from it. Decoding the full cover for the accent was most of the JS work
+  // at every track change.
+  const backdropArtworkUri = isDesktopTarget
+    ? artworkThumbFromSource(activePresentation.artworkUri)
+    : playerBackdropArtworkSource(track);
+  // Computed whenever the app is up, not only while the player is open, so
+  // opening the player never waits on it; deferred past each track change.
+  const artworkColors = useNowPlayingArtworkColors({
+    enabled: foreground,
+    artworkUri: backdropArtworkUri,
     artworkIdentity,
-    method: coverArtAccentMethod,
-    target: { isLight: !themeIsDark, onAccent: appColors.bgPrimary },
+    accent: {
+      enabled: nowPlayingAccentSource === 'cover-art',
+      method: coverArtAccentMethod,
+      target: { isLight: !themeIsDark, onAccent: appColors.bgPrimary },
+    },
+    isDark: themeIsDark,
   });
+  const coverArtAccent = artworkColors.accent;
+  const artworkField = artworkColors.field;
   // `baseColors` is the accent-scoped theme: sheets and the native queue sit on
   // their own surfaces and use it as is. `colors` is what the player's own
   // content uses — the same palette with its quiet tokens lifted just enough to
@@ -334,16 +344,6 @@ export function NowPlayingOverlay({
     () => paletteWithAccent(appColors, coverArtAccent, themeIsDark),
     [appColors, coverArtAccent, themeIsDark],
   );
-  // The backdrop field and the rack's blurred art both read a low-res thumbnail:
-  // currentTrack only carries the full-size artworkData, so derive the thumb from it.
-  const backdropArtworkUri = isDesktopTarget
-    ? artworkThumbFromSource(activePresentation.artworkUri)
-    : playerBackdropArtworkSource(track);
-  const artworkField = useArtworkField({
-    enabled: true,
-    artworkUri: backdropArtworkUri,
-    isDark: themeIsDark,
-  });
   const colors = useMemo(
     () => paletteOverField(baseColors, artworkField, themeIsDark),
     [baseColors, artworkField, themeIsDark],
@@ -502,10 +502,15 @@ export function NowPlayingOverlay({
   // rack = art face crossfading to the instrument rack. The presence gates keep
   // both faces for the 220 ms transition, then release the invisible surface.
   const stageProgress = useSharedValue(effectiveScopeStageVisible ? 1 : 0);
-  // Swipe-to-skip on the artwork (phone target).
+  // Swipe-to-skip on the artwork (phone target). The drag moves only the
+  // current cover — no neighbor preview. A commit predicts the neighbor from the
+  // queue mirror so the carousel slides it in at once, before the skip lands.
   const artSwipeX = useSharedValue(0);
-  const artSwipeOpacity = useSharedValue(1);
-  const swipeOwner = useId();
+  const [artPrediction, setArtPrediction] = useState<{
+    fromKey: string;
+    cover: NowPlayingArtCover;
+    direction: 1 | -1;
+  } | null>(null);
   const swipePendingRef = useRef<{ fromKey: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const transitionKeyRef = useRef(transitionTrackKey);
 
@@ -513,48 +518,60 @@ export function NowPlayingOverlay({
     const pending = swipePendingRef.current;
     if (pending) clearTimeout(pending.timer);
     swipePendingRef.current = null;
-    clearNowPlayingSwipeHandoff(swipeOwner);
+    // Dropping the prediction returns the carousel to the real track, which
+    // reverses the slide it just made.
+    setArtPrediction(null);
     artSwipeX.value = withTiming(0, motion.quick);
-    artSwipeOpacity.value = withTiming(1, motion.quick);
     playHaptic('reject');
-  }, [artSwipeOpacity, artSwipeX, swipeOwner]);
+  }, [artSwipeX]);
 
   const commitArtSwipe = useCallback((direction: 'next' | 'previous') => {
     if (swipePendingRef.current) return;
     const fromKey = transitionKeyRef.current;
-    markNowPlayingSwipeHandoff(swipeOwner, fromKey);
+    const neighbor = predictNeighborArtCover(direction);
+    if (neighbor) {
+      setArtPrediction({ fromKey, cover: neighbor, direction: direction === 'next' ? 1 : -1 });
+    }
     const timer = setTimeout(() => {
       if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
     }, ART_SWIPE_HANDOFF_TIMEOUT_MS);
     swipePendingRef.current = { fromKey, timer };
-    const command = direction === 'next' ? skipToNext() : skipToPrevious();
+    // Previous always means the previous *track* here: its cover is already on
+    // screen, so restarting the song instead would show the wrong one.
+    const command = direction === 'next' ? skipToNext() : skipToPreviousTrack();
     void command.catch(() => {
       if (swipePendingRef.current?.timer === timer) rejectArtSwipe();
     });
-  }, [rejectArtSwipe, swipeOwner]);
+  }, [rejectArtSwipe]);
 
-  // The new track has landed. The artwork's fade-through (a child, so its layout
-  // effect already ran this commit) has hidden the outgoing layer, so the cover
-  // can snap home invisibly and the incoming one enters from the opposite side.
+  // The new track has landed. The prediction is keyed to the track it left, so
+  // it already stopped applying; clear it so returning to that track later
+  // can't revive it.
   useLayoutEffect(() => {
     transitionKeyRef.current = transitionTrackKey;
     const pending = swipePendingRef.current;
     if (!pending || pending.fromKey === transitionTrackKey) return;
     clearTimeout(pending.timer);
     swipePendingRef.current = null;
-    // Already taken if the artwork face is mounted; the rack face never takes it.
-    clearNowPlayingSwipeHandoff(swipeOwner);
-    cancelAnimation(artSwipeX);
-    cancelAnimation(artSwipeOpacity);
-    artSwipeX.value = 0;
-    artSwipeOpacity.value = 1;
+    queueMicrotask(() => setArtPrediction(null));
+    // The carousel (a child, so its effect ran first) took any drag offset. The
+    // rack face has no carousel; bring it home.
+    if (artSwipeX.value !== 0) artSwipeX.value = withTiming(0, motion.quick);
     playHaptic('confirm');
-  }, [artSwipeOpacity, artSwipeX, swipeOwner, transitionTrackKey]);
+  }, [artSwipeX, transitionTrackKey]);
 
   useEffect(() => () => {
     const pending = swipePendingRef.current;
     if (pending) clearTimeout(pending.timer);
   }, []);
+
+  // Warm both neighbors' covers once the switch has settled, so the next skip
+  // either way slides in a decoded image.
+  useEffect(() => {
+    if (!foreground || isDesktopTarget) return undefined;
+    const timer = setTimeout(prefetchNeighborArtwork, ARTWORK_COLORS_SETTLE_MS + 150);
+    return () => clearTimeout(timer);
+  }, [foreground, isDesktopTarget, transitionTrackKey]);
 
   const suspendPanForChildTransition = () => {
     panEnabled.value = false;
@@ -1147,8 +1164,6 @@ export function NowPlayingOverlay({
       .failOffsetY([-14, 14])
       .onUpdate((event) => {
         artSwipeX.value = event.translationX;
-        const travel = Math.abs(event.translationX) / Math.max(1, artBoxSize);
-        artSwipeOpacity.value = Math.max(ART_SWIPE_MIN_OPACITY, 1 - travel * 0.7);
       })
       // eslint-disable-next-line react-hooks/refs -- commitArtSwipe reads its refs when the gesture ends (a JS event), never during render.
       .onEnd((event, success) => {
@@ -1161,23 +1176,16 @@ export function NowPlayingOverlay({
           : null;
         if (!direction) {
           artSwipeX.value = withTiming(0, motion.quick);
-          artSwipeOpacity.value = withTiming(1, motion.quick);
           return;
         }
-        const away = direction === 'next' ? -1 : 1;
-        artSwipeX.value = withTiming(
-          event.translationX + away * ART_SWIPE_EXIT_DISTANCE,
-          ART_SWIPE_EXIT
-        );
-        artSwipeOpacity.value = withTiming(0, ART_SWIPE_EXIT);
+        // The card holds where the finger left it; the carousel slides it out
+        // from exactly there.
         runOnJS(commitArtSwipe)(direction);
       }),
-    [artBoxSize, artSwipeEnabled, artSwipeOpacity, artSwipeX, commitArtSwipe]
+    [artBoxSize, artSwipeEnabled, artSwipeX, commitArtSwipe]
   );
   const artStageTransitionStyle = useAnimatedStyle(() => ({
-    opacity: artSwipeOpacity.value,
     transform: [
-      { translateX: artSwipeX.value },
       { translateY: stageProgress.value * railArtShift },
       {
         scale: 1 + stageProgress.value * (railArtScale - 1),
@@ -1191,7 +1199,10 @@ export function NowPlayingOverlay({
   // Rack face flip: the art face fades out while the instrument rack settles in.
   const rackFaceStyle = useAnimatedStyle(() => ({
     opacity: stageProgress.value,
-    transform: [{ scale: 0.98 + stageProgress.value * 0.02 }],
+    transform: [
+      { translateX: artSwipeX.value },
+      { scale: 0.98 + stageProgress.value * 0.02 },
+    ],
   }));
   // Always write the artwork opacity. Removing an animated style after Rack
   // faded it to zero leaves that native value behind until the view remounts.
@@ -1202,6 +1213,19 @@ export function NowPlayingOverlay({
       opacity: railStyle ? 1 : 1 - stageProgress.value,
     }),
     [railStyle]
+  );
+  const currentArtCover = track
+    ? { key: transitionTrackKey, uri: track.artworkData ?? null, thumb: backdropArtworkUri }
+    : null;
+  const predictionLive = artPrediction !== null && artPrediction.fromKey === transitionTrackKey;
+  const displayedArtCover = predictionLive ? artPrediction.cover : currentArtCover;
+  const artVisualScale = railChoreographed && effectiveScopeStageVisible ? railArtScale : 1;
+  const artCenterX = layout.isWide ? shellLeft + layout.leftPaneWidth / 2 : windowWidth / 2;
+  const artSlideTravel = getNowPlayingArtSlideTravel(
+    artBoxSize,
+    artCenterX,
+    windowWidth,
+    artVisualScale
   );
 
   // The only structural differences between the two presentations: an overlay
@@ -1612,7 +1636,6 @@ export function NowPlayingOverlay({
                   >
                     <Animated.View
                       style={[
-                        styles.artCard,
                         artFaceStyle,
                         {
                           width: artBoxSize,
@@ -1621,24 +1644,14 @@ export function NowPlayingOverlay({
                       ]}
                     >
                       {renderArtworkFace ? (
-                        <NowPlayingTrackFadeThrough
-                          transitionKey={transitionTrackKey}
-                          style={StyleSheet.absoluteFill}
-                          contentStyle={styles.trackVisualLayer}
-                          swipeHandoffOwner={swipeOwner}
-                        >
-                          {track.artworkData ? (
-                            <Image
-                              source={{ uri: track.artworkData }}
-                              style={styles.artImage}
-                              contentFit="cover"
-                              cachePolicy="disk"
-                              allowDownscaling
-                            />
-                          ) : (
-                            <AstraLogo size={Math.round(artBoxSize * 0.4)} />
-                          )}
-                        </NowPlayingTrackFadeThrough>
+                        <NowPlayingArtCarousel
+                          cover={displayedArtCover}
+                          direction={predictionLive ? artPrediction.direction : undefined}
+                          travel={artSlideTravel}
+                          dragX={artSwipeX}
+                          cardStyle={styles.artCard}
+                          fallback={<AstraLogo size={Math.round(artBoxSize * 0.4)} />}
+                        />
                       ) : null}
                     </Animated.View>
                     {!railStyle && renderScopeSurfaces && (
