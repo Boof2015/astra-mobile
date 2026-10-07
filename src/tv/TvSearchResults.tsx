@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
@@ -10,7 +11,7 @@ import type { Album, Artist, DbTrack } from '@/types/library';
 import { AlbumCard, TvTrackRow } from './TvBrowse';
 import { TvCard, TvArtistArt, TvPlaylistArt } from './TvCards';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
-import { box, tv, TvText, TvMotion, TvViewport } from './TvPrimitives';
+import { box, TvText, TvMotion, TvViewport } from './TvPrimitives';
 import { useTvPage } from './useTvPage';
 import { anchoredStart, restoredIndex, shelfOffset } from './focusGeometry';
 import { searchCursor } from './searchModel';
@@ -34,6 +35,7 @@ function useSearchPage<T>(search: SearchRequest, kind: 'artists' | 'albums' | 't
 }
 
 export function TvSearchResults({ search, actions, ready }: { search: SearchRequest; actions: TvActions; ready: (entry: string) => void }) {
+  const tv = useTvTheme();
   const active = useTvActive(); const { request } = useTvFocus();
   const artists = useSearchPage<Artist>(search, 'artists', artistKey);
   const albums = useSearchPage<Album>(search, 'albums', albumKey);

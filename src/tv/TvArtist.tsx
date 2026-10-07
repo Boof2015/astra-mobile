@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
@@ -10,7 +11,7 @@ import type { Album, Artist, DbTrack } from '@/types/library';
 import { TvArtistArt, TvCard } from './TvCards';
 import { TvTrackRow, albumFromTrack } from './TvBrowse';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
-import { box, tv, TvArtwork, TvText, TvViewport, TvMotion } from './TvPrimitives';
+import { box, TvArtwork, TvText, TvViewport, TvMotion } from './TvPrimitives';
 import { useTvPage } from './useTvPage';
 import { gridNeighbor, anchoredStart, restoredIndex } from './focusGeometry';
 import type { DetailProps } from './tvCollections';
@@ -20,6 +21,7 @@ const trackKey = (track: DbTrack) => track.path;
 type Section = 'releases' | 'appearances' | 'tracks';
 
 export function TvArtist({ artist, nav, actions, setEntry }: DetailProps & { artist: Artist }) {
+  const tv = useTvTheme();
   const active = useTvActive(); const { focused, request } = useTvFocus(); const entered = useRef(false);
   const grouping = useSettingsStore(s => s.artistGroupingMode);
   const currentPath = usePlayerStore(s => s.currentTrack?.path);
@@ -73,7 +75,7 @@ export function TvArtist({ artist, nav, actions, setEntry }: DetailProps & { art
     <TvText size={26} weight="semibold" numberOfLines={2} onTextLayout={e => setTitleLines(Math.min(2, e.nativeEvent.lines.length))} style={[box(51, 284, 228), { lineHeight: 30 }]}>{summary.artist}</TvText>
     <TvText size={12} color={tv.muted} style={box(51, 294 + titleLines * 30, 228)}>{summary.album_count} albums · {summary.track_count} tracks</TvText>
     {buttons.map((button, i) => <TvButton key={button.label} id={`action:${i}`} label={button.label} disabled={!playable} onPress={button.run} links={{ up: i ? `action:${i - 1}` : nav, down: i < 2 ? `action:${i + 1}` : undefined, right: first }}
-      style={[box(51, 409 + i * 36, 196, 32), { paddingHorizontal: 12, backgroundColor: i ? 'rgba(124,146,196,.07)' : tv.fill, borderWidth: 1, borderColor: tv.border }]}><TvText color={i ? tv.text : tv.accent}>{button.label}</TvText></TvButton>)}
+      style={[box(51, 409 + i * 36, 196, 32), { paddingHorizontal: 12, backgroundColor: i ? tv.hover : tv.fill, borderWidth: 1, borderColor: tv.border }]}><TvText color={i ? tv.text : tv.accent}>{button.label}</TvText></TvButton>)}
     <View style={[box(307, 76, 594, 30), { flexDirection: 'row', gap: 6 }]}>
       {tabs.map((t, i) => <TvButton key={t} id={`artist-tab:${t}`} label={t === 'releases' ? 'Releases' : t === 'appearances' ? 'Appears on' : 'Artist tracks'} onPress={() => setSection(t)}
         links={{ up: nav, left: i ? `artist-tab:${tabs[i - 1]}` : 'action:0', right: tabs[i + 1] ? `artist-tab:${tabs[i + 1]}` : page.error ? 'artist:retry' : undefined, down: first }}

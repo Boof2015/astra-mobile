@@ -1,12 +1,14 @@
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useRef, useState } from 'react';
 import { findNodeHandle, Keyboard, TextInput, View } from 'react-native';
 import { showTvKeyboard } from '../../modules/astra-tv';
 import { fonts } from '@/theme/typography';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvText } from './TvPrimitives';
+import { box, TvText } from './TvPrimitives';
 
-export function TvNameFlow({ initial, submit, cancel, labels }: { initial?: string; submit: (name: string) => Promise<void>; cancel: () => void;
-  labels?: { eyebrow: string; title: string; description: string; field: string; verb: string } }) {
+export function TvNameFlow({ initial, submit, cancel, labels, allowEmpty = false, secure = false, trim = true, keyboardType = 'default' }: { initial?: string; submit: (name: string) => Promise<void>; cancel: () => void;
+  allowEmpty?: boolean; secure?: boolean; trim?: boolean; keyboardType?: 'default' | 'url'; labels?: { eyebrow: string; title: string; description: string; field: string; verb: string } }) {
+  const tv = useTvTheme();
   const { request, activate } = useTvFocus(); const input = useRef<TextInput>(null); const mounted = useRef(true);
   const [name, setName] = useState(initial ?? ''); const nameRef = useRef(name);
   const [keyboard, setKeyboard] = useState(Keyboard.isVisible()); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -18,15 +20,15 @@ export function TvNameFlow({ initial, submit, cancel, labels }: { initial?: stri
     const frame = requestAnimationFrame(() => input.current?.focus());
     const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboard(true));
     const hidden = Keyboard.addListener('keyboardDidHide', () => {
-      input.current?.blur(); setKeyboard(false); request(nameRef.current.trim() ? 'name:submit' : 'name:cancel');
+      input.current?.blur(); setKeyboard(false); request(allowEmpty || nameRef.current.trim() ? 'name:submit' : 'name:cancel');
     });
     return () => { mounted.current = false; cancelAnimationFrame(frame); shown.remove(); hidden.remove(); };
-  }, [request]);
+  }, [request, allowEmpty]);
   const save = async () => {
     if (submitting.current) return;
-    if (!name.trim()) { setError('Give it a name first'); input.current?.focus(); return; }
+    if (!allowEmpty && !name.trim()) { setError('Give it a name first'); input.current?.focus(); return; }
     submitting.current = true; setBusy(true); setError('');
-    try { await submit(name.trim()); }
+    try { await submit(trim ? name.trim() : name); }
     catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : 'Could not save.'); }
     finally { submitting.current = false; if (mounted.current) setBusy(false); }
   };
@@ -34,17 +36,17 @@ export function TvNameFlow({ initial, submit, cancel, labels }: { initial?: stri
     <TvText mono size={10.5} color={tv.accent} style={[box(200, 112, 560), { letterSpacing: 1.6 }]}>{labels?.eyebrow ?? (initial === undefined ? 'NEW PLAYLIST' : 'RENAME PLAYLIST')}</TvText>
     <TvText size={30} weight="semibold" style={box(200, 140, 560)}>{labels?.title ?? 'Name your playlist'}</TvText>
     <TvText color={tv.muted} style={box(200, 188, 560)}>{labels?.description ?? 'Choose a name for this collection.'}</TvText>
-    <TvButton id="name:field" label={field} links={{ down: name.trim() ? 'name:submit' : 'name:cancel' }} onPress={() => { input.current?.focus(); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }} style={[box(200, 224, 560, 52), { borderRadius: 12, backgroundColor: tv.fill, paddingHorizontal: 16 }]}>
+    <TvButton id="name:field" label={field} links={{ down: allowEmpty || name.trim() ? 'name:submit' : 'name:cancel' }} onPress={() => { input.current?.focus(); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }} style={[box(200, 224, 560, 52), { borderRadius: 12, backgroundColor: tv.fill, paddingHorizontal: 16 }]}>
       <TextInput ref={input} value={name} onChangeText={value => { nameRef.current = value; setName(value); setError(''); }}
         onFocus={() => { activate('name:field'); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }}
         accessibilityLabel={field} placeholder={field} placeholderTextColor={tv.faint} returnKeyType="done" returnKeyLabel={verb} submitBehavior="submit"
-        onSubmitEditing={() => void save()} autoCorrect={false} selectTextOnFocus={initial !== undefined} maxLength={200}
+        onSubmitEditing={() => void save()} autoCorrect={false} autoCapitalize="none" secureTextEntry={secure} keyboardType={keyboardType} selectTextOnFocus={initial !== undefined} maxLength={secure || keyboardType === 'url' ? 2048 : 200}
         style={{ color: tv.text, fontFamily: fonts.sans.regular, fontSize: 19, padding: 0 }} />
     </TvButton>
-    {!!error && <TvText color="#ffb4b4" style={box(200, 288, 560)}>{error}</TvText>}
+    {!!error && <TvText color={tv.danger} style={box(200, 288, 560)}>{error}</TvText>}
     {!keyboard && <View style={box(200, 332, 560, 38)}>
-      <TvButton id="name:submit" label={verb} disabled={!name.trim() || busy} onPress={() => void save()} links={{ up: 'name:field', right: 'name:cancel' }} style={[box(0, 0, 124, 38), { backgroundColor: tv.fill, alignItems: 'center' }]}><TvText color={tv.accent}>{busy ? 'Saving…' : verb}</TvText></TvButton>
-      <TvButton id="name:cancel" label="Cancel" onPress={cancel} links={{ up: 'name:field', left: name.trim() && !busy ? 'name:submit' : undefined }} style={[box(140, 0, 124, 38), { backgroundColor: tv.fill, alignItems: 'center' }]}><TvText>Cancel</TvText></TvButton>
+      <TvButton id="name:submit" label={verb} disabled={(!allowEmpty && !name.trim()) || busy} onPress={() => void save()} links={{ up: 'name:field', right: 'name:cancel' }} style={[box(0, 0, 124, 38), { backgroundColor: tv.fill, alignItems: 'center' }]}><TvText color={tv.accent}>{busy ? 'Saving…' : verb}</TvText></TvButton>
+      <TvButton id="name:cancel" label="Cancel" onPress={cancel} links={{ up: 'name:field', left: (allowEmpty || name.trim()) && !busy ? 'name:submit' : undefined }} style={[box(140, 0, 124, 38), { backgroundColor: tv.fill, alignItems: 'center' }]}><TvText>Cancel</TvText></TvButton>
     </View>}
   </View>;
 }

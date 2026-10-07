@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
 import { trackArtworkThumbSource } from '@/library/artwork';
@@ -5,7 +6,7 @@ import { formatDuration } from '@/lib/format';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 import type { FocusLinks } from './focusGeometry';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvArtwork, TvText } from './TvPrimitives';
+import { box, TvArtwork, TvText } from './TvPrimitives';
 
 /** Stable entry keys and a fixed top let both exchanged rows slide to their new
  * slots. Focus belongs to the row's identity, never to its old numeric slot. */
@@ -14,6 +15,7 @@ export function TvPlaylistRow({ entry, id, optionsId, index, playing, editing, g
   editing: boolean; grabbed: boolean; locked: boolean; links: FocusLinks; optionLinks: FocusLinks;
   enter: (options?: boolean) => void; press: () => void; options: () => void; move: (direction: -1 | 1) => void;
 }) {
+  const tv = useTvTheme();
   const { focused } = useTvFocus();
   const hot = focused === id || focused === optionsId;
   const reduced = useReducedMotion();

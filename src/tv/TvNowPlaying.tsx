@@ -1,3 +1,5 @@
+import { useThemeStore } from '@/stores/themeStore';
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +11,13 @@ import { WaveformSeekBar } from '@/components/WaveformSeekBar';
 import { playerBackdropArtworkSource } from '@/library/artwork';
 import { TvAtmosphere } from './TvAtmosphere';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvArtwork, TvText } from './TvPrimitives';
+import { box, TvArtwork, TvText } from './TvPrimitives';
 
 /** Stage one transport. Lyrics, queue, seeking and the idle presentation are
  * deliberately deferred together; no touch player is mounted underneath. */
 export function TvNowPlaying({ run }: { run: (operation: () => Promise<void>) => void }) {
+  const tv = useTvTheme();
+  const artworkAccent = useThemeStore(s => s.nowPlayingAccentSource === 'cover-art');
   const { request } = useTvFocus();
   const [titleLines, setTitleLines] = useState(1);
   const track = usePlayerStore(s => s.currentTrack);
@@ -30,7 +34,7 @@ export function TvNowPlaying({ run }: { run: (operation: () => Promise<void>) =>
     { id: 'repeat', label: `Repeat ${repeat}`, icon: 'repeat', run: cycleRepeat, active: repeat !== 'none' },
   ];
   return <View style={{ flex: 1, backgroundColor: tv.bg }}>
-    <TvAtmosphere uri={playerBackdropArtworkSource(track)} strength={.9} />
+    <TvAtmosphere uri={artworkAccent ? playerBackdropArtworkSource(track) : null} strength={.9} />
     <TvArtwork uri={track.artworkData} size={220} style={[box(51, 156, 220, 220), { borderRadius: 12 }]} />
     <TvText size={46} weight="semibold" numberOfLines={2} onTextLayout={event => setTitleLines(Math.min(2, event.nativeEvent.lines.length))}
       style={[box(295, 338 - titleLines * 52, 548), { lineHeight: 52 }]}>{track.title}</TvText>
@@ -40,7 +44,7 @@ export function TvNowPlaying({ run }: { run: (operation: () => Promise<void>) =>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} size={18} color={favorite ? tv.accent : tv.text} />
     </TvButton>
     <TvButton id="np:play" label={playing ? 'Pause' : 'Play'} links={{ up: 'np:favorite', down: 'np:previous' }}
-      onPress={() => run(togglePlay)} style={[box(51, 398, 52, 52), { backgroundColor: '#eef2ff', borderRadius: 26, alignItems: 'center' }]} ringStyle={{ borderRadius: 30 }}>
+      onPress={() => run(togglePlay)} style={[box(51, 398, 52, 52), { backgroundColor: tv.strong, borderRadius: 26, alignItems: 'center' }]} ringStyle={{ borderRadius: 30 }}>
       <Ionicons name={playing ? 'pause' : 'play'} size={23} color={tv.bg} />
     </TvButton>
     <View pointerEvents="none" importantForAccessibility="no-hide-descendants" style={box(123, 402, 786, 52)}>
@@ -48,7 +52,7 @@ export function TvNowPlaying({ run }: { run: (operation: () => Promise<void>) =>
     </View>
     {controls.map((control, i) => <TvButton key={control.id} id={`np:${control.id}`} label={control.label}
       links={{ up: 'np:play', left: i ? `np:${controls[i - 1].id}` : undefined, right: i < controls.length - 1 ? `np:${controls[i + 1].id}` : undefined }}
-      onPress={() => run(control.run)} style={[box(51 + i * 48, 470, 38, 38), { backgroundColor: control.active ? tv.fill : 'rgba(124,146,196,.07)', borderRadius: 19, alignItems: 'center' }]} ringStyle={{ borderRadius: 23 }}>
+      onPress={() => run(control.run)} style={[box(51 + i * 48, 470, 38, 38), { backgroundColor: control.active ? tv.fill : tv.hover, borderRadius: 19, alignItems: 'center' }]} ringStyle={{ borderRadius: 23 }}>
       <Ionicons name={control.icon} size={18} color={control.active ? tv.accent : tv.text} />
       {control.id === 'repeat' && repeat === 'one' && <TvText size={8} style={{ position: 'absolute', right: 6, top: 3 }}>1</TvText>}
     </TvButton>)}

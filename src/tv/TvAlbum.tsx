@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
@@ -10,7 +11,7 @@ import { formatDuration } from '@/lib/format';
 import { useTvPage } from './useTvPage';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
 import { TvTrackRow } from './TvBrowse';
-import { box, tv, TvArtwork, TvText, TvMotion, TvViewport } from './TvPrimitives';
+import { box, TvArtwork, TvText, TvMotion, TvViewport } from './TvPrimitives';
 import { anchoredStart, restoredIndex } from './focusGeometry';
 
 const keyOf = (track: DbTrack) => track.path;
@@ -21,6 +22,7 @@ export function TvAlbum({ album, nav, trackMenu, run, setEntry }: {
   run: (operation: () => Promise<void>, success?: string) => void;
   setEntry: (key: string) => void;
 }) {
+  const tv = useTvTheme();
   const { request, focused } = useTvFocus();
   const active = useTvActive(); const entered = useRef(false);
   const read = useCallback((cursor: string | null) => AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(album.identity_key, cursor, 120), [album.identity_key]);
@@ -57,7 +59,7 @@ export function TvAlbum({ album, nav, trackMenu, run, setEntry }: {
     <TvText mono size={10.5} color={tv.muted} style={box(51, 336 + titleLines * 30, 216)}>{page.totalCount || album.track_count} tracks · {formatDuration(page.summary?.total_duration ?? page.items.reduce((sum, track) => sum + track.duration, 0))}</TvText>
     {buttons.map((button, i) => <TvButton key={button.title} id={`action:${i}`} label={button.title} disabled={!page.items.length}
       links={{ up: i ? `action:${i - 1}` : nav, down: i < 2 ? `action:${i + 1}` : undefined, right: content }} onPress={button.action}
-      style={[box(51, 409 + i * 36, 196, 32), { top: 409 + i * 36, paddingHorizontal: 12, backgroundColor: i === 0 ? tv.fill : 'rgba(124,146,196,.07)', borderWidth: 1, borderColor: tv.border }]}>
+      style={[box(51, 409 + i * 36, 196, 32), { top: 409 + i * 36, paddingHorizontal: 12, backgroundColor: i === 0 ? tv.fill : tv.hover, borderWidth: 1, borderColor: tv.border }]}>
       <TvText color={i === 0 ? tv.accent : tv.text}>{button.icon}   {button.title}</TvText>
     </TvButton>)}
     <TvViewport width={626} height={464} topFade={8} style={box(291, 76, 626, 464)}>

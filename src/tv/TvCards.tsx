@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useState, type ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
@@ -10,13 +11,14 @@ import type { Artist } from '@/types/library';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvArtwork, TvText } from './TvPrimitives';
+import { box, TvArtwork, TvText } from './TvPrimitives';
 import type { TvPlaylist } from './tvCollections';
 
 export function TvCard({ id, title, subtitle, art, left, top, links, enter, open }: {
   id: string; title: string; subtitle: string; art: ReactNode; left: number; top: number;
   links: Parameters<typeof TvButton>[0]['links']; enter: () => void; open: () => void;
 }) {
+  const tv = useTvTheme();
   const { focused } = useTvFocus();
   const active = focused === id;
   const reduced = useReducedMotion();
@@ -30,8 +32,9 @@ export function TvCard({ id, title, subtitle, art, left, top, links, enter, open
 }
 
 function Mosaic({ uris, size, icon = 'musical-notes' }: { uris: string[]; size: number; icon?: 'musical-notes' | 'person' | 'heart' }) {
+  const tv = useTvTheme();
   const tiles = uris.length >= 4 ? uris.slice(0, 4) : uris.slice(0, 1);
-  return <View style={{ width: size, height: size, borderRadius: 6, overflow: 'hidden', backgroundColor: icon === 'heart' ? '#273f72' : '#151b29', alignItems: 'center', alignContent: 'center', justifyContent: 'center', flexDirection: 'row', flexWrap: 'wrap' }}>
+  return <View style={{ width: size, height: size, borderRadius: 6, overflow: 'hidden', backgroundColor: icon === 'heart' ? '#273f72' : tv.surface, alignItems: 'center', alignContent: 'center', justifyContent: 'center', flexDirection: 'row', flexWrap: 'wrap' }}>
     {icon === 'heart' && <Svg width={size} height={size} style={StyleSheet.absoluteFill}><Defs><LinearGradient id="heart" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#304e87" /><Stop offset="1" stopColor="#292143" /></LinearGradient></Defs><Rect width={size} height={size} fill="url(#heart)" /></Svg>}
     {tiles.length ? tiles.map((uri, i) => <Image key={`${uri}:${i}`} source={{ uri }} recyclingKey={uri} contentFit="cover" cachePolicy="memory-disk"
       style={{ width: tiles.length === 4 ? size / 2 : size, height: tiles.length === 4 ? size / 2 : size }} />) : <Ionicons name={icon} size={size * .32} color={icon === 'heart' ? tv.accent : tv.faint} />}

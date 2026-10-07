@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
@@ -8,7 +9,7 @@ import type { Album, DbTrack } from '@/types/library';
 import { formatDuration } from '@/lib/format';
 import { restoredIndex, shelfOffset } from './focusGeometry';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvArtwork, TvText, TvMotion, TvViewport } from './TvPrimitives';
+import { box, TvArtwork, TvText, TvMotion, TvViewport } from './TvPrimitives';
 import { TvCard, TvPlaylistArt } from './TvCards';
 import { playlistKey, playlistName, type TvActions, type TvPlaylist as Playlist } from './tvCollections';
 
@@ -24,6 +25,7 @@ export function albumFromTrack(track: DbTrack): Album {
 export function AlbumCard({ album, id, left, top, links, enter, open }: {
   album: Album; id: string; left: number; top: number; links: Parameters<typeof TvButton>[0]['links']; enter: () => void; open: () => void;
 }) {
+  const tv = useTvTheme();
   const { focused } = useTvFocus();
   const active = focused === id;
   const reduced = useReducedMotion();
@@ -39,6 +41,7 @@ export function AlbumCard({ album, id, left, top, links, enter, open }: {
 }
 
 export function TvHome({ actions, setEntry }: { actions: TvActions; setEntry: (key: string) => void }) {
+  const tv = useTvTheme();
   const added = useLibraryStore(s => s.homeAlbums);
   const recentTracks = useLibraryStore(s => s.recentlyPlayedTracks);
   const recent = [...new Map(recentTracks.map(track => [track.album_identity_key, albumFromTrack(track)])).values()];
@@ -88,8 +91,9 @@ export function TvTrackRow({ track, id, optionsId, top, left, width, number, com
   track: DbTrack; id: string; optionsId: string; top: number; left: number; width: number; number?: number; compact?: boolean; secondary?: string; playing: boolean;
   links: Parameters<typeof TvButton>[0]['links']; optionLinks: Parameters<typeof TvButton>[0]['links']; enter: (options?: boolean) => void; play: () => void; options: () => void;
 }) {
+  const tv = useTvTheme();
   const { focused } = useTvFocus(); const hot = focused === id || focused === optionsId;
-  return <View style={[box(left, top, width, 49), { borderRadius: 8, backgroundColor: hot ? 'rgba(124,146,196,.08)' : 'transparent' }]}>
+  return <View style={[box(left, top, width, 49), { borderRadius: 8, backgroundColor: hot ? tv.hover : 'transparent' }]}>
     <TvButton id={id} label={`${track.title}, ${track.artist}`} links={{ ...links, right: optionsId }} onFocus={() => enter(false)} onPress={play}
       style={{ width, height: 49, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       {number === undefined ? <TvArtwork uri={trackArtworkThumbSource(track)} size={34} /> : <TvText mono color={playing ? tv.accent : tv.faint} size={11} style={{ width: 18 }}>{playing ? '▶' : number}</TvText>}

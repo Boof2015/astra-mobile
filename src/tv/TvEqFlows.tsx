@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
@@ -5,10 +6,11 @@ import type { EQPreset } from '@/types/audio';
 import { useEQStore } from '@/stores/eqStore';
 import { formatGain } from '@/components/eq/format';
 import { TvButton, useTvFocus } from './TvFocus';
-import { box, tv, TvText } from './TvPrimitives';
+import { box, TvText } from './TvPrimitives';
 import { TvEqGraph } from './TvEqGraph';
 
 export function TvEqQr({ name, value, close }: { name: string; value: string; close: () => void }) {
+  const tv = useTvTheme();
   const { request } = useTvFocus();
   useEffect(() => { request('eq:flow:done'); }, [request]);
   return <View style={{ flex: 1, backgroundColor: tv.bg }}>
@@ -22,6 +24,7 @@ export function TvEqQr({ name, value, close }: { name: string; value: string; cl
 }
 
 export function TvEqImportPreview({ preset, save, cancel }: { preset: EQPreset; save: () => void; cancel: () => void }) {
+  const tv = useTvTheme();
   const { request } = useTvFocus();
   useEffect(() => { request('eq:flow:import'); }, [request]);
   return <View style={{ flex: 1, backgroundColor: tv.bg }}>
@@ -35,6 +38,7 @@ export function TvEqImportPreview({ preset, save, cancel }: { preset: EQPreset; 
 }
 
 export function TvEqDevices({ preset, close }: { preset: EQPreset; close: () => void }) {
+  const tv = useTvTheme();
   const eq = useEQStore(); const { request, focused } = useTvFocus();
   const [selected, setSelected] = useState(() => new Set(Object.keys(eq.devicePresetAssignments).filter(key => eq.devicePresetAssignments[key] === preset.id)));
   const [deviceIndex, setDeviceIndex] = useState(0);
@@ -53,7 +57,7 @@ export function TvEqDevices({ preset, close }: { preset: EQPreset; close: () => 
         return <TvButton key={device.key} id={`eq:device:${device.key}`} onFocus={() => setDeviceIndex(i)} label={`${name}${device.key === eq.activeOutputRoute?.key ? ', current output' : ''}, ${selected.has(device.key) ? 'selected' : 'not selected'}`}
           links={{ up: i ? `eq:device:${devices[i - 1].key}` : undefined, down: i + 1 < devices.length ? `eq:device:${devices[i + 1].key}` : 'eq:devices:save' }}
           onPress={() => setSelected(previous => { const next = new Set(previous); if (next.has(device.key)) next.delete(device.key); else next.add(device.key); return next; })}
-          style={[box(4, 4 + at * 55, 850, 49), { paddingHorizontal: 14, backgroundColor: focused === `eq:device:${device.key}` ? tv.fill : 'rgba(124,146,196,.05)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+          style={[box(4, 4 + at * 55, 850, 49), { paddingHorizontal: 14, backgroundColor: focused === `eq:device:${device.key}` ? tv.fill : tv.hover, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
           <View><TvText size={15}>{name}{device.key === eq.activeOutputRoute?.key ? ' · Current' : ''}</TvText><TvText size={11.5} color={tv.muted}>{assigned ? `Assigned to ${assigned.name}` : 'No automatic preset'}</TvText></View>
           <TvText size={20} color={selected.has(device.key) ? tv.accent : tv.muted}>{selected.has(device.key) ? '☑' : '□'}</TvText>
         </TvButton>;

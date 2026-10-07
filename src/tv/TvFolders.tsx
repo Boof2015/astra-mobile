@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +8,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { DbTrack } from '@/types/library';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
 import { TvTrackRow } from './TvBrowse';
-import { TvText, TvMotion, TvViewport, box, tv } from './TvPrimitives';
+import { TvText, TvMotion, TvViewport, box } from './TvPrimitives';
 import { useTvPage } from './useTvPage';
 import { anchoredStart, restoredIndex } from './focusGeometry';
 import type { DetailProps, TvActions } from './tvCollections';
@@ -16,6 +17,7 @@ export function TvFolderRow({ node, id, optionsId, top, links, optionLinks, ente
   node: NativeFolderNode; id: string; optionsId: string; top: number; links: Parameters<typeof TvButton>[0]['links']; optionLinks: Parameters<typeof TvButton>[0]['links'];
   enter: (options?: boolean) => void; open: () => void; actions: TvActions; menuTop: number;
 }) {
+  const tv = useTvTheme();
   const { focused } = useTvFocus(); const hot = focused === id || focused === optionsId;
   const query = { kind: 'folder' as const, folderNodeId: node.id };
   const playable = node.available && node.totalTrackCount > 0;
@@ -24,7 +26,7 @@ export function TvFolderRow({ node, id, optionsId, top, links, optionLinks, ente
     { label: 'Shuffle folder', run: () => actions.run(() => playLibraryQuery(query, { shuffle: true, source: { kind: 'folder', label: node.name } })) },
     { label: 'Add folder to queue', run: () => actions.run(() => enqueueLibraryQuery(query, 'end'), 'Folder added to queue') },
   ] });
-  return <View style={[box(51, top, 858, 49), { borderRadius: 8, backgroundColor: hot ? 'rgba(124,146,196,.08)' : 'transparent' }]}>
+  return <View style={[box(51, top, 858, 49), { borderRadius: 8, backgroundColor: hot ? tv.hover : 'transparent' }]}>
     <TvButton id={id} label={`Folder ${node.name}`} links={{ ...links, right: playable ? optionsId : undefined }} onFocus={() => enter(false)} onPress={open}
       style={{ height: 49, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
       <Ionicons name={node.depth === 0 ? 'hardware-chip-outline' : 'folder-outline'} size={25} color={tv.muted} />
@@ -41,6 +43,7 @@ const keyOf = (item: FolderItem) => item.kind === 'folder' ? `node:${item.value.
 const idOf = (item: FolderItem, options = false) => `folder:${keyOf(item)}:${options ? 1 : 0}`;
 
 export function TvFolders({ node, breadcrumb, nav, actions, setEntry }: DetailProps & { node: NativeFolderNode; breadcrumb: string }) {
+  const tv = useTvTheme();
   const active = useTvActive(); const { focused, request } = useTvFocus(); const entered = useRef(false);
   const [memory, setMemory] = useState({ key: '', index: 0, options: false });
   const currentPath = usePlayerStore(s => s.currentTrack?.path);

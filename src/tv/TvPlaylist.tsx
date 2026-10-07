@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
@@ -12,7 +13,7 @@ import { TvPlaylistRow } from './TvPlaylistRow';
 import { useTvBackHandler } from './TvBack';
 import { createPlaylistReorder, type ReorderState } from './playlistReorder';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
-import { box, tv, TvText, TvViewport, TvMotion } from './TvPrimitives';
+import { box, TvText, TvViewport, TvMotion } from './TvPrimitives';
 import { useTvPage } from './useTvPage';
 import { anchoredStart, restoredIndex } from './focusGeometry';
 import { playlistName, playlistQuery, type DetailProps, type TvPlaylist as PlaylistCollection } from './tvCollections';
@@ -21,6 +22,7 @@ const keyOf = (entry: PlaylistTrackEntry) => entry.track_path;
 const idOf = (entry: PlaylistTrackEntry, options = false) => `playlist:item:${entry.track_path}:${options ? 1 : 0}`;
 
 export function TvPlaylist({ playlist: initial, nav, actions, setEntry }: DetailProps & { playlist: PlaylistCollection }) {
+  const tv = useTvTheme();
   const active = useTvActive(); const { focused, request } = useTvFocus(); const entered = useRef(false);
   const playlists = usePlaylistStore(s => s.playlists);
   const favorites = usePlaylistStore(s => s.favoritePaths);
@@ -148,7 +150,7 @@ export function TvPlaylist({ playlist: initial, nav, actions, setEntry }: Detail
     <TvText size={12} color={tv.muted} style={box(51, 324, 228)}>{page.totalCount} tracks{!page.nextCursor && page.items.length ? ` · ${formatDuration(page.items.reduce((sum, entry) => sum + (entry.track?.duration ?? 0), 0))}` : ''}</TvText>
     <TvText mono size={10.5} color={tv.muted} style={box(51, 346, 228)}>{playlist === 'favorites' ? 'YOUR LIKED TRACKS' : `UPDATED ${new Date(playlist.updated_at).toLocaleDateString()}`}</TvText>
     {buttons.map((button, i) => <TvButton key={button.label} id={`action:${i}`} label={button.label} disabled={!playable || !!reorder} onPress={button.run} links={{ up: i ? `action:${i - 1}` : nav, down: i < 2 ? `action:${i + 1}` : hasOptions ? 'playlist:options' : undefined, right: first }}
-      style={[box(51, (hasOptions ? 373 : 409) + i * 36, 196, 32), { paddingHorizontal: 12, backgroundColor: i ? 'rgba(124,146,196,.07)' : tv.fill, borderWidth: 1, borderColor: tv.border }]}><TvText color={i ? tv.text : tv.accent}>{button.label}</TvText></TvButton>)}
+      style={[box(51, (hasOptions ? 373 : 409) + i * 36, 196, 32), { paddingHorizontal: 12, backgroundColor: i ? tv.hover : tv.fill, borderWidth: 1, borderColor: tv.border }]}><TvText color={i ? tv.text : tv.accent}>{button.label}</TvText></TvButton>)}
     {hasOptions && <TvButton id="playlist:options" label="Playlist options" disabled={!!reorder} onPress={options} links={{ up: playable ? 'action:2' : nav, right: page.error ? 'playlist:retry' : first }} style={[box(51, 481, 196, 32), { paddingHorizontal: 12, backgroundColor: tv.fill }]}><TvText>Playlist options</TvText></TvButton>}
     {!!page.error && <TvButton id="playlist:retry" label="Try again" onPress={page.retry} links={{ left: fallback, up: nav, down: first }} style={[box(299, 76, 140, 30), { backgroundColor: tv.fill, paddingHorizontal: 12 }]}><TvText>Try again</TvText></TvButton>}
     <TvViewport width={626} height={reorder ? 410 : page.error ? 428 : 464} topFade={8} bottomFade={reorder ? 24 : 46} style={box(291, !reorder && page.error ? 112 : 76, 626, reorder ? 410 : page.error ? 428 : 464)}>
@@ -171,7 +173,7 @@ export function TvPlaylist({ playlist: initial, nav, actions, setEntry }: Detail
         })}
       </TvMotion>
     </TvViewport>
-    {!!reorder && <View style={[box(307, 484, 602, 34), { borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: 'rgba(13,17,30,.94)', borderWidth: 1, borderColor: 'rgba(124,146,196,.28)' }]}>
+    {!!reorder && <View style={[box(307, 484, 602, 34), { borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: tv.panel, borderWidth: 1, borderColor: 'rgba(124,146,196,.28)' }]}>
       <TvText size={12} weight="semibold" color={tv.accent}>{reorder.finishing ? 'Saving…' : 'Reordering'}</TvText>
       <TvText size={12} color={tv.muted}><TvText size={12} weight="semibold">OK</TvText> pick up / drop</TvText>
       <TvText size={12} color={tv.muted}><TvText size={12} weight="semibold">▲ ▼</TvText> move</TvText>

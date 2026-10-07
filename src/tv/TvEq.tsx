@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,14 +12,14 @@ import { buildGraphicBands, GRAPHIC_BANDS } from '@/audio/graphicEq';
 import { genEqId } from '@/audio/eqPresets';
 import { parseAutoEQ } from '@/audio/autoEQParser';
 import { encodeEQPresetQr, parseEQPresetFileContents } from '@/audio/eqShare';
-import { bandColor, bandColorName, BAND_COLOR_NAMES, DARK_PALETTE } from '@/components/eq/bandColors';
+import { bandColor, bandColorName, BAND_COLOR_NAMES, useBandPalette } from '@/components/eq/bandColors';
 import { BAND_TYPE_LABEL, formatFreqHz, formatGain } from '@/components/eq/format';
 import { TvButton, TvFocusRegion, useTvActive, useTvFocus } from './TvFocus';
 import { TvNameFlow } from './TvNameFlow';
 import { TvEqDevices, TvEqImportPreview, TvEqQr } from './TvEqFlows';
 import { TvEqGraph } from './TvEqGraph';
 import { useTvBackHandler } from './TvBack';
-import { box, tv, TvText } from './TvPrimitives';
+import { box, TvText } from './TvPrimitives';
 import { stepEqBand, stepEqPreamp, stepEqQ, stepEqSlider, type EqDirection } from './eqInteraction';
 import type { TvActions } from './tvCollections';
 import type { TvMenuItem } from './TvPanel';
@@ -31,14 +32,16 @@ const bandId = (id: string) => `eq:band:${id}`;
 const sliderId = (index: number) => `eq:slider:${index}`;
 const sets = ['type', 'q', 'color', 'enabled', 'remove'] as const;
 const grabbedId = (grab: Grab) => grab.kind === 'band' ? bandId(grab.id) : grab.kind === 'q' ? 'eq:set:q' : grab.kind === 'slider' ? sliderId(grab.index) : toolId('preamp');
-const control = { height: 34, borderRadius: 9, paddingHorizontal: 13, borderWidth: 1, borderColor: tv.border, backgroundColor: 'rgba(124,146,196,.06)', flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 };
-const heldStyle = { borderColor: tv.accent, backgroundColor: 'rgba(169,192,255,.14)' };
 
 function Toggle({ on }: { on: boolean }) {
-  return <View style={{ width: 29, height: 16, borderRadius: 9, backgroundColor: on ? tv.accent : '#323b4f', padding: 2, alignItems: on ? 'flex-end' : 'flex-start' }}><View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: on ? '#111725' : tv.muted }} /></View>;
+  const tv = useTvTheme();
+  return <View style={{ width: 29, height: 16, borderRadius: 9, backgroundColor: on ? tv.accent : '#323b4f', padding: 2, alignItems: on ? 'flex-end' : 'flex-start' }}><View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: on ? tv.surface : tv.muted }} /></View>;
 }
 
 export function TvEq({ actions, setImmersive }: { actions: TvActions; setImmersive: (value: boolean) => void }) {
+  const tv = useTvTheme(); const palette = useBandPalette();
+  const control = { height: 34, borderRadius: 9, paddingHorizontal: 13, borderWidth: 1, borderColor: tv.border, backgroundColor: 'rgba(124,146,196,.06)', flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 };
+  const heldStyle = { borderColor: tv.accent, backgroundColor: 'rgba(169,192,255,.14)' };
   const eq = useEQStore(); const active = useTvActive(); const { focused, request } = useTvFocus();
   const [grab, setGrab] = useState<Grab | null>(null);
   const [flow, setFlow] = useState<Flow | null>(null); const flowSequence = useRef(0);
@@ -140,12 +143,12 @@ export function TvEq({ actions, setImmersive }: { actions: TvActions; setImmersi
       panel('Filter type', types.map(type => ({ label: BAND_TYPE_LABEL[type], selected: selected.type === type, run: () => eq.updateBand(selected.id, { type, ...(isPassEQBandType(type) ? { gain: 0, Q: EQ_PASS_FILTER_DEFAULT_Q } : {}) }) })), 'eq:set:type', 125, 164, types.indexOf(selected.type));
     }, content: <><TvText color={tv.muted}>Type</TvText><TvText>{BAND_TYPE_LABEL[selected.type]}</TvText></> },
     { key: 'q', label: `Q, ${selected.Q.toFixed(2)}`, width: 116, run: () => setGrab(grab ? null : { kind: 'q', id: selected.id }), content: <><TvText color={tv.muted}>Q</TvText><TvText mono color={grab?.kind === 'q' ? tv.accent : tv.text}>{grab?.kind === 'q' ? '◀ ' : ''}{selected.Q.toFixed(2)}{grab?.kind === 'q' ? ' ▶' : ''}</TvText></> },
-    { key: 'color', label: `Band color, ${bandColorName(selected)}`, width: 98, run: () => panel('Band color', BAND_COLOR_NAMES.map((label, color) => ({ label, swatch: DARK_PALETTE.colors[color], selected: selected.color === color, run: () => eq.setBandColor(selected.id, color) })), 'eq:set:color', 440, 76, typeof selected.color === 'number' ? selected.color : 0), content: <><TvText color={tv.muted}>Color</TvText><View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: bandColor(DARK_PALETTE, selected) }} /></> },
+    { key: 'color', label: `Band color, ${bandColorName(selected)}`, width: 98, run: () => panel('Band color', BAND_COLOR_NAMES.map((label, color) => ({ label, swatch: palette.colors[color], selected: selected.color === color, run: () => eq.setBandColor(selected.id, color) })), 'eq:set:color', 440, 76, typeof selected.color === 'number' ? selected.color : 0), content: <><TvText color={tv.muted}>Color</TvText><View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: bandColor(palette, selected) }} /></> },
     { key: 'enabled', label: `Band ${selected.enabled ? 'on' : 'off'}`, width: 96, run: () => eq.updateBand(selected.id, { enabled: !selected.enabled }), content: <><TvText color={tv.muted}>Band</TvText><Toggle on={selected.enabled} /></> },
     { key: 'remove', label: 'Remove band', width: 104, disabled: eq.bands.length <= 1, run: () => {
       const next = eq.bands[index + 1] ?? eq.bands[index - 1];
       if (next) { eq.removeBand(selected.id); eq.selectBand(next.id); request(bandId(next.id)); }
-    }, content: <><Ionicons name="trash-outline" size={14} color="#ff9a9a" /><TvText color="#ff9a9a">Remove</TvText></> },
+    }, content: <><Ionicons name="trash-outline" size={14} color={tv.danger} /><TvText color={tv.danger}>Remove</TvText></> },
   ] : [];
   const graphSelection = parametric ? focused.startsWith('eq:band:') || focused.startsWith('eq:set:') || focused.startsWith('menu:') && menuOrigin.startsWith('eq:set:') ? selected?.id ?? null : null
     : focused.startsWith('eq:slider:') ? graphicBands[slider].id : null;
@@ -199,8 +202,8 @@ export function TvEq({ actions, setImmersive }: { actions: TvActions; setImmersi
         {eq.bands.map((band, i) => <TvButton key={band.id} id={bandId(band.id)} label={`Band ${i + 1}, ${formatFreqHz(band.frequency)}, ${formatGain(band.gain)} dB${band.enabled ? '' : ', off'}`}
           onFocus={() => eq.selectBand(band.id)} onPress={() => setGrab(grab ? null : { kind: 'band', id: band.id })} onDirection={grab?.kind === 'band' && grab.id === band.id ? edit : undefined}
           links={{ left: i ? bandId(eq.bands[i - 1].id) : undefined, right: i + 1 < eq.bands.length ? bandId(eq.bands[i + 1].id) : eq.bands.length < EQ_MAX_BANDS ? 'eq:add' : undefined, up: toolId(lastTool), down: `eq:set:${lastSet === 'remove' && eq.bands.length <= 1 ? 'type' : lastSet}` }}
-          style={[box(51 + i * 78, 344, 72, 52), { borderRadius: 9, paddingLeft: 12, borderWidth: 1, borderColor: tv.border, backgroundColor: 'rgba(124,146,196,.08)' }, grab?.kind === 'band' && grab.id === band.id && heldStyle]}>
-          <View style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 2, backgroundColor: bandColor(DARK_PALETTE, band), opacity: band.enabled ? 1 : .45 }} />
+          style={[box(51 + i * 78, 344, 72, 52), { borderRadius: 9, paddingLeft: 12, borderWidth: 1, borderColor: tv.border, backgroundColor: tv.hover }, grab?.kind === 'band' && grab.id === band.id && heldStyle]}>
+          <View style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 2, backgroundColor: bandColor(palette, band), opacity: band.enabled ? 1 : .45 }} />
           <TvText mono size={12.5} color={band.enabled ? tv.caption : tv.faint}>{formatFreqHz(band.frequency).replace(' Hz', '').replace(' kHz', 'k')}</TvText>
           <TvText mono size={11} color={band.enabled ? tv.muted : tv.faint} style={{ marginTop: 4 }}>{isPassEQBandType(band.type) ? '—' : formatGain(band.gain)}</TvText>
         </TvButton>)}
@@ -213,10 +216,10 @@ export function TvEq({ actions, setImmersive }: { actions: TvActions; setImmersi
             style={[control, { width: setting.width }, grab?.kind === 'q' && setting.key === 'q' && heldStyle]}>{setting.content}</TvButton>)}
         </View>}
       </> : GRAPHIC_BANDS.map((band, i) => {
-        const gain = eq.graphicGains[i]; const y = 88 - gain / 12 * 50; const held = grab?.kind === 'slider' && grab.index === i; const color = DARK_PALETTE.colors[i];
+        const gain = eq.graphicGains[i]; const y = 88 - gain / 12 * 50; const held = grab?.kind === 'slider' && grab.index === i; const color = palette.colors[i];
         return <TvButton key={band.key} id={sliderId(i)} label={`${band.label}, ${formatFreqHz(band.frequency)}, ${formatGain(gain)} dB`} onFocus={() => setSlider(i)} onPress={() => setGrab(grab ? null : { kind: 'slider', index: i })} onDirection={held ? edit : undefined}
           links={{ left: i ? sliderId(i - 1) : undefined, right: i + 1 < GRAPHIC_BANDS.length ? sliderId(i + 1) : undefined, up: toolId(lastTool) }}
-          style={[box(76.8 + i * 171.6, 280, 120, 186), { borderRadius: 14, backgroundColor: held ? 'rgba(169,192,255,.12)' : focused === sliderId(i) ? 'rgba(124,146,196,.08)' : 'transparent' }]} ringStyle={{ top: 0, bottom: 0, left: 0, right: 0, borderRadius: 14 }}>
+          style={[box(76.8 + i * 171.6, 280, 120, 186), { borderRadius: 14, backgroundColor: held ? 'rgba(169,192,255,.12)' : focused === sliderId(i) ? tv.hover : 'transparent' }]} ringStyle={{ top: 0, bottom: 0, left: 0, right: 0, borderRadius: 14 }}>
           <TvText mono size={13} style={[box(0, 12, 120), { textAlign: 'center' }]}>{formatGain(gain)}</TvText>
           <View style={[box(58, 38, 4, 100), { borderRadius: 2, backgroundColor: 'rgba(124,146,196,.2)' }]} />
           <View style={[box(48, 88, 24, 1), { backgroundColor: tv.border }]} />

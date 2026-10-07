@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +17,7 @@ import { TvButton, TvVerticalHoldContext, useTvActive, useTvFocus } from './TvFo
 import { TvCard, TvArtistArt, TvPlaylistArt } from './TvCards';
 import { TvTrackRow } from './TvBrowse';
 import { TvFolderRow } from './TvFolders';
-import { box, tv, TvArtwork, TvText, TvViewport, TvMotion } from './TvPrimitives';
+import { box, TvArtwork, TvText, TvViewport, TvMotion } from './TvPrimitives';
 import { useTvPage, type TvPage } from './useTvPage';
 import { gridNeighbor, anchoredStart, restoredIndex } from './focusGeometry';
 import { playlistKey, playlistName, type TvPlaylist, type TvActions } from './tvCollections';
@@ -35,6 +36,7 @@ const keyOf = (item: Item): string => item.kind === 'album' ? `album:${item.valu
 const idOf = (item: Item, options = false) => `library:${keyOf(item)}:${options ? 1 : 0}`;
 
 export function TvLibrary({ actions, setEntry }: { actions: TvActions; setEntry: (id: string) => void }) {
+  const tv = useTvTheme();
   const active = useTvActive();
   const { focused, request } = useTvFocus();
   const [section, setSection] = useState<Section>('albums');
@@ -173,11 +175,12 @@ export function TvLibrary({ actions, setEntry }: { actions: TvActions; setEntry:
 }
 
 function LetterBadge({ label }: { label: string | null }) {
+  const tv = useTvTheme();
   const [lastLabel, setLastLabel] = useState('');
   if (label && label !== lastLabel) setLastLabel(label);
   const reduced = useReducedMotion();
   const animated = useAnimatedStyle(() => ({ opacity: withTiming(label ? 1 : 0, { duration: reduced ? 0 : 160 }) }));
-  return <Animated.View pointerEvents="none" style={[box(442, 268, 76, 76), { borderRadius: 18, backgroundColor: 'rgba(13,17,30,.9)', borderWidth: 1, borderColor: 'rgba(124,146,196,.28)', alignItems: 'center', justifyContent: 'center', elevation: 12 }, animated]}>
+  return <Animated.View pointerEvents="none" style={[box(442, 268, 76, 76), { borderRadius: 18, backgroundColor: tv.panel, borderWidth: 1, borderColor: 'rgba(124,146,196,.28)', alignItems: 'center', justifyContent: 'center', elevation: 12 }, animated]}>
     <TvText size={38} weight="semibold" color={tv.strong}>{label ?? lastLabel}</TvText>
   </Animated.View>;
 }

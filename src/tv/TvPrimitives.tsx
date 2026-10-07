@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useWindowDimensions, View, Text, StyleSheet, type TextProps, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { useMemo, type ReactNode } from 'react';
@@ -7,24 +8,26 @@ import Animated, { Easing, useAnimatedStyle, useReducedMotion, withTiming } from
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { fonts } from '@/theme/typography';
 
-export const tv = { bg: '#080a0f', text: '#e2e8f4', strong: '#f6f8fd', muted: '#8a98b8', faint: '#52607f', caption: '#c9d1e1', accent: '#a9c0ff', fill: 'rgba(124,146,196,.17)', border: 'rgba(124,146,196,.16)' };
 export const box = (left: number, top: number, width: number, height?: number): Pick<ViewStyle, 'position' | 'left' | 'top' | 'width' | 'height'> => ({ position: 'absolute', left, top, width, ...(height === undefined ? {} : { height }) });
 
 export function TvFrame({ children }: { children: ReactNode }) {
+  const tv = useTvTheme();
   const { width, height } = useWindowDimensions();
   const scale = Math.min(width / 960, height / 540);
   return <View style={{ flex: 1, backgroundColor: tv.bg }}><View style={{ position: 'absolute', width: 960, height: 540,
     left: (width - 960) / 2, top: (height - 540) / 2, transform: [{ scale }], overflow: 'hidden' }}>{children}</View></View>;
 }
 
-export function TvText({ size = 13, color = tv.text, weight = 'regular', mono = false, style, ...props }: TextProps & {
+export function TvText({ size = 13, color, weight = 'regular', mono = false, style, ...props }: TextProps & {
   size?: number; color?: string; weight?: keyof typeof fonts.sans; mono?: boolean;
 }) {
-  return <Text {...props} allowFontScaling={false} style={[{ fontFamily: mono ? fonts.mono.regular : fonts.sans[weight], fontSize: size, lineHeight: Math.ceil(size * 1.3), color, includeFontPadding: false }, style]} />;
+  const tv = useTvTheme();
+  return <Text {...props} allowFontScaling={false} style={[{ fontFamily: mono ? fonts.mono.regular : fonts.sans[weight], fontSize: size, lineHeight: Math.ceil(size * 1.3), color: color ?? tv.text, includeFontPadding: false }, style]} />;
 }
 
 export function TvArtwork({ uri, size, style }: { uri: string | null | undefined; size: number; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ width: size, height: size, borderRadius: 6, overflow: 'hidden', backgroundColor: '#151b29', alignItems: 'center', justifyContent: 'center' }, style]}>
+  const tv = useTvTheme();
+  return <View style={[{ width: size, height: size, borderRadius: 6, overflow: 'hidden', backgroundColor: tv.surface, alignItems: 'center', justifyContent: 'center' }, style]}>
     {uri ? <Image source={{ uri }} recyclingKey={uri} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" allowDownscaling /> : <Ionicons name="musical-notes" size={size * 0.3} color={tv.faint} />}
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,.08)' }]} />
   </View>;

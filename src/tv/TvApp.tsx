@@ -1,3 +1,4 @@
+import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Keyboard, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { TvHome, albumFromTrack } from './TvBrowse';
 import { TvLibrary } from './TvLibrary';
 import { TvSearch } from './TvSearch';
 import { TvEq } from './TvEq';
+import { TvSettings } from './TvSettings';
 import { TvAlbum } from './TvAlbum';
 import { TvArtist } from './TvArtist';
 import { TvPlaylist } from './TvPlaylist';
@@ -26,7 +28,7 @@ import type { TvActions, TvDetail, TrackMenu } from './tvCollections';
 import { TvNowPlaying } from './TvNowPlaying';
 import { TvPanel, type TvMenu } from './TvPanel';
 import { TvAtmosphere } from './TvAtmosphere';
-import { box, tv, TvFrame, TvArtwork, TvText } from './TvPrimitives';
+import { box, TvFrame, TvArtwork, TvText } from './TvPrimitives';
 import { TvBackProvider, useTvBack } from './TvBack';
 
 export function TvApp() {
@@ -34,10 +36,13 @@ export function TvApp() {
 }
 
 function TvShell() {
+  const tv = useTvTheme();
   const { focused, request } = useTvFocus();
   const { handle: localBack } = useTvBack();
-  const [page, setPage] = useState<'home' | 'library' | 'search' | 'eq'>('home');
+  const [page, setPage] = useState<'home' | 'library' | 'search' | 'eq' | 'settings'>('home');
   const [eqImmersive, setEqImmersive] = useState(false);
+  const [settingsImmersive, setSettingsImmersive] = useState(false);
+  const [settingsEntry, setSettingsEntry] = useState('settings:section:0');
   const [history, setHistory] = useState<{ scope: string; route: TvDetail; opener: string }[]>([]);
   const detail = history.at(-1);
   const sequence = useRef(0);
@@ -140,44 +145,45 @@ function TvShell() {
     namingId.current = null; Keyboard.dismiss(); setNaming(null);
     if (naming.playlist) request(naming.opener);
   };
-  const enter = detail ? detailEntry : page === 'home' ? homeEntry : page === 'library' ? libraryEntry : page === 'eq' ? 'eq:tool:parametric' : searchEntry;
+  const enter = detail ? detailEntry : page === 'home' ? homeEntry : page === 'library' ? libraryEntry : page === 'eq' ? 'eq:tool:parametric' : page === 'settings' ? settingsEntry : searchEntry;
   const route = detail?.route;
   const detailArt = route?.kind === 'album' ? artworkThumbFromSource(albumArtworkSource(route.album))
     : route?.kind === 'artist' ? route.artist.artwork_hash && artworkUri(route.artist.artwork_hash)
     : route?.kind === 'playlist' && route.playlist !== 'favorites' ? route.playlist.auto_cover_hash && artworkUri(route.playlist.auto_cover_hash) : null;
   return <>
-    <TvAtmosphere uri={detail ? detailArt : light} strength={detail ? .5 : page === 'home' ? .4 : page === 'search' && !light ? .34 : .3} />
+    <TvAtmosphere uri={detail ? detailArt : light} strength={detail ? .5 : page === 'home' ? .4 : page === 'settings' || page === 'eq' || page === 'search' && !light ? .34 : .3} />
     <TvFocusRegion enabled={!menu && !nowPlaying && !detail && !naming}>
       <View style={[StyleSheet.absoluteFill, { display: detail || nowPlaying ? 'none' : 'flex' }]}>
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'home'}><View style={[StyleSheet.absoluteFill, { display: page === 'home' ? 'flex' : 'none' }]}><TvHome actions={actions} setEntry={setHomeEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'library'}><View style={[StyleSheet.absoluteFill, { display: page === 'library' ? 'flex' : 'none' }]}><TvLibrary actions={actions} setEntry={setLibraryEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={page === 'search'}><View style={[StyleSheet.absoluteFill, { display: page === 'search' ? 'flex' : 'none' }]}><TvSearch actions={actions} setEntry={setSearchEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={page === 'eq'}><View style={[StyleSheet.absoluteFill, { display: page === 'eq' ? 'flex' : 'none' }]}><TvEq actions={actions} setImmersive={setEqImmersive} /></View></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'settings'}><View style={[StyleSheet.absoluteFill, { display: page === 'settings' ? 'flex' : 'none' }]}><TvSettings actions={actions} setEntry={setSettingsEntry} setImmersive={setSettingsImmersive} /></View></TvFocusRegion>
       </View>
     </TvFocusRegion>
     {history.map(entry => <TvFocusRegion key={entry.scope} enabled={entry === detail && !menu && !nowPlaying && !naming}><View style={[StyleSheet.absoluteFill, { display: entry === detail && !nowPlaying ? 'flex' : 'none' }]}>
       <TvFocusScope scope={entry.scope}><DetailPage route={entry.route} scope={entry.scope} nav={`nav:${page}`} actions={actions} setEntry={setDetailEntry} /></TvFocusScope>
     </View></TvFocusRegion>)}
-    {!nowPlaying && !naming && !eqImmersive && <TvFocusRegion enabled={!menu}>
+    {!nowPlaying && !naming && !eqImmersive && !settingsImmersive && <TvFocusRegion enabled={!menu}>
       <View style={[box(51, 27, 858, 30), { flexDirection: 'row', alignItems: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginRight: 26 }}><AstraLogo size={22} color="#00b3ff" /><TvText size={15} weight="semibold" style={{ letterSpacing: 3.3 }}>ASTRA</TvText></View>
         {['Home', 'Library', 'Search', 'EQ', 'Settings'].map(label => {
-          const key = label.toLowerCase(); const enabled = key === 'home' || key === 'library' || key === 'search' || key === 'eq';
-          return <TvButton key={key} id={`nav:${key}`} label={label} disabled={!enabled}
-            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : key === 'search' ? 'nav:library' : key === 'eq' ? 'nav:search' : undefined, right: key === 'home' ? 'nav:library' : key === 'library' ? 'nav:search' : key === 'search' ? 'nav:eq' : track ? 'nav:playing' : undefined }}
+          const key = label.toLowerCase();
+          return <TvButton key={key} id={`nav:${key}`} label={label}
+            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : key === 'search' ? 'nav:library' : key === 'eq' ? 'nav:search' : key === 'settings' ? 'nav:eq' : undefined, right: key === 'home' ? 'nav:library' : key === 'library' ? 'nav:search' : key === 'search' ? 'nav:eq' : key === 'eq' ? 'nav:settings' : track ? 'nav:playing' : undefined }}
             style={{ height: 30, paddingHorizontal: 12, marginRight: 4, backgroundColor: page === key ? tv.fill : 'transparent' }}>
             <TvText size={16.5} weight="medium" color={page === key ? tv.text : tv.muted}>{label}</TvText>
           </TvButton>;
         })}
-        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:eq', down: enter }}
-          style={{ height: 40, marginLeft: 'auto', paddingLeft: 5, paddingRight: 12, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1, borderColor: tv.border, borderRadius: 11, backgroundColor: '#111725', maxWidth: 222 }}>
+        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:settings', down: enter }}
+          style={{ height: 40, marginLeft: 'auto', paddingLeft: 5, paddingRight: 12, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1, borderColor: tv.border, borderRadius: 11, backgroundColor: tv.surface, maxWidth: 222 }}>
           <TvArtwork uri={track.artworkData} size={30} /><View style={{ maxWidth: 136 }}><TvText size={13.5} weight="semibold" numberOfLines={1}>{track.title}</TvText><TvText size={12} color={tv.muted} numberOfLines={1}>{track.artist}</TvText></View><PlayingMark />
         </TvButton>}
       </View>
     </TvFocusRegion>}
     {nowPlaying && <TvNowPlaying run={run} />}
     {naming && <View style={StyleSheet.absoluteFill}><TvNameFlow key={naming.id} initial={naming.playlist?.name} submit={submitName} cancel={cancelNaming} /></View>}
-    {!!message && <View pointerEvents="none" style={[box(270, 482, 420, 38), { borderRadius: 8, backgroundColor: '#20283b', alignItems: 'center', justifyContent: 'center' }]}><TvText numberOfLines={2}>{message}</TvText></View>}
+    {!!message && <View pointerEvents="none" style={[box(270, 482, 420, 38), { borderRadius: 8, backgroundColor: tv.surface, alignItems: 'center', justifyContent: 'center' }]}><TvText numberOfLines={2}>{message}</TvText></View>}
     {menu && <TvPanel menu={menu} close={closeMenu} />}
   </>;
 }
@@ -197,6 +203,7 @@ function DetailPage({ route, scope, nav, actions, setEntry }: { route: TvDetail;
 }
 
 function PlayingMark() {
+  const tv = useTvTheme();
   const playing = usePlayerStore(s => s.playbackState === 'playing');
   return <Ionicons name={playing ? 'stats-chart' : 'pause'} size={13} color={tv.accent} />;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -7,9 +7,9 @@ import { ArtworkAccentCache } from '@/theme/artworkAccentCache';
 import { rgbToOklab } from '@/theme/adaptiveAccent';
 import { hexToRgb } from '@/theme/colorUtils';
 import { oklchToHex } from '@/theme/artworkField';
+import { useTvTheme } from './useTvTheme';
 
 const cache = new ArtworkAccentCache<string[]>(128);
-const neutral = ['#111726', '#161322', '#11202a'];
 const falloff = [[0, 1], [.18, .78], [.36, .5], [.56, .25], [.76, .08], [1, 0]];
 
 function Field({ colors }: { colors: string[] }) {
@@ -25,6 +25,12 @@ function Field({ colors }: { colors: string[] }) {
 }
 
 export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; strength?: number }) {
+  const tv = useTvTheme();
+  const neutral = useMemo(() => {
+    const { r, g, b } = hexToRgb(tv.accent); const lab = rgbToOklab(r, g, b);
+    const hue = Math.atan2(lab.b, lab.a) * 180 / Math.PI;
+    return (tv.dark ? [.3, .27, .33] : [.87, .9, .84]).map((l, i) => oklchToHex(l, .035, hue + [0, 14, -12][i]));
+  }, [tv.accent, tv.dark]);
   const reduced = useReducedMotion();
   const [layers, setLayers] = useState<[string[], string[]]>([neutral, neutral]);
   const [front, setFront] = useState(0);
@@ -36,16 +42,17 @@ export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; stren
       void (async () => {
         let colors = neutral;
         if (uri) {
-          const hit = cache.get(uri);
+          const key = `${tv.dark}:${uri}`;
+          const hit = cache.get(key);
           if (hit.found) colors = hit.value ?? neutral;
           else {
             const result = await extractArtworkColors(uri, null, true);
             if (result?.field && !result.field.neutral) colors = result.field.colors.map((hex, i) => {
               const { r, g, b } = hexToRgb(hex);
               const lab = rgbToOklab(r, g, b);
-              return oklchToHex([.42, .37, .46][i], Math.min(.13, Math.hypot(lab.a, lab.b) * .85 / .95), Math.atan2(lab.b, lab.a) * 180 / Math.PI);
+              return oklchToHex((tv.dark ? [.42, .37, .46] : [.83, .88, .8])[i], Math.min(.13, Math.hypot(lab.a, lab.b) * .85 / .95), Math.atan2(lab.b, lab.a) * 180 / Math.PI);
             });
-            cache.set(uri, colors);
+            cache.set(key, colors);
           }
         }
         if (cancelled) return;
@@ -55,7 +62,7 @@ export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; stren
       })();
     }, 280);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [uri]);
+  }, [uri, neutral, tv.dark]);
   useEffect(() => {
     Animated.timing(opacity, { toValue: front, duration: reduced ? 0 : 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     return () => opacity.stopAnimation();

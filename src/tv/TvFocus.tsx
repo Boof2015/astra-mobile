@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { findNodeHandle, Pressable, StyleSheet, View, type StyleProp, type ViewStyle, type ViewProps } from 'react-native';
 import type { FocusLinks } from './focusGeometry';
 import { captureTvDirections, captureTvVertical, setTvVerticalHold, type TvDirection } from '../../modules/astra-tv';
+import { useTvTheme } from './useTvTheme';
 
 type Entry = { node: View; links: FocusLinks };
 type FocusContext = {
@@ -90,6 +91,7 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
   onVertical?: (direction: 'up' | 'down') => void;
   onDirection?: (direction: TvDirection) => void;
 }) {
+  const tv = useTvTheme();
   const { focused, register, activate } = useTvFocus();
   const enabled = useContext(EnabledContext) && !disabled;
   const verticalHold = useContext(TvVerticalHoldContext) && enabled;
@@ -122,7 +124,7 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
       }}
       style={[styles.button, style, disabled && styles.disabled]}>
       {children}
-      {enabled && focused === id && <View pointerEvents="none" style={[styles.ring, ringStyle]} />}
+      {enabled && focused === id && <View pointerEvents="none" style={[styles.ring, { borderColor: tv.focus }, ringStyle]} />}
     </Pressable>
   );
 }
