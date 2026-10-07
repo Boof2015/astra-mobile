@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import type { Album, DbTrack } from '@/types/library';
@@ -8,7 +8,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { enqueueLibraryQuery, playLibraryQuery } from '@/audio/playbackController';
 import { formatDuration } from '@/lib/format';
 import { useTvPage } from './useTvPage';
-import { TvButton, useTvFocus } from './TvFocus';
+import { TvButton, useTvActive, useTvFocus } from './TvFocus';
 import { TvTrackRow } from './TvBrowse';
 import { box, tv, TvArtwork, TvText, TvMotion, TvViewport } from './TvPrimitives';
 import { anchoredStart, restoredIndex } from './focusGeometry';
@@ -22,6 +22,7 @@ export function TvAlbum({ album, nav, trackMenu, run, setEntry }: {
   setEntry: (key: string) => void;
 }) {
   const { request, focused } = useTvFocus();
+  const active = useTvActive(); const entered = useRef(false);
   const read = useCallback((cursor: string | null) => AstraLibraryData.getAlbumDetail<DbTrack, NativeAlbumSummary>(album.identity_key, cursor, 120), [album.identity_key]);
   const page = useTvPage(read, keyOf);
   const [memory, setMemory] = useState({ key: '', index: 0 });
@@ -30,17 +31,16 @@ export function TvAlbum({ album, nav, trackMenu, run, setEntry }: {
   const index = restoredIndex(page.items.map(keyOf), memory.key || currentPath, memory.index);
   const start = anchoredStart(index, page.items.length, 8, 3);
   const content = page.items[index] ? idOf(page.items[index]) : 'action:0';
-  useEffect(() => { request('action:0'); }, [request]);
   const entry = page.items.length ? 'action:0' : page.error ? 'album:retry' : nav;
-  useEffect(() => { setEntry(entry); }, [entry, setEntry]);
-  useEffect(() => { if (!page.loading && !page.items.length) request(entry); }, [page.loading, page.items.length, entry, request]);
+  useEffect(() => { if (active) setEntry(entry); }, [active, entry, setEntry]);
+  useEffect(() => { if (active && !page.loading && !entered.current) { entered.current = true; request(entry); } }, [active, page.loading, entry, request]);
   const { loadMore } = page;
-  useEffect(() => { if (index >= page.items.length - 25) loadMore(); }, [index, page.items.length, loadMore]);
+  useEffect(() => { if (active && index >= page.items.length - 25) loadMore(); }, [active, index, page.items.length, loadMore]);
   useEffect(() => {
-    if (page.loading || !focused.startsWith('detail:')) return;
+    if (!active || page.loading || !focused.startsWith('detail:')) return;
     const target = page.items[index] ? idOf(page.items[index], focused.endsWith(':1') ? 1 : 0) : 'action:0';
     if (target !== focused) request(page.items.length ? target : nav);
-  }, [page.items, index, page.loading, focused, request, nav]);
+  }, [active, page.items, index, page.loading, focused, request, nav]);
   const play = (track?: DbTrack, shuffle = false) => run(() => playLibraryQuery({ kind: 'album', albumKey: album.identity_key }, {
     anchorPath: track?.path, shuffle, source: { kind: 'album', label: album.album },
   }));

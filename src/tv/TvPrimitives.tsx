@@ -30,11 +30,11 @@ export function TvArtwork({ uri, size, style }: { uri: string | null | undefined
   </View>;
 }
 
-export function TvMotion({ x = 0, y = 0, style, children }: { x?: number; y?: number; style?: StyleProp<ViewStyle>; children: ReactNode }) {
+export function TvMotion({ x = 0, y = 0, instant = false, style, children }: { x?: number; y?: number; instant?: boolean; style?: StyleProp<ViewStyle>; children: ReactNode }) {
   const reduced = useReducedMotion();
   const animated = useAnimatedStyle(() => ({ transform: [
-    { translateX: withTiming(x, { duration: reduced ? 0 : 240, easing: Easing.out(Easing.cubic) }) },
-    { translateY: withTiming(y, { duration: reduced ? 0 : 240, easing: Easing.out(Easing.cubic) }) },
+    { translateX: withTiming(x, { duration: reduced || instant ? 0 : 240, easing: Easing.out(Easing.cubic) }) },
+    { translateY: withTiming(y, { duration: reduced || instant ? 0 : 240, easing: Easing.out(Easing.cubic) }) },
   ] }));
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
