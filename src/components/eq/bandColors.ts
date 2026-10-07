@@ -22,7 +22,7 @@ export interface BandPalette {
   ink: string;
 }
 
-const DARK_PALETTE: BandPalette = { colors: DARK, ink: '#0b0e1a' };
+export const DARK_PALETTE: BandPalette = { colors: DARK, ink: '#0b0e1a' };
 const LIGHT_PALETTE: BandPalette = { colors: LIGHT, ink: '#ffffff' };
 
 if (DARK.length !== EQ_BAND_COLOR_COUNT || LIGHT.length !== EQ_BAND_COLOR_COUNT) {

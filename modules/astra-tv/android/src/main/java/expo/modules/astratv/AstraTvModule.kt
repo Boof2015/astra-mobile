@@ -2,6 +2,7 @@ package expo.modules.astratv
 
 import android.app.UiModeManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.view.inputmethod.InputMethodManager
 import android.view.KeyEvent
@@ -20,7 +21,44 @@ class AstraTvModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("AstraTv")
-    Events("onVerticalHold", "onVerticalCapture")
+    Events("onVerticalHold", "onVerticalCapture", "onDirectionCapture")
+    // Some TV images omit DocumentsUI or resolve to a stub that just cancels.
+    // Check before invoking Expo's picker; ActivityNotFound can also leave its
+    // request pending, preventing subsequent attempts.
+    AsyncFunction("canPickDocuments") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+      if (mode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) return@AsyncFunction false
+      val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = "*/*"
+      }.resolveActivity(context.packageManager)
+      picker != null && picker.packageName != "com.android.tv.frameworkpackagestubs"
+    }
+    // Grabbed EQ controls own arrows. OK/Back retain their native dispatch.
+    AsyncFunction("setDirectionCapture") { viewTag: Int, enabled: Boolean ->
+      val context = appContext.reactContext ?: return@AsyncFunction
+      val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+      if (mode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) return@AsyncFunction
+      val view = appContext.findView<View>(viewTag) ?: return@AsyncFunction
+      var lastMove = -1L
+      view.setOnKeyListener(if (!enabled) null else View.OnKeyListener { _, key, event ->
+        val direction = when (key) {
+          KeyEvent.KEYCODE_DPAD_UP -> "up"
+          KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+          KeyEvent.KEYCODE_DPAD_LEFT -> "left"
+          KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+          else -> null
+        }
+        if (direction == null) false else {
+          if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || event.eventTime - lastMove >= 100)) {
+            lastMove = event.eventTime
+            sendEvent("onDirectionCapture", mapOf("viewTag" to viewTag, "direction" to direction))
+          }
+          true
+        }
+      })
+    }.runOnQueue(Queues.MAIN)
     // Editing owns Up/Down navigation and keeps focus on a picked-up row while
     // its position changes. Left/Right stay inside the editing mode.
     // OK and Back retain their normal React Native dispatch paths.

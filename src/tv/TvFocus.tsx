@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { findNodeHandle, Pressable, StyleSheet, View, type StyleProp, type ViewStyle, type ViewProps } from 'react-native';
 import type { FocusLinks } from './focusGeometry';
-import { captureTvVertical, setTvVerticalHold } from '../../modules/astra-tv';
+import { captureTvDirections, captureTvVertical, setTvVerticalHold, type TvDirection } from '../../modules/astra-tv';
 
 type Entry = { node: View; links: FocusLinks };
 type FocusContext = {
@@ -83,11 +83,12 @@ export function useTvFocus() {
   return value;
 }
 
-export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertical, children, style, ringStyle, disabled = false, label }: {
+export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertical, onDirection, children, style, ringStyle, disabled = false, label }: {
   id: string; links?: FocusLinks; onPress: () => void; onFocus?: () => void;
   children: ReactNode; style?: StyleProp<ViewStyle>; ringStyle?: StyleProp<ViewStyle>;
   disabled?: boolean; label: string; onLayout?: ViewProps['onLayout'];
   onVertical?: (direction: 'up' | 'down') => void;
+  onDirection?: (direction: TvDirection) => void;
 }) {
   const { focused, register, activate } = useTvFocus();
   const enabled = useContext(EnabledContext) && !disabled;
@@ -95,14 +96,18 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
   const [node, setNode] = useState<View | null>(null);
   const vertical = useRef(onVertical);
   useLayoutEffect(() => { vertical.current = onVertical; }, [onVertical]);
+  const direction = useRef(onDirection);
+  useLayoutEffect(() => { direction.current = onDirection; }, [onDirection]);
   const capturing = enabled && !!onVertical;
+  const capturingDirections = enabled && !!onDirection;
   const { up, down, left, right } = links;
   useLayoutEffect(() => {
     const tag = node && findNodeHandle(node);
+    if (capturingDirections && tag != null) return captureTvDirections(tag, value => direction.current?.(value));
     if (capturing && tag != null) return captureTvVertical(tag, direction => vertical.current?.(direction));
     if (verticalHold) setTvVerticalHold(tag, true);
     return () => { if (verticalHold) setTvVerticalHold(tag, false); };
-  }, [node, verticalHold, capturing]);
+  }, [node, verticalHold, capturing, capturingDirections]);
   useLayoutEffect(() => {
     if (node && enabled) register(id, { node, links: { up, down, left, right } });
     return () => register(id, null);

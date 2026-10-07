@@ -16,6 +16,7 @@ import { TvFocusProvider, TvFocusRegion, TvFocusScope, scopedFocus, TvButton, us
 import { TvHome, albumFromTrack } from './TvBrowse';
 import { TvLibrary } from './TvLibrary';
 import { TvSearch } from './TvSearch';
+import { TvEq } from './TvEq';
 import { TvAlbum } from './TvAlbum';
 import { TvArtist } from './TvArtist';
 import { TvPlaylist } from './TvPlaylist';
@@ -35,7 +36,8 @@ export function TvApp() {
 function TvShell() {
   const { focused, request } = useTvFocus();
   const { handle: localBack } = useTvBack();
-  const [page, setPage] = useState<'home' | 'library' | 'search'>('home');
+  const [page, setPage] = useState<'home' | 'library' | 'search' | 'eq'>('home');
+  const [eqImmersive, setEqImmersive] = useState(false);
   const [history, setHistory] = useState<{ scope: string; route: TvDetail; opener: string }[]>([]);
   const detail = history.at(-1);
   const sequence = useRef(0);
@@ -138,7 +140,7 @@ function TvShell() {
     namingId.current = null; Keyboard.dismiss(); setNaming(null);
     if (naming.playlist) request(naming.opener);
   };
-  const enter = detail ? detailEntry : page === 'home' ? homeEntry : page === 'library' ? libraryEntry : searchEntry;
+  const enter = detail ? detailEntry : page === 'home' ? homeEntry : page === 'library' ? libraryEntry : page === 'eq' ? 'eq:tool:parametric' : searchEntry;
   const route = detail?.route;
   const detailArt = route?.kind === 'album' ? artworkThumbFromSource(albumArtworkSource(route.album))
     : route?.kind === 'artist' ? route.artist.artwork_hash && artworkUri(route.artist.artwork_hash)
@@ -150,23 +152,24 @@ function TvShell() {
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'home'}><View style={[StyleSheet.absoluteFill, { display: page === 'home' ? 'flex' : 'none' }]}><TvHome actions={actions} setEntry={setHomeEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'library'}><View style={[StyleSheet.absoluteFill, { display: page === 'library' ? 'flex' : 'none' }]}><TvLibrary actions={actions} setEntry={setLibraryEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={page === 'search'}><View style={[StyleSheet.absoluteFill, { display: page === 'search' ? 'flex' : 'none' }]}><TvSearch actions={actions} setEntry={setSearchEntry} /></View></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'eq'}><View style={[StyleSheet.absoluteFill, { display: page === 'eq' ? 'flex' : 'none' }]}><TvEq actions={actions} setImmersive={setEqImmersive} /></View></TvFocusRegion>
       </View>
     </TvFocusRegion>
     {history.map(entry => <TvFocusRegion key={entry.scope} enabled={entry === detail && !menu && !nowPlaying && !naming}><View style={[StyleSheet.absoluteFill, { display: entry === detail && !nowPlaying ? 'flex' : 'none' }]}>
       <TvFocusScope scope={entry.scope}><DetailPage route={entry.route} scope={entry.scope} nav={`nav:${page}`} actions={actions} setEntry={setDetailEntry} /></TvFocusScope>
     </View></TvFocusRegion>)}
-    {!nowPlaying && !naming && <TvFocusRegion enabled={!menu}>
+    {!nowPlaying && !naming && !eqImmersive && <TvFocusRegion enabled={!menu}>
       <View style={[box(51, 27, 858, 30), { flexDirection: 'row', alignItems: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginRight: 26 }}><AstraLogo size={22} color="#00b3ff" /><TvText size={15} weight="semibold" style={{ letterSpacing: 3.3 }}>ASTRA</TvText></View>
         {['Home', 'Library', 'Search', 'EQ', 'Settings'].map(label => {
-          const key = label.toLowerCase(); const enabled = key === 'home' || key === 'library' || key === 'search';
+          const key = label.toLowerCase(); const enabled = key === 'home' || key === 'library' || key === 'search' || key === 'eq';
           return <TvButton key={key} id={`nav:${key}`} label={label} disabled={!enabled}
-            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : key === 'search' ? 'nav:library' : undefined, right: key === 'home' ? 'nav:library' : key === 'library' ? 'nav:search' : track ? 'nav:playing' : undefined }}
+            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : key === 'search' ? 'nav:library' : key === 'eq' ? 'nav:search' : undefined, right: key === 'home' ? 'nav:library' : key === 'library' ? 'nav:search' : key === 'search' ? 'nav:eq' : track ? 'nav:playing' : undefined }}
             style={{ height: 30, paddingHorizontal: 12, marginRight: 4, backgroundColor: page === key ? tv.fill : 'transparent' }}>
             <TvText size={16.5} weight="medium" color={page === key ? tv.text : tv.muted}>{label}</TvText>
           </TvButton>;
         })}
-        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:search', down: enter }}
+        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:eq', down: enter }}
           style={{ height: 40, marginLeft: 'auto', paddingLeft: 5, paddingRight: 12, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1, borderColor: tv.border, borderRadius: 11, backgroundColor: '#111725', maxWidth: 222 }}>
           <TvArtwork uri={track.artworkData} size={30} /><View style={{ maxWidth: 136 }}><TvText size={13.5} weight="semibold" numberOfLines={1}>{track.title}</TvText><TvText size={12} color={tv.muted} numberOfLines={1}>{track.artist}</TvText></View><PlayingMark />
         </TvButton>}

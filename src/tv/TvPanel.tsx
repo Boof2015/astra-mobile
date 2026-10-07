@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { TvButton, useTvFocus } from './TvFocus';
 import { box, tv, TvText } from './TvPrimitives';
 import { gridNeighbor } from './focusGeometry';
 
-export type TvMenuItem = { label: string; selected?: boolean; disabled?: boolean; muted?: boolean; keepOpen?: boolean; run: () => void };
+export type TvMenuItem = { label: string; selected?: boolean; disabled?: boolean; muted?: boolean; keepOpen?: boolean; icon?: ComponentProps<typeof Ionicons>['name']; swatch?: string; run: () => void };
 export type TvMenu = { title: string; message?: string; items: TvMenuItem[]; opener: string; left: number; top: number; selected?: number; columns?: number };
 
 /** Background content is unmounted from the focus registry by the caller while
@@ -33,7 +34,11 @@ export function TvPanel({ menu, close }: { menu: TvMenu; close: () => void }) {
       {items.map((item, index) => !columns && (index < start - 1 || index > start + 8) ? null : <TvButton key={`${index}:${item.label}`} id={`menu:${index}`} label={item.label} disabled={item.disabled}
         links={columns ? Object.fromEntries((['up', 'down', 'left', 'right'] as const).map(direction => [direction, `menu:${gridNeighbor(index, items.length, columns, direction)}`])) : { up: `menu:${enabled[Math.max(0, enabled.indexOf(index) - 1)]}`, down: `menu:${enabled[Math.min(enabled.length - 1, enabled.indexOf(index) + 1)]}` }}
         style={{ position: 'absolute', ...(columns ? { top: 4 + Math.floor(index / columns) * 38, left: 8 + index % columns * 38, width: 34, height: 34, alignItems: 'center' as const } : { top: 4 + (index - start) * 38, left: 4, right: 4, height: 38, paddingHorizontal: 10 }), backgroundColor: focused === `menu:${index}` ? tv.fill : 'transparent' }} onPress={() => { if (!item.keepOpen) close(); item.run(); }}>
-        <TvText mono={!!columns} size={columns ? 14 : 13} color={focused === `menu:${index}` ? tv.strong : item.muted ? tv.faint : item.selected ? tv.accent : tv.text}>{item.selected ? '✓  ' : ''}{item.label}</TvText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {item.icon && <Ionicons name={item.icon} size={14} color={tv.muted} />}
+          {item.swatch && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: item.swatch }} />}
+          <TvText mono={!!columns} numberOfLines={1} style={!columns ? { flex: 1 } : undefined} size={columns ? 14 : 13} color={focused === `menu:${index}` ? tv.strong : item.muted ? tv.faint : item.selected ? tv.accent : tv.text}>{item.selected ? '✓  ' : ''}{item.label}</TvText>
+        </View>
       </TvButton>)}
       </View>
     </View>

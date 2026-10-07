@@ -5,12 +5,14 @@ import { fonts } from '@/theme/typography';
 import { TvButton, useTvFocus } from './TvFocus';
 import { box, tv, TvText } from './TvPrimitives';
 
-export function TvNameFlow({ initial, submit, cancel }: { initial?: string; submit: (name: string) => Promise<void>; cancel: () => void }) {
+export function TvNameFlow({ initial, submit, cancel, labels }: { initial?: string; submit: (name: string) => Promise<void>; cancel: () => void;
+  labels?: { eyebrow: string; title: string; description: string; field: string; verb: string } }) {
   const { request, activate } = useTvFocus(); const input = useRef<TextInput>(null); const mounted = useRef(true);
   const [name, setName] = useState(initial ?? ''); const nameRef = useRef(name);
   const [keyboard, setKeyboard] = useState(Keyboard.isVisible()); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const submitting = useRef(false);
-  const verb = initial === undefined ? 'Create' : 'Save';
+  const verb = labels?.verb ?? (initial === undefined ? 'Create' : 'Save');
+  const field = labels?.field ?? 'Playlist name';
   useEffect(() => {
     mounted.current = true;
     const frame = requestAnimationFrame(() => input.current?.focus());
@@ -25,17 +27,17 @@ export function TvNameFlow({ initial, submit, cancel }: { initial?: string; subm
     if (!name.trim()) { setError('Give it a name first'); input.current?.focus(); return; }
     submitting.current = true; setBusy(true); setError('');
     try { await submit(name.trim()); }
-    catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : 'Could not save the playlist.'); }
+    catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : 'Could not save.'); }
     finally { submitting.current = false; if (mounted.current) setBusy(false); }
   };
   return <View style={{ flex: 1, backgroundColor: tv.bg }}>
-    <TvText mono size={10.5} color={tv.accent} style={[box(200, 112, 560), { letterSpacing: 1.6 }]}>{initial === undefined ? 'NEW PLAYLIST' : 'RENAME PLAYLIST'}</TvText>
-    <TvText size={30} weight="semibold" style={box(200, 140, 560)}>Name your playlist</TvText>
-    <TvText color={tv.muted} style={box(200, 188, 560)}>Choose a name for this collection.</TvText>
-    <TvButton id="name:field" label="Playlist name" links={{ down: name.trim() ? 'name:submit' : 'name:cancel' }} onPress={() => { input.current?.focus(); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }} style={[box(200, 224, 560, 52), { borderRadius: 12, backgroundColor: tv.fill, paddingHorizontal: 16 }]}>
+    <TvText mono size={10.5} color={tv.accent} style={[box(200, 112, 560), { letterSpacing: 1.6 }]}>{labels?.eyebrow ?? (initial === undefined ? 'NEW PLAYLIST' : 'RENAME PLAYLIST')}</TvText>
+    <TvText size={30} weight="semibold" style={box(200, 140, 560)}>{labels?.title ?? 'Name your playlist'}</TvText>
+    <TvText color={tv.muted} style={box(200, 188, 560)}>{labels?.description ?? 'Choose a name for this collection.'}</TvText>
+    <TvButton id="name:field" label={field} links={{ down: name.trim() ? 'name:submit' : 'name:cancel' }} onPress={() => { input.current?.focus(); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }} style={[box(200, 224, 560, 52), { borderRadius: 12, backgroundColor: tv.fill, paddingHorizontal: 16 }]}>
       <TextInput ref={input} value={name} onChangeText={value => { nameRef.current = value; setName(value); setError(''); }}
         onFocus={() => { activate('name:field'); void showTvKeyboard(findNodeHandle(input.current)).catch(() => {}); }}
-        accessibilityLabel="Playlist name" placeholder="Playlist name" placeholderTextColor={tv.faint} returnKeyType="done" returnKeyLabel={verb} submitBehavior="submit"
+        accessibilityLabel={field} placeholder={field} placeholderTextColor={tv.faint} returnKeyType="done" returnKeyLabel={verb} submitBehavior="submit"
         onSubmitEditing={() => void save()} autoCorrect={false} selectTextOnFocus={initial !== undefined} maxLength={200}
         style={{ color: tv.text, fontFamily: fonts.sans.regular, fontSize: 19, padding: 0 }} />
     </TvButton>
