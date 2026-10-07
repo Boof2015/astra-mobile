@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -429,7 +429,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
             </Stack>
           </View>
-          <PlayerDock />
+          {!Platform.isTV && <PlayerDock />}
         </View>
         {onboardingComplete && !fatalUserData ? <SessionLifecycle onReady={handleSessionReady} /> : null}
         {fatalUserData ? (
@@ -457,7 +457,7 @@ export default function RootLayout() {
               snapshot. Nothing was silently reset, and your music files were not changed.
             </Text>
           </View>
-        ) : onboardingComplete ? (
+        ) : onboardingComplete ? (!Platform.isTV && (
           <>
             {/* Always-mounted player overlay (store-gated); open/close is a pure
                 UI-thread slide with zero mount cost after the first mount. */}
@@ -466,7 +466,7 @@ export default function RootLayout() {
             <SyncConflictPrompt />
             <ArtistImageDisclosurePrompt />
           </>
-        ) : (
+        )) : (
           // First-run gate: opaque full-screen wizard over the (hidden) navigator.
           // markComplete flips the flag → this unmounts, revealing the app.
           <View style={StyleSheet.absoluteFill}>
