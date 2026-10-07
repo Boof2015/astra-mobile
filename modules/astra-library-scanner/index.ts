@@ -269,7 +269,7 @@ export type LibraryQuery =
   | { kind: 'playlist'; playlistId: number }
   | { kind: 'favorites'; sort?: 'title' }
   | { kind: 'recent' }
-  | { kind: 'search'; query: string }
+  | { kind: 'search'; query: string; literalFallback?: boolean }
   | { kind: 'manual'; paths: string[] }
   | { kind: 'dynamicPlaylist'; playlistId: number };
 
@@ -614,6 +614,8 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     groupingMode: 'astra' | 'fileTags'
   ): Promise<void>;
   searchTracks<T>(query: string, limit: number): Promise<T[]>;
+  getTvSearchNames(query: string, includeSingles: boolean, grouping: 'astra' | 'fileTags', includeCollaborations: boolean): Promise<{ name: string; kind: 'Artist' | 'Album' | 'Track' }[]>;
+  getTvSearchPage<T>(kind: 'tracks' | 'albums' | 'artists', query: string, offset: number, limit: number, revision: number | null, includeSingles: boolean, grouping: 'astra' | 'fileTags', includeCollaborations: boolean): Promise<{ items: T[]; totalCount: number; nextOffset: number | null; revision: number; error?: string }>;
   searchLibrary<TTrack, TAlbum, TArtist>(
     query: string,
     limit: number,

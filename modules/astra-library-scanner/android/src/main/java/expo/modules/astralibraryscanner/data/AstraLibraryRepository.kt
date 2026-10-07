@@ -2481,6 +2481,40 @@ class AstraLibraryRepository private constructor(
     )
   }
 
+  suspend fun getTvSearchNames(query: String, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean): List<Map<String, String>> = withCatalogRecovery { database ->
+    if (query.isBlank()) return@withCatalogRecovery emptyList()
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    listOf("artists", "albums", "tracks").flatMap { kind ->
+      fun plan(literal: Boolean) = TvSearchQuery(kind, query, revision, includeSingles, if (grouping == "fileTags") grouping else "astra", includeCollaborations, literal, namesOnly = true)
+      val rows = dao.getSearchNames(plan(useLiteralSearch(query)).names(12)).ifEmpty {
+        if (useLiteralSearch(query)) emptyList() else dao.getSearchNames(plan(true).names(12))
+      }
+      rows.map { mapOf("name" to it.name, "kind" to it.kind) }
+    }
+  }
+
+  suspend fun getTvSearchPage(kind: String, query: String, offset: Int, limit: Int, expectedRevision: Long?, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean): Map<String, Any?> = withCatalogRecovery { database ->
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    if (expectedRevision != null && expectedRevision != revision) return@withCatalogRecovery mapOf("items" to emptyList<Any>(), "totalCount" to 0, "nextOffset" to null, "revision" to revision, "error" to "STALE_REVISION")
+    if (query.isBlank()) return@withCatalogRecovery mapOf("items" to emptyList<Any>(), "totalCount" to 0, "nextOffset" to null, "revision" to revision)
+    fun plan(literal: Boolean) = TvSearchQuery(kind, query, revision, includeSingles, if (grouping == "fileTags") grouping else "astra", includeCollaborations, literal)
+    var search = plan(useLiteralSearch(query))
+    var total = dao.runDynamicCountQuery(search.count())
+    // Decide fallback from the whole result set, never from an empty later page.
+    if (total == 0L && !useLiteralSearch(query)) { search = plan(true); total = dao.runDynamicCountQuery(search.count()) }
+    val start = offset.coerceAtLeast(0)
+    val size = limit.coerceIn(1, 120)
+    val sql = search.page(start, size)
+    val items = when (kind) {
+      "tracks" -> dao.runDynamicTrackQuery(sql).map(ActiveTrackView::toBridgeMap)
+      "albums" -> dao.getSearchAlbumPage(sql).map(AlbumSummaryEntity::toBridgeMap)
+      else -> bridgeArtistSummaries(dao.getSearchArtistPage(sql))
+    }
+    mapOf("items" to items, "totalCount" to total, "nextOffset" to if (start + items.size < total) start + items.size else null, "revision" to revision)
+  }
+
   /**
    * The single rule for "this artist still needs a lookup". `not_found` and
    * `found` are both terminal here — see [clearArtistImageLookupFailures] for
@@ -3089,7 +3123,9 @@ class AstraLibraryRepository private constructor(
       when {
         fts.isBlank() -> emptyList()
         useLiteralSearch(search) -> catalogDao.searchTrackPathsLiteral(literalSearchPattern(search))
-        else -> catalogDao.searchTrackPaths(fts)
+        else -> catalogDao.searchTrackPaths(fts).let { paths ->
+          if (paths.isEmpty() && context["literalFallback"] == true) catalogDao.searchTrackPathsLiteral(literalSearchPattern(search)) else paths
+        }
       }
     }
     "manual" -> (context["paths"] as? List<*>)

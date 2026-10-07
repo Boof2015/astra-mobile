@@ -15,6 +15,7 @@ import type { DbTrack } from '@/types/library';
 import { TvFocusProvider, TvFocusRegion, TvFocusScope, scopedFocus, TvButton, useTvFocus } from './TvFocus';
 import { TvHome, albumFromTrack } from './TvBrowse';
 import { TvLibrary } from './TvLibrary';
+import { TvSearch } from './TvSearch';
 import { TvAlbum } from './TvAlbum';
 import { TvArtist } from './TvArtist';
 import { TvPlaylist } from './TvPlaylist';
@@ -34,7 +35,7 @@ export function TvApp() {
 function TvShell() {
   const { focused, request } = useTvFocus();
   const { handle: localBack } = useTvBack();
-  const [page, setPage] = useState<'home' | 'library'>('home');
+  const [page, setPage] = useState<'home' | 'library' | 'search'>('home');
   const [history, setHistory] = useState<{ scope: string; route: TvDetail; opener: string }[]>([]);
   const detail = history.at(-1);
   const sequence = useRef(0);
@@ -48,6 +49,7 @@ function TvShell() {
   }, []);
   const [homeEntry, setHomeEntry] = useState('nav:library');
   const [libraryEntry, setLibraryEntry] = useState('tab:albums');
+  const [searchEntry, setSearchEntry] = useState('search:field');
   const [detailEntry, setDetailEntry] = useState('action:0');
   const [light, setLight] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -101,7 +103,7 @@ function TvShell() {
       if (index >= 0) {
         setHistory(previous => previous.slice(0, index));
         // The deleted tile no longer exists. Return to its collection toolbar.
-        request(index ? history[index].opener : page === 'library' ? 'tab:playlists' : 'nav:home');
+        request(index ? history[index].opener : page === 'library' ? 'tab:playlists' : page === 'search' ? 'search:field' : 'nav:home');
       }
     }, 'Playlist deleted') },
   ] });
@@ -136,17 +138,18 @@ function TvShell() {
     namingId.current = null; Keyboard.dismiss(); setNaming(null);
     if (naming.playlist) request(naming.opener);
   };
-  const enter = detail ? detailEntry : page === 'home' ? homeEntry : libraryEntry;
+  const enter = detail ? detailEntry : page === 'home' ? homeEntry : page === 'library' ? libraryEntry : searchEntry;
   const route = detail?.route;
   const detailArt = route?.kind === 'album' ? artworkThumbFromSource(albumArtworkSource(route.album))
     : route?.kind === 'artist' ? route.artist.artwork_hash && artworkUri(route.artist.artwork_hash)
     : route?.kind === 'playlist' && route.playlist !== 'favorites' ? route.playlist.auto_cover_hash && artworkUri(route.playlist.auto_cover_hash) : null;
   return <>
-    <TvAtmosphere uri={detail ? detailArt : light} strength={detail ? .5 : page === 'home' ? .4 : .3} />
+    <TvAtmosphere uri={detail ? detailArt : light} strength={detail ? .5 : page === 'home' ? .4 : page === 'search' && !light ? .34 : .3} />
     <TvFocusRegion enabled={!menu && !nowPlaying && !detail && !naming}>
       <View style={[StyleSheet.absoluteFill, { display: detail || nowPlaying ? 'none' : 'flex' }]}>
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'home'}><View style={[StyleSheet.absoluteFill, { display: page === 'home' ? 'flex' : 'none' }]}><TvHome actions={actions} setEntry={setHomeEntry} /></View></TvFocusRegion>
         <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'library'}><View style={[StyleSheet.absoluteFill, { display: page === 'library' ? 'flex' : 'none' }]}><TvLibrary actions={actions} setEntry={setLibraryEntry} /></View></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'search'}><View style={[StyleSheet.absoluteFill, { display: page === 'search' ? 'flex' : 'none' }]}><TvSearch actions={actions} setEntry={setSearchEntry} /></View></TvFocusRegion>
       </View>
     </TvFocusRegion>
     {history.map(entry => <TvFocusRegion key={entry.scope} enabled={entry === detail && !menu && !nowPlaying && !naming}><View style={[StyleSheet.absoluteFill, { display: entry === detail && !nowPlaying ? 'flex' : 'none' }]}>
@@ -156,14 +159,14 @@ function TvShell() {
       <View style={[box(51, 27, 858, 30), { flexDirection: 'row', alignItems: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginRight: 26 }}><AstraLogo size={22} color="#00b3ff" /><TvText size={15} weight="semibold" style={{ letterSpacing: 3.3 }}>ASTRA</TvText></View>
         {['Home', 'Library', 'Search', 'EQ', 'Settings'].map(label => {
-          const key = label.toLowerCase(); const enabled = key === 'home' || key === 'library';
+          const key = label.toLowerCase(); const enabled = key === 'home' || key === 'library' || key === 'search';
           return <TvButton key={key} id={`nav:${key}`} label={label} disabled={!enabled}
-            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : undefined, right: key === 'home' ? 'nav:library' : track ? 'nav:playing' : undefined }}
+            onPress={() => { setHistory([]); setPage(key as typeof page); }} links={{ down: enter, left: key === 'library' ? 'nav:home' : key === 'search' ? 'nav:library' : undefined, right: key === 'home' ? 'nav:library' : key === 'library' ? 'nav:search' : track ? 'nav:playing' : undefined }}
             style={{ height: 30, paddingHorizontal: 12, marginRight: 4, backgroundColor: page === key ? tv.fill : 'transparent' }}>
             <TvText size={16.5} weight="medium" color={page === key ? tv.text : tv.muted}>{label}</TvText>
           </TvButton>;
         })}
-        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:library', down: enter }}
+        {track && <TvButton id="nav:playing" label={`Now playing, ${track.title}`} onPress={() => setNowPlaying(true)} links={{ left: 'nav:search', down: enter }}
           style={{ height: 40, marginLeft: 'auto', paddingLeft: 5, paddingRight: 12, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 1, borderColor: tv.border, borderRadius: 11, backgroundColor: '#111725', maxWidth: 222 }}>
           <TvArtwork uri={track.artworkData} size={30} /><View style={{ maxWidth: 136 }}><TvText size={13.5} weight="semibold" numberOfLines={1}>{track.title}</TvText><TvText size={12} color={tv.muted} numberOfLines={1}>{track.artist}</TvText></View><PlayingMark />
         </TvButton>}

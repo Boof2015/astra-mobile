@@ -579,6 +579,14 @@ class AstraLibraryDataModule : Module() {
       )
     }
 
+    AsyncFunction("getTvSearchNames") Coroutine { query: String, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean ->
+      repository().getTvSearchNames(query, includeSingles, grouping, includeCollaborations)
+    }
+
+    AsyncFunction("getTvSearchPage") Coroutine { kind: String, query: String, offset: Int, limit: Int, revision: Long?, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean ->
+      repository().getTvSearchPage(kind, query, offset, limit, revision, includeSingles, grouping, includeCollaborations)
+    }
+
     AsyncFunction("matchSignal") Coroutine { title: String, artist: String, durationSeconds: Double? ->
       repository().matchSignal(title, artist, durationSeconds)
     }

@@ -108,6 +108,35 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun tvSearchPagesKeepAllResultsBeyondOneHundred() = runBlocking {
+    publish("tv", (0 until 151).map { track("tv", it, "Night ${it.toString().padStart(3, '0')}") })
+    val dao = catalog.catalogDao()
+    val search = TvSearchQuery("tracks", "Night", dao.getRevision(), true, "astra", true)
+    assertEquals(151L, dao.runDynamicCountQuery(search.count()))
+    val first = dao.runDynamicTrackQuery(search.page(0, 120))
+    val last = dao.runDynamicTrackQuery(search.page(120, 120))
+    assertEquals(120, first.size)
+    assertEquals(31, last.size)
+    assertEquals(151, (first + last).map { it.path }.distinct().size)
+    assertTrue(dao.runDynamicTrackQuery(search.page(151, 120)).isEmpty())
+  }
+
+  @Test
+  fun tvAutocompleteOnlyReadsNamesAndEscapesLiteralPatterns() = runBlocking {
+    publish("tv", listOf(
+      track("tv", 0, "Night owl"), track("tv", 1, "Late night"),
+      track("tv", 2, "100%_Mix"), track("tv", 3, "100XXMix"),
+    ))
+    val dao = catalog.catalogDao()
+    suspend fun names(query: String, literal: Boolean = false) = dao.getSearchNames(
+      TvSearchQuery("tracks", query, dao.getRevision(), true, "astra", true, literal, namesOnly = true).names(6))
+    assertEquals(listOf("Night owl", "Late night"), names("night").map { it.name })
+    assertTrue(names("Кино").isEmpty()) // Artist metadata must not suggest a track title.
+    assertEquals(listOf("100%_Mix"), names("%_", true).map { it.name })
+    assertEquals(setOf("Track"), names("night").map { it.kind }.toSet())
+  }
+
+  @Test
   fun stagingGenerationIsInvisibleAndAbandonedWorkIsDiscarded() = runBlocking {
     publish("active", listOf(track("active", 1, "Last known good")))
     val dao = catalog.catalogDao()
