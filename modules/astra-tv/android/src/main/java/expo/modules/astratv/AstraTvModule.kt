@@ -16,10 +16,33 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class AstraTvModule : Module() {
   private var holdStart = -1L
   private var lastJump = -1L
+  private var lastCapturedMove = -1L
 
   override fun definition() = ModuleDefinition {
     Name("AstraTv")
-    Events("onVerticalHold")
+    Events("onVerticalHold", "onVerticalCapture")
+    // Editing owns Up/Down navigation and keeps focus on a picked-up row while
+    // its position changes. Left/Right stay inside the editing mode.
+    // OK and Back retain their normal React Native dispatch paths.
+    AsyncFunction("setVerticalCapture") { viewTag: Int, enabled: Boolean ->
+      val context = appContext.reactContext ?: return@AsyncFunction
+      val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+      if (mode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) return@AsyncFunction
+      val view = appContext.findView<View>(viewTag) ?: return@AsyncFunction
+      view.setOnKeyListener(if (!enabled) null else View.OnKeyListener { _, key, event ->
+        when (key) {
+          KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+            if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || event.eventTime - lastCapturedMove >= 100)) {
+              lastCapturedMove = event.eventTime
+              sendEvent("onVerticalCapture", mapOf("viewTag" to viewTag, "direction" to if (key == KeyEvent.KEYCODE_DPAD_UP) "up" else "down"))
+            }
+            true
+          }
+          KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> true
+          else -> false
+        }
+      })
+    }.runOnQueue(Queues.MAIN)
     // Installed only on controls inside an active TV collection. Returning false
     // before the threshold retains Android's ordinary D-pad focus movement.
     AsyncFunction("setVerticalHold") { viewTag: Int, enabled: Boolean ->

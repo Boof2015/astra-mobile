@@ -25,13 +25,15 @@ import { TvNowPlaying } from './TvNowPlaying';
 import { TvPanel, type TvMenu } from './TvPanel';
 import { TvAtmosphere } from './TvAtmosphere';
 import { box, tv, TvFrame, TvArtwork, TvText } from './TvPrimitives';
+import { TvBackProvider, useTvBack } from './TvBack';
 
 export function TvApp() {
-  return <TvFocusProvider><TvFrame><TvShell /></TvFrame></TvFocusProvider>;
+  return <TvFocusProvider><TvBackProvider><TvFrame><TvShell /></TvFrame></TvBackProvider></TvFocusProvider>;
 }
 
 function TvShell() {
   const { focused, request } = useTvFocus();
+  const { handle: localBack } = useTvBack();
   const [page, setPage] = useState<'home' | 'library'>('home');
   const [history, setHistory] = useState<{ scope: string; route: TvDetail; opener: string }[]>([]);
   const detail = history.at(-1);
@@ -75,13 +77,14 @@ function TvShell() {
       if (menu) { closeMenu(); return true; }
       if (naming) { if (Keyboard.isVisible()) Keyboard.dismiss(); else cancelNaming(); return true; }
       if (nowPlaying) { setNowPlaying(false); request('nav:playing'); return true; }
+      if (localBack()) return true;
       if (detail) { setHistory(previous => previous.slice(0, -1)); request(detail.opener); return true; }
       if (!focused.startsWith('nav:')) { request(`nav:${page}`); return true; }
       if (page !== 'home') { setPage('home'); request('nav:home'); return true; }
       return false;
     });
     return () => subscription.remove();
-  }, [menu, closeMenu, naming, cancelNaming, nowPlaying, detail, focused, page, request, setNowPlaying]);
+  }, [menu, closeMenu, naming, cancelNaming, nowPlaying, detail, focused, page, request, setNowPlaying, localBack]);
   const open = (route: TvDetail, opener = focused) => {
     const entry = { route, opener, scope: String(++sequence.current) };
     setHistory(previous => [...previous, entry]);
