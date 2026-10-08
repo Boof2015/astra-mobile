@@ -47,6 +47,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { TvOnboarding } from '@/tv/TvOnboarding';
 import { ArtistImageDisclosurePrompt } from '@/components/onboarding/ArtistImageDisclosurePrompt';
 import { useTheme } from '@/theme/themed';
 import { SessionLifecycle } from '@/session/SessionLifecycle';
@@ -470,14 +471,17 @@ export default function RootLayout() {
           // First-run gate: opaque full-screen wizard over the (hidden) navigator.
           // markComplete flips the flag → this unmounts, revealing the app.
           <View style={StyleSheet.absoluteFill}>
-            <OnboardingFlow
+            {Platform.isTV ? <TvOnboarding onDone={async () => {
+              await useSettingsStore.getState().acknowledgeArtistImageDisclosure();
+              await useOnboardingStore.getState().markComplete();
+            }} /> : <OnboardingFlow
               onDone={() => {
                 void (async () => {
                   await useSettingsStore.getState().acknowledgeArtistImageDisclosure();
                   await useOnboardingStore.getState().markComplete();
                 })();
               }}
-            />
+            />}
           </View>
         )}
         <AppDialogHost />

@@ -227,6 +227,10 @@ class AstraLibraryScannerModule : Module() {
       withContext(Dispatchers.IO) { listAudioFiles(treeUri, extensions) }
     }
 
+    AsyncFunction("discoverTvMusic") Coroutine { extensions: List<String> ->
+      withContext(Dispatchers.IO) { TvMusicStorage.discover(requireContext(), extensions.map { it.lowercase() }.toSet()) }
+    }
+
     AsyncFunction("extractMetadata") Coroutine { files: List<FileRequest> ->
       val semaphore = Semaphore(4)
       coroutineScope {
@@ -647,6 +651,10 @@ class AstraLibraryScannerModule : Module() {
     cancelFlag: AtomicBoolean? = null,
   ): Map<String, Any> {
     coverHashMemo.clear()
+
+    TvMusicStorage.scope(treeUri)?.let { scope ->
+      return mapOf("files" to TvMusicStorage.files(requireContext(), scope, extensions.map { it.lowercase() }.toSet(), cancelFlag), "covers" to emptyMap<String, String>())
+    }
 
     val resolver = requireContext().contentResolver
     val tree = Uri.parse(treeUri)

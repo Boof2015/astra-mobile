@@ -1,6 +1,6 @@
 # Privacy Policy — Astra
 
-**Last updated: October 1, 2026**
+**Last updated: October 7, 2026**
 
 ## Overview
 
@@ -35,7 +35,8 @@ Astra permits connections to local servers over either HTTP or HTTPS because man
 
 Astra may request:
 
-- **Folder and file access** through Android's system picker, so you can choose music folders and import or export supported files.
+- **Folder and file access** through Android's system picker on phones and tablets, so you can choose music folders and import or export supported files.
+- **Music access on Android TV** when you choose to add local music. Astra requests audio access on Android 13 and later, or read-storage access on older versions, to find audio indexed by Android on internal storage and connected drives. You choose which storage devices or music folders Astra adds to its library.
 - **Camera access** only when you open a QR-code scanner for desktop pairing, EQ presets, or Signal sharing.
 - **Notification access** for playback controls, library scans, and paired-desktop sessions. Scan notification access is requested only after you tap its explained permission button; scans can still run if it is skipped or denied.
 - **Local-network and internet access** for optional servers, scrobbling, lyrics, sharing, and desktop features.

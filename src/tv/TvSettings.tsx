@@ -14,6 +14,7 @@ import { useLyricsStore } from '@/stores/lyricsStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useLastFmSettingsStore } from '@/stores/lastFmSettingsStore';
 import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { requestLastFmFlush } from '@/services/lastfm';
@@ -32,6 +33,8 @@ import { useTvBackHandler } from './TvBack';
 import { TvNameFlow } from './TvNameFlow';
 import { TvServiceForm, type ServiceForm } from './TvServiceForm';
 import { TvScrobbleAuth } from './TvScrobbleAuth';
+import { TvStorageProbe } from './TvStorageProbe';
+import { TvMusicPicker } from './TvMusicPicker';
 import { TvSettingsRows, settingsRowId, type SettingsRow } from './TvSettingsRows';
 import { adjustSetting, settingsEntry, settingsTextPages } from './settingsModel';
 import { box, TvText } from './TvPrimitives';
@@ -47,7 +50,8 @@ const categories = [
 const sectionId = (index: number) => `settings:section:${index}`;
 type Page = { key: string; title: string; description: string; opener: string; text?: string };
 type Flow = { kind: 'languages'; opener: string } | { kind: 'link'; title: string; url: string; opener: string }
-  | { kind: 'service'; form: ServiceForm; opener: string } | { kind: 'auth'; profileId: string; opener: string };
+  | { kind: 'music-picker'; opener: string } | { kind: 'server-name'; source: RemoteSourceRow; opener: string }
+  | { kind: 'service'; form: ServiceForm; opener: string } | { kind: 'auth'; profileId: string; opener: string } | { kind: 'storage-probe'; opener: string };
 const build = createBuildInfo(Constants.expoConfig);
 
 function useMaintenance(scanning: boolean) {
@@ -103,7 +107,7 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
   const closeFlow = () => { if (!flow) return; Keyboard.dismiss(); setFlow(null); request(flow.opener); };
   const backPage = () => { if (!leaf) return; setHistory(previous => previous.slice(0, -1)); setTextPage(0); request(leaf.opener); };
   useTvBackHandler(active, () => {
-    if (flow?.kind === 'service' || flow?.kind === 'auth') return false;
+    if (flow?.kind === 'service' || flow?.kind === 'auth' || flow?.kind === 'storage-probe' || flow?.kind === 'music-picker') return false;
     if (flow) { if (Keyboard.isVisible()) Keyboard.dismiss(); else closeFlow(); return true; }
     if (grab) { setGrab(null); return true; }
     if (leaf) { backPage(); return true; }
@@ -161,9 +165,13 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
       { label: 'App accent', selected: theme.nowPlayingAccentSource === 'app', run: () => change(() => theme.setNowPlayingAccentSource('app')) },
     ])],
     [link('folders', 'Music folders', () => open('folders', 'Music folders', 'Configured local music folders'), `${library.folders.length} folders`), { ...scan, label: 'Rescan all' },
+    { ...choice('portraits', 'Artist portraits', ({ wifi: 'Wi-Fi or Ethernet', any: 'Any network', off: 'Off' })[settings.artistImageAutoPolicy],
+      (['wifi', 'any', 'off'] as const).map(policy => ({ label: ({ wifi: 'Wi-Fi or Ethernet', any: 'Any network', off: 'Off' })[policy], selected: settings.artistImageAutoPolicy === policy,
+        run: () => change(async () => { await settings.setArtistImageAutoPolicy(policy); await settings.acknowledgeArtistImageDisclosure(); }) }))), sub: 'Photos from Deezer · only artist names are sent' },
     toggle('singles', 'Show singles in Albums', settings.includeSingles, settings.setIncludeSingles),
     toggle('collaborators', 'Show collaborator-only artists', library.includeCollabArtists, library.setIncludeCollabArtists, undefined, settings.artistGroupingMode !== 'astra'),
-    choice('grouping', 'Artist grouping', settings.artistGroupingMode === 'astra' ? 'Astra Resolve' : 'File tags', (['astra', 'fileTags'] as const).map(mode => ({ label: mode === 'astra' ? 'Astra Resolve' : 'File tags', selected: settings.artistGroupingMode === mode, run: () => change(() => settings.setArtistGroupingMode(mode)) })))],
+    choice('grouping', 'Artist grouping', settings.artistGroupingMode === 'astra' ? 'Astra Resolve' : 'File tags', (['astra', 'fileTags'] as const).map(mode => ({ label: mode === 'astra' ? 'Astra Resolve' : 'File tags', selected: settings.artistGroupingMode === mode, run: () => change(() => settings.setArtistGroupingMode(mode)) }))),
+    ...(__DEV__ ? [link('storage-probe', 'Local audio test', () => setFlow({ kind: 'storage-probe', opener: focused }), undefined, 'Developer probe · Android 13+')] : [])],
     [link('output', 'Audio output', () => open('output', 'Audio output', 'Current output and the TV’s sound settings'), output?.kind === 'speaker' ? 'TV speakers' : output?.label ?? 'Not reported'),
     toggle('normalization', 'Loudness normalization', audio.normalizationEnabled, audio.setNormalizationEnabled),
     { id: 'target', kind: 'value', label: 'Target', amount: audio.normalizationTargetLufs, value: `${audio.normalizationTargetLufs} LUFS`, min: -30, max: -5, disabled: !audio.normalizationEnabled, set: value => change(() => audio.setNormalizationTargetLufs(value)) },
@@ -194,7 +202,7 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
     [scan, { id: 'rebuild', label: 'Rebuild Local Library Index', kind: 'action', sub: busy === 'rebuild' ? 'Working…' : undefined, disabled: busy !== 'rebuild' && (!!busy || library.isScanning), run: () => { if (!busy) confirm('Rebuild library index?', 'Re-read local track metadata. Folders, playlists, favorites, history and remote sources are kept.', 'Rebuild', () => operation('rebuild', () => useLibraryStore.getState().rebuildLocalIndex(), 'Local library index rebuilt.')); } },
     maintenance('lyrics', 'Clear Lyrics Cache', async () => { await clearAllLyricsCache(); useLyricsStore.getState().invalidateAll(); }, 'Lyrics cache cleared.', 'Display preferences are kept.'),
     maintenance('waveforms', 'Clear Waveform Cache', clearAllWaveformCache, 'Waveform cache cleared.', 'Tracks recompute on their next load.'),
-    link('onboarding', 'Replay Onboarding', () => {}, undefined, 'TV onboarding is not available yet.', true)],
+    link('onboarding', 'Replay Onboarding', () => confirm('Replay setup?', 'Review music sources and appearance. Your existing library and settings are kept.', 'Start setup', () => change(() => useOnboardingStore.getState().reset())))],
     [link('github', 'GitHub Repository', () => external('GitHub Repository', 'https://github.com/Boof2015/astra-mobile'), 'Boof2015/astra-mobile'),
     link('privacy', 'Privacy Policy', () => external('Privacy Policy', 'https://github.com/Boof2015/astra-mobile/blob/main/PRIVACY.md')),
     link('licenses', 'Licenses', () => open('licenses', 'Licenses', 'Read bundled license texts offline')),
@@ -203,8 +211,16 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
   ];
   let rows = sectionRows[section]; let empty = '';
   if (leaf?.key === 'folders') {
-    rows = library.folders.map(folder => readout(String(folder.id), folder.display_name, `${folder.track_count} tracks`, folder.available ? 'Available' : 'Folder permission unavailable'));
+    rows = [link('choose', 'Choose music folders', () => setFlow({ kind: 'music-picker', opener: focused }), undefined, 'Internal storage and USB drives', library.isScanning),
+      ...library.folders.map(folder => link(String(folder.id), folder.display_name, () => open(`folder:${folder.id}`, folder.display_name, 'Local music source'), `${folder.track_count} tracks`, folder.available ? 'Available' : 'Storage or music permission unavailable'))];
     empty = 'No music folders configured.';
+  } else if (leaf?.key.startsWith('folder:')) {
+    const folder = library.folders.find(item => `folder:${item.id}` === leaf.key);
+    rows = folder ? [readout('status', 'Status', folder.available ? 'Available' : 'Unavailable'),
+      readout('tracks', 'Tracks', String(folder.track_count)), { ...scan, disabled: scan.disabled || !folder.available },
+      link('remove', 'Remove music source', () => confirm('Remove music source?', 'Its music will leave this library. Your files are kept.', 'Remove', () => change(async () => {
+        await library.removeFolder(folder.id); setHistory(previous => previous.slice(0, -1)); request(settingsRowId('folders', 'choose'));
+      })), undefined, undefined, library.isScanning)] : [];
   } else if (leaf?.key === 'servers') {
     rows = [link('add', 'Add server', () => open('add-server', 'Add server', 'Choose the type of music server you use')),
       ...sources.map(source => link(`source:${source.id}`, source.name, () => openServer(source), remote.progressById[source.id] ? 'Syncing…' : source.enabled ? source.last_status === 'ok' ? 'Connected' : source.last_status === 'error' ? 'Needs attention' : 'Not synced' : 'Disabled', source.type === 'jellyfin' ? 'Jellyfin' : 'Subsonic'))];
@@ -215,6 +231,7 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
   else if (leaf?.key.startsWith('server:')) {
     const source = sources.find(item => `server:${item.id}` === leaf.key); const progress = source && remote.progressById[source.id];
     rows = source ? [toggle('enabled', 'Enable server', !!source.enabled, enabled => remote.updateSource(source.id, { enabled }), undefined, !!progress),
+      link('name', 'Connection name', () => setFlow({ kind: 'server-name', source, opener: focused }), source.name),
       link('edit', 'Edit connection', () => setFlow({ kind: 'service', form: { kind: 'server', type: source.type, source }, opener: focused }), undefined, undefined, !!progress),
       link('sync', progress ? 'Syncing…' : 'Sync library', () => change(() => remote.syncSource(source.id)), progress ? `${progress.current}${progress.total ? ` / ${progress.total}` : ''}` : source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : 'Not synced', progress?.detail ?? undefined, !source.enabled),
       readout('address', 'Server address', source.base_url),
@@ -292,7 +309,12 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
     </TvFocusRegion>
     {flow && <TvFocusRegion enabled><View style={[box(0, 0, 960, 540), { backgroundColor: tv.bg }]}>
       {flow.kind === 'service' ? <TvServiceForm form={flow.form} close={closeFlow} saved={serviceSaved} />
+        : flow.kind === 'music-picker' ? <TvMusicPicker close={closeFlow} saved={closeFlow} />
+        : flow.kind === 'server-name' ? <TvNameFlow initial={flow.source.name} labels={{ eyebrow: 'MUSIC SERVER', title: 'Name this connection', description: 'Choose a name that is easy to recognize.', field: 'Connection name', verb: 'Save' }} cancel={closeFlow} submit={async name => {
+          await remote.updateSource(flow.source.id, { name }); setHistory(previous => previous.map(entry => entry.key === `server:${flow.source.id}` ? { ...entry, title: name } : entry)); closeFlow();
+        }} />
         : flow.kind === 'auth' ? <TvScrobbleAuth profileId={flow.profileId} close={closeFlow} />
+        : flow.kind === 'storage-probe' ? <TvStorageProbe close={closeFlow} />
         : flow.kind === 'languages' ? <TvNameFlow allowEmpty initial={lyrics.translationPriority.join(', ')} labels={{ eyebrow: 'LYRICS', title: 'Translation priority', description: 'Comma-separated language tags. Leave blank to use en, ja-Latn.', field: 'Language tags', verb: 'Save' }} submit={async value => { await lyrics.setTranslationPriority(value); closeFlow(); }} cancel={closeFlow} />
         : <><TvText size={28} weight="semibold" style={box(51, 57, 858)}>{flow.title}</TvText><TvText color={tv.muted} style={box(51, 102, 858)}>Scan with your phone to open this link.</TvText>
           <View style={[box(350, 156, 260, 260), { padding: 14, borderRadius: 12, backgroundColor: '#fff' }]}><QRCode value={flow.url} size={232} quietZone={8} /></View>

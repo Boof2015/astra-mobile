@@ -1,14 +1,14 @@
 import { requireNativeModule, type NativeModule } from 'expo-modules-core';
 
-/** A single audio file found during the SAF tree walk. */
+/** A single audio file found through SAF or the TV MediaStore adapter. */
 export interface ScannedFile {
-  /** SAF document URI — playable directly by ExoPlayer and readable by MMR. */
+  /** Content URI — playable directly by ExoPlayer and readable by Astra. */
   uri: string;
   name: string;
   size: number | null;
   lastModified: number;
   mimeType: string | null;
-  /** Document URI of the containing directory (key into `ListResult.covers`). */
+  /** Directory URI (SAF document or TV storage scope); key into `ListResult.covers`. */
   parentUri: string;
 }
 
@@ -150,7 +150,10 @@ export interface TrackAnalysis {
   channelCount: number | null;
 }
 
+export type TvMusicVolume = { id: string; label: string; folders: { path: string; count: number; uri: string }[] };
+
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
+  discoverTvMusic(extensions: string[]): Promise<TvMusicVolume[]>;
   listAudioFiles(treeUri: string, extensions: string[]): Promise<ListResult>;
   extractMetadata(files: { uri: string; coverUri?: string | null }[]): Promise<ExtractedMetadata[]>;
   scanFolderNative(

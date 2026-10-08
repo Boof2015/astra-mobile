@@ -3,7 +3,12 @@ package expo.modules.astratv
 import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.ContentUris
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
+import android.provider.MediaStore
 import android.view.inputmethod.InputMethodManager
 import android.view.KeyEvent
 import android.view.View
@@ -22,6 +27,37 @@ class AstraTvModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AstraTv")
     Events("onVerticalHold", "onVerticalCapture", "onDirectionCapture")
+    // Bounded developer probe, not the production library discovery adapter.
+    // MediaStore supplies locations only: Astra's scanner reads the actual tags.
+    AsyncFunction("probeLocalAudio") {
+      val context = requireNotNull(appContext.reactContext)
+      val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+      check(mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) { "TV only" }
+      check(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) { "Debug builds only" }
+      if (Build.VERSION.SDK_INT < 33) return@AsyncFunction mapOf("status" to "unsupported", "files" to emptyList<Any>(), "total" to 0, "volumes" to emptyList<String>())
+      if (context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        return@AsyncFunction mapOf("status" to "denied", "files" to emptyList<Any>(), "total" to 0, "volumes" to emptyList<String>())
+      }
+      val volumes = MediaStore.getExternalVolumeNames(context).sorted()
+      val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+      val columns = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME,
+        MediaStore.Audio.Media.RELATIVE_PATH, MediaStore.Audio.Media.VOLUME_NAME,
+        MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.MIME_TYPE)
+      val files = mutableListOf<Map<String, Any?>>()
+      var total = 0
+      context.contentResolver.query(collection, columns, null, null,
+        "${MediaStore.Audio.Media.RELATIVE_PATH} ASC, ${MediaStore.Audio.Media.DISPLAY_NAME} ASC")?.use { cursor ->
+        total = cursor.count
+        while (files.size < 200 && cursor.moveToNext()) {
+          val volume = cursor.getString(3) ?: continue
+          files.add(mapOf(
+            "uri" to ContentUris.withAppendedId(MediaStore.Audio.Media.getContentUri(volume), cursor.getLong(0)).toString(),
+            "name" to cursor.getString(1), "relativePath" to cursor.getString(2), "volume" to volume,
+            "size" to cursor.getLong(4), "lastModified" to cursor.getLong(5) * 1000, "mimeType" to cursor.getString(6)))
+        }
+      }
+      mapOf("status" to "granted", "files" to files, "total" to total, "volumes" to volumes)
+    }
     // Some TV images omit DocumentsUI or resolve to a stub that just cancels.
     // Check before invoking Expo's picker; ActivityNotFound can also leave its
     // request pending, preventing subsequent attempts.

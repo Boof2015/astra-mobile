@@ -312,6 +312,7 @@ object CatalogReadModelBuilder {
     )
 
     fun decodedPath(uri: String, marker: String): String? = runCatching {
+      expo.modules.astralibraryscanner.TvMusicStorage.scope(uri)?.let { return@runCatching it.path.trimEnd('/') }
       val encoded = uri.substringAfter(marker)
       Uri.decode(encoded).substringAfter(':')
     }.getOrNull()
@@ -336,6 +337,7 @@ object CatalogReadModelBuilder {
       val root = nodes["folder:$folderId"] ?: continue
       val parentPath = decodedPath(parentUri, "/document/") ?: continue
       val relative = when {
+        root.directoryPath.isEmpty() && expo.modules.astralibraryscanner.TvMusicStorage.scope(folders[folderId]?.treeUri.orEmpty()) != null -> parentPath
         parentPath == root.directoryPath -> ""
         parentPath.startsWith("${root.directoryPath}/") ->
           parentPath.removePrefix("${root.directoryPath}/")

@@ -256,6 +256,7 @@ class AstraLibraryRepository private constructor(
           applicationContext.contentResolver.persistedUriPermissions.any {
             it.uri.toString() == folder.treeUri
           }
+          || expo.modules.astralibraryscanner.TvMusicStorage.available(applicationContext, folder.treeUri)
         }
       updateStatus(
         when {
@@ -377,7 +378,7 @@ class AstraLibraryRepository private constructor(
         "display_name" to folder.displayName,
         "added_at" to folder.addedAt.toDouble(),
         "last_scanned_at" to folder.lastScannedAt?.toDouble(),
-        "available" to persisted.contains(folder.treeUri),
+        "available" to (persisted.contains(folder.treeUri) || expo.modules.astralibraryscanner.TvMusicStorage.available(applicationContext, folder.treeUri)),
         "scan_status" to folder.lastScanStatus,
         "scan_error" to folder.lastScanError,
         "track_count" to catalogDao.countActiveTracksForFolder(folder.id).toDouble(),
@@ -407,7 +408,7 @@ class AstraLibraryRepository private constructor(
         "depth" to node.depth,
         "directTrackCount" to node.directTrackCount.toDouble(),
         "totalTrackCount" to node.totalTrackCount.toDouble(),
-        "available" to (folder != null && availability.contains(folder.treeUri)),
+        "available" to (folder != null && (availability.contains(folder.treeUri) || expo.modules.astralibraryscanner.TvMusicStorage.available(applicationContext, folder.treeUri))),
         "catalogRevision" to revision.toString(),
       )
     }
@@ -534,6 +535,7 @@ class AstraLibraryRepository private constructor(
         throwIfScanCancelled(isCancelled)
 
         if (canReuse) {
+          checkTvStorageAvailable(folder.treeUri)
           var revision = dao.getRevision()
           var regrouped = false
           if (resolveValidatedRevision != revision) {
@@ -683,6 +685,7 @@ class AstraLibraryRepository private constructor(
         // it starts; once inside, let it finish so the active catalog stays coherent.
         throwIfScanCancelled(isCancelled)
         val publishStarted = timing.now()
+        checkTvStorageAvailable(folder.treeUri)
         val revision = dao.publishGeneration(
           sourceKey = sourceKey,
           generationId = generationId,
@@ -762,6 +765,14 @@ class AstraLibraryRepository private constructor(
       }
     }.also {
       timing.logIfDebuggable(applicationContext)
+    }
+  }
+
+  private fun checkTvStorageAvailable(uri: String) {
+    if (expo.modules.astralibraryscanner.TvMusicStorage.scope(uri) != null) {
+      check(expo.modules.astralibraryscanner.TvMusicStorage.available(applicationContext, uri)) {
+        "Music storage is unavailable. Reconnect the device or allow music access, then try again."
+      }
     }
   }
 
