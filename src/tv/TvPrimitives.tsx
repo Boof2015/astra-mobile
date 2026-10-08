@@ -22,7 +22,10 @@ export function TvText({ size = 13, color, weight = 'regular', mono = false, sty
   size?: number; color?: string; weight?: keyof typeof fonts.sans; mono?: boolean;
 }) {
   const tv = useTvTheme();
-  return <Text {...props} allowFontScaling={false} style={[{ fontFamily: mono ? fonts.mono.regular : fonts.sans[weight], fontSize: size, lineHeight: Math.ceil(size * 1.3), color: color ?? tv.text, includeFontPadding: false }, style]} />;
+  // Custom Latin fonts on Android do not reliably fall back to CJK glyphs.
+  const text = (Array.isArray(props.children) ? props.children : [props.children]).filter(value => typeof value === 'string' || typeof value === 'number').join('');
+  const fallback = /[^\u0000-\u024F\u0370-\u03FF\u0400-\u04FF\u2000-\u206F\u20A0-\u20CF\u2100-\u214F]/.test(text);
+  return <Text {...props} allowFontScaling={false} style={[{ fontFamily: fallback ? undefined : mono ? fonts.mono.regular : fonts.sans[weight], fontWeight: fallback ? weight === 'bold' ? '700' : weight === 'semibold' ? '600' : weight === 'medium' ? '500' : '400' : undefined, fontSize: size, lineHeight: Math.ceil(size * 1.3), color: color ?? tv.text, includeFontPadding: false }, style]} />;
 }
 
 export function TvArtwork({ uri, size, style }: { uri: string | null | undefined; size: number; style?: StyleProp<ViewStyle> }) {
@@ -48,13 +51,19 @@ export function TvViewport({ width, height, topFade = 14, bottomFade = 46, shelf
   width: number; height: number; topFade?: number; bottomFade?: number; shelf?: boolean;
   style?: StyleProp<ViewStyle>; children: ReactNode;
 }) {
-  const mask = useMemo(() => <Svg width={width} height={height}>
+  // The fade varies on just one axis. Rasterize a thin strip and stretch its
+  // uniform axis, rather than painting another full-screen SVG bitmap.
+  const mask = useMemo(() => <View style={{ width, height }}><Svg
+    width={shelf ? width : 1} height={shelf ? 1 : height}
+    viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none"
+    style={{ position: 'absolute', left: shelf ? 0 : (width - 1) / 2, top: shelf ? (height - 1) / 2 : 0,
+      transform: [{ scaleX: shelf ? 1 : width }, { scaleY: shelf ? height : 1 }] }}>
     <Defs><LinearGradient id="fade" x1="0" y1="0" x2={shelf ? '1' : '0'} y2={shelf ? '0' : '1'}>
       {(shelf ? [[33 / width, 0], [43 / width, 1]] : [
         [0, topFade ? 0 : 1], [topFade / height, 1],
         [(height - bottomFade) / height, 1], [1, bottomFade ? 0 : 1],
       ]).map(([offset, opacity], i) => <Stop key={i} offset={offset} stopColor="white" stopOpacity={opacity} />)}
     </LinearGradient></Defs><Rect width={width} height={height} fill="url(#fade)" />
-  </Svg>, [width, height, topFade, bottomFade, shelf]);
+  </Svg></View>, [width, height, topFade, bottomFade, shelf]);
   return <MaskedView androidRenderingMode="hardware" maskElement={mask} style={[{ width, height, overflow: 'hidden' }, style]}>{children}</MaskedView>;
 }

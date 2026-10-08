@@ -8,7 +8,7 @@ import { box, TvText } from './TvPrimitives';
 
 export function TvNameFlow({ initial, submit, cancel, labels, onChange, cancelLabel = 'Cancel', busyLabel = 'Saving…', allowEmpty = false, secure = false, trim = true, keyboardType = 'default' }: { initial?: string; submit: (name: string) => Promise<void>; cancel: () => void;
   onChange?: (value: string) => void; cancelLabel?: string; busyLabel?: string;
-  allowEmpty?: boolean; secure?: boolean; trim?: boolean; keyboardType?: 'default' | 'url'; labels?: { eyebrow: string; title: string; description: string; field: string; verb: string } }) {
+  allowEmpty?: boolean; secure?: boolean; trim?: boolean; keyboardType?: 'default' | 'url' | 'numeric'; labels?: { eyebrow: string; title: string; description: string; field: string; verb: string } }) {
   const tv = useTvTheme();
   const { request, activate } = useTvFocus(); const input = useRef<TextInput>(null); const mounted = useRef(true);
   const [name, setName] = useState(initial ?? ''); const nameRef = useRef(name);

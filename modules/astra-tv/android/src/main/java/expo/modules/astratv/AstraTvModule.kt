@@ -89,11 +89,18 @@ class AstraTvModule : Module() {
         if (direction == null) false else {
           if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || event.eventTime - lastMove >= 100)) {
             lastMove = event.eventTime
-            sendEvent("onDirectionCapture", mapOf("viewTag" to viewTag, "direction" to direction))
+            sendEvent("onDirectionCapture", mapOf("viewTag" to viewTag, "direction" to direction,
+              "repeat" to (event.repeatCount > 0), "heldMs" to (event.eventTime - event.downTime)))
           }
           true
         }
       })
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("setKeepScreenOn") { viewTag: Int, enabled: Boolean ->
+      val context = appContext.reactContext ?: return@AsyncFunction
+      val mode = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+      if (mode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) return@AsyncFunction
+      appContext.findView<View>(viewTag)?.keepScreenOn = enabled
     }.runOnQueue(Queues.MAIN)
     // Editing owns Up/Down navigation and keeps focus on a picked-up row while
     // its position changes. Left/Right stay inside the editing mode.

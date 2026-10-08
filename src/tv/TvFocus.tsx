@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { findNodeHandle, Pressable, StyleSheet, View, type StyleProp, type ViewStyle, type ViewProps } from 'react-native';
 import type { FocusLinks } from './focusGeometry';
-import { captureTvDirections, captureTvVertical, setTvVerticalHold, type TvDirection } from '../../modules/astra-tv';
+import { captureTvDirections, captureTvVertical, setTvVerticalHold, type TvDirection, type TvDirectionPress } from '../../modules/astra-tv';
 import { useTvTheme } from './useTvTheme';
 
 type Entry = { node: View; links: FocusLinks };
@@ -9,7 +9,7 @@ type FocusContext = {
   focused: string;
   request: (key: string) => void;
   register: (key: string, entry: Entry | null) => void;
-  activate: (key: string) => void;
+  activate: (key: string) => boolean;
 };
 const Context = createContext<FocusContext | null>(null);
 const EnabledContext = createContext(true);
@@ -69,12 +69,21 @@ export function TvFocusProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => { const registry = registryRef.current; return () => { cancelAnimationFrame(registry.frame); cancelAnimationFrame(registry.releaseFrame); }; }, []);
   const request = useCallback((key: string) => { registryRef.current.wanted = key; flush(); }, [flush]);
+  const activate = useCallback((key: string) => {
+    // Android can briefly focus the first enabled child while a page hands
+    // focus back to its opener. Do not let that temporary choice scroll a
+    // shelf or replace its artwork before the requested target takes focus.
+    const wanted = registryRef.current.wanted;
+    if (wanted && wanted !== key) return false;
+    setFocused(key);
+    return true;
+  }, []);
   const register = useCallback((key: string, entry: Entry | null) => {
     const registry = registryRef.current;
     if (entry) registry.entries.set(key, entry); else registry.entries.delete(key);
     flush();
   }, [flush]);
-  const context = useMemo(() => ({ focused, request, register, activate: setFocused }), [focused, request, register]);
+  const context = useMemo(() => ({ focused, request, register, activate }), [focused, request, register, activate]);
   return <Context.Provider value={context}>{children}</Context.Provider>;
 }
 
@@ -89,7 +98,7 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
   children: ReactNode; style?: StyleProp<ViewStyle>; ringStyle?: StyleProp<ViewStyle>;
   disabled?: boolean; label: string; onLayout?: ViewProps['onLayout'];
   onVertical?: (direction: 'up' | 'down') => void;
-  onDirection?: (direction: TvDirection) => void;
+  onDirection?: (direction: TvDirection, press: TvDirectionPress) => void;
 }) {
   const tv = useTvTheme();
   const { focused, register, activate } = useTvFocus();
@@ -105,7 +114,7 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
   const { up, down, left, right } = links;
   useLayoutEffect(() => {
     const tag = node && findNodeHandle(node);
-    if (capturingDirections && tag != null) return captureTvDirections(tag, value => direction.current?.(value));
+    if (capturingDirections && tag != null) return captureTvDirections(tag, (value, press) => direction.current?.(value, press));
     if (capturing && tag != null) return captureTvVertical(tag, direction => vertical.current?.(direction));
     if (verticalHold) setTvVerticalHold(tag, true);
     return () => { if (verticalHold) setTvVerticalHold(tag, false); };
@@ -119,8 +128,8 @@ export function TvButton({ id, links = {}, onPress, onFocus, onLayout, onVertica
       accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}
       disabled={!enabled} onPress={onPress} onLayout={onLayout}
       onFocus={event => {
-        if (event.target !== event.currentTarget) return;
-        activate(id); onFocus?.();
+        if (!enabled || event.target !== event.currentTarget) return;
+        if (activate(id)) onFocus?.();
       }}
       style={[styles.button, style, disabled && styles.disabled]}>
       {children}

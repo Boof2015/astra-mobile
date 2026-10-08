@@ -45,7 +45,7 @@ function buildSegments(text: string, furigana: LyricsFurigana[] | undefined): Se
   return segments.length > 0 ? segments : [{ text }];
 }
 
-function RubyText({
+export function RubyText({
   text,
   furigana,
   enabled,
@@ -103,7 +103,7 @@ function RubyText({
   );
 }
 
-function TimedWord({
+export function TimedWord({
   word,
   progress,
   furiganaEnabled,

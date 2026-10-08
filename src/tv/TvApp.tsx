@@ -30,6 +30,7 @@ import { TvPanel, type TvMenu } from './TvPanel';
 import { TvAtmosphere } from './TvAtmosphere';
 import { box, TvFrame, TvArtwork, TvText } from './TvPrimitives';
 import { TvBackProvider, useTvBack } from './TvBack';
+import { TvScene, TV_PLAYER_EXIT_MS } from './TvTransitions';
 
 export function TvApp() {
   return <TvFocusProvider><TvBackProvider><TvFrame><TvShell /></TvFrame></TvBackProvider></TvFocusProvider>;
@@ -52,7 +53,7 @@ function TvShell() {
   const playerPhase = usePlayerUiStore(s => s.phase);
   const setNowPlaying = useCallback((open: boolean) => {
     if (open) usePlayerUiStore.getState().openPlayer();
-    else { usePlayerUiStore.getState().closePlayer(); usePlayerUiStore.getState().commitClosed(); }
+    else usePlayerUiStore.getState().closePlayer();
   }, []);
   const [homeEntry, setHomeEntry] = useState('nav:library');
   const [libraryEntry, setLibraryEntry] = useState('tab:albums');
@@ -63,8 +64,12 @@ function TvShell() {
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const track = usePlayerStore(s => s.currentTrack);
   const nowPlaying = !!track && (playerPhase === 'opening' || playerPhase === 'open');
+  const playerMounted = !!track && playerPhase !== 'closed';
   useEffect(() => {
-    if (playerPhase === 'closing') usePlayerUiStore.getState().commitClosed();
+    if (playerPhase !== 'closing') return;
+    // Never depend solely on an animation callback to release the player.
+    const timeout = setTimeout(() => usePlayerUiStore.getState().commitClosed(), TV_PLAYER_EXIT_MS + 500);
+    return () => clearTimeout(timeout);
   }, [playerPhase]);
   const notify = useCallback((text: string) => {
     setMessage(text);
@@ -85,8 +90,8 @@ function TvShell() {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (menu) { closeMenu(); return true; }
       if (naming) { if (Keyboard.isVisible()) Keyboard.dismiss(); else cancelNaming(); return true; }
-      if (nowPlaying) { setNowPlaying(false); request('nav:playing'); return true; }
       if (localBack()) return true;
+      if (nowPlaying) { setNowPlaying(false); request('nav:playing'); return true; }
       if (detail) { setHistory(previous => previous.slice(0, -1)); request(detail.opener); return true; }
       if (!focused.startsWith('nav:')) { request(`nav:${page}`); return true; }
       if (page !== 'home') { setPage('home'); request('nav:home'); return true; }
@@ -153,18 +158,20 @@ function TvShell() {
   return <>
     <TvAtmosphere uri={detail ? detailArt : light} strength={detail ? .5 : page === 'home' ? .4 : page === 'settings' || page === 'eq' || page === 'search' && !light ? .34 : .3} />
     <TvFocusRegion enabled={!menu && !nowPlaying && !detail && !naming}>
-      <View style={[StyleSheet.absoluteFill, { display: detail || nowPlaying ? 'none' : 'flex' }]}>
-        <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'home'}><View style={[StyleSheet.absoluteFill, { display: page === 'home' ? 'flex' : 'none' }]}><TvHome actions={actions} setEntry={setHomeEntry} /></View></TvFocusRegion>
-        <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'library'}><View style={[StyleSheet.absoluteFill, { display: page === 'library' ? 'flex' : 'none' }]}><TvLibrary actions={actions} setEntry={setLibraryEntry} /></View></TvFocusRegion>
-        <TvFocusRegion enabled={page === 'search'}><View style={[StyleSheet.absoluteFill, { display: page === 'search' ? 'flex' : 'none' }]}><TvSearch actions={actions} setEntry={setSearchEntry} /></View></TvFocusRegion>
-        <TvFocusRegion enabled={page === 'eq'}><View style={[StyleSheet.absoluteFill, { display: page === 'eq' ? 'flex' : 'none' }]}><TvEq actions={actions} setImmersive={setEqImmersive} /></View></TvFocusRegion>
-        <TvFocusRegion enabled={page === 'settings'}><View style={[StyleSheet.absoluteFill, { display: page === 'settings' ? 'flex' : 'none' }]}><TvSettings actions={actions} setEntry={setSettingsEntry} setImmersive={setSettingsImmersive} /></View></TvFocusRegion>
+      {/* Keep the current page beneath the player for its entrance/exit. The
+          focus regions still deactivate it as soon as Now Playing opens. */}
+      <View style={[StyleSheet.absoluteFill, { display: detail ? 'none' : 'flex' }]}>
+        <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'home'}><TvScene visible={!detail && page === 'home'}><TvHome actions={actions} setEntry={setHomeEntry} /></TvScene></TvFocusRegion>
+        <TvFocusRegion enabled={!menu && !nowPlaying && !detail && page === 'library'}><TvScene visible={!detail && page === 'library'}><TvLibrary actions={actions} setEntry={setLibraryEntry} /></TvScene></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'search'}><TvScene visible={!detail && page === 'search'}><TvSearch actions={actions} setEntry={setSearchEntry} /></TvScene></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'eq'}><TvScene visible={!detail && page === 'eq'}><TvEq actions={actions} setImmersive={setEqImmersive} /></TvScene></TvFocusRegion>
+        <TvFocusRegion enabled={page === 'settings'}><TvScene visible={!detail && page === 'settings'}><TvSettings actions={actions} setEntry={setSettingsEntry} setImmersive={setSettingsImmersive} /></TvScene></TvFocusRegion>
       </View>
     </TvFocusRegion>
-    {history.map(entry => <TvFocusRegion key={entry.scope} enabled={entry === detail && !menu && !nowPlaying && !naming}><View style={[StyleSheet.absoluteFill, { display: entry === detail && !nowPlaying ? 'flex' : 'none' }]}>
+    {history.map(entry => <TvFocusRegion key={entry.scope} enabled={entry === detail && !menu && !nowPlaying && !naming}><TvScene visible={entry === detail}>
       <TvFocusScope scope={entry.scope}><DetailPage route={entry.route} scope={entry.scope} nav={`nav:${page}`} actions={actions} setEntry={setDetailEntry} /></TvFocusScope>
-    </View></TvFocusRegion>)}
-    {!nowPlaying && !naming && !eqImmersive && !settingsImmersive && <TvFocusRegion enabled={!menu}>
+    </TvScene></TvFocusRegion>)}
+    {!naming && !eqImmersive && !settingsImmersive && <TvFocusRegion enabled={!menu && !nowPlaying}>
       <View style={[box(51, 27, 858, 30), { flexDirection: 'row', alignItems: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginRight: 26 }}><AstraLogo size={22} color="#00b3ff" /><TvText size={15} weight="semibold" style={{ letterSpacing: 3.3 }}>ASTRA</TvText></View>
         {['Home', 'Library', 'Search', 'EQ', 'Settings'].map(label => {
@@ -181,7 +188,7 @@ function TvShell() {
         </TvButton>}
       </View>
     </TvFocusRegion>}
-    {nowPlaying && <TvNowPlaying run={run} />}
+    {playerMounted && <TvFocusRegion enabled={nowPlaying}><TvNowPlaying run={run} openDetail={route => { setNowPlaying(false); open(route, 'nav:playing'); }} /></TvFocusRegion>}
     {naming && <View style={StyleSheet.absoluteFill}><TvNameFlow key={naming.id} initial={naming.playlist?.name} submit={submitName} cancel={cancelNaming} /></View>}
     {!!message && <View pointerEvents="none" style={[box(270, 482, 420, 38), { borderRadius: 8, backgroundColor: tv.surface, alignItems: 'center', justifyContent: 'center' }]}><TvText numberOfLines={2}>{message}</TvText></View>}
     {menu && <TvPanel menu={menu} close={closeMenu} />}

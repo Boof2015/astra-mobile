@@ -8,7 +8,8 @@ export type TvAudioProbe = { status: 'granted' | 'denied' | 'unsupported'; total
 export type TvVerticalHoldEvent = { phase: 'start' | 'repeat' | 'jump' | 'release' | 'cancel'; direction: 'up' | 'down' };
 type TvVerticalCaptureEvent = { viewTag: number; direction: 'up' | 'down' };
 export type TvDirection = 'up' | 'down' | 'left' | 'right';
-type TvDirectionCaptureEvent = { viewTag: number; direction: TvDirection };
+export type TvDirectionPress = { repeat: boolean; heldMs: number };
+type TvDirectionCaptureEvent = TvDirectionPress & { viewTag: number; direction: TvDirection };
 const native = requireOptionalNativeModule<{
   showKeyboard: (viewTag: number) => Promise<void>;
   canPickDocuments: () => Promise<boolean>;
@@ -16,6 +17,7 @@ const native = requireOptionalNativeModule<{
   setVerticalHold: (viewTag: number, enabled: boolean) => Promise<void>;
   setVerticalCapture: (viewTag: number, enabled: boolean) => Promise<void>;
   setDirectionCapture: (viewTag: number, enabled: boolean) => Promise<void>;
+  setKeepScreenOn: (viewTag: number, enabled: boolean) => Promise<void>;
   addListener(name: 'onVerticalHold', listener: (event: TvVerticalHoldEvent) => void): { remove: () => void };
   addListener(name: 'onVerticalCapture', listener: (event: TvVerticalCaptureEvent) => void): { remove: () => void };
   addListener(name: 'onDirectionCapture', listener: (event: TvDirectionCaptureEvent) => void): { remove: () => void };
@@ -67,9 +69,14 @@ export async function canPickTvDocuments(): Promise<boolean> {
   return Platform.isTV && native ? native.canPickDocuments() : false;
 }
 
-export function captureTvDirections(viewTag: number, listener: (direction: TvDirection) => void) {
+export function captureTvDirections(viewTag: number, listener: (direction: TvDirection, press: TvDirectionPress) => void) {
   if (!Platform.isTV || !native) return () => {};
-  const subscription = native.addListener('onDirectionCapture', event => { if (event.viewTag === viewTag) listener(event.direction); });
+  const subscription = native.addListener('onDirectionCapture', event => { if (event.viewTag === viewTag) listener(event.direction, event); });
   void native.setDirectionCapture(viewTag, true);
   return () => { subscription.remove(); void native.setDirectionCapture(viewTag, false); };
+}
+
+/** A view-owned flag: detached/background windows cannot keep the display on. */
+export function setTvKeepScreenOn(viewTag: number, enabled: boolean) {
+  if (Platform.isTV) void native?.setKeepScreenOn(viewTag, enabled);
 }

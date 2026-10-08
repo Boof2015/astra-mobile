@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -12,19 +12,23 @@ import { useTvTheme } from './useTvTheme';
 const cache = new ArtworkAccentCache<string[]>(128);
 const falloff = [[0, 1], [.18, .78], [.36, .5], [.56, .25], [.76, .08], [1, 0]];
 
-function Field({ colors }: { colors: string[] }) {
-  return <Svg width={960} height={540}>
+// Android SVG rasterizes on the UI thread. These broad, soft gradients need
+// only a quarter-resolution surface; scaling it preserves their appearance
+// without allocating and painting a full 4K bitmap for every layer.
+const Field = memo(function Field({ colors, player }: { colors: string[]; player: boolean }) {
+  return <Svg width={240} height={135} viewBox="0 0 960 540"
+    style={{ position: 'absolute', left: 360, top: 202.5, transform: [{ scale: 4 }] }}>
     <Defs>{colors.map((color, i) => <RadialGradient key={i} id={`field${i}`} cx="50%" cy="50%" rx="50%" ry="50%">
       {falloff.map(([offset, opacity]) => <Stop key={offset} offset={offset} stopColor={color} stopOpacity={opacity} />)}
     </RadialGradient>)}</Defs>
     <Rect width={960} height={540} fill={colors[1]} opacity={0.25} />
-    <Rect x={330} y={-325} width={1150} height={1060} fill="url(#field0)" />
-    <Rect x={-350} y={-270} width={1280} height={940} fill="url(#field1)" />
-    <Rect x={240} y={30} width={1180} height={980} fill="url(#field2)" />
+    {(player ? [[18, 32, 70, 105], [86, 18, 72, 92], [58, 112, 90, 70]].map(([x, y, rx, ry]) => [(x - rx) * 9.6, (y - ry) * 5.4, rx * 19.2, ry * 10.8])
+      : [[330, -325, 1150, 1060], [-350, -270, 1280, 940], [240, 30, 1180, 980]])
+      .map(([x, y, width, height], i) => <Rect key={i} x={x} y={y} width={width} height={height} fill={`url(#field${i})`} />)}
   </Svg>;
-}
+});
 
-export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; strength?: number }) {
+export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, player = false, fadeIn = false }: { uri: string | null; strength?: number; player?: boolean; fadeIn?: boolean }) {
   const tv = useTvTheme();
   const neutral = useMemo(() => {
     const { r, g, b } = hexToRgb(tv.accent); const lab = rgbToOklab(r, g, b);
@@ -36,6 +40,11 @@ export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; stren
   const [front, setFront] = useState(0);
   const frontRef = useRef(0);
   const [opacity] = useState(() => new Animated.Value(0));
+  const [reveal] = useState(() => new Animated.Value(fadeIn ? 0 : 1));
+  useEffect(() => {
+    Animated.timing(reveal, { toValue: 1, duration: reduced ? 0 : 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    return () => reveal.stopAnimation();
+  }, [reveal, reduced]);
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -67,8 +76,8 @@ export function TvAtmosphere({ uri, strength = .3 }: { uri: string | null; stren
     Animated.timing(opacity, { toValue: front, duration: reduced ? 0 : 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     return () => opacity.stopAnimation();
   }, [front, opacity, reduced]);
-  return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: strength }]}>
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity: opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}><Field colors={layers[0]} /></Animated.View>
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}><Field colors={layers[1]} /></Animated.View>
+  return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: reveal.interpolate({ inputRange: [0, 1], outputRange: [0, strength] }) }]}>
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity: opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}><Field colors={layers[0]} player={player} /></Animated.View>
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}><Field colors={layers[1]} player={player} /></Animated.View>
   </Animated.View>;
-}
+});
