@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -580,6 +581,11 @@ class NotificationManager internal constructor(
         updateMediaSessionPlaybackActions()
 
         pendingIntent = config.pendingIntent
+        // TV system controls need the session's return-to-player action, not
+        // just the notification's content intent. Reuse the same deep link.
+        if ((context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION) {
+            mediaSession.setSessionActivity(pendingIntent)
+        }
         showPlayPauseButton = false
         showForwardButton = false
         showRewindButton = false
