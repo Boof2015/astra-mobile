@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { balancedLyricWidth, lyricSegments, lyricUnits, lyricVoices } from './playerLyricsModel.ts';
+import { balancedLyricWidth, lyricInWindow, lyricSegments, lyricUnits, lyricVoices, lyricWordProgress } from './playerLyricsModel.ts';
+import { resolveLyricsWordTiming } from '../lyrics/presentation.ts';
+
+test('UI-clock word sweeps preserve timing boundaries, duplicate stamps and backward seeks', () => {
+  const words = [1000, 1600, 1600, 3000].map(timestampMs => ({ timestampMs, text: 'word' }));
+  for (const seconds of [0, 1, 1.3, 1.6, 2, 3, 5, 1.1, 0]) {
+    assert.deepEqual(words.map((word, i) => lyricWordProgress(word.timestampMs, words[i + 1]?.timestampMs, seconds)), resolveLyricsWordTiming(words, seconds).progressByIndex);
+  }
+});
+
+test('measured virtualization retains tall overlapping lines and overscan without mounting a whole song', () => {
+  // Anchor 2,000 sits at screen y=176. A tall preceding line still intersects.
+  assert.equal(lyricInWindow(1000, 700, 2000), true);
+  assert.equal(lyricInWindow(0, 100, 2000), false);
+  assert.equal(lyricInWindow(2000, 180, 2000), true);
+  assert.equal(lyricInWindow(4000, 80, 2000), false);
+  const shortLines = Array.from({ length: 1000 }, (_, i) => i * 70);
+  assert.ok(shortLines.filter(top => lyricInWindow(top, 44, 35_000)).length < 26);
+});
 
 test('timing units retain readings and trailing kana as one wrapping unit', () => {
   const words = [{ timestampMs: 1000, text: '誘う ', furigana: [{ start: 0, end: 1, base: '誘', reading: 'さそ' }] }, { timestampMs: 1700, text: "Fallin'" }];

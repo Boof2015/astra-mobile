@@ -4,7 +4,7 @@ import { onTvVerticalHold } from '../../modules/astra-tv';
 import { createSectionJumpCoordinator, prepareSectionJump, type SectionJumpWindow } from '@/library/sectionJump';
 import type { TvPage } from './useTvPage';
 import type { TvMenu } from './TvPanel';
-import { heldPage, heldSection, nextAvailableLetter, TV_LETTERS } from './letterNavigation';
+import { createLetterBadge, heldPage, heldSection, nextAvailableLetter, TV_LETTERS } from './letterNavigation';
 
 type Options<T> = {
   active: boolean; alphabetic: boolean; contentFocused: boolean;
@@ -19,19 +19,21 @@ type Options<T> = {
   menu: (menu: TvMenu) => void; unavailable: () => void;
 };
 
-/** Catalog windows and the existing jump coordinator bound native work during
- * a hold. The latest intent wins, and focus moves only after a complete window. */
+/** A hold previews letters without replacing the visible catalog. On release,
+ * load one complete window and move focus to the final destination. */
 export function useTvLetterNavigation<T>(options: Options<T>) {
   const latest = useRef(options);
   useLayoutEffect(() => { latest.current = options; });
   const [anchors, setAnchors] = useState<LibrarySectionAnchor[]>([]);
-  const [badge, setBadge] = useState<string | null>(null);
+  const [badge] = useState(createLetterBadge);
+  const setBadge = badge.set;
   const [instant, setInstant] = useState(false);
   const [mountedRevision, setMountedRevision] = useState(0);
   const sequence = useRef(0);
   const coordinator = useRef(createSectionJumpCoordinator<SectionJumpWindow<T>>());
   const intent = useRef<string | null>(null);
   const repeating = useRef(false);
+  const wasContentFocused = useRef(options.contentFocused);
   const hiding = useRef<ReturnType<typeof setTimeout> | null>(null);
   const getAnchors = options.anchors;
   const readAt = options.readAt;
@@ -47,13 +49,13 @@ export function useTvLetterNavigation<T>(options: Options<T>) {
     const controller = coordinator.current;
     const refresh = () => {
       const request = ++version;
-      controller.cancel(); intent.current = null;
+      controller.cancel(); intent.current = null; repeating.current = false; setBadge(null);
       void refreshAnchors().then(value => { if (current && version === request) setAnchors(value); }).catch(() => { if (current && version === request) setAnchors([]); });
     };
     refresh();
     const subscription = AstraLibraryData.addListener('onCatalogChanged', refresh);
     return () => { current = false; controller.cancel(); subscription.remove(); };
-  }, [refreshAnchors]);
+  }, [refreshAnchors, setBadge]);
   useLayoutEffect(() => { coordinator.current.ready(mountedRevision); }, [mountedRevision]);
 
   const prepare = useCallback(async (label: string) => {
@@ -88,15 +90,19 @@ export function useTvLetterNavigation<T>(options: Options<T>) {
       const revision = ++sequence.current;
       setMountedRevision(revision);
       return revision;
-    }, onUnavailable: () => { intent.current = null; latest.current.unavailable(); } });
-  }, [prepare]);
+    }, onUnavailable: () => { intent.current = null; setBadge(null); latest.current.unavailable(); } });
+  }, [prepare, setBadge]);
 
   useEffect(() => {
-    if (options.active) return;
+    const leftContent = wasContentFocused.current && !options.contentFocused;
+    wasContentFocused.current = options.contentFocused;
+    // Returning from the letter picker activates the page while focus is
+    // still on its toolbar. That must not cancel the picker-originated jump.
+    if (options.active && !leftContent) return;
     coordinator.current.cancel(); intent.current = null; repeating.current = false;
     if (hiding.current) clearTimeout(hiding.current);
     queueMicrotask(() => setBadge(null));
-  }, [options.active]);
+  }, [options.active, options.contentFocused, setBadge]);
 
   useEffect(() => {
     const hideLater = () => {
@@ -110,13 +116,19 @@ export function useTvLetterNavigation<T>(options: Options<T>) {
         coordinator.current.cancel(); intent.current = null; repeating.current = false; setBadge(null); setInstant(false);
         return;
       }
-      if (event.phase === 'release') { repeating.current = false; hideLater(); return; }
+      if (event.phase === 'release') {
+        const target = repeating.current ? intent.current : null;
+        repeating.current = false;
+        // Keep the destination visible while its single catalog window loads.
+        if (target) jump(target, true); else hideLater();
+        return;
+      }
       if (hiding.current) clearTimeout(hiding.current);
       repeating.current = true;
       const item = state.items[state.index];
       if (!item) return;
       const label = state.labelOf(item);
-      if (state.alphabetic) setBadge(label);
+      if (state.alphabetic) setBadge(intent.current ?? label);
       if (event.phase !== 'jump') return;
       if (!state.alphabetic) {
         setInstant(true);
@@ -127,10 +139,10 @@ export function useTvLetterNavigation<T>(options: Options<T>) {
       }
       const atStart = intent.current !== null || (state.index > 0 ? state.labelOf(state.items[state.index - 1]) !== label : !state.previousCursor);
       const target = heldSection(anchors.map(anchor => anchor.label), intent.current ?? label, event.direction, atStart);
-      if (target) jump(target, true);
+      if (target) { intent.current = target; setBadge(target); }
     });
     return () => { subscription?.remove(); if (hiding.current) clearTimeout(hiding.current); };
-  }, [anchors, jump]);
+  }, [anchors, jump, setBadge]);
 
   const open = (left: number) => {
     const state = latest.current;
@@ -143,7 +155,6 @@ export function useTvLetterNavigation<T>(options: Options<T>) {
       }),
     });
   };
-  // Derive from the focused item: native repeat events precede the focus event.
-  const visible = badge && options.active && options.contentFocused && options.alphabetic;
-  return { open, instant, badge: visible && options.items[options.index] ? options.labelOf(options.items[options.index]) : null };
+  // Show the pending destination while the rows stay still.
+  return { open, instant, badge, badgeVisible: options.active && options.contentFocused && options.alphabetic };
 }

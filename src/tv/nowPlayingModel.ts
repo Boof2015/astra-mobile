@@ -3,7 +3,7 @@ export type TvVisualizer = 'off' | 'oscilloscope' | 'spectrum';
 
 export function restorePlayerPresentation(storedView: string | null, storedVisualizer: string | null): { view: TvPlayerView; visualizer: TvVisualizer } {
   const visualizer = storedVisualizer === 'off' || storedVisualizer === 'oscilloscope' || storedVisualizer === 'spectrum'
-    ? storedVisualizer : storedView === 'visualizer' ? 'oscilloscope' : 'spectrum';
+    ? storedVisualizer : storedView === 'visualizer' ? 'oscilloscope' : 'off';
   return { visualizer, view: storedView === 'lyrics' ? 'lyrics' : visualizer === 'oscilloscope' ? 'visualizer' : 'cover' };
 }
 

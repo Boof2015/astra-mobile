@@ -3,6 +3,19 @@ import type { LyricsFurigana, LyricsLine } from '../lyrics/types';
 export type TvLyricSegment = { text: string; reading?: string };
 export type TvLyricUnit = { segments: TvLyricSegment[]; wordIndex?: number };
 
+/** Same interval convention as resolveLyricsWordTiming, on the UI clock. */
+export function lyricWordProgress(startMs: number, endMs: number | undefined, seconds: number): number {
+  'worklet';
+  const ms = seconds * 1000;
+  return ms < startMs ? 0 : endMs === undefined || endMs <= startMs ? 1 : Math.min(1, (ms - startMs) / (endMs - startMs));
+}
+
+/** Keep one viewport of measured overscan on both sides of the moving lyrics. */
+export function lyricInWindow(top: number, height: number, anchor: number): boolean {
+  const viewportTop = anchor - 176;
+  return top + height >= viewportTop - 540 && top <= viewportTop + 1080;
+}
+
 export function lyricSegments(text: string, readings: LyricsFurigana[] = []): TvLyricSegment[] {
   const result: TvLyricSegment[] = [];
   let cursor = 0;

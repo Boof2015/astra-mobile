@@ -1,5 +1,6 @@
 import { useTvTheme } from './useTvTheme';
-import { useWindowDimensions, View, Text, StyleSheet, type TextProps, type StyleProp, type ViewStyle } from 'react-native';
+import { useWindowDimensions, View, Text, StyleSheet, Platform, type ViewProps, type TextProps, type StyleProp, type ViewStyle } from 'react-native';
+import { requireNativeViewManager } from 'expo-modules-core';
 import { Image } from 'expo-image';
 import { useMemo, type ReactNode } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -7,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { fonts } from '@/theme/typography';
+
+const NativeViewport = Platform.OS === 'android' ? requireNativeViewManager<ViewProps & { horizontal: boolean; maskStops: number[] }>('AstraTv') : null;
 
 export const box = (left: number, top: number, width: number, height?: number): Pick<ViewStyle, 'position' | 'left' | 'top' | 'width' | 'height'> => ({ position: 'absolute', left, top, width, ...(height === undefined ? {} : { height }) });
 
@@ -45,25 +48,34 @@ export function TvMotion({ x = 0, y = 0, instant = false, style, children }: { x
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 
-/** A static alpha mask fades the content without painting over the atmosphere.
- * Only its children move, so Android can retain the hardware-rendered mask. */
+/** Fade through to the atmosphere. Android records a gradient into the GPU
+ * layer instead of rasterizing a full-viewport mask on the main thread. */
 export function TvViewport({ width, height, topFade = 14, bottomFade = 46, shelf = false, style, children }: {
   width: number; height: number; topFade?: number; bottomFade?: number; shelf?: boolean;
   style?: StyleProp<ViewStyle>; children: ReactNode;
 }) {
+  return <TvGradientMask width={width} height={height} horizontal={shelf}
+    stops={shelf ? [33 / width, 43 / width, 1, 1] : [0, topFade / height, (height - bottomFade) / height, 1]} style={style}>{children}</TvGradientMask>;
+}
+
+export function TvGradientMask({ width, height, horizontal = false, stops, style, children }: {
+  width: number; height: number; horizontal?: boolean; stops: [number, number, number, number]; style?: StyleProp<ViewStyle>; children: ReactNode;
+}) {
+  const [start, startOpaque, endOpaque, end] = stops;
   // The fade varies on just one axis. Rasterize a thin strip and stretch its
-  // uniform axis, rather than painting another full-screen SVG bitmap.
+  // uniform axis on the fallback renderer. Android needs no bitmap at all.
   const mask = useMemo(() => <View style={{ width, height }}><Svg
-    width={shelf ? width : 1} height={shelf ? 1 : height}
+    width={horizontal ? width : 1} height={horizontal ? 1 : height}
     viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none"
-    style={{ position: 'absolute', left: shelf ? 0 : (width - 1) / 2, top: shelf ? (height - 1) / 2 : 0,
-      transform: [{ scaleX: shelf ? 1 : width }, { scaleY: shelf ? height : 1 }] }}>
-    <Defs><LinearGradient id="fade" x1="0" y1="0" x2={shelf ? '1' : '0'} y2={shelf ? '0' : '1'}>
-      {(shelf ? [[33 / width, 0], [43 / width, 1]] : [
-        [0, topFade ? 0 : 1], [topFade / height, 1],
-        [(height - bottomFade) / height, 1], [1, bottomFade ? 0 : 1],
-      ]).map(([offset, opacity], i) => <Stop key={i} offset={offset} stopColor="white" stopOpacity={opacity} />)}
+    style={{ position: 'absolute', left: horizontal ? 0 : (width - 1) / 2, top: horizontal ? (height - 1) / 2 : 0,
+      transform: [{ scaleX: horizontal ? 1 : width }, { scaleY: horizontal ? height : 1 }] }}>
+    <Defs><LinearGradient id="fade" x1="0" y1="0" x2={horizontal ? '1' : '0'} y2={horizontal ? '0' : '1'}>
+      {[[start, 0], [startOpaque, 1], [endOpaque, 1], [end, 0]].map(([offset, opacity], i) => <Stop key={i} offset={offset} stopColor="white" stopOpacity={opacity} />)}
     </LinearGradient></Defs><Rect width={width} height={height} fill="url(#fade)" />
-  </Svg></View>, [width, height, topFade, bottomFade, shelf]);
+  </Svg></View>, [width, height, horizontal, start, startOpaque, endOpaque, end]);
+  // React applies its layer props after native initialization. Keep the mask
+  // isolated so DST_IN fades the children, never the artwork behind them.
+  if (NativeViewport) return <NativeViewport renderToHardwareTextureAndroid horizontal={horizontal} maskStops={stops}
+    style={[{ width, height, overflow: 'hidden' }, style]}>{children}</NativeViewport>;
   return <MaskedView androidRenderingMode="hardware" maskElement={mask} style={[{ width, height, overflow: 'hidden' }, style]}>{children}</MaskedView>;
 }

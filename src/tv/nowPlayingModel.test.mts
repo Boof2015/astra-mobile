@@ -63,8 +63,10 @@ test('queue moves never cross the playing track and use full queue positions', (
   assert.equal(queueMoveTarget(399, 1, 48, 400), 399);
 });
 
-test('visualizer defaults migrate existing scope users and preserve explicit Off', () => {
-  assert.deepEqual(restorePlayerPresentation(null, null), { view: 'cover', visualizer: 'spectrum' });
+test('visualizers default off without overriding saved choices or legacy scope users', () => {
+  assert.deepEqual(restorePlayerPresentation(null, null), { view: 'cover', visualizer: 'off' });
+  assert.deepEqual(restorePlayerPresentation('lyrics', null), { view: 'lyrics', visualizer: 'off' });
+  assert.deepEqual(restorePlayerPresentation('unknown', 'unknown'), { view: 'cover', visualizer: 'off' });
   assert.deepEqual(restorePlayerPresentation('visualizer', null), { view: 'visualizer', visualizer: 'oscilloscope' });
   assert.deepEqual(restorePlayerPresentation('lyrics', 'off'), { view: 'lyrics', visualizer: 'off' });
   assert.deepEqual(restorePlayerPresentation('visualizer', 'spectrum'), { view: 'cover', visualizer: 'spectrum' });

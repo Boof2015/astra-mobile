@@ -27,6 +27,10 @@ class AstraTvModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AstraTv")
     Events("onVerticalHold", "onVerticalCapture", "onDirectionCapture")
+    View(AstraTvViewport::class) {
+      Prop("horizontal") { view, value: Boolean -> view.horizontal = value }
+      Prop("maskStops") { view, value: List<Double> -> view.setStops(value) }
+    }
     // Bounded developer probe, not the production library discovery adapter.
     // MediaStore supplies locations only: Astra's scanner reads the actual tags.
     AsyncFunction("probeLocalAudio") {

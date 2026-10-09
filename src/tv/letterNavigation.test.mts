@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { heldPage, heldSection, nextAvailableLetter, tvSectionLabel } from './letterNavigation.ts';
+import { createLetterBadge, heldPage, heldSection, nextAvailableLetter, tvSectionLabel } from './letterNavigation.ts';
 import { gridNeighbor } from './focusGeometry.ts';
 
 test('letters agree with native catalog labels, including accents and punctuation', () => {
@@ -24,6 +24,24 @@ test('hold goes to section starts in catalog order and stops at both ends', () =
   assert.equal(heldSection(labels, 'F', 'down', true), 'Z');
   assert.equal(heldSection(labels, '#', 'up', true), null);
   assert.equal(heldSection(labels, 'Z', 'down', true), null);
+});
+test('hold preview advances from pending intent while catalog focus stays put', () => {
+  const labels = ['#', 'A', 'F', 'Z'];
+  const focused = 'A';
+  let pending: string | null = null;
+  for (let repeat = 0; repeat < 10; repeat++) pending = heldSection(labels, pending ?? focused, 'down', true) ?? pending;
+  assert.equal(pending, 'Z');
+  assert.equal(focused, 'A');
+  assert.equal(heldSection(labels, pending, 'up', true), 'F');
+});
+test('badge subscribers see only distinct previews and can detach without catalog updates', () => {
+  const badge = createLetterBadge();
+  const seen: (string | null)[] = [];
+  const unsubscribe = badge.subscribe(() => seen.push(badge.getSnapshot()));
+  for (const letter of ['A', 'A', 'F', 'Z', 'Z', null]) badge.set(letter);
+  unsubscribe();
+  badge.set('F');
+  assert.deepEqual(seen, ['A', 'F', 'Z', null]);
 });
 test('nonalphabetical hold moves by pages and handles a partial final page', () => {
   assert.equal(heldPage(10, 35, 8, 'up'), 8);

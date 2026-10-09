@@ -68,7 +68,7 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const favorite = usePlaylistStore(s => !!track && s.favoritePaths.has(track.path));
   const artworkAccent = useThemeStore(s => s.nowPlayingAccentSource === 'cover-art');
   const [viewChoice, setView] = useState<TvPlayerView>('cover');
-  const [visualizer, setVisualizer] = useState<TvVisualizer>('spectrum');
+  const [visualizer, setVisualizer] = useState<TvVisualizer>('off');
   const [automaticLyrics, setAutomaticLyrics] = useState(true);
   const [preview, setPreview] = useState<{ path: string; time: number } | null>(null);
   const [queue, setQueue] = useState(false);

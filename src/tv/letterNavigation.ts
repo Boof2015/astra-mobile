@@ -1,5 +1,20 @@
 export const TV_LETTERS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#'];
 
+/** Subscribe the small letter overlay without re-rendering the catalog rows. */
+export function createLetterBadge() {
+  let label: string | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => label,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    set: (next: string | null) => {
+      if (label === next) return;
+      label = next;
+      listeners.forEach(listener => listener());
+    },
+  };
+}
+
 /** Matches the catalog's SortKeys.sectionLabel, including accented initials. */
 export function tvSectionLabel(value: string): string {
   const first = value.trim().normalize('NFD').charAt(0).toUpperCase();

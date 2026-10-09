@@ -1,4 +1,4 @@
-import { Appearance } from 'react-native';
+import { Appearance, Platform } from 'react-native';
 import { create } from 'zustand';
 import { AstraSystemColors, type SystemPalette } from '../../modules/astra-system-colors';
 import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
@@ -13,6 +13,8 @@ import { normalizeHexColor } from '@/theme/colorUtils';
 import {
   DEFAULT_COVER_ART_ACCENT_METHOD,
   parseCoverArtAccentMethod,
+  parseNowPlayingAccentSource,
+  type NowPlayingAccentSource,
   type CoverArtAccentMethod,
 } from '@/theme/artworkAccentPreferences';
 import {
@@ -37,8 +39,7 @@ const NOW_PLAYING_ACCENT_SOURCE_KEY = 'now_playing_accent_source';
 const COVER_ART_ACCENT_METHOD_KEY = 'now_playing_cover_art_method';
 
 type SystemScheme = 'light' | 'dark';
-export type NowPlayingAccentSource = 'app' | 'cover-art';
-export type { CoverArtAccentMethod } from '@/theme/artworkAccentPreferences';
+export type { CoverArtAccentMethod, NowPlayingAccentSource } from '@/theme/artworkAccentPreferences';
 
 function currentSystemScheme(): SystemScheme {
   return Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
@@ -85,10 +86,6 @@ const DEFAULT_INPUTS: ResolutionInputs = {
   systemScheme: currentSystemScheme(),
 };
 
-function parseNowPlayingAccentSource(value: string | null): NowPlayingAccentSource {
-  return value === 'cover-art' ? 'cover-art' : 'app';
-}
-
 function effectiveInputs(state: ThemeStore): ResolutionInputs {
   return {
     baseTheme: state.baseTheme,
@@ -104,7 +101,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   ...DEFAULT_INPUTS,
   materialYouAvailable: AstraSystemColors.isAvailable(),
   accentPreviewHex: null,
-  nowPlayingAccentSource: 'app',
+  nowPlayingAccentSource: parseNowPlayingAccentSource(null, Platform.isTV),
   coverArtAccentMethod: DEFAULT_COVER_ART_ACCENT_METHOD,
   theme: recompute(DEFAULT_INPUTS),
   loaded: false,
@@ -129,7 +126,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     };
     set({
       ...inputs,
-      nowPlayingAccentSource: parseNowPlayingAccentSource(nowPlayingAccentSource),
+      nowPlayingAccentSource: parseNowPlayingAccentSource(nowPlayingAccentSource, Platform.isTV),
       coverArtAccentMethod: parseCoverArtAccentMethod(coverArtAccentMethod),
       theme: recompute(inputs),
       loaded: true,

@@ -1,5 +1,5 @@
 import { useTvTheme } from './useTvTheme';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, withTiming, useReducedMotion } from 'react-native-reanimated';
@@ -22,7 +22,7 @@ import { useTvPage, type TvPage } from './useTvPage';
 import { gridNeighbor, anchoredStart, restoredIndex } from './focusGeometry';
 import { playlistKey, playlistName, type TvPlaylist, type TvActions } from './tvCollections';
 import { useTvLetterNavigation } from './useTvLetterNavigation';
-import { tvSectionLabel } from './letterNavigation';
+import { tvSectionLabel, type createLetterBadge } from './letterNavigation';
 
 type Section = 'albums' | 'artists' | 'tracks' | 'playlists' | 'folders';
 type Item = { kind: 'album'; value: Album } | { kind: 'artist'; value: Artist } | { kind: 'track'; value: DbTrack } | { kind: 'playlist'; value: TvPlaylist } | { kind: 'folder'; value: NativeFolderNode };
@@ -170,16 +170,19 @@ export function TvLibrary({ actions, setEntry }: { actions: TvActions; setEntry:
           open={() => actions.open(item.kind === 'album' ? { kind: 'album', album: item.value } : item.kind === 'artist' ? { kind: 'artist', artist: item.value } : { kind: 'playlist', playlist: item.value })} />;
       })}
     </TvMotion></TvViewport></TvVerticalHoldContext.Provider>}
-    <LetterBadge label={letters.badge} />
+    <LetterBadge state={letters.badge} visible={letters.badgeVisible} />
   </>;
 }
 
-function LetterBadge({ label }: { label: string | null }) {
+function LetterBadge({ state, visible }: { state: ReturnType<typeof createLetterBadge>; visible: boolean }) {
+  const value = useSyncExternalStore(state.subscribe, state.getSnapshot);
+  const label = visible ? value : null;
   const tv = useTvTheme();
   const [lastLabel, setLastLabel] = useState('');
   if (label && label !== lastLabel) setLastLabel(label);
   const reduced = useReducedMotion();
-  const animated = useAnimatedStyle(() => ({ opacity: withTiming(label ? 1 : 0, { duration: reduced ? 0 : 160 }) }));
+  const shown = !!label;
+  const animated = useAnimatedStyle(() => ({ opacity: withTiming(shown ? 1 : 0, { duration: reduced ? 0 : 160 }) }));
   return <Animated.View pointerEvents="none" style={[box(442, 268, 76, 76), { borderRadius: 18, backgroundColor: tv.panel, borderWidth: 1, borderColor: 'rgba(124,146,196,.28)', alignItems: 'center', justifyContent: 'center', elevation: 12 }, animated]}>
     <TvText size={38} weight="semibold" color={tv.strong}>{label ?? lastLabel}</TvText>
   </Animated.View>;
