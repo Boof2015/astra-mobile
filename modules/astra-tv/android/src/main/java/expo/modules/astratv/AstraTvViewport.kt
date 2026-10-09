@@ -21,7 +21,9 @@ class AstraTvViewport(context: Context, appContext: AppContext) : ExpoView(conte
     set(value) { if (field != value) { field = value; updateShader() } }
 
   init {
-    clipChildren = true
+    // Focus rings and row labels extend outside their React child bounds.
+    // Clip the whole viewport in dispatchDraw, not each individual row.
+    clipChildren = false
     clipToPadding = true
     // Keep the masked result in a hardware layer. A fresh saveLayer on every
     // moving lyric frame forces expensive nested composition on TV drivers.
