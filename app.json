@@ -57,6 +57,7 @@
       ],
       "expo-sharing",
       "./plugins/withAstraAndroidRelease",
+      "./plugins/withAstraTv",
       "./plugins/withAstraDiscord"
     ],
     "experiments": {

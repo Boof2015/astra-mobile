@@ -116,7 +116,7 @@
     "test:press-feedback": "node --experimental-strip-types --test src/components/appPressableFeedback.test.mts",
     "test:session": "node --experimental-strip-types --test src/session/sessionState.test.mts src/session/playbackMaterialization.test.mts src/session/carResumeState.test.mts",
     "test:library-scan": "node --experimental-strip-types --test src/library/scanCancellation.test.mts",
-    "test:release-config": "node --experimental-strip-types --test plugins/withAstraAndroidRelease.test.mjs scripts/release/android-release.test.mjs src/release/buildInfo.test.mts",
+    "test:release-config": "node --experimental-strip-types --test plugins/withAstraAndroidRelease.test.mjs plugins/withAstraTv.test.mjs scripts/release/android-release.test.mjs src/release/buildInfo.test.mts",
     "test:release": "node scripts/run-release-tests.mjs",
     "release:validate": "node scripts/release/android-release.mjs validate github && node scripts/release/android-release.mjs validate google-play",
     "typecheck": "tsc --noEmit",

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AstraLogo } from '@/components/AstraLogo';
+import { TvWordmark } from './TvWordmark';
 import { TvAtmosphere } from './TvAtmosphere';
 import { TvButton, useTvFocus } from './TvFocus';
 import { box, TvText, TvViewport } from './TvPrimitives';
@@ -23,7 +23,7 @@ export function TvSetupPage({ eyebrow = 'SET UP ASTRA', title, description, choi
   useEffect(() => { request(initial ? `setup:${initial}` : firstFocus); }, [initial, firstFocus, request]);
   return <View style={[box(0, 0, 960, 540), { backgroundColor: tv.bg }]}>
     <TvAtmosphere uri={null} strength={.35} />
-    <View style={[box(64, 53, 240, 28), { flexDirection: 'row', alignItems: 'center', gap: 10 }]}><AstraLogo size={24} color="#00b3ff" /><TvText weight="semibold" size={16} style={{ letterSpacing: 3 }}>ASTRA</TvText></View>
+    <View style={[box(64, 53, 240, 28), { justifyContent: 'center' }]}><TvWordmark width={168} /></View>
     <TvText mono size={10} color={tv.accent} style={[box(64, 132, 300), { letterSpacing: 1.8 }]}>{eyebrow}</TvText>
     <TvText size={32} weight="semibold" numberOfLines={2} style={box(64, 160, 300)}>{title}</TvText>
     <TvText size={14} color={tv.muted} numberOfLines={7} style={box(64, 265, 300)}>{description}</TvText>

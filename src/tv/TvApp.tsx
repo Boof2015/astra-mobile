@@ -2,7 +2,7 @@ import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Keyboard, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AstraLogo } from '@/components/AstraLogo';
+import { TvWordmark } from './TvWordmark';
 import { usePlayerStore } from '@/stores/playerStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
@@ -173,7 +173,7 @@ function TvShell() {
     </TvScene></TvFocusRegion>)}
     {!naming && !eqImmersive && !settingsImmersive && <TvFocusRegion enabled={!menu && !nowPlaying}>
       <View style={[box(51, 27, 858, 30), { flexDirection: 'row', alignItems: 'center' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginRight: 26 }}><AstraLogo size={22} color="#00b3ff" /><TvText size={15} weight="semibold" style={{ letterSpacing: 3.3 }}>ASTRA</TvText></View>
+        <View style={{ marginRight: 26 }}><TvWordmark /></View>
         {['Home', 'Library', 'Search', 'EQ', 'Settings'].map(label => {
           const key = label.toLowerCase();
           return <TvButton key={key} id={`nav:${key}`} label={label}
