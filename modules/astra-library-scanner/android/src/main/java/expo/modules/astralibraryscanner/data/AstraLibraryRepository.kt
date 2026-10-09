@@ -3388,17 +3388,12 @@ class AstraLibraryRepository private constructor(
     return dao.getActiveTracksForFolder(node.folderId)
       .asSequence()
       .filter { track ->
-        val parentPath = track.parentUri?.let(::decodedSafDocumentPath) ?: return@filter false
-        parentPath == node.directoryPath || parentPath.startsWith("${node.directoryPath}/")
+        track.parentUri?.let { folderSubtreeContains(node.directoryPath, it) } == true
       }
       .sortedWith(compareBy<ActiveTrackView>({ it.fileNameSortKey }, { it.path }))
       .map(ActiveTrackView::path)
       .toList()
   }
-
-  private fun decodedSafDocumentPath(uri: String): String? = runCatching {
-    android.net.Uri.decode(uri.substringAfter("/document/")).substringAfter(':')
-  }.getOrNull()
 
   private fun remoteTrackFromMap(
     handle: RemoteSyncHandle,
