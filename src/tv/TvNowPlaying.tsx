@@ -75,6 +75,7 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const overlay = !!menu || queue || !!signal || customTimer;
   const effectivePreview = preview?.path === track?.path ? preview?.time ?? null : null;
   const { idle, interact, foreground, reduced } = useTvPlayerPresentation(playing, overlay || effectivePreview !== null || focused === 'np:plain', node);
+  const playLaidOut = useRef(false);
   const lastControl = useRef('np:play');
   const lastBottom = useRef<PlayerControl>('previous');
   const changedView = useRef(false);
@@ -85,8 +86,14 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const split = view === 'lyrics';
   const compact = view === 'visualizer';
   useEffect(() => {
-    if (active) { usePlayerUiStore.getState().settleOpen(); request('np:play'); }
-  }, [active, request]);
+    if (active) {
+      lastControl.current = 'np:play';
+      lastBottom.current = 'previous';
+      interact();
+      usePlayerUiStore.getState().settleOpen();
+      request('np:play');
+    }
+  }, [active, interact, request]);
   useEffect(() => {
     mounted.current = true;
     void getNativeSetting(VIEW_KEY).then(value => {
@@ -252,8 +259,13 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
     </Animated.View>
     <TvFocusRegion enabled={!idle && !overlay}>
       <Animated.View style={[StyleSheet.absoluteFill, controlsStyle]}>
+        {/* Play is also the first native focus candidate during mounting. */}
+        <Animated.View layout={tvLyricsLayout} style={box(51, split ? 348 : 398, split ? 48 : 52, split ? 48 : 52)}><TvButton id="np:play" onLayout={() => {
+          // The opening request may reach Android before this view has bounds.
+          // Retry once after layout, never on later lyrics/visualizer resizes.
+          if (!playLaidOut.current) { playLaidOut.current = true; if (active) request('np:play'); }
+        }} onFocus={() => controlFocus('play')} onDirection={(d, p) => direction('play', d, p)} label={playing ? 'Pause' : 'Play'} onPress={() => { interact(); run(togglePlay); }} style={[{ width: '100%', height: '100%' }, { backgroundColor: tv.strong, borderRadius: 26, alignItems: 'center' }]} ringStyle={{ borderRadius: 30 }}><Ionicons name={playing ? 'pause' : 'play'} size={23} color={tv.bg} /></TvButton></Animated.View>
         <Animated.View layout={tvLyricsLayout} style={box(split ? 343 : 871, split ? 270 : compact ? 336 : 330, 38, 38)}><TvButton id="np:favorite" onFocus={() => controlFocus('favorite')} onDirection={(d, p) => direction('favorite', d, p)} label={favorite ? 'Remove from Favorites' : 'Add to Favorites'} onPress={() => { interact(); run(() => usePlaylistStore.getState().toggleFavorite(track)); }} style={[{ width: '100%', height: '100%' }, { borderRadius: 19, alignItems: 'center', backgroundColor: tv.hover }]} ringStyle={{ borderRadius: 23 }}><Ionicons name={favorite ? 'heart' : 'heart-outline'} size={18} color={favorite ? '#ff6f9a' : tv.text} /></TvButton></Animated.View>
-        <Animated.View layout={tvLyricsLayout} style={box(51, split ? 348 : 398, split ? 48 : 52, split ? 48 : 52)}><TvButton id="np:play" onFocus={() => controlFocus('play')} onDirection={(d, p) => direction('play', d, p)} label={playing ? 'Pause' : 'Play'} onPress={() => { interact(); run(togglePlay); }} style={[{ width: '100%', height: '100%' }, { backgroundColor: tv.strong, borderRadius: 26, alignItems: 'center' }]} ringStyle={{ borderRadius: 30 }}><Ionicons name={playing ? 'pause' : 'play'} size={23} color={tv.bg} /></TvButton></Animated.View>
         <Animated.View layout={tvLyricsLayout} style={box(split ? 111 : 123, split ? 360 : 410, split ? 270 : 786, split ? 24 : 28)}><TvButton id="np:seek" onFocus={() => controlFocus('seek')} onDirection={(d, p) => direction('seek', d, p)} label={effectivePreview === null ? 'Seek, press OK to adjust' : `Seek preview ${playerTime(effectivePreview)}, OK to apply, Back to cancel`} onPress={pressSeek} style={{ width: '100%', height: '100%' }} ringStyle={{ top: -8, bottom: -8, left: -8, right: -8, borderColor: effectivePreview !== null ? tv.accent : tv.focus }}>
           <TvPlayerWaveform path={track.path} width={split ? 270 : 786} height={split ? 24 : 28} preview={effectivePreview} active={foreground && !idle} />
         </TvButton></Animated.View>

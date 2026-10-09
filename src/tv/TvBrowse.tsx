@@ -87,8 +87,8 @@ export function TvHome({ actions, setEntry }: { actions: TvActions; setEntry: (k
   </>;
 }
 
-export function TvTrackRow({ track, id, optionsId, top, left, width, number, compact = false, secondary = track.artist, playing, links, optionLinks, enter, play, options }: {
-  track: DbTrack; id: string; optionsId: string; top: number; left: number; width: number; number?: number; compact?: boolean; secondary?: string; playing: boolean;
+export function TvTrackRow({ track, id, optionsId, top, left, width, number, titleSize = 13, compact = false, secondary = track.artist, playing, links, optionLinks, enter, play, options }: {
+  track: DbTrack; id: string; optionsId: string; top: number; left: number; width: number; number?: number; titleSize?: number; compact?: boolean; secondary?: string; playing: boolean;
   links: Parameters<typeof TvButton>[0]['links']; optionLinks: Parameters<typeof TvButton>[0]['links']; enter: (options?: boolean) => void; play: () => void; options: () => void;
 }) {
   const tv = useTvTheme();
@@ -97,7 +97,7 @@ export function TvTrackRow({ track, id, optionsId, top, left, width, number, com
     <TvButton id={id} label={`${track.title}, ${track.artist}`} links={{ ...links, right: optionsId }} onFocus={() => enter(false)} onPress={play}
       style={{ width, height: 49, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       {number === undefined ? <TvArtwork uri={trackArtworkThumbSource(track)} size={34} /> : <TvText mono color={playing ? tv.accent : tv.faint} size={11} style={{ width: 18 }}>{playing ? '▶' : number}</TvText>}
-      <View style={{ flex: 1 }}><TvText weight="medium" color={playing ? tv.accent : hot ? tv.strong : tv.caption} numberOfLines={1}>{track.title}</TvText>
+      <View style={{ flex: 1 }}><TvText size={titleSize} weight="medium" color={playing ? tv.accent : hot ? tv.strong : tv.caption} numberOfLines={1}>{track.title}</TvText>
         {number === undefined && <TvText size={11} color={tv.muted} numberOfLines={1}>{secondary}</TvText>}</View>
       {number === undefined && !compact && <TvText size={11.5} color={tv.muted} numberOfLines={1} style={{ width: 200 }}>{track.album}</TvText>}
       {number === undefined && !compact && <TvText mono size={10.5} color={tv.faint} style={{ width: 86 }}>{track.format.toUpperCase()}</TvText>}
