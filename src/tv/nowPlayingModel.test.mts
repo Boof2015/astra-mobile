@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canPlayerIdle, playerNeighbor, seekPreview } from './nowPlayingModel.ts';
+import { canPlayerIdle, playerNeighbor, seekPreview, restorePlayerPresentation, playerViewWithVisualizer } from './nowPlayingModel.ts';
 import { queueEntryKey, queueMoveTarget } from './playerQueueModel.ts';
 
 test('cover routes follow control geometry and stop at the edges', () => {
@@ -61,4 +61,19 @@ test('queue moves never cross the playing track and use full queue positions', (
   assert.equal(queueMoveTarget(48, 1, 48, 400), 48);
   assert.equal(queueMoveTarget(140, 1, 48, 400), 141);
   assert.equal(queueMoveTarget(399, 1, 48, 400), 399);
+});
+
+test('visualizer defaults migrate existing scope users and preserve explicit Off', () => {
+  assert.deepEqual(restorePlayerPresentation(null, null), { view: 'cover', visualizer: 'spectrum' });
+  assert.deepEqual(restorePlayerPresentation('visualizer', null), { view: 'visualizer', visualizer: 'oscilloscope' });
+  assert.deepEqual(restorePlayerPresentation('lyrics', 'off'), { view: 'lyrics', visualizer: 'off' });
+  assert.deepEqual(restorePlayerPresentation('visualizer', 'spectrum'), { view: 'cover', visualizer: 'spectrum' });
+  assert.deepEqual(restorePlayerPresentation('cover', 'oscilloscope'), { view: 'visualizer', visualizer: 'oscilloscope' });
+});
+
+test('visualizer choice leaves Lyrics open and determines its return view', () => {
+  for (const choice of ['off', 'oscilloscope', 'spectrum'] as const) {
+    assert.equal(playerViewWithVisualizer('lyrics', choice), 'lyrics');
+    assert.equal(playerViewWithVisualizer('cover', choice), choice === 'oscilloscope' ? 'visualizer' : 'cover');
+  }
 });

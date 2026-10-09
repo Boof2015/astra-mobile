@@ -1,4 +1,15 @@
 export type TvPlayerView = 'cover' | 'lyrics' | 'visualizer';
+export type TvVisualizer = 'off' | 'oscilloscope' | 'spectrum';
+
+export function restorePlayerPresentation(storedView: string | null, storedVisualizer: string | null): { view: TvPlayerView; visualizer: TvVisualizer } {
+  const visualizer = storedVisualizer === 'off' || storedVisualizer === 'oscilloscope' || storedVisualizer === 'spectrum'
+    ? storedVisualizer : storedView === 'visualizer' ? 'oscilloscope' : 'spectrum';
+  return { visualizer, view: storedView === 'lyrics' ? 'lyrics' : visualizer === 'oscilloscope' ? 'visualizer' : 'cover' };
+}
+
+export function playerViewWithVisualizer(view: TvPlayerView, visualizer: TvVisualizer): TvPlayerView {
+  return view === 'lyrics' ? 'lyrics' : visualizer === 'oscilloscope' ? 'visualizer' : 'cover';
+}
 export type PlayerControl = 'favorite' | 'play' | 'seek' | 'previous' | 'next' | 'shuffle' | 'repeat' | 'lyrics' | 'queue' | 'more';
 type Direction = 'up' | 'down' | 'left' | 'right';
 const bottom: PlayerControl[] = ['previous', 'next', 'shuffle', 'repeat', 'lyrics', 'queue', 'more'];

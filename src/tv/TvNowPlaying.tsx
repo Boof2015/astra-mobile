@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, LayoutAnimationConfig, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,6 +16,10 @@ import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import { hasRenderableSyncedLines } from '@/lyrics/presentation';
 import { SignalCode } from '@/components/signal/SignalCode';
 import { signalLayoutFromTrack } from '@/audio/signalShare';
+import { SpectrumCurve } from '@/components/SpectrumCurve';
+import { rgbToOklab } from '@/theme/adaptiveAccent';
+import { hexToRgb } from '@/theme/colorUtils';
+import { oklchToHex } from '@/theme/artworkField';
 import { OscilloscopeWave } from '@/components/OscilloscopeWave';
 import { RepeatFlowIcon, ShuffleForkIcon } from '@/components/player/DrawnTransportIcons';
 import { useNowPlayingArtworkColors } from '@/theme/useNowPlayingArtworkColors';
@@ -36,12 +40,13 @@ import { TvPlayerWaveform, TvPlayerHairline } from './TvPlayerWaveform';
 import { TvPlayerLyrics } from './TvPlayerLyrics';
 import { TvPlayerQueue } from './TvPlayerQueue';
 import { useTvPlayerPresentation } from './useTvPlayerPresentation';
-import { playerNeighbor, playerTime, seekPreview, type PlayerControl, type TvPlayerView } from './nowPlayingModel';
+import { playerNeighbor, playerTime, seekPreview, restorePlayerPresentation, playerViewWithVisualizer, type PlayerControl, type TvPlayerView, type TvVisualizer } from './nowPlayingModel';
 import { albumFromTrack } from './TvBrowse';
 import type { TvDetail, TvRun } from './tvCollections';
 import { tvEnter, tvExit, tvLayout, tvLyricsEnter, tvLyricsExit, tvLyricsLayout, tvPanelEnter, useTvPlayerTransition } from './TvTransitions';
 
 const VIEW_KEY = 'tv_now_playing_view_v1';
+const VISUALIZER_KEY = 'tv_now_playing_visualizer_v1';
 const bottomControls: PlayerControl[] = ['previous', 'next', 'shuffle', 'repeat', 'lyrics', 'queue', 'more'];
 
 export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (detail: TvDetail) => void }) {
@@ -63,6 +68,7 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const favorite = usePlaylistStore(s => !!track && s.favoritePaths.has(track.path));
   const artworkAccent = useThemeStore(s => s.nowPlayingAccentSource === 'cover-art');
   const [viewChoice, setView] = useState<TvPlayerView>('cover');
+  const [visualizer, setVisualizer] = useState<TvVisualizer>('spectrum');
   const [automaticLyrics, setAutomaticLyrics] = useState(true);
   const [preview, setPreview] = useState<{ path: string; time: number } | null>(null);
   const [queue, setQueue] = useState(false);
@@ -85,6 +91,11 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const view = viewChoice === 'lyrics' && automaticLyrics && lyrics?.result?.status === 'not_found' ? 'cover' : viewChoice;
   const split = view === 'lyrics';
   const compact = view === 'visualizer';
+  // More retains its action callbacks while a child picker opens and closes.
+  // Those actions must read the latest committed presentation, not the values
+  // captured when More first opened (including the picker's checked/focus row).
+  const presentation = useRef({ viewChoice, visualizer, split });
+  useLayoutEffect(() => { presentation.current = { viewChoice, visualizer, split }; }, [viewChoice, visualizer, split]);
   useEffect(() => {
     if (active) {
       lastControl.current = 'np:play';
@@ -96,9 +107,10 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   }, [active, interact, request]);
   useEffect(() => {
     mounted.current = true;
-    void getNativeSetting(VIEW_KEY).then(value => {
+    void Promise.all([getNativeSetting(VIEW_KEY), getNativeSetting(VISUALIZER_KEY)]).then(([value, mode]) => {
       if (!mounted.current || changedView.current) return;
-      if (value === 'lyrics' || value === 'visualizer') { setView(value); }
+      const restored = restorePlayerPresentation(value, mode);
+      setView(restored.view); setVisualizer(restored.visualizer);
     });
     void useSleepTimerStore.getState().hydrate();
     return () => { mounted.current = false; };
@@ -145,6 +157,18 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
       { label: 'Custom…', keepOpen: true, run: () => { setCustomTimer(true); } },
     ] }, 1);
   };
+  const visualizerMenu = () => {
+    const modes: TvVisualizer[] = ['off', 'oscilloscope', 'spectrum'];
+    const current = presentation.current;
+    pushMenu({ title: 'Visualizer', opener: 'menu:0', selected: modes.indexOf(current.visualizer), left: current.split ? 210 : 650, top: 270,
+      items: modes.map((mode, i) => ({ label: ['Off', 'Oscilloscope', 'Spectrum'][i], selected: current.visualizer === mode, run: () => {
+        changedView.current = true;
+        setVisualizer(mode);
+        changeView(playerViewWithVisualizer(presentation.current.viewChoice, mode));
+        run(() => setNativeSetting(VISUALIZER_KEY, mode));
+      } })),
+    }, 0);
+  };
   const lyricsMenu = () => {
     const settings = useLyricsSettingsStore.getState();
     pushMenu({ title: 'Lyrics options', opener: 'menu:5', left: split ? 210 : 650, top: 240, items: [
@@ -172,7 +196,7 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const more = () => {
     const state = useSleepTimerStore.getState();
     pushMenu({ title: 'Now playing', opener: 'np:more', left: split ? 210 : 650, top: 155, items: [
-      { label: compact ? 'Hide visualizer' : 'Visualizer', icon: 'pulse', run: () => changeView(compact ? 'cover' : 'visualizer') },
+      { label: 'Visualizer', icon: 'pulse', keepOpen: true, run: visualizerMenu },
       { label: state.timer ? `Sleep timer · ${formatSleepTimerRemaining(state.timer, state.remainingMs)}` : 'Sleep timer', icon: 'moon-outline', keepOpen: true, run: sleepMenu },
       { label: 'Go to album', icon: 'disc-outline', run: () => goTo('album') },
       { label: 'Go to artist', icon: 'person-outline', run: () => goTo('artist') },
@@ -205,19 +229,12 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
       setPreview(null); run(async () => { if (usePlayerStore.getState().currentTrack?.path === path) await seekTo(time); });
     }
   };
-  const drift = useSharedValue(0);
   const stageDrift = useSharedValue(0);
-  useEffect(() => {
-    if (!reduced && foreground && playing) drift.value = withRepeat(withTiming(1, { duration: 34000, easing: Easing.inOut(Easing.sin) }), -1, true);
-    else { cancelAnimation(drift); drift.value = 0; }
-    return () => cancelAnimation(drift);
-  }, [drift, reduced, foreground, playing]);
   useEffect(() => {
     if (idle && !reduced && foreground) stageDrift.value = withRepeat(withTiming(1, { duration: 50000, easing: Easing.inOut(Easing.sin) }), -1, true);
     else { cancelAnimation(stageDrift); stageDrift.value = withTiming(0, { duration: reduced ? 0 : 500 }); }
     return () => cancelAnimation(stageDrift);
   }, [idle, reduced, foreground, stageDrift]);
-  const atmosphereStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -22 + drift.value * 44 }, { translateY: -12 + drift.value * 26 }, { scale: 1.1 + drift.value * .04 }] }));
   const identityStyle = useAnimatedStyle(() => ({ transform: [
     { translateY: withTiming(idle ? split ? 98 : compact ? 124 : 110 : 0, { duration: reduced ? 0 : 700, easing: Easing.out(Easing.cubic) }) },
     { translateY: stageDrift.value * 8 },
@@ -226,8 +243,13 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
   const controlsStyle = useAnimatedStyle(() => ({ opacity: withTiming(idle ? 0 : 1, { duration: reduced ? 0 : 500 }), transform: [{ translateY: withTiming(idle ? 10 : 0, { duration: reduced ? 0 : 500 }) }] }));
   const stageStyle = useAnimatedStyle(() => ({ transform: [{ translateX: stageDrift.value * 12 }, { translateY: stageDrift.value * 8 }] }));
   const art = track ? playerBackdropArtworkSource(track) : null;
-  const artColors = useNowPlayingArtworkColors({ enabled: foreground && compact, artworkUri: art, artworkIdentity: art, accent: { enabled: artworkAccent, method: 'adaptive', target: { isLight: !tv.dark, onAccent: tv.bg } }, isDark: tv.dark });
-  const scopeColor = artColors.accent ?? tv.accent;
+  const artColors = useNowPlayingArtworkColors({ enabled: atmosphereReady && foreground && visualizer !== 'off' && !reduced, artworkUri: art, artworkIdentity: art, accent: { enabled: artworkAccent, method: 'adaptive', target: { isLight: !tv.dark, onAccent: tv.bg } }, isDark: tv.dark });
+  const scopeColor = useMemo(() => {
+    const { r, g, b } = hexToRgb(artColors.accent ?? tv.accent);
+    const lab = rgbToOklab(r, g, b);
+    return oklchToHex(tv.dark ? .8 : .45, Math.min(.16, Math.hypot(lab.a, lab.b)), Math.atan2(lab.b, lab.a) * 180 / Math.PI);
+  }, [artColors.accent, tv.accent, tv.dark]);
+  const spectrumStyle = useAnimatedStyle(() => ({ opacity: withTiming(idle ? split ? .4 : .75 : split ? .3 : .55, { duration: reduced ? 0 : 500 }) }));
   if (!track) return null;
   const controls: { id: PlayerControl; label: string; icon: keyof typeof Ionicons.glyphMap; action: () => Promise<void>; active?: boolean }[] = [
     { id: 'previous', label: 'Previous track', icon: 'play-skip-back', action: skipToPrevious },
@@ -245,10 +267,13 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
     {/* Internal view/panel transitions run while this page is mounted; opening
         and closing animate the complete page together, without double fades. */}
     <LayoutAnimationConfig skipEntering skipExiting><View collapsable={false} style={StyleSheet.absoluteFill}>
-    {atmosphereReady && <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, atmosphereStyle]}><TvAtmosphere player fadeIn uri={artworkAccent ? art : null} strength={view === 'cover' ? .9 : .58} /></Animated.View>}
-    {compact && <Animated.View entering={tvEnter} exiting={tvExit} layout={tvLayout} pointerEvents="none" style={[box(51, idle ? 90 : 80, 858, idle ? 260 : 180), stageStyle]}><OscilloscopeWave active={playing && foreground && !reduced} width={858} height={idle ? 260 : 180} color={scopeColor} lineWidth={2.5} glow edgeFade edgeFadeWidth={60} /></Animated.View>}
+    {atmosphereReady && <TvAtmosphere player fadeIn active={active && foreground && !reduced} playing={playing} uri={artworkAccent ? art : null} strength={view === 'cover' ? .9 : .58} />}
+    {atmosphereReady && visualizer === 'spectrum' && !reduced && <Animated.View entering={tvLyricsEnter} exiting={tvExit} pointerEvents="none" style={box(0, 60, 960, 480)}><Animated.View style={spectrumStyle}>
+      <SpectrumCurve active={playing && foreground && active} width={960} height={480} pointCount={120} smoothing={.92} frameMs={34} analysisFrameMs={34} color={scopeColor} lineWidth={1.6} lineOpacity={.55} fillOpacity={.10} />
+    </Animated.View></Animated.View>}
+    {atmosphereReady && compact && !reduced && <Animated.View entering={tvEnter} exiting={tvExit} layout={tvLayout} pointerEvents="none" style={[box(51, idle ? 90 : 80, 858, idle ? 260 : 180), stageStyle]}><OscilloscopeWave active={playing && foreground && !reduced} width={858} height={idle ? 260 : 180} frameMs={34} color={scopeColor} lineWidth={2.5} glow edgeFade edgeFadeWidth={60} /></Animated.View>}
     <TvFocusRegion enabled={!idle && !overlay}>
-      {split && <Animated.View entering={tvLyricsEnter} exiting={tvLyricsExit} style={[StyleSheet.absoluteFill, stageStyle]}><TvPlayerLyrics key={track.path} path={track.path} foreground={foreground} interact={interact} /></Animated.View>}
+      {split && atmosphereReady && <Animated.View entering={tvLyricsEnter} exiting={tvLyricsExit} style={[StyleSheet.absoluteFill, stageStyle]}><TvPlayerLyrics key={track.path} path={track.path} foreground={foreground} reduced={reduced} interact={interact} /></Animated.View>}
     </TvFocusRegion>
     <Animated.View key={`${view}:${track.path}`} entering={split ? tvLyricsEnter : tvEnter} exiting={split ? tvLyricsExit : tvExit} pointerEvents="none" style={[box(51, split ? 52 : compact ? 316 : 156, split ? 330 : 858, split ? 274 : artSize), identityStyle]}>
       <TvArtwork uri={track.artworkData} size={artSize} style={{ borderRadius: compact ? 7 : 12 }} />
@@ -276,7 +301,7 @@ export function TvNowPlaying({ run, openDetail }: { run: TvRun; openDetail: (det
               ? <RepeatFlowIcon mode={repeat} size={21} inactiveColor={tv.text} activeColor={tv.accent} />
               : <Ionicons name={control.icon} size={17} color={tv.text} />}
         </TvButton></Animated.View>)}
-        {pills.map((pill, i) => <Animated.View key={pill.id} layout={tvLyricsLayout} style={box((split ? 51 : 591) + i * 109, split ? 464 : 470, 100, 36)}><TvButton id={`np:${pill.id}`} onFocus={() => controlFocus(pill.id)} onDirection={(d, p) => direction(pill.id, d, p)} label={pill.label} onPress={() => { interact(); if (pill.id === 'lyrics') changeView(split ? 'cover' : 'lyrics'); else if (pill.id === 'queue') setQueue(true); else more(); }} style={[{ width: '100%', height: '100%' }, { flexDirection: 'row', gap: 8, alignItems: 'center', borderRadius: 18, backgroundColor: pill.active ? tv.fill : tv.hover, borderWidth: 1, borderColor: pill.active ? tv.accent : tv.border }]} ringStyle={{ borderRadius: 22 }}>{pill.id === 'lyrics' ? <MaterialCommunityIcons name="comment-quote-outline" size={16} color={pill.active ? tv.accent : tv.text} /> : pill.icon && <Ionicons name={pill.icon} size={14} color={pill.active ? tv.accent : tv.text} />}<TvText size={13.5} weight="medium" color={pill.active ? tv.accent : tv.text}>{pill.label}</TvText></TvButton></Animated.View>)}
+        {pills.map((pill, i) => <Animated.View key={pill.id} layout={tvLyricsLayout} style={box((split ? 51 : 591) + i * 109, split ? 464 : 470, 100, 36)}><TvButton id={`np:${pill.id}`} onFocus={() => controlFocus(pill.id)} onDirection={(d, p) => direction(pill.id, d, p)} label={pill.label} onPress={() => { interact(); if (pill.id === 'lyrics') changeView(split ? playerViewWithVisualizer('cover', visualizer) : 'lyrics'); else if (pill.id === 'queue') setQueue(true); else more(); }} style={[{ width: '100%', height: '100%' }, { flexDirection: 'row', gap: 8, alignItems: 'center', borderRadius: 18, backgroundColor: pill.active ? tv.fill : tv.hover, borderWidth: 1, borderColor: pill.active ? tv.accent : tv.border }]} ringStyle={{ borderRadius: 22 }}>{pill.id === 'lyrics' ? <MaterialCommunityIcons name="comment-quote-outline" size={16} color={pill.active ? tv.accent : tv.text} /> : pill.icon && <Ionicons name={pill.icon} size={14} color={pill.active ? tv.accent : tv.text} />}<TvText size={13.5} weight="medium" color={pill.active ? tv.accent : tv.text}>{pill.label}</TvText></TvButton></Animated.View>)}
         {effectivePreview !== null && <TvText size={11.5} color={tv.accent} style={[box(split ? 437 : 320, split ? 480 : 515, split ? 472 : 590), { textAlign: 'right' }]}>← → Preview · Hold to seek faster · OK Apply · Back Cancel</TvText>}
       </Animated.View>
     </TvFocusRegion>
