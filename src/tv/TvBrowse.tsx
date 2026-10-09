@@ -2,7 +2,7 @@ import { useTvTheme } from './useTvTheme';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
-import { albumArtworkSource, artworkThumbFromSource, trackArtworkThumbSource } from '@/library/artwork';
+import { albumArtworkSource, artworkThumbFromSource, trackArtworkThumbSource } from './artwork';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import type { Album, DbTrack } from '@/types/library';

@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { playLibraryQuery } from '@/audio/playbackController';
 import { findFuzzyMatch } from '@/lib/fuzzySearch';
-import { albumArtworkSource, artworkThumbFromSource, artworkUri, trackArtworkThumbSource } from '@/library/artwork';
+import { albumArtworkSource, artworkThumbFromSource, artworkUri, trackArtworkThumbSource } from './artwork';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { Album, Artist, DbTrack } from '@/types/library';

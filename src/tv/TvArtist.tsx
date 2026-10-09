@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { playLibraryQuery, enqueueLibraryQuery } from '@/audio/playbackController';
 import { normalizeKey } from '@/library/artistGrouping';
-import { albumArtworkSource } from '@/library/artwork';
+import { albumArtworkSource } from './artwork';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { Album, Artist, DbTrack } from '@/types/library';

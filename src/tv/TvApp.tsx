@@ -8,7 +8,7 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
-import { albumArtworkSource, artworkThumbFromSource, artworkUri } from '@/library/artwork';
+import { albumArtworkSource, artworkThumbFromSource, artworkUri } from './artwork';
 import { normalizeKey, resolveNavigationArtist } from '@/library/artistGrouping';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { Playlist } from '@/types/playlist';

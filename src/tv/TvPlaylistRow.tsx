@@ -1,7 +1,7 @@
 import { useTvTheme } from './useTvTheme';
 import { View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
-import { trackArtworkThumbSource } from '@/library/artwork';
+import { trackArtworkThumbSource } from './artwork';
 import { formatDuration } from '@/lib/format';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 import type { FocusLinks } from './focusGeometry';

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, withTiming, useReducedMotion } from 'react-native-reanimated';
 import { AstraLibraryData, type NativeFolderNode, type NativePage } from '../../modules/astra-library-scanner';
 import { playLibraryQuery } from '@/audio/playbackController';
-import { albumArtworkSource, artworkUri, trackArtworkThumbSource } from '@/library/artwork';
+import { albumArtworkSource, artworkUri, trackArtworkThumbSource } from './artwork';
 import { normalizeKey } from '@/library/artistGrouping';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useSettingsStore } from '@/stores/settingsStore';

@@ -11,7 +11,7 @@ import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
 import { useSleepTimerStore } from '@/stores/sleepTimerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cycleRepeat, seekTo, skipToNext, skipToPrevious, togglePlay, toggleShuffle } from '@/audio/playbackController';
-import { playerBackdropArtworkSource } from '@/library/artwork';
+import { playerBackdropArtworkSource } from './artwork';
 import { getNativeSetting, setNativeSetting } from '@/db/nativeSettings';
 import { hasRenderableSyncedLines } from '@/lyrics/presentation';
 import { SignalCode } from '@/components/signal/SignalCode';

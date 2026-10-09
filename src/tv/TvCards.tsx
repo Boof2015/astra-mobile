@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Animated, { useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
-import { artworkUri, trackArtworkThumbSource } from '@/library/artwork';
+import { artworkUri, trackArtworkThumbSource } from './artwork';
 import type { Artist } from '@/types/library';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 import { usePlaylistStore } from '@/stores/playlistStore';
