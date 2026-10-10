@@ -1,3 +1,4 @@
+import { useTvAmbientBlock } from './ambientState';
 import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { findNodeHandle, Keyboard, TextInput, View } from 'react-native';
@@ -25,6 +26,7 @@ export function TvSearch({ actions, setEntry }: { actions: TvActions; setEntry: 
   const [draft, setDraft] = useState(''); const draftRef = useRef('');
   const [editing, setEditing] = useState(false); const editingRef = useRef(false);
   const [keyboard, setKeyboard] = useState(false);
+  useTvAmbientBlock(active && (editing || keyboard));
   const [submitted, setSubmitted] = useState<SearchRequest | null>(null);
   const sequence = useRef(0);
   const [resultEntry, setResultEntry] = useState('search:field');

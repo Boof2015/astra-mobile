@@ -222,6 +222,9 @@ class AstraLibraryDataModule : Module() {
     AsyncFunction("getListeningStatsDashboard") Coroutine { query: Map<String, Any?> ->
       repositoryCall { getListeningStatsDashboard(query) }
     }
+    AsyncFunction("getTvAmbientMoment") Coroutine { playingPath: String, artist: String, grouping: String, excluded: List<String> ->
+      repositoryCall { getTvAmbientMoment(playingPath, artist, grouping, excluded) }
+    }
 
     AsyncFunction("clearDetailedListeningHistory").Coroutine<Map<String, Any?>> {
       repositoryCall { clearDetailedListeningHistory() }

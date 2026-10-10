@@ -1,3 +1,5 @@
+import { AMBIENT_DELAYS, ambientDelayLabel } from './ambientModel';
+import { useTvAmbientBlock, useTvAmbientSettings } from './ambientState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Keyboard, Linking, View } from 'react-native';
 import Constants from 'expo-constants';
@@ -74,8 +76,10 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
   const [section, setSection] = useState(0); const [history, setHistory] = useState<Page[]>([]);
   const [memory, setMemory] = useState<Record<string, string>>({}); const [grab, setGrab] = useState<string | null>(null);
   const [flow, setFlow] = useState<Flow | null>(null);
+  useTvAmbientBlock(active && (!!grab || !!flow));
   const [document, setDocument] = useState<{ key: string; pages: string[] } | null>(null);
   const [textPage, setTextPage] = useState(0); const [diagnostics, setDiagnostics] = useState<AudioDiagnosticsSnapshot | null>(null);
+  const ambient = useTvAmbientSettings();
   const theme = useThemeStore(); const settings = useSettingsStore(); const audio = useAudioSettingsStore();
   const library = useLibraryStore(); const lyrics = useLyricsSettingsStore(); const timer = useSleepTimerStore();
   const { busy, feedback, setFeedback, operation } = useMaintenance(library.isScanning);
@@ -163,7 +167,8 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
     choice('playing-accent', 'Now Playing accent', theme.nowPlayingAccentSource === 'cover-art' ? 'From artwork' : 'App accent', [
       { label: 'From artwork', selected: theme.nowPlayingAccentSource === 'cover-art', run: () => change(() => theme.setNowPlayingAccentSource('cover-art')) },
       { label: 'App accent', selected: theme.nowPlayingAccentSource === 'app', run: () => change(() => theme.setNowPlayingAccentSource('app')) },
-    ])],
+    ]),
+    { ...choice('ambient', 'Ambient screen', ambientDelayLabel(ambient.delay), AMBIENT_DELAYS.map(delay => ({ label: ambientDelayLabel(delay), selected: ambient.delay === delay, run: () => change(() => ambient.setDelay(delay)) }))), sub: 'A slow showcase of your collection while music plays and nothing is touched.' }],
     [link('folders', 'Music folders', () => open('folders', 'Music folders', 'Configured local music folders'), `${library.folders.length} folders`), { ...scan, label: 'Rescan all' },
     { ...choice('portraits', 'Artist portraits', ({ wifi: 'Wi-Fi or Ethernet', any: 'Any network', off: 'Off' })[settings.artistImageAutoPolicy],
       (['wifi', 'any', 'off'] as const).map(policy => ({ label: ({ wifi: 'Wi-Fi or Ethernet', any: 'Any network', off: 'Off' })[policy], selected: settings.artistImageAutoPolicy === policy,

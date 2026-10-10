@@ -57,12 +57,12 @@ export function TvPlayerWaveform({ path, width, height, preview, active }: { pat
   </View>;
 }
 
-export function TvPlayerHairline({ path, active }: { path: string; active: boolean }) {
+export function TvPlayerHairline({ path, active, color }: { path: string; active: boolean; color?: string }) {
   const tv = useTvTheme();
   const time = usePlayerStore(s => s.currentTime);
   const duration = usePlayerStore(s => s.duration);
   const playing = usePlayerStore(s => s.playbackState === 'playing');
   const progress = useAnimatedPlaybackProgress({ trackKey: path, active, currentTime: time, duration, isPlaying: playing });
-  const style = useAnimatedStyle(() => ({ width: Math.max(0, Math.min(1, progress.value)) * 960 }));
-  return <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, bottom: 0, height: 2, backgroundColor: tv.strong, opacity: .45 }, style]} />;
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: Math.max(0, Math.min(1, progress.value)) }] }));
+  return <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, bottom: 0, width: 960, height: 2, transformOrigin: 'left', backgroundColor: color ?? tv.strong, opacity: .45 }, style]} />;
 }

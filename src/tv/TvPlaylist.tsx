@@ -1,3 +1,4 @@
+import { useTvAmbientBlock } from './ambientState';
 import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -34,6 +35,7 @@ export function TvPlaylist({ playlist: initial, nav, actions, setEntry }: Detail
   const [removed, setRemoved] = useState<{ key: string; index: number } | null>(null);
   const restoredRemoval = useRef<typeof removed>(null);
   const [reorder, setReorder] = useState<ReorderState<PlaylistTrackEntry> | null>(null);
+  useTvAmbientBlock(active && !!reorder);
   const reorderSession = useRef<ReturnType<typeof createPlaylistReorder<PlaylistTrackEntry>> | null>(null);
   useEffect(() => () => { reorderSession.current?.dispose(); reorderSession.current = null; }, []);
   const read = useCallback(async (cursor: string | null) => {

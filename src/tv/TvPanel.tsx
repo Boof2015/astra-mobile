@@ -1,3 +1,4 @@
+import { useTvAmbientBlock } from './ambientState';
 import { useTvTheme } from './useTvTheme';
 import { useEffect, type ComponentProps } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
@@ -16,6 +17,7 @@ export type TvMenu = { title: string; message?: string; items: TvMenuItem[]; ope
 export function TvPanel({ menu, close }: { menu: TvMenu; close: () => void }) {
   const tv = useTvTheme();
   const active = useTvActive();
+  useTvAmbientBlock(active);
   const { request, focused } = useTvFocus();
   const items = menu.items.some(item => !item.disabled) ? menu.items : [...menu.items, { label: 'Done', run: () => {} }];
   const enabled = items.flatMap((item, i) => item.disabled ? [] : [i]);

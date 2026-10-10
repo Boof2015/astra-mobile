@@ -1,3 +1,4 @@
+import { useTvAmbientBlock } from './ambientState';
 import { useTvTheme } from './useTvTheme';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, View } from 'react-native';
@@ -45,6 +46,7 @@ export function TvEq({ actions, setImmersive }: { actions: TvActions; setImmersi
   const eq = useEQStore(); const active = useTvActive(); const { focused, request } = useTvFocus();
   const [grab, setGrab] = useState<Grab | null>(null);
   const [flow, setFlow] = useState<Flow | null>(null); const flowSequence = useRef(0);
+  useTvAmbientBlock(active && (!!grab || !!flow));
   const [lastTool, setLastTool] = useState('parametric'); const [lastSet, setLastSet] = useState('type');
   const [slider, setSlider] = useState(0); const [menuOrigin, setMenuOrigin] = useState('');
   const [basePreset, setBasePreset] = useState(eq.loaded ? eq.activePresetId : null);

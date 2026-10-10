@@ -1531,6 +1531,11 @@ class AstraLibraryRepository private constructor(
     )
   }
 
+  suspend fun getTvAmbientMoment(playingPath: String, artist: String, grouping: String, excluded: List<String>): Map<String, Any?>? =
+    withCatalogRecovery { database ->
+      TvAmbientData.moment(requireUser().userDao(), database.catalogDao(), playingPath, artist, grouping, excluded)
+    }
+
   suspend fun clearDetailedListeningHistory(): Map<String, Any?> {
     initialize()
     return ListeningStatsEngine.clear(requireUser())

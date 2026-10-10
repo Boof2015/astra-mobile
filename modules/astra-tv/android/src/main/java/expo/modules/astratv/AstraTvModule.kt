@@ -31,6 +31,13 @@ class AstraTvModule : Module() {
       Prop("horizontal") { view, value: Boolean -> view.horizontal = value }
       Prop("maskStops") { view, value: List<Double> -> view.setStops(value) }
     }
+    View(AstraTvAmbientHost::class) {
+      Events("onIdle", "onActivity", "onDismiss")
+      Prop("idleEnabled") { view, value: Boolean -> view.idleEnabled = value }
+      Prop("timeoutMs") { view, value: Double -> view.timeoutMs = value.toLong() }
+      Prop("ambientVisible") { view, value: Boolean -> view.ambientVisible = value }
+      Prop("resetToken") { view, value: Int -> view.resetToken = value }
+    }
     // Bounded developer probe, not the production library discovery adapter.
     // MediaStore supplies locations only: Astra's scanner reads the actual tags.
     AsyncFunction("probeLocalAudio") {

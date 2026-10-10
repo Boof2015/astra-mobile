@@ -32,8 +32,11 @@ import { box, TvFrame, TvArtwork, TvText } from './TvPrimitives';
 import { TvBackProvider, useTvBack } from './TvBack';
 import { TvScene, TV_PLAYER_EXIT_MS } from './TvTransitions';
 
+import { TvAmbient } from './TvAmbient';
+import { dismissTvAmbient, useTvAmbientBlock } from './ambientState';
+
 export function TvApp() {
-  return <TvFocusProvider><TvBackProvider><TvFrame><TvShell /></TvFrame></TvBackProvider></TvFocusProvider>;
+  return <TvFocusProvider><TvBackProvider><TvFrame><TvAmbient><TvShell /></TvAmbient></TvFrame></TvBackProvider></TvFocusProvider>;
 }
 
 function TvShell() {
@@ -65,6 +68,7 @@ function TvShell() {
   const track = usePlayerStore(s => s.currentTrack);
   const nowPlaying = !!track && (playerPhase === 'opening' || playerPhase === 'open');
   const playerMounted = !!track && playerPhase !== 'closed';
+  useTvAmbientBlock(playerMounted || !!naming || !!menu || eqImmersive || settingsImmersive);
   useEffect(() => {
     if (playerPhase !== 'closing') return;
     // Never depend solely on an animation callback to release the player.
@@ -88,6 +92,7 @@ function TvShell() {
   }, [naming, request]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (dismissTvAmbient()) return true;
       if (menu) { closeMenu(); return true; }
       if (naming) { if (Keyboard.isVisible()) Keyboard.dismiss(); else cancelNaming(); return true; }
       if (localBack()) return true;

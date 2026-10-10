@@ -61,13 +61,14 @@ const PlayerField = memo(function PlayerField({ colors, phase }: { colors: strin
   </View>;
 });
 
-export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, player = false, fadeIn = false, active = false, playing = false }: { uri: string | null; strength?: number; player?: boolean; fadeIn?: boolean; active?: boolean; playing?: boolean }) {
+export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, player = false, fadeIn = false, active = false, playing = false, transitionMs = 450, settleMs = 280, dark }: { uri: string | null; strength?: number; player?: boolean; fadeIn?: boolean; active?: boolean; playing?: boolean; transitionMs?: number; settleMs?: number; dark?: boolean }) {
   const tv = useTvTheme();
+  const isDark = dark ?? tv.dark;
   const neutral = useMemo(() => {
     const { r, g, b } = hexToRgb(tv.accent); const lab = rgbToOklab(r, g, b);
     const hue = Math.atan2(lab.b, lab.a) * 180 / Math.PI;
-    return (tv.dark ? [.3, .27, .33] : [.87, .9, .84]).map((l, i) => oklchToHex(l, .035, hue + [0, 14, -12][i]));
-  }, [tv.accent, tv.dark]);
+    return (isDark ? [.3, .27, .33] : [.87, .9, .84]).map((l, i) => oklchToHex(l, .035, hue + [0, 14, -12][i]));
+  }, [tv.accent, isDark]);
   const reduced = useReducedMotion();
   const phase = useSharedValue(0);
   const speed = useSharedValue(0);
@@ -106,7 +107,7 @@ export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, pla
       void (async () => {
         let colors = neutral;
         if (uri) {
-          const key = `${tv.dark}:${uri}`;
+          const key = `${isDark}:${uri}`;
           const hit = cache.get(key);
           if (hit.found) colors = hit.value ?? neutral;
           else {
@@ -114,7 +115,7 @@ export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, pla
             if (result?.field && !result.field.neutral) colors = result.field.colors.map((hex, i) => {
               const { r, g, b } = hexToRgb(hex);
               const lab = rgbToOklab(r, g, b);
-              return oklchToHex((tv.dark ? [.42, .37, .46] : [.83, .88, .8])[i], Math.min(.13, Math.hypot(lab.a, lab.b) * .85 / .95), Math.atan2(lab.b, lab.a) * 180 / Math.PI);
+              return oklchToHex((isDark ? [.42, .37, .46] : [.83, .88, .8])[i], Math.min(.13, Math.hypot(lab.a, lab.b) * .85 / .95), Math.atan2(lab.b, lab.a) * 180 / Math.PI);
             });
             cache.set(key, colors);
           }
@@ -124,13 +125,13 @@ export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, pla
         setLayers(previous => next === 0 ? [colors, previous[1]] : [previous[0], colors]);
         frontRef.current = next; setFront(next);
       })();
-    }, 280);
+    }, settleMs);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [uri, neutral, tv.dark]);
+  }, [uri, neutral, isDark, settleMs]);
   useEffect(() => {
-    Animated.timing(opacity, { toValue: front, duration: reduced ? 0 : 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.timing(opacity, { toValue: front, duration: reduced ? 0 : transitionMs, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     return () => opacity.stopAnimation();
-  }, [front, opacity, reduced]);
+  }, [front, opacity, reduced, transitionMs]);
   return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: reveal.interpolate({ inputRange: [0, 1], outputRange: [0, strength] }) }]}>
     <Animated.View style={[StyleSheet.absoluteFill, { opacity: opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>{player ? <PlayerField colors={layers[0]} phase={phase} /> : <Field colors={layers[0]} />}</Animated.View>
     <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>{player ? <PlayerField colors={layers[1]} phase={phase} /> : <Field colors={layers[1]} />}</Animated.View>
