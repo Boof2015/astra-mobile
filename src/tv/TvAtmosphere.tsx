@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Platform, StyleSheet, View, type ViewProps } from 'react-native';
+import { requireNativeViewManager } from 'expo-modules-core';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import Reanimated, { useAnimatedStyle, useFrameCallback, useReducedMotion, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { extractArtworkColors } from '@/theme/artworkAccent';
@@ -11,6 +12,9 @@ import { useTvTheme } from './useTvTheme';
 
 const cache = new ArtworkAccentCache<string[]>(128);
 const falloff = [[0, 1], [.18, .78], [.36, .5], [.56, .25], [.76, .08], [1, 0]];
+const NativeGlow = Platform.OS === 'android' && Platform.isTV ? requireNativeViewManager<ViewProps & {
+  color: string; blobIndex: number; onReady: (event: { nativeEvent: { color: string } }) => void;
+}>('AstraTv', 'AstraTvGlow') : null;
 
 // Android SVG rasterizes on the UI thread. These broad, soft gradients need
 // only a quarter-resolution surface; scaling it preserves their appearance
@@ -33,31 +37,39 @@ const playerBlobs = [
   { x: 58, y: 112, rx: 90, ry: 70, dx: 112, dy: 66, tx: 53, ty: 41, seed: 4.2 },
 ];
 
-// Each color is rasterized once, then moved independently by the compositor.
-// Overscan exceeds the largest orbit so a moving bitmap never reveals an edge.
-// Keep the low-resolution SVGs static: animating gradient props would repaint
-// their Android bitmaps every frame, especially expensive on a 4K TV.
-const PlayerBlob = memo(function PlayerBlob({ color, index, phase }: { color: string; index: number; phase: SharedValue<number> }) {
+// Android prepares the same small gradient bitmap on a worker, then moves it
+// with the existing compositor transforms. No gradient rasterization on entry.
+const PlayerBlob = memo(function PlayerBlob({ color, index, phase, ready }: { color: string; index: number; phase: SharedValue<number>; ready: (index: number, color: string) => void }) {
   const blob = playerBlobs[index];
   const motion = useAnimatedStyle(() => ({ transform: [
     { translateX: Math.sin(phase.value * 2 * Math.PI / blob.tx + blob.seed) * blob.dx },
     { translateY: Math.cos(phase.value * 2 * Math.PI / blob.ty + blob.seed) * blob.dy },
   ] }));
   return <Reanimated.View style={[StyleSheet.absoluteFill, motion]}>
-    <Svg width={320} height={185} viewBox="-160 -100 1280 740"
+    {NativeGlow ? <NativeGlow color={color} blobIndex={index} onReady={event => ready(index, event.nativeEvent.color)}
+      style={{ position: 'absolute', left: -160, top: -100, width: 320, height: 185, transformOrigin: 'top left', transform: [{ scale: 4 }] }} />
+      : <Svg width={320} height={185} viewBox="-160 -100 1280 740"
       style={{ position: 'absolute', left: -160, top: -100, transformOrigin: 'top left', transform: [{ scale: 4 }] }}>
       <Defs><RadialGradient id="blob" cx="50%" cy="50%" rx="50%" ry="50%">
         {falloff.map(([offset, opacity]) => <Stop key={offset} offset={offset} stopColor={color} stopOpacity={opacity} />)}
       </RadialGradient></Defs>
       <Rect x={(blob.x - blob.rx) * 9.6} y={(blob.y - blob.ry) * 5.4} width={blob.rx * 19.2} height={blob.ry * 10.8} fill="url(#blob)" />
-    </Svg>
+    </Svg>}
   </Reanimated.View>;
 });
 
-const PlayerField = memo(function PlayerField({ colors, phase }: { colors: string[]; phase: SharedValue<number> }) {
+const PlayerField = memo(function PlayerField({ colors, phase, prepared }: { colors: string[]; phase: SharedValue<number>; prepared: (colors: string[]) => void }) {
+  const readyColors = useRef<(string | null)[]>([null, null, null]);
+  const ready = useCallback((index: number, color: string) => {
+    readyColors.current[index] = color;
+    if (colors.every((value, i) => value === readyColors.current[i])) prepared(colors);
+  }, [colors, prepared]);
+  useEffect(() => {
+    if (!NativeGlow || colors.every((value, i) => value === readyColors.current[i])) prepared(colors);
+  }, [colors, prepared]);
   return <View style={StyleSheet.absoluteFill}>
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colors[1], opacity: .25 }]} />
-    {colors.map((color, index) => <PlayerBlob key={index} color={color} index={index} phase={phase} />)}
+    {colors.map((color, index) => <PlayerBlob key={index} color={color} index={index} phase={phase} ready={ready} />)}
   </View>;
 });
 
@@ -95,6 +107,12 @@ export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, pla
   const [layers, setLayers] = useState<[string[], string[]]>([neutral, neutral]);
   const [front, setFront] = useState(0);
   const frontRef = useRef(0);
+  const pendingPalette = useRef<{ index: number; colors: string[] } | null>(null);
+  const paletteReady = useCallback((index: number, colors: string[]) => {
+    if (pendingPalette.current?.index !== index || pendingPalette.current.colors !== colors) return;
+    pendingPalette.current = null;
+    frontRef.current = index; setFront(index);
+  }, []);
   const [opacity] = useState(() => new Animated.Value(0));
   const [reveal] = useState(() => new Animated.Value(fadeIn ? 0 : 1));
   useEffect(() => {
@@ -122,18 +140,19 @@ export const TvAtmosphere = memo(function TvAtmosphere({ uri, strength = .3, pla
         }
         if (cancelled) return;
         const next = 1 - frontRef.current;
+        if (player && NativeGlow) pendingPalette.current = { index: next, colors };
         setLayers(previous => next === 0 ? [colors, previous[1]] : [previous[0], colors]);
-        frontRef.current = next; setFront(next);
+        if (!player || !NativeGlow) { frontRef.current = next; setFront(next); }
       })();
     }, settleMs);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [uri, neutral, isDark, settleMs]);
+  }, [uri, neutral, isDark, settleMs, player]);
   useEffect(() => {
     Animated.timing(opacity, { toValue: front, duration: reduced ? 0 : transitionMs, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     return () => opacity.stopAnimation();
   }, [front, opacity, reduced, transitionMs]);
   return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: reveal.interpolate({ inputRange: [0, 1], outputRange: [0, strength] }) }]}>
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity: opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>{player ? <PlayerField colors={layers[0]} phase={phase} /> : <Field colors={layers[0]} />}</Animated.View>
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>{player ? <PlayerField colors={layers[1]} phase={phase} /> : <Field colors={layers[1]} />}</Animated.View>
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity: opacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>{player ? <PlayerField colors={layers[0]} phase={phase} prepared={colors => paletteReady(0, colors)} /> : <Field colors={layers[0]} />}</Animated.View>
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>{player ? <PlayerField colors={layers[1]} phase={phase} prepared={colors => paletteReady(1, colors)} /> : <Field colors={layers[1]} />}</Animated.View>
   </Animated.View>;
 });

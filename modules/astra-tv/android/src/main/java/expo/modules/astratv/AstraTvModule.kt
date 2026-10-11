@@ -38,6 +38,12 @@ class AstraTvModule : Module() {
       Prop("ambientVisible") { view, value: Boolean -> view.ambientVisible = value }
       Prop("resetToken") { view, value: Int -> view.resetToken = value }
     }
+    View(AstraTvAmbientShadow::class) {}
+    View(AstraTvGlow::class) {
+      Events("onReady")
+      Prop("color") { view, value: String -> view.color = value }
+      Prop("blobIndex") { view, value: Int -> view.blobIndex = value }
+    }
     // Bounded developer probe, not the production library discovery adapter.
     // MediaStore supplies locations only: Astra's scanner reads the actual tags.
     AsyncFunction("probeLocalAudio") {

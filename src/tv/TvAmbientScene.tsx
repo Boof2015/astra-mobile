@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, type ViewProps } from 'react-native';
+import { requireNativeViewManager } from 'expo-modules-core';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
@@ -12,11 +13,23 @@ import { TvPlayerHairline } from './TvPlayerWaveform';
 import { AMBIENT_MOMENT_MS, ambientLayout, ambientText } from './ambientModel';
 import { loadAmbientMoment, type PreparedAmbientMoment } from './ambientData';
 
+const NativeShadow = Platform.OS === 'android' && Platform.isTV ? requireNativeViewManager<ViewProps>('AstraTv', 'AstraTvAmbientShadow') : null;
+
 const ink = { bg: '#080a0f', strong: '#f6f8fd', text: '#e2e8f4', caption: '#c9d1e1', muted: '#8a98b8', accent: '#a9c0ff' };
 const ease = Easing.bezier(.22, 1, .36, 1);
 const captionEnter = FadeIn.duration(650).easing(Easing.inOut(Easing.quad));
 const captionExit = FadeOut.duration(650).easing(Easing.inOut(Easing.quad));
 type Moment = { key: number; item: PreparedAmbientMoment; delay: number; leaving: boolean };
+
+// A vertical scrim has no horizontal detail. Rasterize a narrow strip once,
+// rather than a full-screen SVG bitmap when Ambient enters.
+const AmbientScrim = memo(function AmbientScrim() {
+  return <Svg width={1} height={270} viewBox="0 0 1 540" preserveAspectRatio="none" pointerEvents="none"
+    style={{ position: 'absolute', left: 479.5, top: 135, transform: [{ scaleX: 960 }, { scaleY: 2 }] }}>
+    <Defs><LinearGradient id="ambientScrim" x1="0" y1="0" x2="0" y2="1"><Stop offset={0} stopColor="#04060a" stopOpacity={.1} /><Stop offset={.4} stopColor="#04060a" stopOpacity={0} /><Stop offset={1} stopColor="#04060a" stopOpacity={.45} /></LinearGradient></Defs>
+    <Rect width={1} height={540} fill="url(#ambientScrim)" />
+  </Svg>;
+});
 
 export function TvAmbientScene({ first, visible, dismiss }: { first: PreparedAmbientMoment; visible: boolean; dismiss: () => boolean }) {
   const [moments, setMoments] = useState<Moment[]>([{ key: 0, item: first, delay: 1500, leaving: false }]);
@@ -61,10 +74,7 @@ export function TvAmbientScene({ first, visible, dismiss }: { first: PreparedAmb
   }, [visible, dismiss]);
   return <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: ink.bg, overflow: 'hidden' }, fade]}>
     <TvAtmosphere uri={light} strength={.85} player dark active={visible} playing={visible} transitionMs={1600} settleMs={0} />
-    <Svg width={960} height={540} style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Defs><LinearGradient id="ambientScrim" x1="0" y1="0" x2="0" y2="1"><Stop offset={0} stopColor="#04060a" stopOpacity={.1} /><Stop offset={.4} stopColor="#04060a" stopOpacity={0} /><Stop offset={1} stopColor="#04060a" stopOpacity={.45} /></LinearGradient></Defs>
-      <Rect width={960} height={540} fill="url(#ambientScrim)" />
-    </Svg>
+    <AmbientScrim />
     {moments.map(moment => <AmbientAlbum key={moment.key} moment={moment} />)}
     <Animated.View style={[StyleSheet.absoluteFill, captionStyle]}><AmbientCaption active={visible} /></Animated.View>
   </Animated.View>;
@@ -99,7 +109,9 @@ const AmbientAlbum = memo(function AmbientAlbum({ moment }: { moment: Moment }) 
   useEffect(() => { if (leaving) alpha.set(withTiming(0, { duration: 900 })); }, [leaving, alpha]);
   const artStyle = useAnimatedStyle(() => ({ opacity: alpha.value, transform: [{ translateX: layout.driftX * drift.value }, { translateY: -12 * drift.value }, { scale: scale.value }] }));
   return <View style={StyleSheet.absoluteFill}>
-    <Animated.View style={[box(layout.artX, layout.y, 300, 300), { borderRadius: 14, backgroundColor: '#111725', boxShadow: '0px 34px 80px rgba(0,0,0,0.6)' }, artStyle]}>
+    <Animated.View style={[box(layout.artX, layout.y, 300, 300), { borderRadius: 14, overflow: 'visible' }, artStyle]}>
+      {NativeShadow && <NativeShadow pointerEvents="none" style={box(-160, -160, 620, 620)} />}
+      <View style={[StyleSheet.absoluteFill, { borderRadius: 14, backgroundColor: '#111725', ...(!NativeShadow ? { boxShadow: '0px 34px 80px rgba(0,0,0,0.6)' } : {}) }]} />
       {item.image ? <Image source={item.image} style={[StyleSheet.absoluteFill, { borderRadius: 14 }]} contentFit="cover" />
         : <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="musical-notes" size={80} color={ink.muted} /></View>}
       <View style={[StyleSheet.absoluteFill, { borderRadius: 14, borderWidth: 1, borderColor: '#ffffff1a' }]} />
