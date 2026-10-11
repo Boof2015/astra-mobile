@@ -35,10 +35,6 @@ internal object TvAmbientData {
     val playing = catalog.getActiveTrack(playingPath)
     val albums = catalog.getAllAlbumSummaries(revision).filter { it.identityKey != playing?.albumIdentityKey }
     if (albums.isEmpty()) return@withContext null
-    val seen = excluded.toHashSet()
-    val unseen = albums.filter { it.identityKey !in seen }
-    val reset = unseen.isEmpty()
-    val pool = if (!reset) unseen else albums.filter { it.identityKey != excluded.lastOrNull() }.ifEmpty { albums }
     val related = if (artist.isBlank()) emptySet() else catalog.getArtistAlbumPage(
       revision, grouping, ArtistResolve.identityKey(artist), 0, Int.MAX_VALUE,
     ).map { it.identityKey }.toHashSet()
@@ -61,28 +57,26 @@ internal object TvAmbientData {
       }
     }
     val day = 86_400_000L
-    fun reason(album: AlbumSummaryEntity): String {
+    val candidates = albums.map { album ->
       val fact = albumHistory[album.identityKey]
-      return when {
-        album.identityKey in related -> "related"
-        (favoriteCounts[album.identityKey] ?: 0) > 0 -> "favorite"
-        fact != null && fact.plays >= 5 && now - fact.lastPlayedAt >= 60 * day -> "forgotten"
-        album.latestAddedAt > now - 14 * day -> "added"
-        fact != null && fact.weekPlays >= 3 -> "repeat"
-        else -> "collection"
-      }
+      AmbientCandidate(album.identityKey, buildSet {
+        if (album.identityKey in related) add("related")
+        if ((favoriteCounts[album.identityKey] ?: 0) > 0) add("favorite")
+        if (fact != null && fact.plays >= 5 && now - fact.lastPlayedAt >= 60 * day) add("forgotten")
+        if (album.latestAddedAt > now - 14 * day) add("added")
+        if (fact != null && fact.weekPlays >= 3) add("repeat")
+      })
     }
-    val order = listOf("related", "favorite", "forgotten", "added", "repeat", "collection")
-    // Shuffle within a reason, with no repeat until the collection is exhausted.
-    val album = pool.shuffled().minBy { order.indexOf(reason(it)) }
+    val selection = TvAmbientSelection.pick(candidates, excluded) ?: return@withContext null
+    val album = albums.first { it.identityKey == selection.identityKey }
     val fact = albumHistory[album.identityKey]
     mapOf(
-      "album" to album.toBridgeMap(), "reason" to reason(album), "relatedArtist" to artist,
+      "album" to album.toBridgeMap(), "reason" to selection.reason, "relatedArtist" to artist,
       "favoriteTracks" to (favoriteCounts[album.identityKey] ?: 0),
       "historyEnabled" to enabled, "plays" to (fact?.plays ?: 0).toDouble(),
       "weekPlays" to (fact?.weekPlays ?: 0).toDouble(),
       "firstPlayedAt" to fact?.firstPlayedAt?.toDouble(), "lastPlayedAt" to fact?.lastPlayedAt?.toDouble(),
-      "reset" to reset,
+      "reset" to selection.reset,
     )
   }
 }

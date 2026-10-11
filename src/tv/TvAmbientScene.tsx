@@ -3,7 +3,7 @@ import { Platform, StyleSheet, View, type ViewProps } from 'react-native';
 import { requireNativeViewManager } from 'expo-modules-core';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -127,20 +127,37 @@ const AmbientAlbum = memo(function AmbientAlbum({ moment }: { moment: Moment }) 
   </View>;
 });
 
+function useAmbientBar(active: boolean, initial: number) {
+  const scale = useSharedValue(initial);
+  useEffect(() => {
+    if (active) {
+      // Independent long phrases, prepared once. All motion stays on the UI
+      // thread; no per-beat JS updates or audio visualizer are needed.
+      const start = scale.value;
+      // Close each phrase at its starting height so repeating never snaps.
+      const phrase = Array.from({ length: 24 }, (_, step) => withTiming(step === 23 ? start : .2 + Math.random() * .8, {
+        duration: 620 + Math.round(Math.random() * 100), easing: Easing.inOut(Easing.sin),
+      }));
+      scale.value = withRepeat(withSequence(...phrase), -1);
+    }
+    return () => cancelAnimation(scale);
+  }, [active, scale]);
+  return useAnimatedStyle(() => ({ transform: [{ scaleY: scale.value }] }));
+}
+
 const AmbientCaption = memo(function AmbientCaption({ active }: { active: boolean }) {
   const track = usePlayerStore(s => s.currentTrack);
   const drift = useSharedValue(0);
-  const bars = useSharedValue(0);
+  const barA = useAmbientBar(active, .54);
+  const barB = useAmbientBar(active, 1);
+  const barC = useAmbientBar(active, .69);
   useEffect(() => {
     if (active) {
       drift.value = withRepeat(withTiming(1, { duration: 60_000, easing: Easing.inOut(Easing.sin) }), -1, true);
-      bars.value = withRepeat(withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.sin) }), -1, true);
     }
-    return () => { cancelAnimation(drift); cancelAnimation(bars); };
-  }, [active, drift, bars]);
+    return () => cancelAnimation(drift);
+  }, [active, drift]);
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: drift.value * 6 }, { translateY: drift.value * -4 }] }));
-  const barA = useAnimatedStyle(() => ({ transform: [{ scaleY: .35 + bars.value * .65 }] }));
-  const barB = useAnimatedStyle(() => ({ transform: [{ scaleY: 1 - bars.value * .65 }] }));
   if (!track) return null;
   return <>
     <Animated.View style={[box(96, 466, 768, 36), style]}>
@@ -151,7 +168,7 @@ const AmbientCaption = memo(function AmbientCaption({ active }: { active: boolea
         <View style={{ maxWidth: 670 }}><TvText mono size={9.5} color={ink.accent} style={{ letterSpacing: 1.52, marginBottom: 5, lineHeight: 10 }}>NOW PLAYING</TvText>
           <TvText size={14} weight="semibold" color={ink.strong} numberOfLines={1}>{track.title}<TvText size={14} color={ink.muted}> · {track.artist}</TvText></TvText></View>
         <View style={{ flexDirection: 'row', gap: 2.5, alignItems: 'flex-end', height: 13, marginLeft: 6 }}>
-          {[7, 13, 9].map((height, i) => <Animated.View key={i} style={[{ width: 2.5, height, borderRadius: 1, backgroundColor: ink.accent, transformOrigin: 'bottom' }, i === 1 ? barB : barA]} />)}
+          {[barA, barB, barC].map((barStyle, i) => <Animated.View key={i} style={[{ width: 2.5, height: 13, borderRadius: 1, backgroundColor: ink.accent, transformOrigin: 'bottom' }, barStyle]} />)}
         </View>
       </Animated.View>
     </Animated.View>
