@@ -58,6 +58,10 @@ internal class PlatformAudioAnalyzer(
     var finalizedNanos = 0L
 
     try {
+      // Some vendor WAV extractors report the physically remaining audio as a
+      // complete shorter track. Reject missing container bytes before analysis
+      // so neither the forced platform route nor native fallback can cache it.
+      if (WaveContainerBounds.isTruncated(context, uri)) return result
       extractor.setDataSource(context, uri, null)
 
       var trackFormat: MediaFormat? = null

@@ -33,7 +33,9 @@ class AnalysisFixtureProvider : ContentProvider() {
     require(mode == "r")
     val context = requireNotNull(context)
     val name = if (uri.lastPathSegment == "opus") "signal.opus" else "signal.wav"
-    val bytes = context.assets.open("analysis/$name").use { it.readBytes() }
+    val bytes = context.assets.open("analysis/$name").use { it.readBytes() }.let {
+      if (uri.lastPathSegment == "truncated") it.copyOf(100) else it
+    }
     if (uri.lastPathSegment == "pipe") {
       val pipe = ParcelFileDescriptor.createPipe()
       kotlin.concurrent.thread {
@@ -42,7 +44,8 @@ class AnalysisFixtureProvider : ContentProvider() {
       return AssetFileDescriptor(pipe[0], 0, -1)
     }
     val file = File(context.cacheDir, "analysis-offset-$name")
-    file.outputStream().use { it.write(ByteArray(127) { 0x5a }); it.write(bytes); it.write(ByteArray(97)) }
+    // A large backing file must not hide truncation inside a bounded descriptor.
+    file.outputStream().use { it.write(ByteArray(127) { 0x5a }); it.write(bytes); it.write(ByteArray(300000)) }
     return AssetFileDescriptor(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY), 127, bytes.size.toLong())
   }
 }
@@ -161,13 +164,40 @@ class AudioAnalysisTest {
     val timedOut = AudioAnalyzer.analyze(context, Uri.fromFile(file), 512, true, AtomicBoolean(false), backend = AnalysisBackend.NATIVE, timeoutMs = 0)
     assertTrue(timedOut.cancelled); assertFalse(timedOut.completed)
     val bad = File(context.cacheDir, "truncated-analysis.wav").apply { writeBytes(fixture("signal.wav").readBytes().copyOf(100)) }
-    for (backend in listOf(AnalysisBackend.NATIVE, AnalysisBackend.PLATFORM)) {
-      assertFalse("$backend truncated", analyze(bad, backend).completed)
+    for (backend in AnalysisBackend.entries) {
+      val result = analyze(bad, backend)
+      assertFalse("$backend truncated", result.completed)
+      assertTrue("$backend must not return cacheable peaks", result.peaks.isEmpty())
     }
     val flag = AtomicBoolean(false)
     val interrupted = AudioAnalyzer.analyze(context, Uri.fromFile(fixture("signal.wav")), 512, true, flag,
       backend = AnalysisBackend.NATIVE, onProgress = { _, _ -> flag.set(true) })
     assertTrue(interrupted.cancelled); assertFalse(interrupted.completed)
+  }
+
+  @Test fun platformWaveBoundsRespectDescriptorSlicesAndValidShortTracks() = runBlocking {
+    for (endpoint in listOf("offset", "truncated")) {
+      val result = AudioAnalyzer.analyze(context,
+        Uri.parse("content://expo.modules.astralibraryscanner.test.analysis/$endpoint"),
+        512, true, AtomicBoolean(false), backend = AnalysisBackend.PLATFORM)
+      assertEquals(endpoint, endpoint == "offset", result.completed)
+      if (endpoint == "truncated") assertTrue(result.peaks.isEmpty())
+    }
+    // A genuinely tiny WAV has an equally tiny declared size. Duration hints
+    // and minimum-duration thresholds must not reject it as damaged.
+    val short = File(context.cacheDir, "short-valid.wav").apply {
+      val bytes = fixture("signal.wav").readBytes().copyOf(100)
+      ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).apply {
+        putInt(4, bytes.size - 8)
+        putInt(40, bytes.size - 44)
+      }
+      writeBytes(bytes)
+    }
+    for (backend in listOf(AnalysisBackend.AUTO, AnalysisBackend.PLATFORM)) {
+      val result = analyze(short, backend, duration = 0.0)
+      assertTrue("$backend valid short WAV", result.completed)
+      assertEquals(512, result.peaks.size)
+    }
   }
 
   @Test fun unsupportedAndNonseekableSourcesUsePlatformFallback() = runBlocking {
