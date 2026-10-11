@@ -17,3 +17,8 @@ target_include_directories(astrascope PRIVATE ../cpp)
 
 find_library(log-lib log)
 target_link_libraries(astrascope ${log-lib})
+
+# Support both 4 KB and 16 KB Android devices with the current NDK.
+target_link_options(astrascope PRIVATE
+  "-Wl,-z,max-page-size=16384"
+  "-Wl,-z,common-page-size=16384")
