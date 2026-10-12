@@ -12,3 +12,6 @@ optional, licensed separately, and is not included in this repository.
 See [Discord build and CI instructions](docs/discord-build.txt) for verified SDK
 setup, SDK-free builds, and distribution requirements. Bundled license texts and
 Discord third-party notices are available offline in Settings > Info > Licenses.
+
+See [Android release optimization](docs/android-optimization.md) for R8 settings,
+candidate checks, crash mapping retention, and device/Google Play acceptance.

@@ -22,6 +22,8 @@ android {
         }
         release {
             signingConfig signingConfigs.debug
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
 }
@@ -54,6 +56,20 @@ test('adds an idempotent side-by-side Astra Dev preview build', () => {
   assert.match(transformed, /signingConfig signingConfigs\.debug/);
   assert.match(transformed, /resValue 'string', 'app_name', 'Astra Dev'/);
   assert.equal(_internal.addPreviewBuildType(transformed), transformed);
+});
+
+test('enables optimizing default rules without changing debug or project keep rules', () => {
+  const once = _internal.enableReleaseOptimization(APP_GRADLE);
+  assert.equal(once, APP_GRADLE.replace('proguard-android.txt', 'proguard-android-optimize.txt'));
+  assert.equal(_internal.enableReleaseOptimization(once), once);
+  const singleQuoted = APP_GRADLE.replace('"proguard-android.txt"', "'proguard-android.txt'");
+  assert.equal(_internal.enableReleaseOptimization(singleQuoted), once);
+});
+
+test('fails visibly when the Expo default ProGuard configuration changes or is ambiguous', () => {
+  for (const contents of [APP_GRADLE.replace('proguard-android.txt', 'custom.txt'), APP_GRADLE + APP_GRADLE]) {
+    assert.throws(() => _internal.enableReleaseOptimization(contents), /expected exactly one default Android ProGuard configuration/);
+  }
 });
 
 test('builds the side-by-side preview with production JS transforms', async () => {
@@ -189,12 +205,16 @@ test('writes deterministic Astra and RNTP notification icon resources', async (t
   );
   const firstDrawable = await readFile(drawablePath, 'utf8');
   const firstOverride = await readFile(overridePath, 'utf8');
+  const keepPath = path.join(projectRoot, 'app/src/main/res/raw', _internal.NOTIFICATION_KEEP_FILE);
+  const firstKeep = await readFile(keepPath, 'utf8');
 
   assert.equal(firstDrawable, _internal.NOTIFICATION_ICON_VECTOR);
   assert.match(firstDrawable, /android:width="24dp"/);
   assert.match(firstDrawable, /android:fillColor="#FFFFFFFF"/);
   assert.doesNotMatch(firstDrawable, /background|logoShadow/);
   assert.equal(firstOverride, _internal.NOTIFICATION_ICON_OVERRIDE);
+  assert.equal(firstKeep, _internal.NOTIFICATION_KEEP);
+  assert.match(firstKeep, /tools:keep="@drawable\/astra_notification_icon,@drawable\/exo_notification_small_icon"/);
   assert.match(
     firstOverride,
     /name="exo_notification_small_icon" type="drawable">@drawable\/astra_notification_icon/
@@ -203,4 +223,5 @@ test('writes deterministic Astra and RNTP notification icon resources', async (t
   await _internal.writeNotificationIconResources(projectRoot);
   assert.equal(await readFile(drawablePath, 'utf8'), firstDrawable);
   assert.equal(await readFile(overridePath, 'utf8'), firstOverride);
+  assert.equal(await readFile(keepPath, 'utf8'), firstKeep);
 });

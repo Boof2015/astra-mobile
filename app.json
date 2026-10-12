@@ -51,7 +51,10 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# Expo's reflection-based record converters are used by AstraWidget and other native modules.\n# Full R8 optimization otherwise causes a startup NPE while converting widget state.\n-keep class expo.modules.kotlin.records.** { *; }"
           }
         }
       ],

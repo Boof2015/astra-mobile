@@ -52,8 +52,8 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p 'test_discord*.py'
           python3 scripts/verify-discord-artifact.py
 
-      - name: Test native page-size release checks
-        run: python3 -m unittest discover -s scripts/tests -p 'test_android_pages.py'
+      - name: Test Android packaging and optimization checks
+        run: python3 -m unittest discover -s scripts/tests -p 'test_android_*.py'
 
       - name: Typecheck
         run: npm run typecheck
@@ -141,6 +141,7 @@ jobs:
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
           grep -Fq 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
+          python3 scripts/verify-android-optimization.py generated
 
       - name: Decode app-signing keystore
         env:
@@ -306,6 +307,7 @@ jobs:
           grep -Fq "ASTRA RELEASE SIGNING" android/app/build.gradle
           grep -Fq 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' android/gradle.properties
           grep -Fq 'android:shell="true"' android/app/src/main/AndroidManifest.xml
+          python3 scripts/verify-android-optimization.py generated
 
       - name: Run Astra native unit tests
         working-directory: android
@@ -415,8 +417,25 @@ jobs:
           cache-disabled: true
       - run: npm ci
       - run: npx expo prebuild --platform android --no-install --clean
+      - name: Verify generated optimization settings
+        run: python3 scripts/verify-android-optimization.py generated
       - name: Test and build SDK-free app
         working-directory: android
         run: ./gradlew :astra-discord:testDebugUnitTest :app:assemblePreview -PreactNativeArchitectures=arm64-v8a --no-daemon
       - name: Verify SDK-free app and packaged licenses
         run: python3 scripts/verify-discord-artifact.py --sdk-free android/app/build/outputs/apk/preview/app-preview.apk
+      - name: Verify SDK-free optimization
+        run: >-
+          python3 scripts/verify-android-optimization.py artifact
+          android/app/build/outputs/apk/preview/app-preview.apk
+          --mapping-dir android/app/build/outputs/mapping/preview
+          --r8-metadata android/app/build/intermediates/r8_metadata/preview/minifyPreviewWithR8/r8-metadata.dat
+      - name: Retain SDK-free R8 reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-sdk-free-r8-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/mapping/preview/
+            android/app/build/intermediates/r8_metadata/preview/minifyPreviewWithR8/r8-metadata.dat
+          if-no-files-found: error
+          retention-days: 30

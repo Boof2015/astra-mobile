@@ -129,8 +129,25 @@ export function prepareArtifact(distribution, sourcePath, outputDirectory) {
     path.join(ROOT, 'scripts/verify-discord-artifact.py'),
     ...(discordEnabled ? [] : ['--sdk-free']), absoluteSource,
   ], { cwd: ROOT, stdio: 'inherit' });
+  const mappingDirectory = path.join(ROOT, 'android/app/build/outputs/mapping/release');
+  const optimization = JSON.parse(execFileSync('python3', [
+    path.join(ROOT, 'scripts/verify-android-optimization.py'), 'artifact', absoluteSource,
+    '--mapping-dir', mappingDirectory,
+    ...(distribution === 'github' ? [
+      '--r8-metadata', path.join(ROOT, 'android/app/build/intermediates/r8_metadata/release/minifyReleaseWithR8/r8-metadata.dat'),
+    ] : []),
+  ], { cwd: ROOT, encoding: 'utf8' }));
   mkdirSync(absoluteOutput, { recursive: true });
   const sourceArchive = createSourceBundle(absoluteOutput);
+  const optimizationDirectory = path.join(absoluteOutput, 'optimization');
+  mkdirSync(optimizationDirectory);
+  for (const name of ['mapping.txt', 'configuration.txt', 'seeds.txt', 'usage.txt', 'resources.txt']) {
+    copyFileSync(path.join(mappingDirectory, name), path.join(optimizationDirectory, name));
+  }
+  writeFileSync(path.join(optimizationDirectory, 'optimization.json'), `${JSON.stringify(optimization, null, 2)}\n`);
+  if (optimization.r8) {
+    writeFileSync(path.join(optimizationDirectory, 'r8.json'), `${JSON.stringify(optimization.r8, null, 2)}\n`);
+  }
   const noticesDirectory = path.join(absoluteOutput, 'licenses');
   mkdirSync(noticesDirectory);
   for (const file of ['LICENSE', 'LICENSE-DISCORD-EXCEPTION', ...(discordEnabled ? ['DISCORD-SDK-NOTICE.txt'] : [])]) {

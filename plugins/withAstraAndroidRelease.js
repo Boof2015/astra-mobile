@@ -17,6 +17,8 @@ const PREVIEW_MARKER = '// ASTRA SIDE-BY-SIDE PREVIEW';
 const CAMERA_FEATURE = 'android.hardware.camera';
 const NOTIFICATION_ICON_FILE = 'astra_notification_icon.xml';
 const NOTIFICATION_OVERRIDE_FILE = 'astra_notification_icon_overrides.xml';
+const NOTIFICATION_KEEP_FILE = 'astra_notification_keep.xml';
+const OPTIMIZED_RESOURCES_PROPERTY = 'android.r8.optimizedResourceShrinking';
 const GRADLE_JVM_ARGS_PROPERTY = 'org.gradle.jvmargs';
 const GRADLE_JVM_ARGS_VALUE = '-Xmx4096m -XX:MaxMetaspaceSize=1024m';
 
@@ -51,6 +53,12 @@ const NOTIFICATION_ICON_OVERRIDE = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="exo_notification_small_icon" type="drawable">@drawable/astra_notification_icon</item>
 </resources>
+`;
+
+// These names are also resolved through Resources.getIdentifier by native services.
+const NOTIFICATION_KEEP = `<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/astra_notification_icon,@drawable/exo_notification_small_icon" />
 `;
 
 const SETTINGS_BLOCK = `
@@ -188,6 +196,14 @@ function addPreviewBuildType(contents) {
   return appendBlock(contents, PREVIEW_MARKER, PREVIEW_BUILD_CONFIGURATION);
 }
 
+function enableReleaseOptimization(contents) {
+  const defaultRules = /getDefaultProguardFile\(\s*(['"])proguard-android(?:-optimize)?\.txt\1\s*\)/g;
+  if (Array.from(contents.matchAll(defaultRules)).length !== 1) {
+    throw new Error('Unable to enable Astra release optimization: expected exactly one default Android ProGuard configuration. Review the Expo Gradle template.');
+  }
+  return contents.replace(defaultRules, 'getDefaultProguardFile("proguard-android-optimize.txt")');
+}
+
 function withVendoredKotlinAudio(config) {
   config = withSettingsGradle(config, (mod) => {
     mod.modResults.contents = appendBlock(mod.modResults.contents, SETTINGS_MARKER, SETTINGS_BLOCK);
@@ -207,19 +223,20 @@ function withVendoredKotlinAudio(config) {
 function withAndroidBuildTypes(config) {
   return withAppBuildGradle(config, (mod) => {
     mod.modResults.contents = addPreviewBuildType(
-      addReleaseSigning(mod.modResults.contents)
+      addReleaseSigning(enableReleaseOptimization(mod.modResults.contents))
     );
     return mod;
   });
 }
 
-function withGradleBuildMemory(config) {
+function withGradleBuildSettings(config) {
   return withGradleProperties(config, (mod) => {
     mod.modResults = upsertGradleProperty(
       mod.modResults,
       GRADLE_JVM_ARGS_PROPERTY,
       GRADLE_JVM_ARGS_VALUE
     );
+    mod.modResults = upsertGradleProperty(mod.modResults, OPTIMIZED_RESOURCES_PROPERTY, 'true');
     return mod;
   });
 }
@@ -265,14 +282,17 @@ async function writeNotificationIconResources(platformProjectRoot) {
   const resourceRoot = path.join(platformProjectRoot, 'app', 'src', 'main', 'res');
   const drawableDir = path.join(resourceRoot, 'drawable');
   const valuesDir = path.join(resourceRoot, 'values');
+  const rawDir = path.join(resourceRoot, 'raw');
 
   await Promise.all([
     fs.mkdir(drawableDir, { recursive: true }),
     fs.mkdir(valuesDir, { recursive: true }),
+    fs.mkdir(rawDir, { recursive: true }),
   ]);
   await Promise.all([
     fs.writeFile(path.join(drawableDir, NOTIFICATION_ICON_FILE), NOTIFICATION_ICON_VECTOR),
     fs.writeFile(path.join(valuesDir, NOTIFICATION_OVERRIDE_FILE), NOTIFICATION_ICON_OVERRIDE),
+    fs.writeFile(path.join(rawDir, NOTIFICATION_KEEP_FILE), NOTIFICATION_KEEP),
   ]);
 }
 
@@ -289,7 +309,7 @@ function withAstraNotificationIcon(config) {
 function withAstraAndroidRelease(config) {
   config = withVendoredKotlinAudio(config);
   config = withAndroidBuildTypes(config);
-  config = withGradleBuildMemory(config);
+  config = withGradleBuildSettings(config);
   config = withAstraNotificationIcon(config);
   return withProfileableRelease(config);
 }
@@ -306,8 +326,12 @@ module.exports._internal = {
   NOTIFICATION_ICON_VECTOR,
   NOTIFICATION_OVERRIDE_FILE,
   NOTIFICATION_ICON_OVERRIDE,
+  NOTIFICATION_KEEP_FILE,
+  NOTIFICATION_KEEP,
+  OPTIMIZED_RESOURCES_PROPERTY,
   addReleaseSigning,
   addPreviewBuildType,
+  enableReleaseOptimization,
   appendBlock,
   upsertGradleProperty,
   ensureOptionalCameraFeature,
