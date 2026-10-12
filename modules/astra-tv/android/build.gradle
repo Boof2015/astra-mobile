@@ -13,3 +13,8 @@ android {
     versionName "0.1.0"
   }
 }
+
+dependencies {
+  // Compile against the host app's existing ScrollView implementation.
+  compileOnly 'com.facebook.react:react-android'
+}

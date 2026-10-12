@@ -1,8 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
-import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
-import { useSmoothPlaybackTime } from '@/audio/useSmoothPlaybackTime';
-import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
+import { LyricsPlaybackClock } from '@/components/lyrics/LyricsPlaybackClock';
 import { getLyricsEmptyStatePresentation, getSyncedLyricsDisplayLines, hasRenderableSyncedLines, LYRICS_DISPLAY_LEAD_MS, resolveSyncedLyricsTiming, type SyncedLyricsDisplayLine, type SyncedLyricsTimingState } from '@/lyrics/presentation';
 import type { LyricsLine } from '@/lyrics/types';
 import { useLyricsSettingsStore } from '@/stores/lyricsSettingsStore';
@@ -14,25 +13,15 @@ import { useTvTheme } from './useTvTheme';
 import { TvLyricLine, type TvLyricsSettings } from './TvLyricLine';
 import { lyricInWindow, lyricVoices } from './playerLyricsModel';
 
-// Only this small clock component ticks on JS. The measured song column gets a
-// React update at cue boundaries; karaoke sweeps run on the UI playback clock.
+// The measured song column gets a React update only at cue boundaries;
+// following and karaoke sweeps share the UI playback clock.
 const LyricsClock = memo(function LyricsClock({ lines, path, duration, foreground, seconds, changed }: {
   lines: LyricsLine[]; path: string; duration: number; foreground: boolean; seconds: SharedValue<number>; changed: (timing: SyncedLyricsTimingState) => void;
 }) {
   const time = usePlayerStore(s => s.currentTime);
   const playing = usePlayerStore(s => s.playbackState === 'playing');
-  const progress = useAnimatedPlaybackProgress({ currentTime: time, duration, isPlaying: playing, active: foreground, trackKey: path });
-  // Karaoke needs less bandwidth than the large line movement. Sample its UI
-  // clock at 30 Hz; line scrolling/lifts keep their full-rate animations.
-  useAnimatedReaction(() => {
-    const time = progress.value * duration;
-    return playing && foreground ? Math.floor(time * 30) / 30 : time;
-  }, time => { seconds.set(time + LYRICS_DISPLAY_LEAD_MS / 1000); }, [duration, playing, foreground]);
-  const smooth = useSmoothPlaybackTime(time, duration, playing && foreground) + LYRICS_DISPLAY_LEAD_MS / 1000;
-  const timing = resolveSyncedLyricsTiming(lines, smooth, { durationSeconds: duration });
-  const { activeCueIndex, activeLineIndex, focusLineIndex, isNeutral } = timing;
-  useEffect(() => { changed({ activeCueIndex, activeLineIndex, focusLineIndex, isNeutral }); }, [activeCueIndex, activeLineIndex, focusLineIndex, isNeutral, changed]);
-  return null;
+  return <LyricsPlaybackClock lines={lines} path={path} currentTime={time} duration={duration}
+    isPlaying={playing} active={foreground} seconds={seconds} changed={changed} />;
 });
 
 function SyncedColumn({ display, timing, seconds, voices, settings, reduced }: {

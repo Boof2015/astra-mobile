@@ -1,271 +1,119 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
-import { useColors } from '@/theme/themed';
+import { GradientMask } from '@/components/GradientMask';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
-import { getPreferredLyricsTranslation, resolveLyricsWordTiming } from '@/lyrics/presentation';
-import type { LyricsFurigana, LyricsWord } from '@/lyrics/types';
-import { sameLyricsLinePresentation, type LyricsLinePresentation, type LyricsLineTier } from './lyricsLinePresentation';
+import { useColors } from '@/theme/themed';
+import { rgbaFromHex } from '@/theme/colorUtils';
+import { getPreferredLyricsTranslation } from '@/lyrics/presentation';
+import { balancedLyricWidth, lyricUnits, lyricWordProgress, MOBILE_LYRICS_MOTION, type LyricUnit } from '@/lyrics/animation';
+import { sameLyricsLinePresentation, type LyricsLinePresentation } from './lyricsLinePresentation';
+import { LYRICS_EASE } from './useLyricsFollow';
 
-export type { LyricsLineTier } from './lyricsLinePresentation';
-
-interface LyricsLineProps extends LyricsLinePresentation {
-  onSeek: () => void;
-  onLayout?: (event: LayoutChangeEvent) => void;
-}
-
-const TIER: Record<LyricsLineTier, { scale: number; opacity: number }> = {
-  active: { scale: 1.06, opacity: 1 },
-  near: { scale: 1, opacity: 0.52 },
-  far: { scale: 0.965, opacity: 0.27 },
-  distant: { scale: 0.93, opacity: 0.13 },
-};
-
-const EASE = Easing.bezier(0.22, 1, 0.36, 1);
-const DURATION = 220;
-
-interface Segment {
-  text: string;
-  reading?: string;
-}
-
-function buildSegments(text: string, furigana: LyricsFurigana[] | undefined): Segment[] {
-  if (!furigana || furigana.length === 0) return [{ text }];
-  const sorted = [...furigana].sort((a, b) => a.start - b.start);
-  const segments: Segment[] = [];
-  let cursor = 0;
-  for (const entry of sorted) {
-    if (entry.start < cursor || entry.end > text.length) continue;
-    if (entry.start > cursor) segments.push({ text: text.slice(cursor, entry.start) });
-    segments.push({ text: text.slice(entry.start, entry.end), reading: entry.reading });
-    cursor = entry.end;
-  }
-  if (cursor < text.length) segments.push({ text: text.slice(cursor) });
-  return segments.length > 0 ? segments : [{ text }];
-}
-
-export function RubyText({
-  text,
-  furigana,
-  enabled,
-  size,
-  lineHeight,
-  readingSize,
-  readingHeight,
-  color,
-  readingColor,
-  shadow,
-}: {
-  text: string;
-  furigana?: LyricsFurigana[];
-  enabled: boolean;
+interface UnitStyle {
   size: number;
-  lineHeight: number;
-  readingSize: number;
-  readingHeight: number;
+  width: number;
   color: string;
-  readingColor: string;
-  shadow?: object;
-}) {
-  const segments = useMemo(
-    () => buildSegments(text, enabled ? furigana : undefined),
-    [enabled, furigana, text]
-  );
-  if (!enabled || !furigana?.length) {
-    return <Text variant="heading" color={color} style={{ fontSize: size, lineHeight, ...shadow }}>{text}</Text>;
-  }
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      {segments.map((segment, index) => (
-        <View key={`${index}:${segment.text}`} style={{ paddingTop: readingHeight }}>
-          <Text variant="heading" color={color} style={{ fontSize: size, lineHeight, ...shadow }}>
-            {segment.text}
-          </Text>
-          {segment.reading ? (
-            <Text
-              variant="caption"
-              color={readingColor}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              style={{
-                position: 'absolute', top: 0, left: 0, right: 0,
-                height: readingHeight, fontSize: readingSize,
-                lineHeight: readingHeight, textAlign: 'center',
-              }}
-            >
-              {segment.reading}
-            </Text>
-          ) : null}
-        </View>
-      ))}
-    </View>
-  );
+  glow: string;
 }
 
-export function TimedWord({
-  word,
-  progress,
-  furiganaEnabled,
-  size,
-  lineHeight,
-  readingSize,
-  readingHeight,
-}: {
-  word: LyricsWord;
-  progress: number;
-  furiganaEnabled: boolean;
-  size: number;
-  lineHeight: number;
-  readingSize: number;
-  readingHeight: number;
+/** Size includes the app's capped font scale, keeping text, readings and the
+ * sweep on exactly the same measured grid. */
+const UnitText = memo(function UnitText({ unit, band, appearance, glow = false }: {
+  unit: LyricUnit; band: boolean; appearance: UnitStyle; glow?: boolean;
 }) {
-  const colors = useColors();
-  const [width, setWidth] = useState(0);
-  const hasFurigana = furiganaEnabled && Boolean(word.furigana?.length);
-  const textTop = hasFurigana ? readingHeight : 0;
-  return (
-    <View
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-    >
-      <RubyText
-        text={word.text}
-        furigana={word.furigana}
-        enabled={furiganaEnabled}
-        size={size}
-        lineHeight={lineHeight}
-        readingSize={readingSize}
-        readingHeight={readingHeight}
-        color={colors.textPrimary}
-        readingColor={colors.textSecondary}
-      />
-      {width > 0 && progress > 0 ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', left: 0, top: textTop,
-            width: width * progress, height: lineHeight, overflow: 'hidden',
-          }}
-        >
-          <Text
-            variant="heading"
-            color={colors.accentTextStrong}
-            numberOfLines={1}
-            style={{ width, fontSize: size, lineHeight }}
-          >
-            {word.text}
-          </Text>
-        </View>
-      ) : null}
-    </View>
-  );
+  const { size, color } = appearance;
+  const readingHeight = size * .5;
+  return <View style={{ flexDirection: 'row', paddingTop: band ? readingHeight : 0 }}>
+    {unit.segments.map((segment, index) => <View key={index} style={{ flexShrink: 1 }}>
+      <Text variant="heading" allowFontScaling={false} color={color} numberOfLines={1} adjustsFontSizeToFit
+        style={{ fontSize: size, lineHeight: size * 1.34, letterSpacing: size * -.012, includeFontPadding: false,
+          ...(glow ? { textShadowColor: appearance.glow, textShadowRadius: size * 8 / 30, textShadowOffset: { width: 0, height: 0 } } : {}) }}>
+        {segment.text}
+      </Text>
+      {!!segment.reading && <Text variant="label" allowFontScaling={false} color={color} numberOfLines={1} adjustsFontSizeToFit
+        style={{ position: 'absolute', top: -readingHeight, left: 0, right: 0, height: readingHeight,
+          fontSize: size * .38, lineHeight: readingHeight, textAlign: 'center', includeFontPadding: false }}>
+        {segment.reading}
+      </Text>}
+    </View>)}
+  </View>;
+});
+
+function WordLight({ unit, band, appearance, width, height, progress }: {
+  unit: LyricUnit; band: boolean; appearance: UnitStyle; width: number; height: number; progress: SharedValue<number>;
+}) {
+  const feather = appearance.size * 16 / 30;
+  const sweep = useAnimatedStyle(() => ({ transform: [{ translateX: -width - feather + progress.value * (width + feather) }] }));
+  const glyph = useAnimatedStyle(() => ({ transform: [{ translateX: width + feather - progress.value * (width + feather) }] }));
+  return <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, sweep]}>
+    <GradientMask width={width + feather} height={height} horizontal stops={[0, 0, width / (width + feather), 1]}>
+      <Animated.View style={[{ width }, glyph]}><UnitText unit={unit} band={band} appearance={appearance} /></Animated.View>
+    </GradientMask>
+  </Animated.View>;
 }
 
-function LyricsLineComponent({
-  line,
-  tier,
-  baseSize,
-  roomy = false,
-  browsing = false,
-  activeTimeSeconds,
-  wordTimingEnabled,
-  furiganaEnabled,
-  translationsEnabled,
-  translationPriority,
-  voiceLabelsEnabled,
-  onSeek,
-  onLayout,
-}: LyricsLineProps) {
+const Unit = memo(function Unit({ unit, index, band, appearance, clock, start, end, warm, reduced, measure }: {
+  unit: LyricUnit; index: number; band: boolean; appearance: UnitStyle; clock?: SharedValue<number>;
+  start: number; end?: number; warm: boolean; reduced: boolean; measure: (index: number, width: number) => void;
+}) {
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const progress = useDerivedValue(() => clock ? lyricWordProgress(start, end, clock.value) : 0);
+  const raised = useSharedValue(0);
+  useAnimatedReaction(() => !reduced && progress.value > 0, (singing, previous) => {
+    if (singing === previous) return;
+    const y = singing ? -appearance.size * 2 / 30 : 0;
+    raised.value = previous === null || reduced ? y : withTiming(y, { duration: MOBILE_LYRICS_MOTION.liftMs, easing: LYRICS_EASE });
+  }, [reduced, appearance.size]);
+  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: raised.value }] }));
+  return <Animated.View style={[{ maxWidth: appearance.width, flexShrink: 0 }, lift]} onLayout={event => {
+    const { width, height } = event.nativeEvent.layout;
+    setLayout(previous => previous.width === width && previous.height === height ? previous : { width, height });
+    measure(index, width);
+  }}>
+    <View style={{ opacity: clock ? .36 : 1 }}><UnitText unit={unit} band={band} appearance={appearance} glow /></View>
+    {warm && layout.width > 0 && <WordLight unit={unit} band={band} appearance={appearance}
+      width={layout.width} height={layout.height} progress={progress} />}
+  </Animated.View>;
+});
+
+function LyricsLineComponent({ line, size, width, right, label, clock, warm, reduced, settings, onSeek }: LyricsLinePresentation) {
   const colors = useColors();
-  const target = browsing && tier !== 'active'
-    ? { scale: 1, opacity: 0.72 }
-    : TIER[tier];
-  const size = baseSize;
-  const lineHeight = Math.round(size * 1.2);
-  const readingSize = Math.max(9, Math.round(size * 0.5));
-  const readingHeight = Math.round(readingSize * 1.25);
-  const translation = useMemo(
-    () => translationsEnabled ? getPreferredLyricsTranslation(line, translationPriority) : null,
-    [line, translationPriority, translationsEnabled]
-  );
-  const words = useMemo(
-    () => wordTimingEnabled ? line.words ?? [] : [],
-    [line.words, wordTimingEnabled]
-  );
-  const wordTiming = useMemo(
-    () => activeTimeSeconds === null ? null : resolveLyricsWordTiming(words, activeTimeSeconds),
-    [activeTimeSeconds, words]
-  );
-
-  const opacity = useSharedValue(target.opacity);
-  const scale = useSharedValue(target.scale);
-  useEffect(() => {
-    opacity.value = withTiming(target.opacity, { duration: DURATION, easing: EASE });
-    scale.value = withTiming(target.scale, { duration: DURATION, easing: EASE });
-  }, [target.opacity, target.scale, opacity, scale]);
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
-  }));
-  const mainShadow = tier === 'active'
-    ? { textShadowColor: colors.accentGlow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 }
-    : undefined;
-
-  return (
-    <Animated.View onLayout={onLayout} style={[{ width: '100%', transformOrigin: 'left center' }, animatedStyle]}>
-      <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek} style={{ paddingVertical: roomy ? 9 : 7 }}>
-        <View style={{ alignItems: 'flex-start' }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
-            {voiceLabelsEnabled && line.voice?.trim() ? (
-              <View style={{ borderWidth: 1, borderColor: colors.accent, borderRadius: 999, paddingHorizontal: 5, paddingVertical: 1 }}>
-                <Text variant="caption" color={colors.accentTextStrong} style={{ fontSize: Math.max(9, Math.round(size * 0.45)), textTransform: 'uppercase' }}>
-                  {line.voice.trim()}
-                </Text>
-              </View>
-            ) : null}
-            {words.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                {words.map((word, index) => (
-                  <TimedWord
-                    key={`${word.timestampMs}:${index}`}
-                    word={word}
-                    progress={wordTiming?.progressByIndex[index] ?? 0}
-                    furiganaEnabled={furiganaEnabled}
-                    size={size}
-                    lineHeight={lineHeight}
-                    readingSize={readingSize}
-                    readingHeight={readingHeight}
-                  />
-                ))}
-              </View>
-            ) : (
-              <RubyText
-                text={line.text}
-                furigana={line.furigana}
-                enabled={furiganaEnabled}
-                size={size}
-                lineHeight={lineHeight}
-                readingSize={readingSize}
-                readingHeight={readingHeight}
-                color={colors.textPrimary}
-                readingColor={colors.textSecondary}
-                shadow={mainShadow}
-              />
-            )}
-          </View>
-          {translation ? (
-            <Text
-              variant="body"
-              color={colors.textSecondary}
-              style={{ fontSize: Math.max(11, Math.round(size * 0.52)), lineHeight: Math.round(size * 0.66), marginTop: 3, opacity: 0.85 }}
-            >
-              {translation.text}
-            </Text>
-          ) : null}
-        </View>
-      </AppPressable>
-    </Animated.View>
-  );
+  const { furiganaEnabled, wordTimingEnabled, translationsEnabled, translationPriority, voiceLabelsEnabled } = settings;
+  const units = useMemo(() => lyricUnits(line, furiganaEnabled), [line, furiganaEnabled]);
+  const band = units.some(unit => unit.segments.some(segment => segment.reading));
+  const appearance = useMemo(() => ({ size, width, color: colors.textPrimary, glow: rgbaFromHex(colors.textPrimary, .15) }), [size, width, colors.textPrimary]);
+  const measured = useRef<number[]>([]);
+  const [balancedWidth, setBalancedWidth] = useState(width);
+  // The column is keyed by dimensions/settings/payload, so these measurements
+  // cannot escape into another song or font layout.
+  const measure = useCallback((index: number, unitWidth: number) => {
+    measured.current[index] = unitWidth;
+    if (units.every((_, i) => measured.current[i] > 0)) setBalancedWidth(balancedLyricWidth(measured.current, width));
+  }, [units, width]);
+  const translation = translationsEnabled ? getPreferredLyricsTranslation(line, translationPriority) : null;
+  const align = right ? 'right' : 'left';
+  return <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onSeek}
+    accessibilityRole="button" accessibilityLabel={[voiceLabelsEnabled ? label : null, line.text, translation?.text].filter(Boolean).join('. ')}
+    accessibilityHint="Seek to this lyric" style={{ minHeight: 44, paddingVertical: size * .1, justifyContent: 'center' }}>
+    <View style={{ alignItems: right ? 'flex-end' : 'flex-start' }}>
+      {voiceLabelsEnabled && !!label && <Text variant="mono" allowFontScaling={false} color={colors.textSecondary}
+        style={{ fontSize: Math.max(10, size / 3), lineHeight: Math.max(13, size * .44), letterSpacing: size * 1.4 / 30, marginBottom: size * .2, textAlign: align }}>{label}</Text>}
+      {!line.words?.length && !band
+        ? <Text variant="heading" allowFontScaling={false} color={colors.textPrimary} textBreakStrategy="balanced"
+          style={{ width, fontSize: size, lineHeight: size * 1.34, letterSpacing: size * -.012, textAlign: align, includeFontPadding: false,
+            textShadowColor: appearance.glow, textShadowRadius: size * 8 / 30, textShadowOffset: { width: 0, height: 0 } }}>{line.text}</Text>
+        : <View style={{ width: balancedWidth, flexDirection: 'row', flexWrap: 'wrap', justifyContent: right ? 'flex-end' : 'flex-start' }}>
+          {units.map((unit, index) => <Unit key={index} unit={unit} index={index} band={band} appearance={appearance}
+            clock={wordTimingEnabled && line.words?.length ? clock : undefined}
+            start={line.words?.[index]?.timestampMs ?? 0} end={line.words?.[index + 1]?.timestampMs}
+            warm={warm && wordTimingEnabled && !!line.words?.length} reduced={reduced} measure={measure} />)}
+        </View>}
+      {!!translation && <Text variant="label" allowFontScaling={false} color={colors.textPrimary} textBreakStrategy="balanced"
+        style={{ maxWidth: width, fontSize: Math.max(11, size * 16 / 30), lineHeight: Math.max(15, size * .72), marginTop: size * .2, opacity: .62, textAlign: align }}>{translation.text}</Text>}
+    </View>
+  </AppPressable>;
 }
 
 export const LyricsLine = memo(LyricsLineComponent, sameLyricsLinePresentation);

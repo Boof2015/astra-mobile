@@ -401,6 +401,48 @@ export function resolveSyncedLyricsTiming(
   };
 }
 
+export interface LyricsTimingBoundary {
+  timestampMs: number;
+  timing: SyncedLyricsTimingState;
+}
+
+export function sameSyncedLyricsTiming(a: SyncedLyricsTimingState, b: SyncedLyricsTimingState | null): boolean {
+  'worklet';
+  return b !== null && a.activeCueIndex === b.activeCueIndex && a.activeLineIndex === b.activeLineIndex
+    && a.focusLineIndex === b.focusLineIndex && a.isNeutral === b.isNeutral;
+}
+
+/** Compile cue and instrumental boundaries once on JS. The UI playback clock
+ * can then select a presentation without rebuilding display rows every tick. */
+export function getLyricsTimingBoundaries(lines: LyricsLine[], options: SyncedLyricsTimingOptions = {}): LyricsTimingBoundary[] {
+  const timestamps = new Set([0]);
+  for (const line of [...lines, ...getSyncedLyricsDisplayLines(lines, options)]) {
+    if (Number.isFinite(line.timestampMs)) timestamps.add(Math.max(0, Math.ceil(line.timestampMs)));
+  }
+  const boundaries: LyricsTimingBoundary[] = [];
+  for (const timestampMs of [...timestamps].sort((a, b) => a - b)) {
+    // Stay within this millisecond without losing its boundary to floating
+    // point error when converting integer milliseconds to seconds and back.
+    const timing = resolveSyncedLyricsTiming(lines, (timestampMs + .0001) / 1000, options);
+    if (!sameSyncedLyricsTiming(timing, boundaries.at(-1)?.timing ?? null)) boundaries.push({ timestampMs, timing });
+  }
+  return boundaries;
+}
+
+/** The same clock value drives word sweeps and cue/focus changes, including
+ * backward seeks. Only boundary changes need to cross back to React. */
+export function lyricsTimingAt(boundaries: LyricsTimingBoundary[], seconds: number): SyncedLyricsTimingState {
+  'worklet';
+  const ms = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds * 1000)) : 0;
+  let low = 0, high = boundaries.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (boundaries[mid].timestampMs <= ms) low = mid;
+    else high = mid - 1;
+  }
+  return boundaries[low].timing;
+}
+
 export function findActiveSyncedLineIndex(
   lines: LyricsLine[],
   currentTimeSeconds: number,

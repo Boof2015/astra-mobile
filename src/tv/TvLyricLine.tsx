@@ -6,6 +6,7 @@ import type { LyricsLine } from '@/lyrics/types';
 import { balancedLyricWidth, lyricOpacity, lyricUnits, lyricWordProgress, type TvLyricUnit } from './playerLyricsModel';
 import { TvGradientMask, TvText } from './TvPrimitives';
 import { useTvTheme } from './useTvTheme';
+import { LYRICS_MOTION, lyricStagger, lyricGapProgress } from '@/lyrics/animation';
 
 const WIDTH = 472;
 const EASE = Easing.bezier(.22, 1, .36, 1);
@@ -43,7 +44,7 @@ const Unit = memo(function Unit({ unit, index, band, clock, start, end, warm, re
   });
   const raised = useSharedValue(0);
   useAnimatedReaction(() => progress.value > 0, (active, previous) => {
-    if (active !== previous) raised.value = previous === null || reduced ? active ? -2 : 0 : withTiming(active ? -2 : 0, { duration: 320, easing: EASE });
+    if (active !== previous) raised.value = previous === null || reduced ? active ? -2 : 0 : withTiming(active ? -2 : 0, { duration: LYRICS_MOTION.liftMs, easing: EASE });
   }, [reduced]);
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: raised.value }] }));
   return <Animated.View onLayout={event => { const w = event.nativeEvent.layout.width; setWidth(w); measure(index, w); }} style={[{ maxWidth: WIDTH, flexShrink: 0 }, lift]}>
@@ -82,7 +83,7 @@ const LyricText = memo(function LyricText({ line, settings, right, clock, warm, 
 });
 
 function Gap({ clock, start, end, past }: { clock?: SharedValue<number>; start: number; end: number | null; past: boolean }) {
-  const fill = useAnimatedStyle(() => ({ transform: [{ scaleX: !clock ? past ? 1 : 0 : end === null || end <= start ? 0 : Math.max(0, Math.min(1, (clock.value * 1000 - start) / (end - start))) }] }));
+  const fill = useAnimatedStyle(() => ({ transform: [{ scaleX: !clock ? past ? 1 : 0 : lyricGapProgress(start, end, clock.value) }] }));
   return <View style={{ width: 150, height: 3, marginVertical: 18, backgroundColor: 'rgba(124,146,196,.2)', borderRadius: 2, overflow: 'hidden' }}>
     <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#c9d1e1', transformOrigin: 'left center' }, fill]} />
   </View>;
@@ -100,12 +101,12 @@ export const TvLyricLine = memo(function TvLyricLine({ item, distance, current, 
   useEffect(() => {
     const instant = reduced || !nearby || previousRevision.current !== revision;
     previousRevision.current = revision;
-    y.value = instant ? shift : withDelay(Math.max(0, Math.min(distance, 8)) * 45, withTiming(shift, { duration: 820, easing: EASE }));
+    y.value = instant ? shift : withDelay(lyricStagger(distance), withTiming(shift, { duration: LYRICS_MOTION.moveMs, easing: EASE }));
   }, [y, shift, distance, revision, reduced, nearby]);
   const opacity = item.kind === 'gap' && current ? .9 : lyricOpacity(distance, current);
   const motion = useAnimatedStyle(() => ({
-    opacity: withTiming(opacity, { duration: reduced || !nearby ? 0 : 520 }),
-    transform: [{ translateY: y.value }, { scale: withTiming(current ? 1 : .965, { duration: reduced || !nearby ? 0 : 820, easing: EASE }) }],
+    opacity: withTiming(opacity, { duration: reduced || !nearby ? 0 : LYRICS_MOTION.emphasisMs }),
+    transform: [{ translateY: y.value }, { scale: withTiming(current ? 1 : LYRICS_MOTION.inactiveScale, { duration: reduced || !nearby ? 0 : LYRICS_MOTION.moveMs, easing: EASE }) }],
   }));
   return <Animated.View renderToHardwareTextureAndroid={nearby} onLayout={event => measure(item.displayIndex, event)} style={[{ width: WIDTH, marginBottom: 26, transformOrigin: right ? 'right center' : 'left center' }, motion]}>
     {item.kind === 'gap' ? <Gap clock={clock} start={item.progressStartMs} end={item.progressEndMs} past={distance < 0} /> : <>

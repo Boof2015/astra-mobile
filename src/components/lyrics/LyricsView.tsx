@@ -94,6 +94,7 @@ export function LyricsView({
       >
         <LyricsBand
           track={track}
+          active={active}
           currentTime={currentTime}
           duration={duration}
           isPlaying={isPlaying && active}

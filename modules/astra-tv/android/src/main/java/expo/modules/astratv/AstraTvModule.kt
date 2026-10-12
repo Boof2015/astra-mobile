@@ -13,9 +13,12 @@ import android.view.inputmethod.InputMethodManager
 import android.view.KeyEvent
 import android.view.View
 import android.widget.EditText
+import com.facebook.react.uimanager.PixelUtil
+import com.facebook.react.views.scroll.ReactScrollView
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlin.math.roundToInt
 
 /** ReactEditText.focus() only shows the IME in touch mode. TV entry flows
  * explicitly ask for it while retaining native D-pad / IME ownership. */
@@ -44,6 +47,16 @@ class AstraTvModule : Module() {
       Prop("color") { view, value: String -> view.color = value }
       Prop("blobIndex") { view, value: Int -> view.blobIndex = value }
     }
+    // RN's nonanimated scrollTo aborts the OverScroller but leaves the separate
+    // smooth-scroll ValueAnimator running. Settle discontinuous lyric seeks
+    // atomically, so an old animation cannot restore its previous destination.
+    AsyncFunction("settleLyricsScroll") { viewTag: Int, offset: Double ->
+      if (!offset.isFinite()) return@AsyncFunction
+      val view = appContext.findView<ReactScrollView>(viewTag) ?: return@AsyncFunction
+      view.flingAnimator.cancel()
+      view.abortAnimation()
+      view.scrollTo(0, PixelUtil.toPixelFromDIP(offset.coerceAtLeast(0.0)).roundToInt())
+    }.runOnQueue(Queues.MAIN)
     // Bounded developer probe, not the production library discovery adapter.
     // MediaStore supplies locations only: Astra's scanner reads the actual tags.
     AsyncFunction("probeLocalAudio") {

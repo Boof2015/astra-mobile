@@ -7,10 +7,13 @@ import {
   getCompensatedLyricsTime,
   getLyricsEmptyStatePresentation,
   getLyricsLineSeekTimeSeconds,
+  getLyricsTimingBoundaries,
   getLyricsMetaChipText,
   getPreferredLyricsTranslation,
   getSyncedLyricsDisplayLines,
+  lyricsTimingAt,
   resolveSyncedLyricsTiming,
+  sameSyncedLyricsTiming,
 } from './presentation.ts';
 
 function lines(): LyricsLine[] {
@@ -36,6 +39,62 @@ test('before the first cue there is no active line', () => {
   );
   assert.equal(timing.activeLineIndex, -1);
   assert.equal(timing.isNeutral, true);
+});
+
+test('UI clock boundaries preserve cues, silence, inferred gaps and outro timing', () => {
+  const samples: LyricsLine[][] = [
+    [],
+    [{ timestampMs: 0, text: '', kind: 'silence' }],
+    [{ timestampMs: 5000, text: 'Intro' }, { timestampMs: 6000, text: 'Next' }],
+    [
+      { timestampMs: 1001, text: 'First' },
+      { timestampMs: 1600, text: 'Duplicate' },
+      { timestampMs: 1600, text: 'Selected duplicate' },
+      { timestampMs: 3000, text: '', kind: 'silence' },
+      { timestampMs: 18000, text: 'After silence' },
+      { timestampMs: 31000, text: 'Outro' },
+    ],
+  ];
+  for (const lines of samples) {
+    const options = { durationSeconds: 50 };
+    const boundaries = getLyricsTimingBoundaries(lines, options);
+    const times = new Set([-1, 0, 50, 100, NaN, Infinity]);
+    for (const row of [...lines, ...getSyncedLyricsDisplayLines(lines, options)]) {
+      for (const delta of [-1, 0, 1]) times.add((row.timestampMs + delta) / 1000);
+    }
+    for (const seconds of times) assert.deepEqual(lyricsTimingAt(boundaries, seconds), resolveSyncedLyricsTiming(lines, seconds, options));
+  }
+});
+
+test('a single UI clock keeps words and focus together through rapid and backward seeks', () => {
+  const lines: LyricsLine[] = [
+    { timestampMs: 1000, text: 'One', words: [{ timestampMs: 1000, text: 'One' }] },
+    { timestampMs: 2000, text: 'Two', words: [{ timestampMs: 2000, text: 'Two' }] },
+    { timestampMs: 2100, text: 'Three', words: [{ timestampMs: 2100, text: 'Three' }] },
+  ];
+  const boundaries = getLyricsTimingBoundaries(lines);
+  for (const seconds of [0, 1, 2, 2.1, 1.1, 2.05, 0, 2.2]) {
+    const timing = lyricsTimingAt(boundaries, seconds);
+    assert.deepEqual(timing, resolveSyncedLyricsTiming(lines, seconds));
+    if (!timing.isNeutral) {
+      assert.equal(timing.focusLineIndex, timing.activeLineIndex);
+      assert.ok(lines[timing.activeCueIndex].words![0].timestampMs <= seconds * 1000);
+    }
+  }
+});
+
+test('continuous UI clock ticks notify React only when the cue presentation changes', () => {
+  const boundaries = getLyricsTimingBoundaries(lines());
+  let previous = null;
+  let updates = 0;
+  for (let frame = 0; frame < 90; frame++) {
+    const timing = lyricsTimingAt(boundaries, frame / 30);
+    if (!sameSyncedLyricsTiming(timing, previous)) updates++;
+    previous = timing;
+  }
+  assert.equal(updates, 3);
+  const replacement = getLyricsTimingBoundaries([{ timestampMs: 5000, text: 'Different song' }]);
+  assert.equal(sameSyncedLyricsTiming(lyricsTimingAt(replacement, 2), previous), false);
 });
 
 test('a long instrumental gap inserts a synthetic gap row and neutralizes', () => {

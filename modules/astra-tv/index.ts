@@ -18,10 +18,18 @@ const native = requireOptionalNativeModule<{
   setVerticalCapture: (viewTag: number, enabled: boolean) => Promise<void>;
   setDirectionCapture: (viewTag: number, enabled: boolean) => Promise<void>;
   setKeepScreenOn: (viewTag: number, enabled: boolean) => Promise<void>;
+  settleLyricsScroll?: (viewTag: number, offset: number) => Promise<void>;
   addListener(name: 'onVerticalHold', listener: (event: TvVerticalHoldEvent) => void): { remove: () => void };
   addListener(name: 'onVerticalCapture', listener: (event: TvVerticalCaptureEvent) => void): { remove: () => void };
   addListener(name: 'onDirectionCapture', listener: (event: TvDirectionCaptureEvent) => void): { remove: () => void };
 }>('AstraTv');
+
+// Shared Android infrastructure; unlike the D-pad helpers, this also serves
+// mobile lyrics. Older development binaries retain the ordinary scroll path.
+export const canSettleLyricsScroll = Platform.OS === 'android' && !!native?.settleLyricsScroll;
+export function settleLyricsScroll(viewTag: number, offset: number) {
+  return native?.settleLyricsScroll?.(viewTag, offset);
+}
 
 export async function probeTvLocalAudio(): Promise<TvAudioProbe> {
   if (!__DEV__ || !Platform.isTV || !native) throw new Error('TV debug builds only');
