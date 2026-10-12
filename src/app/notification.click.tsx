@@ -1,31 +1,32 @@
-import { useEffect } from 'react';
+import { useCallback } from 'react';
 import { View } from 'react-native';
-import { resolveNotificationClick } from '@/audio/notificationIntent';
-import { useReturnToTabs } from '@/navigation/returnToTabs';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { openPlayerFromNotification } from '@/audio/notificationIntent';
 import { createThemedStyles } from '@/theme/themed';
 
 export default function NotificationClickRoute() {
   const styles = useStyles();
-  const returnToTabs = useReturnToTabs();
+  const router = useRouter();
 
-  // This route is a root-stack sibling of `(tabs)`, and it is entered often
-  // (media-notification and widget taps). A bare replace toward a tab route
-  // therefore left a duplicate `(tabs)` behind on every single tap.
-  useEffect(() => {
+  // Native taps are consumed before routing. If this fallback route is entered
+  // directly, pop only this screen so the previous page and its history survive.
+  useFocusEffect(useCallback(() => {
     let cancelled = false;
+    const dismissNotificationRoute = () => {
+      if (cancelled) return;
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
+    };
 
-    resolveNotificationClick()
-      .then((href) => {
-        if (!cancelled) returnToTabs(href);
-      })
-      .catch(() => {
-        if (!cancelled) returnToTabs('/');
-      });
+    void openPlayerFromNotification().then(
+      dismissNotificationRoute,
+      dismissNotificationRoute,
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [returnToTabs]);
+  }, [router]));
 
   return <View style={styles.root} />;
 }

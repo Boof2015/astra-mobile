@@ -31,13 +31,12 @@ export function isNotificationClickPath(path: string): boolean {
 }
 
 /**
- * Notification/widget tap: land on the tabs and, when a track is loaded, open
- * the now-playing overlay above them (the player is a store-gated overlay, not
- * a route). Returns the route to navigate to.
+ * Notification/widget tap: open the now-playing overlay when a track is loaded.
+ * Navigation is deliberately left to the caller so a running app keeps the
+ * exact page and history underneath the player.
  */
-export async function resolveNotificationClick(): Promise<'/'> {
+export async function openPlayerFromNotification(): Promise<void> {
   if (await hasLoadedTrack()) usePlayerUiStore.getState().openPlayer();
-  return '/';
 }
 
 async function hasLoadedTrack(): Promise<boolean> {
