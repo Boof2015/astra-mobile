@@ -201,20 +201,7 @@ jobs:
             exit 1
           fi
 
-          for permission in \
-            android.permission.READ_EXTERNAL_STORAGE \
-            android.permission.RECORD_AUDIO \
-            android.permission.FOREGROUND_SERVICE_MICROPHONE \
-            android.permission.BLUETOOTH \
-            android.permission.BLUETOOTH_CONNECT \
-            android.permission.MODIFY_AUDIO_SETTINGS \
-            android.permission.SYSTEM_ALERT_WINDOW \
-            android.permission.WRITE_EXTERNAL_STORAGE; do
-            if $AAPT dump permissions "$APK" | grep -Fq "$permission"; then
-              echo "GitHub APK contains forbidden permission $permission." >&2
-              exit 1
-            fi
-          done
+          python3 scripts/verify-android-permissions.py "$APK" --aapt "$AAPT"
 
       - name: Verify Discord SDK and packaged licenses
         run: python3 scripts/verify-discord-artifact.py android/app/build/outputs/apk/release/app-release.apk
