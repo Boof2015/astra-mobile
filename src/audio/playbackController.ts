@@ -69,7 +69,7 @@ setQueueLoadErrorHandler(() => {
  * would slot in behind the same function signatures.
  */
 
-// Unshuffled track-id order for the active context, so shuffle can be toggled
+// Unshuffled queue-entry order for the active context, so shuffle can be toggled
 // off and the upcoming tail restored to its original sequence (mirrors desktop's
 // autoQueue + shuffledAutoIndices split, but over RNTP's flat native queue).
 let originalOrder: string[] | null = null;
@@ -86,6 +86,7 @@ let virtualRefillPromise: Promise<void> | null = null;
 let requestedQueueRevision = 0;
 let requestedActivePosition: number | null = null;
 let virtualRevisionSyncPromise: Promise<void> | null = null;
+let playTrackNowPromise: Promise<void> = Promise.resolve();
 
 export {
   TRANSPORT_HISTORY,
@@ -160,7 +161,8 @@ function mapRntpState(state?: State): PlaybackState {
 }
 
 function rntpTrackId(track: RntpTrack): string {
-  return String(track.id ?? track.url);
+  // A song may occur more than once, particularly after search inserts it.
+  return String(track.astraCarQueueEntryId ?? track.id ?? track.url);
 }
 
 function rntpTrackPath(track: RntpTrack): string {
@@ -392,9 +394,15 @@ export function restorePlaybackSession(
 
   const queueTracks = session.tracks.map(toRntpTrack);
   const activeTrack = session.tracks[session.activeIndex];
-  const idByPath = new Map(session.tracks.map((track) => [track.path, track.id]));
+  const idsByPath = new Map<string, string[]>();
+  for (const track of queueTracks) {
+    const path = rntpTrackPath(track);
+    const ids = idsByPath.get(path) ?? [];
+    ids.push(rntpTrackId(track));
+    idsByPath.set(path, ids);
+  }
   originalOrder = session.originalOrderPaths
-    .map((path) => idByPath.get(path))
+    .map((path) => idsByPath.get(path)?.shift())
     .filter((id): id is string => Boolean(id));
   useQueueStore.getState().setSnapshot(queueTracks, session.activeIndex, {
     source: session.source,
@@ -436,7 +444,7 @@ export function restoreVirtualPlaybackContext(
     totalCount: window.totalCount,
   };
   requestedQueueRevision = window.queueRevision;
-  originalOrder = session.shuffle ? null : tracks.map((track) => track.id);
+  originalOrder = session.shuffle ? null : queueTracks.map(rntpTrackId);
   setVirtualQueueSnapshot(queueTracks, activeIndex, session.source);
   const activeTrack = tracks[activeIndex];
   const player = usePlayerStore.getState();
@@ -491,7 +499,6 @@ export async function playLibraryQuery(
   options: LibraryPlaybackStartOptions,
 ): Promise<void> {
   selectPhonePlaybackTarget();
-  discardPendingRestoredSession();
   await ensurePlayerReady({
     allowBackgroundSetup: options.allowBackgroundSetup ?? false,
     materializeRestored: false,
@@ -503,6 +510,7 @@ export async function playLibraryQuery(
     null,
   );
   if (window.items.length === 0) throw new Error('This collection has no available tracks.');
+  discardPendingRestoredSession();
   await startVirtualWindow(window, options.source, options.shuffle ?? false);
 }
 
@@ -511,12 +519,9 @@ async function startVirtualWindow(
   source: PlaybackSource,
   shuffle: boolean,
 ): Promise<void> {
-  const tracks = window.items.map(dbTrackToTrack);
   const queueTracks = window.items.map((item) => toVirtualRntpTrack(item, window.sessionId, window.sessionEpoch));
-  const startIndex = Math.max(
-    0,
-    Math.min(queueTracks.length - 1, window.activePosition - window.windowStart),
-  );
+  const startIndex = window.items.findIndex((item) => item.queuePosition === window.activePosition);
+  if (startIndex < 0) throw new Error('This song is no longer available.');
   virtualContext = {
     sessionId: window.sessionId,
     sessionEpoch: window.sessionEpoch,
@@ -529,7 +534,7 @@ async function startVirtualWindow(
   };
   requestedQueueRevision = window.queueRevision;
   await TrackPlayer.setRepeatMode(toEffectiveRntpRepeat(usePlayerStore.getState().repeat));
-  originalOrder = shuffle ? null : tracks.map((track) => track.id);
+  originalOrder = shuffle ? null : queueTracks.map(rntpTrackId);
   usePlayerStore.getState().setShuffle(shuffle);
   const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
   const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
@@ -879,14 +884,14 @@ async function playTracksInternal(
   selectPhonePlaybackTarget();
   discardPendingRestoredSession();
   await ensurePlayerReady({ ...options, materializeRestored: false });
-  originalOrder = tracks.map((t) => t.id);
+  const originalQueue = tracks.map(toRntpTrack);
+  originalOrder = originalQueue.map(rntpTrackId);
   // Honor an already-on shuffle by scrambling the upcoming tail of the new
   // context up front, so the whole queue is loaded natively in a single pass.
-  let ordered = tracks;
+  let queueTracks = originalQueue;
   if (usePlayerStore.getState().shuffle && tracks.length - startIndex - 1 > 1) {
-    ordered = [...tracks.slice(0, startIndex + 1), ...shuffleArray(tracks.slice(startIndex + 1))];
+    queueTracks = [...originalQueue.slice(0, startIndex + 1), ...shuffleArray(originalQueue.slice(startIndex + 1))];
   }
-  const queueTracks = ordered.map(toRntpTrack);
   const playbackTarget = dspTargetFromTrack(queueTracks[startIndex], 'none');
   const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setSnapshot(queueTracks, startIndex, {
@@ -916,9 +921,10 @@ export async function shuffleTracks(
   selectPhonePlaybackTarget();
   discardPendingRestoredSession();
   await ensurePlayerReady({ materializeRestored: false });
-  originalOrder = tracks.map((t) => t.id);
+  const originalQueue = tracks.map(toRntpTrack);
+  originalOrder = originalQueue.map(rntpTrackId);
   usePlayerStore.getState().setShuffle(true);
-  const queueTracks = shuffleArray(tracks).map(toRntpTrack);
+  const queueTracks = shuffleArray(originalQueue);
   const playbackTarget = dspTargetFromTrack(queueTracks[0], 'none');
   const manualTransitionFromPath = usePlayerStore.getState().currentTrack?.path ?? null;
   useQueueStore.getState().setSnapshot(queueTracks, 0, { source, transport: null });
@@ -948,7 +954,7 @@ export async function playSample(): Promise<void> {
     playbackTarget = dspTargetFromTrack(sampleQueue[0], 'none');
     await prepareAudioProcessingForPlayback(playbackTarget, 'sample-play');
     await TrackPlayer.add(sampleQueue);
-    originalOrder = SAMPLE_TRACKS.map((t) => t.id);
+    originalOrder = sampleQueue.map(rntpTrackId);
     useQueueStore.getState().setSnapshot(sampleQueue, 0, {
       source: { kind: 'sample', label: 'Astra Sample' },
       transport: null,
@@ -1236,6 +1242,117 @@ export async function setShuffleEnabled(next: boolean): Promise<void> {
   }
 }
 
+/** Play one selected song now without replacing the user's queue. */
+export function playTrackNow(track: Track, source: PlaybackSource): Promise<void> {
+  const request = playTrackNowPromise.then(() => playTrackNowInternal(track, source));
+  // A rejected selection must not prevent the next selection from running.
+  playTrackNowPromise = request.catch(() => {});
+  return request;
+}
+
+async function playTrackNowInternal(track: Track, source: PlaybackSource): Promise<void> {
+  // Validate before materializing a restored queue or changing any playback state.
+  const available = await AstraLibraryData.getTrack<DbTrack>(track.path);
+  if (!available) throw new Error('This song is no longer available.');
+  const selected = dbTrackToTrack(available);
+  selectPhonePlaybackTarget();
+  await ensurePlayerReady();
+  await queueLoadSettled();
+  await virtualRefillPromise;
+  await virtualRevisionSyncPromise;
+  const context = virtualContext;
+  const activeTrack = await TrackPlayer.getActiveTrack();
+
+  if (context) {
+    if (activeTrack?.astraQueueSessionId !== `${context.sessionId}:${context.sessionEpoch}` ||
+        typeof activeTrack.astraQueueEntryId !== 'number') {
+      throw new Error('The queue changed. Try that song again.');
+    }
+    const shuffle = usePlayerStore.getState().shuffle;
+    const queueSource = useQueueStore.getState().source ?? source;
+    const window = await AstraLibraryData.mutatePlaybackContext<DbTrack>('insertAndPlay', {
+      sessionId: context.sessionId,
+      sessionEpoch: context.sessionEpoch,
+      anchorEntryId: activeTrack.astraQueueEntryId,
+      path: selected.path,
+    });
+    if (virtualContext !== context) throw new Error('The queue changed. Try that song again.');
+    if (!window?.items.some((item) => item.queuePosition === window.activePosition && item.path === selected.path)) {
+      throw new Error('This song is no longer available.');
+    }
+    try {
+      await startVirtualWindow(window, queueSource, shuffle);
+    } catch (error) {
+      await recoverInsertedVirtualQueue(window, queueSource, shuffle);
+      throw error;
+    }
+    return;
+  }
+
+  const queue = await TrackPlayer.getQueue();
+  const activeIndex = await TrackPlayer.getActiveTrackIndex() ?? -1;
+  if (queue.length === 0) {
+    await playTracks([selected], { source });
+    return;
+  }
+  useQueueStore.getState().setSnapshot(queue, activeIndex, { transport: null });
+  if (activeIndex >= 0 && rntpTrackPath(queue[activeIndex]) === selected.path) {
+    await jumpToQueueIndex(activeIndex);
+    return;
+  }
+  const insertAt = activeIndex + 1;
+  const queueTrack = toRntpTrack(selected);
+  await TrackPlayer.add(queueTrack, insertAt);
+  useQueueStore.getState().insertTrack(queueTrack, insertAt);
+  if (originalOrder) {
+    const anchor = activeIndex >= 0 ? originalOrder.indexOf(rntpTrackId(queue[activeIndex])) : -1;
+    originalOrder.splice(anchor + 1, 0, rntpTrackId(queueTrack));
+  }
+  try {
+    await jumpToQueueIndex(insertAt);
+  } catch (error) {
+    await useQueueStore.getState().refreshFromNative();
+    throw error;
+  }
+}
+
+/** Keep Room's complete queue recoverable even if preparing/loading audio fails. */
+async function recoverInsertedVirtualQueue(
+  window: NativePlaybackWindow<DbTrack>,
+  source: PlaybackSource,
+  shuffle: boolean,
+): Promise<void> {
+  try {
+    await queueLoadSettled();
+    const tracks = await TrackPlayer.getQueue();
+    const index = await TrackPlayer.getActiveTrackIndex() ?? -1;
+    const active = tracks[index];
+    const entry = active?.astraQueueSessionId === `${window.sessionId}:${window.sessionEpoch}`
+      ? window.items.find((item) => item.queueEntryId === active.astraQueueEntryId)
+      : undefined;
+    if (entry) {
+      virtualContext = {
+        sessionId: window.sessionId, sessionEpoch: window.sessionEpoch,
+        queueRevision: window.queueRevision - 1,
+        windowStart: entry.queuePosition - index,
+        loadedEnd: entry.queuePosition - index + tracks.length,
+        totalCount: window.totalCount,
+      };
+      setVirtualQueueSnapshot(tracks, index, source);
+      await AstraLibraryData.updatePlaybackPosition(window.sessionId, entry.queuePosition);
+      await synchronizeVirtualQueueRevision(window.queueRevision, entry.queuePosition);
+      await reconcilePlayerFromNative();
+      return;
+    }
+  } catch {
+    // A broken transport can still retain the authoritative queue for the next Play.
+  }
+  restoreVirtualPlaybackContext(window, {
+    queuePaths: [], originalOrderPaths: [], activeIndex: window.activePosition,
+    position: 0, shuffle, repeat: usePlayerStore.getState().repeat, source,
+  });
+}
+
 /** Insert a track right after the current one ("Play next"). */
 export async function enqueueTop(track: Track): Promise<void> {
   await ensurePlayerReady();
@@ -1257,8 +1374,8 @@ export async function enqueueTop(track: Track): Promise<void> {
   if (originalOrder) {
     const currentId = activeTrack ? rntpTrackId(activeTrack) : null;
     const pos = currentId ? originalOrder.indexOf(currentId) : -1;
-    if (pos >= 0) originalOrder.splice(pos + 1, 0, track.id);
-    else originalOrder.unshift(track.id);
+    if (pos >= 0) originalOrder.splice(pos + 1, 0, rntpTrackId(queueTrack));
+    else originalOrder.unshift(rntpTrackId(queueTrack));
   }
 }
 
@@ -1277,7 +1394,7 @@ export async function enqueueEnd(track: Track): Promise<void> {
   } else {
     await useQueueStore.getState().refreshFromNative();
   }
-  if (originalOrder) originalOrder.push(track.id);
+  if (originalOrder) originalOrder.push(rntpTrackId(queueTrack));
 }
 
 /** Insert tracks after the current one in the given order (batch "Play next"). */
@@ -1294,13 +1411,14 @@ export async function enqueueTopMany(tracks: Track[]): Promise<void> {
   const activeIndex = await TrackPlayer.getActiveTrackIndex();
   const activeTrack = await TrackPlayer.getActiveTrack();
   const insertBefore = activeIndex === undefined ? undefined : activeIndex + 1;
-  await TrackPlayer.add(tracks.map(toRntpTrack), insertBefore);
+  const queueTracks = tracks.map(toRntpTrack);
+  await TrackPlayer.add(queueTracks, insertBefore);
   // One settle-gated native read keeps the mirror consistent for any batch size.
   await useQueueStore.getState().refreshFromNative();
   if (originalOrder) {
     const currentId = activeTrack ? rntpTrackId(activeTrack) : null;
     const pos = currentId ? originalOrder.indexOf(currentId) : -1;
-    const ids = tracks.map((track) => track.id);
+    const ids = queueTracks.map(rntpTrackId);
     if (pos >= 0) originalOrder.splice(pos + 1, 0, ...ids);
     else originalOrder.unshift(...ids);
   }
@@ -1317,9 +1435,10 @@ export async function enqueueEndMany(tracks: Track[]): Promise<void> {
     });
     return;
   }
-  await TrackPlayer.add(tracks.map(toRntpTrack));
+  const queueTracks = tracks.map(toRntpTrack);
+  await TrackPlayer.add(queueTracks);
   await useQueueStore.getState().refreshFromNative();
-  if (originalOrder) originalOrder.push(...tracks.map((track) => track.id));
+  if (originalOrder) originalOrder.push(...queueTracks.map(rntpTrackId));
 }
 
 // ── Queue-tray operations ────────────────────────────────────────────────────

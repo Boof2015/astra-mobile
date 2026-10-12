@@ -29,7 +29,8 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { rgbaFromHex } from '@/theme/colorUtils';
-import { enqueueTop, playLibraryQuery } from '@/audio/playbackController';
+import { enqueueTop, playTrackNow } from '@/audio/playbackController';
+import { showAppDialog } from '@/components/dialogs/AppDialog';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import {
   albumArtworkSource,
@@ -998,17 +999,17 @@ function QuickSearchPanel({
     close();
 
     if (result.kind === 'track') {
-      void playLibraryQuery(
+      void playTrackNow(
+        dbTrackToTrack(result.track),
         hasQuery
-          ? { kind: 'search', query: trimmedQuery }
-          : { kind: 'recent' },
-        {
-        anchorPath: result.track.path,
-        source: hasQuery
           ? { kind: 'search', label: `Search: ${trimmedQuery}` }
           : { kind: 'recently-played', label: 'Recently Played' },
-        }
-      );
+      ).catch((error: unknown) => {
+        showAppDialog({
+          title: 'Could not play song',
+          message: error instanceof Error ? error.message : 'Try that song again.',
+        });
+      });
       return;
     }
 

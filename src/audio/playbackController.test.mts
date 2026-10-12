@@ -11,7 +11,7 @@ const tracks = (count: number) => Array.from({ length: count }, (_, index) => ({
   id: `track-${index}`, path: `/music/${index}.flac`, duration: 120,
 }));
 type TestTrack = ReturnType<typeof tracks>[number];
-type NativeTrack = TestTrack & { url: string; astraQueuePosition?: number };
+type NativeTrack = TestTrack & { url: string; astraQueuePosition?: number; astraQueueEntryId?: number; astraCarQueueEntryId?: string };
 
 // Run the real controller, queue loader, and stores against in-memory native
 // boundaries. Each harness gets fresh module state, including virtualContext.
@@ -25,15 +25,22 @@ async function harness(options: {
   paused?: boolean;
   shuffle?: boolean;
   staleMirrorIndex?: number;
+  empty?: boolean;
 } = {}) {
-  const order = options.order ?? tracks(options.count ?? 3);
+  const order = [...(options.order ?? tracks(options.count ?? 3))];
+  const available = new Map(order.map((track) => [track.path, track]));
+  const entryIds = order.map((_, index) => index + 1);
+  let nextEntryId = order.length + 1;
+  let queueRevision = 1;
+  let carSequence = 0;
+  const failures = { prepare: false, setQueue: false, play: false, create: false, mutate: false };
   let activePosition = options.activePosition ?? order.length - 1;
   let nativeQueue: NativeTrack[] = [];
   let nativeIndex: number | undefined;
   let nativeState = State.Playing;
   let nativeRepeat = RepeatMode.Off;
   let position = 0;
-  const calls = { next: 0, play: 0, positions: [] as number[], prepared: [] as (string | undefined)[], primed: [] as (string | undefined)[] };
+  const calls = { next: 0, play: 0, positions: [] as number[], prepared: [] as (string | undefined)[], primed: [] as (string | undefined)[], mutations: [] as Record<string, any>[] };
   const player = {
     getQueue: async () => [...nativeQueue],
     getActiveTrackIndex: async () => nativeIndex,
@@ -42,11 +49,17 @@ async function harness(options: {
     getProgress: async () => ({ position, duration: 120 }),
     setRepeatMode: async (mode: number) => { nativeRepeat = mode; },
     setQueue: async (queue: NativeTrack[]) => {
+      if (failures.setQueue) { failures.setQueue = false; throw new Error('setQueue failed'); }
       nativeQueue = [...queue];
       nativeIndex = queue.length ? 0 : undefined;
       position = 0;
     },
-    add: async (queue: NativeTrack[]) => { nativeQueue.push(...queue); },
+    add: async (queue: NativeTrack[] | NativeTrack, index = nativeQueue.length) => {
+      const additions = Array.isArray(queue) ? queue : [queue];
+      nativeQueue.splice(index, 0, ...additions);
+      if (nativeIndex != null && index <= nativeIndex) nativeIndex += additions.length;
+    },
+    removeUpcomingTracks: async () => { nativeQueue.splice((nativeIndex ?? -1) + 1); },
     skip: async (index: number) => { nativeIndex = index; position = 0; },
     skipToNext: async () => {
       calls.next++;
@@ -60,19 +73,44 @@ async function harness(options: {
       }
     },
     seekTo: async (seconds: number) => { position = seconds; },
-    play: async () => { calls.play++; nativeState = State.Playing; },
+    play: async () => {
+      if (failures.play) { failures.play = false; throw new Error('play failed'); }
+      calls.play++; nativeState = State.Playing;
+    },
   };
   const window = (start: number, end: number) => ({
-    sessionId: 'session', sessionEpoch: 1, queueRevision: 1,
+    sessionId: 'session', sessionEpoch: 1, queueRevision,
     windowStart: start, activePosition, totalCount: order.length,
     items: order.slice(start, end).map((track, index) => ({
-      ...track, queuePosition: start + index, queueEntryId: start + index + 1,
+      ...track, queuePosition: start + index, queueEntryId: entryIds[start + index],
     })),
   });
   const library = {
+    getTrack: async (path: string) => available.get(path) ?? null,
     createPlaybackContext: async () => {
+      if (failures.create) throw new Error('This collection has no available tracks.');
       const start = Math.max(0, activePosition - 8);
       return window(start, options.windowEnd ?? start + 41);
+    },
+    mutatePlaybackContext: async (operation: string, values: Record<string, any>) => {
+      assert.equal(operation, 'insertAndPlay');
+      calls.mutations.push(values);
+      if (failures.mutate) throw new Error('The queue changed. Try that song again.');
+      assert.equal(values.sessionId, 'session');
+      assert.equal(values.sessionEpoch, 1);
+      const anchor = entryIds.indexOf(values.anchorEntryId);
+      assert.ok(anchor >= 0);
+      const selected = available.get(values.path);
+      if (!selected) throw new Error('This song is no longer available.');
+      activePosition = anchor;
+      if (order[anchor].path !== selected.path) {
+        activePosition++;
+        order.splice(activePosition, 0, selected);
+        entryIds.splice(activePosition, 0, nextEntryId++);
+        queueRevision++;
+      }
+      const start = Math.max(0, activePosition - 8);
+      return window(start, start + 41);
     },
     updatePlaybackPosition: async (_session: string, next: number) => {
       calls.positions.push(next);
@@ -104,12 +142,15 @@ async function harness(options: {
     '@/stores/nowPlayingTrackTransitionStore': { markNowPlayingTrackTransitionDirection: () => {} },
     '@/library/trackAdapter': { dbTrackToTrack: (track: TestTrack) => ({ ...track }) },
     './sampleTracks': {
-      toRntpTrack: (track: TestTrack) => ({ ...track, url: track.path, astraPath: track.path }),
+      toRntpTrack: (track: TestTrack) => ({ ...track, url: track.path, astraPath: track.path, astraCarQueueEntryId: `entry-${++carSequence}` }),
       rntpToTrack: (track: NativeTrack) => ({ ...track }),
     },
     './audioProcessingStartup': {
       dspTargetFromTrack: (track?: TestTrack) => track?.id,
-      prepareAudioProcessingForPlayback: async (id?: string) => { calls.prepared.push(id); },
+      prepareAudioProcessingForPlayback: async (id?: string) => {
+        if (failures.prepare) { failures.prepare = false; throw new Error('prepare failed'); }
+        calls.prepared.push(id);
+      },
       primePreparedTrackForPlayback: async (id?: string) => { calls.primed.push(id); },
     },
   };
@@ -136,7 +177,9 @@ async function harness(options: {
   const loader = load('./queueLoader');
   playerStore.setState({ repeat: options.repeat ?? 'all', shuffle: options.shuffle ?? false });
   const source = { kind: 'playlist', label: 'Test queue' };
-  if (options.virtual === false) {
+  if (options.empty) {
+    queueStore.getState().setSnapshot([], -1, { source: null, transport: null });
+  } else if (options.virtual === false) {
     await controller.playTracks(order, { startIndex: activePosition, source });
   } else {
     await controller.playLibraryQuery({}, { source, shuffle: options.shuffle ?? false });
@@ -150,7 +193,24 @@ async function harness(options: {
   calls.prepared.length = 0;
   calls.primed.length = 0;
   return {
-    controller, calls, playerStore, queueStore, order,
+    controller, calls, playerStore, queueStore, order, available, failures,
+    advanceNative: (index: number) => { nativeIndex = index; },
+    restore: () => {
+      const snapshot = controller.getPlaybackSessionSnapshot();
+      if (options.virtual === false) {
+        controller.restorePlaybackSession({ ...snapshot, tracks: queueStore.getState().tracks });
+      } else {
+        const start = Math.max(0, activePosition - 8);
+        controller.restoreVirtualPlaybackContext(window(start, start + 41), snapshot);
+      }
+      nativeQueue = [];
+      nativeIndex = undefined;
+    },
+    playNow: async (selected: TestTrack) => {
+      available.set(selected.path, selected);
+      await controller.playTrackNow(selected, { kind: 'search', label: 'Search: test' });
+      await loader.queueLoadSettled();
+    },
     native: () => ({ queue: nativeQueue, index: nativeIndex, state: nativeState, repeat: nativeRepeat, position }),
     next: async () => { await controller.skipToNext(); await loader.queueLoadSettled(); },
   };
@@ -248,4 +308,164 @@ test('natural completion still wraps a virtual queue with repeat-all', async () 
   assert.equal(h.native().position, 0);
   assert.equal(h.native().state, State.Playing);
   assert.equal(h.playerStore.getState().currentTrack.id, h.order[0].id);
+});
+
+const searchSong = { id: 'search-song', path: '/music/substring-match.flac', duration: 180 };
+
+for (const virtual of [false, true]) {
+  for (const paused of [false, true]) {
+    test(`search inserts and plays without losing the ${virtual ? 'virtual' : 'ordinary'} queue (${paused ? 'paused' : 'playing'})`, async () => {
+      const h = await harness({ virtual, paused, activePosition: 0 });
+      const before = h.native().queue.map((track) => track.path);
+      await h.playNow(searchSong);
+      assert.deepEqual(h.native().queue.map((track) => track.path), [before[0], searchSong.path, ...before.slice(1)]);
+      assert.equal(h.native().index, 1);
+      assert.equal(h.native().position, 0);
+      assert.equal(h.native().state, State.Playing);
+      assert.equal(h.playerStore.getState().currentTrack.path, searchSong.path);
+      assert.equal(h.queueStore.getState().activeIndex, 1);
+      assert.equal(h.queueStore.getState().source.kind, 'playlist');
+      assert.equal(h.playerStore.getState().repeat, 'all');
+      if (virtual) assert.equal(h.controller.getVirtualQueueState().totalCount, 4);
+    });
+  }
+
+  test(`search keeps later duplicates in a ${virtual ? 'virtual' : 'ordinary'} queue`, async () => {
+    const order = [tracks(1)[0], tracks(2)[1], searchSong];
+    const h = await harness({ virtual, order, activePosition: 0, shuffle: true, repeat: 'one' });
+    const before = h.native().queue.map((track) => track.path);
+    await h.playNow(searchSong);
+    assert.deepEqual(h.native().queue.map((track) => track.path), [before[0], searchSong.path, ...before.slice(1)]);
+    const copies = h.native().queue.filter((track) => track.path === searchSong.path);
+    assert.notEqual(copies[0].astraCarQueueEntryId, copies[1].astraCarQueueEntryId);
+    if (virtual) assert.notEqual(copies[0].astraQueueEntryId, copies[1].astraQueueEntryId);
+    assert.equal(h.playerStore.getState().shuffle, true);
+    assert.equal(h.playerStore.getState().repeat, 'one');
+    if (!virtual) {
+      await h.controller.setShuffleEnabled(false);
+      assert.deepEqual(h.native().queue.map((track) => track.path), [order[0].path, searchSong.path, order[1].path, searchSong.path]);
+      assert.notEqual(h.native().queue[1].astraCarQueueEntryId, h.native().queue[3].astraCarQueueEntryId);
+    }
+  });
+
+  test(`search restarts the current ${virtual ? 'virtual' : 'ordinary'} occurrence without duplicating it`, async () => {
+    const h = await harness({ virtual, activePosition: 1, paused: true });
+    await h.playNow(h.order[1]);
+    assert.equal(h.native().queue.length, 3);
+    assert.equal(h.native().index, 1);
+    assert.equal(h.native().position, 0);
+    assert.equal(h.native().state, State.Playing);
+  });
+
+  test(`search uses the native active occurrence in a ${virtual ? 'virtual' : 'ordinary'} queue`, async () => {
+    const h = await harness({ virtual, activePosition: 0 });
+    h.advanceNative(1);
+    const before = h.native().queue.map((track) => track.path);
+    await h.playNow(searchSong);
+    assert.deepEqual(h.native().queue.map((track) => track.path), [...before.slice(0, 2), searchSong.path, before[2]]);
+    assert.equal(h.native().index, 2);
+    if (virtual) assert.equal(h.calls.mutations[0].anchorEntryId, 2);
+  });
+
+  test(`search preserves and materializes a restored ${virtual ? 'virtual' : 'ordinary'} queue`, async () => {
+    const h = await harness({ virtual, activePosition: 0 });
+    h.restore();
+    await h.playNow(searchSong);
+    assert.equal(h.native().queue.length, 4);
+    assert.equal(h.native().queue[1].path, searchSong.path);
+    assert.equal(h.native().index, 1);
+    assert.equal(h.playerStore.getState().restoredSessionPending, false);
+  });
+
+  test(`unavailable selection preserves a restored ${virtual ? 'virtual' : 'ordinary'} queue`, async () => {
+    const h = await harness({ virtual, activePosition: 0 });
+    h.restore();
+    const snapshot = h.controller.getPlaybackSessionSnapshot();
+    await assert.rejects(h.controller.playTrackNow(searchSong, { kind: 'search', label: 'Search' }), /no longer available/);
+    assert.deepEqual(h.controller.getPlaybackSessionSnapshot(), snapshot);
+    assert.equal(h.playerStore.getState().restoredSessionPending, true);
+    assert.equal(h.native().queue.length, 0);
+  });
+
+  test(`consecutive selections are serialized in a ${virtual ? 'virtual' : 'ordinary'} queue`, async () => {
+    const h = await harness({ virtual, activePosition: 0 });
+    const another = { ...searchSong, id: 'another', path: '/music/another.flac' };
+    const before = h.native().queue.map((track) => track.path);
+    await Promise.all([h.playNow(searchSong), h.playNow(another)]);
+    assert.deepEqual(h.native().queue.map((track) => track.path), [before[0], searchSong.path, another.path, ...before.slice(1)]);
+    assert.equal(h.native().index, 2);
+  });
+}
+
+test('search starts a singleton queue when no queue exists', async () => {
+  const h = await harness({ empty: true, shuffle: true, repeat: 'one' });
+  await h.playNow(searchSong);
+  assert.deepEqual(h.native().queue.map((track) => track.path), [searchSong.path]);
+  assert.equal(h.native().state, State.Playing);
+  assert.equal(h.queueStore.getState().source.kind, 'search');
+  assert.equal(h.playerStore.getState().shuffle, true);
+  assert.equal(h.playerStore.getState().repeat, 'one');
+});
+
+test('ordinary search failure reconciles the active index and keeps upcoming tracks', async () => {
+  const h = await harness({ virtual: false, activePosition: 0 });
+  h.failures.prepare = true;
+  await assert.rejects(h.playNow(searchSong), /prepare failed/);
+  assert.equal(h.native().queue.length, 4);
+  assert.equal(h.queueStore.getState().activeIndex, h.native().index);
+  assert.equal(h.playerStore.getState().currentTrack.path, h.native().queue[0].path);
+});
+
+test('ordinary duplicate occurrences survive save, restore, and disabling shuffle', async () => {
+  const order = [tracks(1)[0], tracks(2)[1], searchSong];
+  const h = await harness({ virtual: false, order, activePosition: 0, shuffle: true });
+  await h.playNow(searchSong);
+  h.restore();
+  await h.controller.setShuffleEnabled(false);
+  assert.deepEqual(h.native().queue.map((track) => track.path), [order[0].path, searchSong.path, order[1].path, searchSong.path]);
+  assert.notEqual(h.native().queue[1].astraCarQueueEntryId, h.native().queue[3].astraCarQueueEntryId);
+});
+
+test('search preserves the full logical queue outside the transport window', async () => {
+  const h = await harness({ count: 120, activePosition: 70 });
+  const before = h.order.map((track) => track.path);
+  await h.playNow(searchSong);
+  assert.deepEqual(h.order.map((track) => track.path), [...before.slice(0, 71), searchSong.path, ...before.slice(71)]);
+  assert.equal(h.controller.getVirtualQueueState().activePosition, 71);
+  assert.equal(h.controller.getVirtualQueueState().totalCount, 121);
+  assert.ok(h.native().queue.length <= 41);
+});
+
+for (const failure of ['prepare', 'setQueue', 'play'] as const) {
+  test(`virtual search ${failure} failure preserves the complete queue and reconciles playback`, async () => {
+    const h = await harness({ count: 120, activePosition: 70 });
+    const before = h.order.map((track) => track.path);
+    h.failures[failure] = true;
+    await assert.rejects(h.playNow(searchSong), /failed/);
+    assert.deepEqual(h.order.filter((track) => track.path !== searchSong.path).map((track) => track.path), before);
+    assert.equal(h.controller.getVirtualQueueState().totalCount, 121);
+    assert.equal(h.playerStore.getState().currentTrack.path, h.native().queue[h.native().index!].path);
+    assert.equal(h.queueStore.getState().source.kind, 'playlist');
+  });
+}
+
+test('rejected replacement retains pending restored playback', async () => {
+  const h = await harness({ activePosition: 0 });
+  h.restore();
+  const before = h.controller.getPlaybackSessionSnapshot();
+  h.failures.create = true;
+  await assert.rejects(h.controller.playLibraryQuery({ kind: 'search', query: 'no matches' }, { source: { kind: 'search', label: 'Search' } }), /no available tracks/);
+  assert.equal(h.playerStore.getState().restoredSessionPending, true);
+  assert.deepEqual(h.controller.getPlaybackSessionSnapshot(), before);
+});
+
+test('stale native session rejection leaves playback intact and does not block the next selection', async () => {
+  const h = await harness({ activePosition: 0 });
+  const before = h.native().queue.map((track) => track.path);
+  h.failures.mutate = true;
+  await assert.rejects(h.playNow(searchSong), /queue changed/);
+  assert.deepEqual(h.native().queue.map((track) => track.path), before);
+  h.failures.mutate = false;
+  await h.playNow(searchSong);
+  assert.equal(h.playerStore.getState().currentTrack.path, searchSong.path);
 });

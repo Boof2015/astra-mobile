@@ -1155,6 +1155,7 @@ class AstraLibraryRepository private constructor(
       "library", "album", "artist", "folder", "search", "dynamicPlaylist" -> paths
       else -> filterAvailablePaths(paths, catalogDao)
     }
+    require(availablePaths.isNotEmpty()) { "This collection has no available tracks." }
     val seed = requestedSeed ?: System.currentTimeMillis()
     val original = availablePaths.mapIndexed { index, path ->
       OrderedQueueItem(index.toLong(), path)
@@ -1276,11 +1277,7 @@ class AstraLibraryRepository private constructor(
       scheduleSnapshot()
       return null
     }
-    val oldActive = session.activePosition
-    val activePath = session.anchorPath
-    val activeIndex = activePath?.let { path ->
-      retained.indexOfFirst { it.trackPath == path }.takeIf { it >= 0 }
-    } ?: retained.indexOfLast { it.position <= oldActive }.coerceAtLeast(0)
+    val activeIndex = restoredPlaybackActiveIndex(retained.map { it.position }, session.activePosition)
     val normalized = retained.mapIndexed { index, row ->
       row.copy(position = index.toLong())
     }
@@ -1310,6 +1307,22 @@ class AstraLibraryRepository private constructor(
     initialize()
     val database = requireUser()
     val dao = database.userDao()
+    if (operation == "insertAndPlay") {
+      val path = values["path"] as? String
+      val available = path?.let { requireCatalog().catalogDao().getActiveTrack(it)?.path }
+      val position = dao.insertAndSelectPlaybackTrack(
+        values["sessionId"] as? String ?: error("Missing queue session."),
+        (values["sessionEpoch"] as? Number)?.toLong() ?: error("Missing queue epoch."),
+        (values["anchorEntryId"] as? Number)?.toLong() ?: error("Missing playing queue entry."),
+        available,
+      )
+      scheduleSnapshot()
+      return playbackWindow(
+        values["sessionId"] as String,
+        (position - PLAYBACK_HISTORY_WINDOW).coerceAtLeast(0),
+        PLAYBACK_WINDOW_SIZE,
+      )
+    }
     val session = dao.getPlaybackSession(ACTIVE_PLAYBACK_CONTEXT_ID) ?: return null
     val current = dao.getAllQueueEntries(session.id)
       .map { OrderedQueueItem(it.entryId, it.trackPath) }

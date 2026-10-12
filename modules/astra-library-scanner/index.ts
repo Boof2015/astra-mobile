@@ -437,6 +437,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   restorePlaybackContext<T>(): Promise<NativePlaybackWindow<T> | null>;
   mutatePlaybackContext<T>(
     operation:
+      | 'insertAndPlay'
       | 'insertAfterActive'
       | 'append'
       | 'insertQueryAfterActive'

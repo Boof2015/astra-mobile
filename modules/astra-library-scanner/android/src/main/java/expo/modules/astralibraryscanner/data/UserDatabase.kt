@@ -470,6 +470,49 @@ interface UserDao {
     return entry
   }
 
+  /** Insert and select against the playing occurrence, not a delayed position mirror. */
+  @Transaction
+  suspend fun insertAndSelectPlaybackTrack(
+    sessionId: String,
+    epoch: Long,
+    anchorEntryId: Long,
+    availablePath: String?,
+  ): Long {
+    val path = requireNotNull(availablePath) { "This song is no longer available." }
+    val session = getPlaybackSession(sessionId)
+    check(session != null && session.createdAt == epoch) { "The queue changed. Try that song again." }
+    val entries = getAllQueueEntries(sessionId).toMutableList()
+    val anchor = entries.indexOfFirst { it.entryId == anchorEntryId }
+    check(anchor >= 0) { "The playing queue item is no longer available." }
+    val now = System.currentTimeMillis()
+    if (entries[anchor].trackPath == path) {
+      updatePlaybackPosition(sessionId, anchor.toLong(), path, now)
+      return anchor.toLong()
+    }
+    val position = anchor + 1
+    val entryId = maxOf(session.nextEntryId, entries.maxOf { it.entryId } + 1)
+    entries.add(position, PlaybackQueueEntryEntity(sessionId, position.toLong(), path, entryId))
+    val original = getOriginalQueueEntries(sessionId).toMutableList()
+    if (session.shuffleSeed != null) {
+      if (original.isEmpty()) {
+        original.addAll(entries.filter { it.entryId != entryId }.map {
+          PlaybackOriginalQueueEntryEntity(sessionId, it.position, it.trackPath, it.entryId)
+        })
+      }
+      val originalAnchor = original.indexOfFirst { it.entryId == anchorEntryId }
+      check(originalAnchor >= 0) { "The original queue is missing the playing item." }
+      original.add(originalAnchor + 1,
+        PlaybackOriginalQueueEntryEntity(sessionId, 0, path, entryId))
+    }
+    applyPlaybackQueueMutation(
+      session.copy(anchorPath = path, activePosition = position.toLong(), updatedAt = now,
+        queueRevision = session.queueRevision + 1, isDirty = true, nextEntryId = entryId + 1),
+      entries.mapIndexed { index, row -> row.copy(position = index.toLong()) },
+      original.mapIndexed { index, row -> row.copy(position = index.toLong()) },
+    )
+    return position.toLong()
+  }
+
   @Query("SELECT * FROM playback_queue_entries WHERE session_id = :sessionId ORDER BY position")
   suspend fun getAllQueueEntries(sessionId: String): List<PlaybackQueueEntryEntity>
 
@@ -599,6 +642,7 @@ interface UserDao {
     originalEntries: List<PlaybackOriginalQueueEntryEntity> = emptyList(),
     replaceIdentity: Boolean = false,
   ) {
+    require(entries.isNotEmpty()) { "This collection has no available tracks." }
     // Generate the epoch inside the transaction, including simultaneous replacements.
     val previous = if (replaceIdentity) getPlaybackSession(session.id) else null
     val stored = if (replaceIdentity) session.copy(createdAt = maxOf(session.createdAt, (previous?.createdAt ?: 0L) + 1)) else session

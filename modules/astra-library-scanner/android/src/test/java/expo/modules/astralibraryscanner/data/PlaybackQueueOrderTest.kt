@@ -116,4 +116,20 @@ class PlaybackQueueOrderTest {
   private fun assertSameOccurrences(expected: List<OrderedQueueItem>, actual: List<OrderedQueueItem>) {
     assertEquals(expected.sortedBy { it.entryId }, actual.sortedBy { it.entryId })
   }
+
+  @Test
+  fun restorationSelectsTheSavedOccurrenceIncludingDuplicates() {
+    val paths = listOf("a", "x", "b", "x", "c")
+    val active = restoredPlaybackActiveIndex(paths.indices.map(Int::toLong), 3)
+    assertEquals(3, active)
+    assertEquals("x", paths[active])
+    assertEquals(listOf("c"), paths.drop(active + 1))
+  }
+
+  @Test
+  fun restorationAccountsForUnavailableRowsWithoutMatchingAnotherCopy() {
+    assertEquals(2, restoredPlaybackActiveIndex(listOf(0L, 2L, 3L, 4L), 3))
+    assertEquals(1, restoredPlaybackActiveIndex(listOf(0L, 2L, 4L), 3))
+    assertEquals(0, restoredPlaybackActiveIndex(listOf(4L, 5L), 3))
+  }
 }

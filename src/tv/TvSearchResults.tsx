@@ -2,7 +2,8 @@ import { useTvTheme } from './useTvTheme';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
-import { playLibraryQuery } from '@/audio/playbackController';
+import { playTrackNow } from '@/audio/playbackController';
+import { dbTrackToTrack } from '@/library/trackAdapter';
 import { findFuzzyMatch } from '@/lib/fuzzySearch';
 import { albumArtworkSource, artworkThumbFromSource, artworkUri, trackArtworkThumbSource } from './artwork';
 import { usePlaylistStore } from '@/stores/playlistStore';
@@ -98,7 +99,7 @@ export function TvSearchResults({ search, actions, ready }: { search: SearchRequ
               const open = () => { if (item.kind !== 'track') actions.open(item.kind === 'artist' ? { kind: 'artist', artist: item.value } : item.kind === 'album' ? { kind: 'album', album: item.value } : { kind: 'playlist', playlist: item.value }); };
               if (item.kind === 'track') return <TvTrackRow key={itemKey(item)} track={item.value} id={idOf(item)} optionsId={idOf(item, true)} left={39} top={8 + i * 52} width={870} playing={item.value.path === currentPath}
                 links={links} optionLinks={{ up: i ? idOf(band.items[i - 1], true) : above, down: idOf(band.items[Math.min(band.items.length - 1, i + 1)], true) }}
-                enter={options => enter(item, i, options)} play={() => actions.run(() => playLibraryQuery({ kind: 'search', query: search.query, literalFallback: true }, { anchorPath: item.value.path, source: { kind: 'search', label: `Search: ${search.query}` } }))}
+                enter={options => enter(item, i, options)} play={() => actions.run(() => playTrackNow(dbTrackToTrack(item.value), { kind: 'search', label: `Search: ${search.query}` }))}
                 options={() => actions.trackMenu(item.value, idOf(item, true), 178 + (i - start) * 52)} />;
               if (item.kind === 'album') return <AlbumCard key={itemKey(item)} album={item.value} id={idOf(item)} left={51 + i * 146.2} top={8} links={links} enter={() => enter(item, i)} open={open} />;
               return <TvCard key={itemKey(item)} id={idOf(item)} left={51 + i * 146.2} top={8} links={links} enter={() => enter(item, i)} open={open}

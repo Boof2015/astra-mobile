@@ -12,6 +12,10 @@ internal data class PlaybackQueueOrder(
   val activePosition: Int,
 )
 
+/** Positions identify occurrences even when the same path appears more than once. */
+internal fun restoredPlaybackActiveIndex(retainedPositions: List<Long>, activePosition: Long): Int =
+  retainedPositions.indexOfLast { it <= activePosition }.coerceAtLeast(0)
+
 internal fun createPlaybackQueueOrder(
   original: List<OrderedQueueItem>,
   anchorPath: String?,
