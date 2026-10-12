@@ -5,7 +5,7 @@ export type TrackSourceType = 'local' | 'subsonic' | 'jellyfin';
 
 export interface DbTrack {
   id: number;
-  path: string; // SAF content:// URI (local), or subsonic://|jellyfin:// identity URI (remote)
+  path: string; // SAF/TV content:// URI (local), or subsonic://|jellyfin:// identity URI (remote)
   folder_id: number | null; // NULL for remote tracks (no SAF folder)
   title: string;
   artist: string;
@@ -64,11 +64,13 @@ export interface DbTrack {
 
 export interface LibraryFolder {
   id: number;
-  tree_uri: string;
+  tree_uri: string; // SAF tree or astra-media:// TV storage scope
   display_name: string;
   added_at: number;
   last_scanned_at: number | null;
-  /** Computed against persisted URI permissions at load time — not stored. */
+  scan_status?: string;
+  scan_error?: string | null;
+  /** Computed from SAF access or TV audio permission and mounted storage. */
   available: boolean;
 }
 

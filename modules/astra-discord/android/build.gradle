@@ -55,6 +55,7 @@ android {
     consumerProguardFiles 'consumer-rules.pro'
     buildConfigField 'boolean', 'SDK_AVAILABLE', sdkEnabled.toString()
     if (sdkEnabled) {
+      testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
       externalNativeBuild {
         cmake {
           cppFlags '-std=c++20 -fexceptions -frtti'
@@ -65,6 +66,7 @@ android {
     }
   }
   sourceSets.main.java.srcDirs += sdkEnabled ? 'src/sdk/java' : 'src/stub/java'
+  if (sdkEnabled) sourceSets.androidTest.java.srcDir 'src/sdkAndroidTest/java'
   sourceSets.main.assets.srcDir legalAssetsDir
   if (sdkEnabled) {
     externalNativeBuild { cmake { path 'CMakeLists.txt' } }
@@ -81,6 +83,10 @@ android {
 dependencies {
   implementation project(':astra-car')
   if (sdkEnabled) implementation(name: 'discord_partner_sdk', ext: 'aar')
+  if (sdkEnabled) {
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+  }
   testImplementation 'junit:junit:4.13.2'
   testImplementation 'org.json:json:20240303'
 }

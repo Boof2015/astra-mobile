@@ -1541,6 +1541,15 @@ interface CatalogDao {
   suspend fun runDynamicTrackQuery(query: SupportSQLiteQuery): List<ActiveTrackView>
 
   @RawQuery
+  suspend fun getSearchNames(query: SupportSQLiteQuery): List<SearchName>
+
+  @RawQuery
+  suspend fun getSearchAlbumPage(query: SupportSQLiteQuery): List<AlbumSummaryEntity>
+
+  @RawQuery
+  suspend fun getSearchArtistPage(query: SupportSQLiteQuery): List<ArtistSummaryEntity>
+
+  @RawQuery
   suspend fun runDynamicCountQuery(query: SupportSQLiteQuery): Long
 
   @RawQuery

@@ -120,6 +120,9 @@ export function prepareArtifact(distribution, sourcePath, outputDirectory) {
   if (existsSync(absoluteOutput) && readdirSync(absoluteOutput).length) {
     throw new Error('Candidate output directory must be empty to avoid publishing stale files.');
   }
+  execFileSync('python3', [
+    path.join(ROOT, 'scripts/verify-android-pages.py'), absoluteSource,
+  ], { cwd: ROOT, stdio: 'inherit' });
   const discordEnabled = process.env.ASTRA_DISCORD_ENABLED === 'true';
   const sdkLock = discordEnabled ? readJson('discord-sdk.lock.json') : null;
   execFileSync('python3', [

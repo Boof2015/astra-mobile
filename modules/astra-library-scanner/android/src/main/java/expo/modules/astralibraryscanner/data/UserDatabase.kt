@@ -263,6 +263,16 @@ interface UserDao {
   @Query("SELECT * FROM listening_sessions WHERE session_key = :sessionKey")
   suspend fun getListeningSession(sessionKey: String): ListeningSessionEntity?
 
+  @Query("""
+    SELECT track_path, COUNT(*) AS plays,
+      SUM(CASE WHEN qualified_at >= :weekStart THEN 1 ELSE 0 END) AS weekPlays,
+      MIN(started_at) AS firstPlayedAt, MAX(qualified_at) AS lastPlayedAt
+    FROM listening_sessions
+    WHERE generation = :generation AND qualified_at IS NOT NULL AND qualified_at <= :now
+    GROUP BY track_path
+  """)
+  suspend fun getAmbientTrackHistory(generation: String, weekStart: Long, now: Long): List<AmbientTrackHistory>
+
   @Upsert
   suspend fun putListeningSession(session: ListeningSessionEntity)
 

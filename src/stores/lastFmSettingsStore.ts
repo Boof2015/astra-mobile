@@ -36,7 +36,8 @@ interface LastFmSettingsStore {
   ) => Promise<LastFmStatus | null>;
   deleteCustomProfile: (profileId: string) => Promise<LastFmStatus | null>;
   setProfileEnabled: (profileId: string, enabled: boolean) => Promise<LastFmStatus | null>;
-  beginAuth: (profileId: string) => Promise<LastFmAuthStartResult | null>;
+  beginAuth: (profileId: string, options?: { openBrowser?: boolean }) => Promise<LastFmAuthStartResult | null>;
+  cancelAuth: () => void;
   finishAuth: () => Promise<LastFmAuthFinishResult | null>;
   disconnectProfile: (profileId: string) => Promise<LastFmStatus | null>;
   resetToDefaults: () => Promise<LastFmStatus | null>;
@@ -46,6 +47,7 @@ let statusSubscribed = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authPollInFlight = false;
 let authPollDeadlineMs = 0;
+let authOperationSequence = 0;
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -110,10 +112,13 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
   const pollAuthCompletion = async (): Promise<void> => {
     if (authPollInFlight) return;
 
+    const sequence = authOperationSequence;
     authPollInFlight = true;
     try {
       const result = await getLastFmService().finishAuth();
+      if (sequence !== authOperationSequence) return;
       const status = await fetchStatus().catch(() => null);
+      if (sequence !== authOperationSequence) return;
 
       if (result.ok) {
         stopAuthPolling();
@@ -146,7 +151,9 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
         errorMessage: result.message,
       });
     } catch (error) {
+      if (sequence !== authOperationSequence) return;
       const status = await fetchStatus().catch(() => null);
+      if (sequence !== authOperationSequence) return;
       const stillPending = status?.authPending ?? false;
 
       if (stillPending && Date.now() < authPollDeadlineMs) {
@@ -161,7 +168,7 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
       stopAuthPolling();
       set({ errorMessage: toErrorMessage(error), authHint: '' });
     } finally {
-      authPollInFlight = false;
+      if (sequence === authOperationSequence) authPollInFlight = false;
     }
   };
 
@@ -257,10 +264,13 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
       }
     },
 
-    beginAuth: async (profileId: string) => {
+    beginAuth: async (profileId, options) => {
+      const sequence = ++authOperationSequence;
       try {
-        const result = await getLastFmService().beginAuth(profileId);
+        const result = await getLastFmService().beginAuth(profileId, options);
+        if (sequence !== authOperationSequence) return result;
         const status = await fetchStatus().catch(() => null);
+        if (sequence !== authOperationSequence) return result;
         if (result.ok && (status?.authPending ?? result.authPending)) {
           startAuthPolling();
         } else if (result.ok) {
@@ -275,16 +285,27 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
         }
         return result;
       } catch (error) {
+        if (sequence !== authOperationSequence) return null;
         stopAuthPolling();
         set({ errorMessage: toErrorMessage(error), authHint: '' });
         return null;
       }
     },
 
+    cancelAuth: () => {
+      authOperationSequence++;
+      stopAuthPolling();
+      getLastFmService().cancelAuth();
+      set({ authHint: '', errorMessage: '' });
+    },
+
     finishAuth: async () => {
+      const sequence = authOperationSequence;
       try {
         const result = await getLastFmService().finishAuth();
+        if (sequence !== authOperationSequence) return result;
         const status = await fetchStatus().catch(() => null);
+        if (sequence !== authOperationSequence) return result;
         if (result.ok) {
           stopAuthPolling();
           set({ authHint: '', errorMessage: '' });
@@ -302,6 +323,7 @@ export const useLastFmSettingsStore = create<LastFmSettingsStore>((set, get) => 
         }
         return result;
       } catch (error) {
+        if (sequence !== authOperationSequence) return null;
         stopAuthPolling();
         set({ errorMessage: toErrorMessage(error), authHint: '' });
         return null;

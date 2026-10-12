@@ -1,14 +1,14 @@
 import { requireNativeModule, type NativeModule } from 'expo-modules-core';
 
-/** A single audio file found during the SAF tree walk. */
+/** A single audio file found through SAF or the TV MediaStore adapter. */
 export interface ScannedFile {
-  /** SAF document URI — playable directly by ExoPlayer and readable by MMR. */
+  /** Content URI — playable directly by ExoPlayer and readable by Astra. */
   uri: string;
   name: string;
   size: number | null;
   lastModified: number;
   mimeType: string | null;
-  /** Document URI of the containing directory (key into `ListResult.covers`). */
+  /** Directory URI (SAF document or TV storage scope); key into `ListResult.covers`. */
   parentUri: string;
 }
 
@@ -150,7 +150,10 @@ export interface TrackAnalysis {
   channelCount: number | null;
 }
 
+export type TvMusicVolume = { id: string; label: string; folders: { path: string; count: number; uri: string }[] };
+
 declare class AstraLibraryScannerModuleType extends NativeModule<AstraLibraryScannerEvents> {
+  discoverTvMusic(extensions: string[]): Promise<TvMusicVolume[]>;
   listAudioFiles(treeUri: string, extensions: string[]): Promise<ListResult>;
   extractMetadata(files: { uri: string; coverUri?: string | null }[]): Promise<ExtractedMetadata[]>;
   scanFolderNative(
@@ -269,7 +272,7 @@ export type LibraryQuery =
   | { kind: 'playlist'; playlistId: number }
   | { kind: 'favorites'; sort?: 'title' }
   | { kind: 'recent' }
-  | { kind: 'search'; query: string }
+  | { kind: 'search'; query: string; literalFallback?: boolean }
   | { kind: 'manual'; paths: string[] }
   | { kind: 'dynamicPlaylist'; playlistId: number };
 
@@ -448,6 +451,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   getListeningHistoryStatus<T>(): Promise<T>;
   checkpointListeningSession<T>(payload: Record<string, unknown>): Promise<T>;
   getListeningStatsDashboard<T>(query: Record<string, unknown>): Promise<T>;
+  getTvAmbientMoment<T>(playingPath: string, artist: string, grouping: 'astra' | 'fileTags', excluded: string[]): Promise<T | null>;
   clearDetailedListeningHistory<T>(): Promise<T>;
   getRecentlyPlayed<T>(limit: number): Promise<T[]>;
   listRemoteSources<T>(): Promise<T[]>;
@@ -614,6 +618,8 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     groupingMode: 'astra' | 'fileTags'
   ): Promise<void>;
   searchTracks<T>(query: string, limit: number): Promise<T[]>;
+  getTvSearchNames(query: string, includeSingles: boolean, grouping: 'astra' | 'fileTags', includeCollaborations: boolean): Promise<{ name: string; kind: 'Artist' | 'Album' | 'Track' }[]>;
+  getTvSearchPage<T>(kind: 'tracks' | 'albums' | 'artists', query: string, offset: number, limit: number, revision: number | null, includeSingles: boolean, grouping: 'astra' | 'fileTags', includeCollaborations: boolean): Promise<{ items: T[]; totalCount: number; nextOffset: number | null; revision: number; error?: string }>;
   searchLibrary<TTrack, TAlbum, TArtist>(
     query: string,
     limit: number,

@@ -3,7 +3,6 @@ const release = require('./release.json');
 
 const DISTRIBUTIONS = new Set(['development', 'github', 'google-play']);
 const BLOCKED_ANDROID_PERMISSIONS = [
-  'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.RECORD_AUDIO',
   'android.permission.SYSTEM_ALERT_WINDOW',
   'android.permission.WRITE_EXTERNAL_STORAGE',

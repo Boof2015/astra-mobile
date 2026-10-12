@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Tabs } from 'expo-router';
+import { Platform, View } from 'react-native';
+import { TvApp } from '@/tv/TvApp';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { useReducedMotion } from 'react-native-reanimated';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { useShellLayout } from '@/navigation/useShellLayout';
@@ -21,6 +25,18 @@ import { useColors } from '@/theme/themed';
 import { isDisplayedTabFocused } from '@/navigation/statsTabState';
 
 export default function TabsLayout() {
+  return Platform.isTV ? <TvEntry /> : <MobileTabsLayout />;
+}
+
+function TvEntry() {
+  const ready = useOnboardingStore(s => s.onboardingComplete);
+  const fatal = useLibraryStore(s => s.status === 'fatalUserData');
+  // Root-level setup/recovery owns focus until it completes. Never mount the
+  // phone tab scenes behind the TV presentation.
+  return ready && !fatal ? <TvApp /> : <View style={{ flex: 1 }} />;
+}
+
+function MobileTabsLayout() {
   const colors = useColors();
   const reducedMotion = useReducedMotion();
   const lastSwitchAt = useRef(0);

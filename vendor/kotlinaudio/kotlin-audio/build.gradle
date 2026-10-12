@@ -14,6 +14,7 @@
 //      and MediaSession release on teardown for the Android Auto projection
 //   6. EQ format activation at flush + per-channel state resizing across tracks
 //   7. passive audio diagnostics via analytics + a forwarding sink/default buffer provider
+//   8. TV MediaSession activity reuses the notification's return-to-player intent
 
 plugins {
   id 'com.android.library'

@@ -222,6 +222,9 @@ class AstraLibraryDataModule : Module() {
     AsyncFunction("getListeningStatsDashboard") Coroutine { query: Map<String, Any?> ->
       repositoryCall { getListeningStatsDashboard(query) }
     }
+    AsyncFunction("getTvAmbientMoment") Coroutine { playingPath: String, artist: String, grouping: String, excluded: List<String> ->
+      repositoryCall { getTvAmbientMoment(playingPath, artist, grouping, excluded) }
+    }
 
     AsyncFunction("clearDetailedListeningHistory").Coroutine<Map<String, Any?>> {
       repositoryCall { clearDetailedListeningHistory() }
@@ -577,6 +580,14 @@ class AstraLibraryDataModule : Module() {
         groupingMode,
         includeCollaborations,
       )
+    }
+
+    AsyncFunction("getTvSearchNames") Coroutine { query: String, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean ->
+      repository().getTvSearchNames(query, includeSingles, grouping, includeCollaborations)
+    }
+
+    AsyncFunction("getTvSearchPage") Coroutine { kind: String, query: String, offset: Int, limit: Int, revision: Long?, includeSingles: Boolean, grouping: String, includeCollaborations: Boolean ->
+      repository().getTvSearchPage(kind, query, offset, limit, revision, includeSingles, grouping, includeCollaborations)
     }
 
     AsyncFunction("matchSignal") Coroutine { title: String, artist: String, durationSeconds: Double? ->

@@ -52,6 +52,9 @@ jobs:
           python3 -m unittest discover -s scripts/tests -p 'test_discord*.py'
           python3 scripts/verify-discord-artifact.py
 
+      - name: Test native page-size release checks
+        run: python3 -m unittest discover -s scripts/tests -p 'test_android_pages.py'
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -371,6 +374,14 @@ jobs:
 
       - name: Verify Discord SDK and packaged licenses
         run: python3 scripts/verify-discord-artifact.py android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Stage bundletool for 16 KB packaging verification
+        shell: bash
+        run: |
+          BUNDLETOOL="$RUNNER_TEMP/bundletool-all-1.18.1.jar"
+          curl --fail --location --retry 3 --output "$BUNDLETOOL" https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          printf '675786493983787ffa11550bdb7c0715679a44e1643f3ff980a529e9c822595c  %s\n' "$BUNDLETOOL" | sha256sum --check
+          printf 'ASTRA_BUNDLETOOL_JAR=%s\n' "$BUNDLETOOL" >> "$GITHUB_ENV"
 
       - name: Prepare Google Play artifact bundle
         run: node scripts/release/android-release.mjs prepare google-play android/app/build/outputs/bundle/release/app-release.aab dist/android/google-play
