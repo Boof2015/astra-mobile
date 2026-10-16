@@ -37,6 +37,8 @@ interface MarqueeTextProps {
   delayMs?: number;
   holdMs?: number;
   speedPxPerSecond?: number;
+  /** Restart the hold when another track has the same title. */
+  resetKey?: string;
 }
 
 export function MarqueeText({
@@ -48,15 +50,17 @@ export function MarqueeText({
   delayMs = DEFAULT_DELAY_MS,
   holdMs = DEFAULT_HOLD_MS,
   speedPxPerSecond = DEFAULT_SPEED_PX_PER_SECOND,
+  resetKey,
 }: MarqueeTextProps) {
   const [containerWidth, setContainerWidth] = useState(0);
-  const [textWidth, setTextWidth] = useState(0);
+  const [measurement, setMeasurement] = useState({ text: children, width: 0 });
+  const textWidth = measurement.text === children ? measurement.width : 0;
   const offset = useSharedValue(0);
   const overflowDistance = Math.max(0, Math.ceil(textWidth - containerWidth));
 
   useEffect(() => {
     cancelAnimation(offset);
-    offset.value = 0;
+    offset.set(0);
 
     if (overflowDistance <= 1) return;
 
@@ -64,7 +68,7 @@ export function MarqueeText({
       MIN_DURATION_MS,
       Math.round((overflowDistance / speedPxPerSecond) * 1000)
     );
-    offset.value = withDelay(
+    offset.set(withDelay(
       delayMs,
       withRepeat(
         withSequence(
@@ -76,8 +80,8 @@ export function MarqueeText({
         -1,
         false
       )
-    );
-  }, [delayMs, holdMs, offset, overflowDistance, speedPxPerSecond]);
+    ));
+  }, [children, delayMs, holdMs, offset, overflowDistance, resetKey, speedPxPerSecond]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],
@@ -89,7 +93,8 @@ export function MarqueeText({
 
   const handleTextLayout = (event: TextLayoutEvent) => {
     const measuredWidth = Math.ceil(event.nativeEvent.lines[0]?.width ?? 0);
-    setTextWidth((current) => (Math.abs(current - measuredWidth) > 1 ? measuredWidth : current));
+    setMeasurement((current) => current.text === children && Math.abs(current.width - measuredWidth) <= 1
+      ? current : { text: children, width: measuredWidth });
   };
 
   return (

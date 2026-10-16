@@ -4,7 +4,7 @@ import { ArtworkAccentCache } from './artworkAccentCache';
 import { extractArtworkColors } from './artworkAccent';
 import type { AdaptiveAccentTarget } from './adaptiveAccent';
 import type { CoverArtAccentMethod } from './artworkAccentPreferences';
-import type { ArtworkColors } from './artworkColors';
+import { sameArtworkColors, type ArtworkColors } from './artworkColors';
 
 const colorCache = new ArtworkAccentCache<ArtworkColors>(256);
 const NO_COLORS: ArtworkColors = { accent: null, field: null };
@@ -55,11 +55,19 @@ export function useNowPlayingArtworkColors({
     const token = requestToken.current;
     if (!cacheKey || !artworkUri) return;
 
+    const publish = (colors: ArtworkColors) => {
+      setResolved((current) =>
+        current?.toneKey === toneKey && sameArtworkColors(current.colors, colors)
+          ? current
+          : { key: cacheKey, toneKey, colors },
+      );
+    };
+
     const cached = colorCache.get(cacheKey);
     if (cached.found) {
       queueMicrotask(() => {
         if (requestToken.current === token) {
-          setResolved({ key: cacheKey, toneKey, colors: cached.value ?? NO_COLORS });
+          publish(cached.value ?? NO_COLORS);
         }
       });
       return () => {
@@ -76,7 +84,7 @@ export function useNowPlayingArtworkColors({
       ).then((colors) => {
         colorCache.set(cacheKey, colors);
         if (requestToken.current === token) {
-          setResolved({ key: cacheKey, toneKey, colors: colors ?? NO_COLORS });
+          publish(colors ?? NO_COLORS);
         }
       });
     }, ARTWORK_COLORS_SETTLE_MS);

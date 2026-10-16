@@ -21,6 +21,7 @@ import {
 import {
   Easing,
   cancelAnimation,
+  runOnUI,
   useAnimatedReaction,
   useDerivedValue,
   useReducedMotion,
@@ -250,41 +251,43 @@ export function WaveformSeekBar({
     if (!targetAmps) return;
     const previous = morphRef.current;
     morphRef.current = { key: trackPath, placeholder };
-    const elapsed = morphElapsed.value;
-    const from = fromAmps.value;
-    const to = toAmps.value;
+    runOnUI(() => {
+      const elapsed = morphElapsed.value;
+      const from = fromAmps.value;
+      const to = toAmps.value;
 
-    // Width change (or first layout): bar counts differ, nothing to morph between.
-    if (to.length !== targetAmps.length || reduceMotion) {
-      cancelAnimation(morphElapsed);
-      fromAmps.value = targetAmps;
-      toAmps.value = targetAmps;
-      morphElapsed.value = MORPH_MS;
-      return;
-    }
+      // Width change (or first layout): bar counts differ, nothing to morph between.
+      if (to.length !== targetAmps.length || reduceMotion) {
+        cancelAnimation(morphElapsed);
+        fromAmps.set(targetAmps);
+        toAmps.set(targetAmps);
+        morphElapsed.set(MORPH_MS);
+        return;
+      }
 
-    // A new track, or real peaks replacing the loading baseline: morph from
-    // exactly what is on screen now, so an interrupted morph never jumps.
-    if (previous.key !== trackPath || (previous.placeholder && !placeholder)) {
-      const onScreen = to.map((target, i) =>
-        interpolateWaveformBarHeight(
-          from[i] ?? target,
-          target,
-          getWaveformBarScale('handoff', elapsed, i, to.length),
-        ),
-      );
-      fromAmps.value = onScreen;
-      toAmps.value = targetAmps;
-      cancelAnimation(morphElapsed);
-      morphElapsed.value = 0;
-      morphElapsed.value = withTiming(MORPH_MS, { duration: MORPH_MS, easing: Easing.linear });
-      return;
-    }
+      // A new track, or real peaks replacing the loading baseline: morph from
+      // exactly what is on screen now, so an interrupted morph never jumps.
+      if (previous.key !== trackPath || (previous.placeholder && !placeholder)) {
+        const onScreen = to.map((target, i) =>
+          interpolateWaveformBarHeight(
+            from[i] ?? target,
+            target,
+            getWaveformBarScale('handoff', elapsed, i, to.length),
+          ),
+        );
+        fromAmps.set(onScreen);
+        toAmps.set(targetAmps);
+        cancelAnimation(morphElapsed);
+        morphElapsed.set(0);
+        morphElapsed.set(withTiming(MORPH_MS, { duration: MORPH_MS, easing: Easing.linear }));
+        return;
+      }
 
-    // Same track filling in progressively: retarget a running morph, otherwise
-    // swap in place (the decode already resolves left to right on its own).
-    toAmps.value = targetAmps;
-    if (elapsed >= MORPH_MS) fromAmps.value = targetAmps;
+      // Same track filling in progressively: retarget a running morph, otherwise
+      // swap in place (the decode already resolves left to right on its own).
+      toAmps.set(targetAmps);
+      if (elapsed >= MORPH_MS) fromAmps.set(targetAmps);
+    })();
   }, [targetAmps, trackPath, placeholder, reduceMotion, fromAmps, toAmps, morphElapsed]);
 
   // One Skia path of all bars (rounded rects), rebuilt on the UI thread only

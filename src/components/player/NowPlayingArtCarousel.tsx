@@ -1,11 +1,12 @@
-import { useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import { Image } from 'expo-image';
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { PixelRatio, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, type ImageRef } from 'expo-image';
 import Animated, {
   Easing,
   ReduceMotion,
   cancelAnimation,
   runOnJS,
+  runOnUI,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -15,6 +16,11 @@ import {
   resolveNowPlayingTrackTransitionDirection,
   useNowPlayingTrackTransitionStore,
 } from '@/stores/nowPlayingTrackTransitionStore';
+
+import { artworkRequestKey, NowPlayingArtworkCache } from './nowPlayingArtworkCache';
+import { advanceArtTransition, canReleaseArtSlot, type ArtTransition } from './nowPlayingArtTransition';
+import { predictNeighborArtCover } from './nowPlayingArtNeighbors';
+import { ARTWORK_COLORS_SETTLE_MS } from '@/theme/useNowPlayingArtworkColors';
 
 /**
  * Now-playing's cover, as a two-card carousel: on a track change the current
@@ -38,15 +44,24 @@ export interface NowPlayingArtCover {
   thumb: string | null;
 }
 
+function sameCover(a: NowPlayingArtCover | null, b: NowPlayingArtCover | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.key === b.key && a.uri === b.uri && a.thumb === b.thumb;
+}
+
 const SLIDE = {
   duration: 300,
   easing: Easing.bezier(0.22, 1, 0.36, 1),
   reduceMotion: ReduceMotion.System,
 } as const;
 const PARKED = 100_000;
+const SHARPEN_MS = 120;
 
 interface NowPlayingArtCarouselProps {
   cover: NowPlayingArtCover | null;
+  /** Unscaled cover edge in layout points. */
+  size: number;
   /**
    * How far a card travels between center and parked. Must clear the screen
    * edge at the cover's current on-screen scale, or the outgoing card ends as a
@@ -63,6 +78,7 @@ interface NowPlayingArtCarouselProps {
 
 export function NowPlayingArtCarousel({
   cover,
+  size,
   travel,
   direction,
   dragX,
@@ -74,20 +90,50 @@ export function NowPlayingArtCarousel({
   const nextDirection = direction ?? hintDirection;
 
   const [slots, setSlots] = useState<[NowPlayingArtCover | null, NowPlayingArtCover | null]>([cover, null]);
-  const front = useRef(0);
   const frontIndex = useSharedValue(0);
   const x0 = useSharedValue(0);
   const x1 = useSharedValue(PARKED);
-  const shown = useRef<{ key: string | null; previousKey: string | null; direction: 1 | -1 }>({
+  const shown = useRef<ArtTransition>({
     key: cover?.key ?? null,
     previousKey: null,
     direction: 1,
+    front: 0,
+    generation: 0,
   });
-  const generation = useRef(0);
+  const pixelSize = Math.max(1, Math.ceil(size * PixelRatio.get()));
+  const [cache] = useState(() => new NowPlayingArtworkCache<ImageRef>(
+    ({ uri, pixelSize: edge }) => Image.loadAsync(uri, { maxWidth: edge, maxHeight: edge }),
+  ));
+  const [neighbors, setNeighbors] = useState<{ key: string | null; covers: NowPlayingArtCover[] } | null>(null);
+  const coverKey = cover?.key ?? null;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const covers = [predictNeighborArtCover('next'), predictNeighborArtCover('previous')]
+        .filter((item): item is NowPlayingArtCover => item !== null);
+      setNeighbors({ key: coverKey, covers });
+    }, ARTWORK_COLORS_SETTLE_MS + 150);
+    return () => clearTimeout(timer);
+  }, [coverKey]);
+
+  useEffect(() => {
+    const warm = neighbors?.key === coverKey ? neighbors.covers : [];
+    // Current first, then the outgoing slot, then neighbors. Album duplicates
+    // share a decode. Slots keep their refs until their exit completes.
+    const covers = [cover, ...slots, ...warm];
+    cache.setRequests(covers.flatMap((item) => item?.uri ? [{ uri: item.uri, pixelSize }] : []));
+  }, [cache, cover, coverKey, neighbors, pixelSize, slots]);
+  useEffect(() => () => cache.clear(), [cache]);
 
   const releaseSlot = (slot: number, gen: number) => {
-    if (generation.current !== gen || front.current === slot) return;
+    if (!canReleaseArtSlot(shown.current, slot, gen)) return;
+    const neighbors = [predictNeighborArtCover('next'), predictNeighborArtCover('previous')];
     setSlots((current) => {
+      if (!canReleaseArtSlot(shown.current, slot, gen) || !current[slot]) return current;
+      // Keep an immediate neighbor mounted at PARKED. Returning to it can
+      // reuse its native image view and GPU texture as well as its decode.
+      // Arbitrary jumps release the old card as soon as its exit finishes.
+      if (neighbors.some((neighbor) => sameCover(neighbor, current[slot]))) return current;
       const next: typeof current = [current[0], current[1]];
       next[slot] = null;
       return next;
@@ -102,8 +148,11 @@ export function NowPlayingArtCarousel({
     if (key === last.key) {
       // Same track, new data (e.g. its artwork resolved): update the card in place.
       setSlots((current) => {
+        const front = shown.current.front;
+        const previous = current[front];
+        if (sameCover(previous, cover)) return current;
         const next: typeof current = [current[0], current[1]];
-        next[front.current] = cover;
+        next[front] = cover;
         return next;
       });
       return;
@@ -111,36 +160,36 @@ export function NowPlayingArtCarousel({
 
     // Going back to the cover that just left reverses that slide, so a failed
     // swipe (or next-then-previous) returns the way it came.
-    const dir: 1 | -1 = key !== null && key === last.previousKey ? (-last.direction as 1 | -1) : nextDirection;
-    shown.current = { key, previousKey: last.key, direction: dir };
-    const gen = ++generation.current;
-    const outgoing = front.current;
-    const incoming = 1 - outgoing;
+    const next = advanceArtTransition(last, key, nextDirection);
+    shown.current = next;
+    const { direction: dir, generation: gen, front: incoming } = next;
+    const outgoing = last.front;
     const xOut = outgoing === 0 ? x0 : x1;
     const xIn = incoming === 0 ? x0 : x1;
 
-    // The outgoing card starts exactly where it is on screen, drag included.
-    cancelAnimation(dragX);
-    cancelAnimation(xOut);
-    cancelAnimation(xIn);
-    xOut.set(xOut.get() + dragX.get());
-    dragX.set(0);
-    xIn.set(dir * travel);
-    front.current = incoming;
-    frontIndex.set(incoming);
-
+    // One UI task samples the actual on-screen position and starts both cards.
+    // JS never waits for the rendering thread to read a shared value.
+    runOnUI(() => {
+      cancelAnimation(dragX);
+      cancelAnimation(xOut);
+      cancelAnimation(xIn);
+      xOut.set(xOut.get() + dragX.get());
+      dragX.set(0);
+      xIn.set(dir * travel);
+      frontIndex.set(incoming);
+      xOut.set(withTiming(-dir * travel, SLIDE, (finished) => {
+        if (!finished) return;
+        xOut.set(PARKED);
+        runOnJS(releaseSlot)(outgoing, gen);
+      }));
+      xIn.set(withTiming(0, SLIDE));
+    })();
     setSlots((current) => {
-      const next: typeof current = [current[0], current[1]];
-      next[incoming] = cover;
-      return next;
+      if (sameCover(current[incoming], cover)) return current;
+      const updated: typeof current = [current[0], current[1]];
+      updated[incoming] = cover;
+      return updated;
     });
-    xOut.set(withTiming(-dir * travel, SLIDE, (finished) => {
-      if (!finished) return;
-      // Off screen now; park it far away so its empty frame can never show.
-      xOut.set(PARKED);
-      runOnJS(releaseSlot)(outgoing, gen);
-    }));
-    xIn.set(withTiming(0, SLIDE));
   });
 
   // useLayoutEffect: the incoming card is parked off screen before the frame
@@ -168,18 +217,12 @@ export function NowPlayingArtCarousel({
           >
             {card ? (
               card.uri ? (
-                <Image
-                  // A new track remounts the image rather than swapping its
-                  // source, so the outgoing card can never show the new cover.
-                  key={card.key}
-                  source={{ uri: card.uri }}
-                  placeholder={card.thumb ? { uri: card.thumb } : undefined}
-                  placeholderContentFit="cover"
-                  style={styles.image}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                  allowDownscaling
-                  transition={120}
+                <DecodedCover
+                  key={`${card.key}:${pixelSize}:${card.uri ?? ''}`}
+                  card={card}
+                  cache={cache}
+                  pixelSize={pixelSize}
+                  fallback={fallback}
                 />
               ) : (
                 fallback
@@ -192,9 +235,52 @@ export function NowPlayingArtCarousel({
   );
 }
 
-const styles = StyleSheet.create({
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-});
+function DecodedCover({ card, cache, pixelSize, fallback }: {
+  card: NowPlayingArtCover;
+  cache: NowPlayingArtworkCache<ImageRef>;
+  pixelSize: number;
+  fallback: ReactNode;
+}) {
+  const image = useSyncExternalStore(cache.subscribe, () =>
+    card.uri ? cache.get({ uri: card.uri, pixelSize }) : null,
+  );
+  const sourceKey = artworkRequestKey({ uri: card.uri ?? '', pixelSize });
+  const [displayedKey, setDisplayedKey] = useState<string | null>(null);
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const [failedThumb, setFailedThumb] = useState<string | null>(null);
+  useEffect(() => {
+    if (displayedKey !== sourceKey) return;
+    // Keep the thumb in its own native view throughout the full cover's fade.
+    // Replacing a URI source with an ImageRef in one view could clear the thumb
+    // before the new drawable appeared during rapid skips. A source/size change
+    // cancels this completion so it cannot remove a newer cover's placeholder.
+    const timer = setTimeout(() => setSettledKey(sourceKey), SHARPEN_MS);
+    return () => clearTimeout(timer);
+  }, [displayedKey, sourceKey]);
+  return (
+    <>
+      {!image || settledKey !== sourceKey ? (
+        card.thumb && failedThumb !== card.thumb ? (
+          <Image
+            key={card.thumb}
+            source={{ uri: card.thumb }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={() => setFailedThumb(card.thumb)}
+          />
+        ) : fallback
+      ) : null}
+      <Image
+        key={sourceKey}
+        source={image}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        allowDownscaling
+        transition={SHARPEN_MS}
+        onDisplay={() => setDisplayedKey(sourceKey)}
+      />
+    </>
+  );
+}

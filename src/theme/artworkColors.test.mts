@@ -1,11 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { artworkColorsFromPixels } from './artworkColors.ts';
+import { artworkColorsFromPixels, sameArtworkColors, type ArtworkColors } from './artworkColors.ts';
 import { extractArtworkAccentFromPixels } from './artworkAccentMath.ts';
 import { fieldFromPixels } from './artworkField.ts';
 
 const DARK = { isLight: false, onAccent: '#080a0f' };
 const LIGHT = { isLight: true, onAccent: '#ffffff' };
+
+test('equal colors from different track cache entries preserve the palette; real changes do not', () => {
+  const colors: ArtworkColors = {
+    accent: '#aabbcc', field: { colors: ['#112233', '#445566', '#778899'], neutral: false },
+  };
+  assert.equal(sameArtworkColors(colors, structuredClone(colors)), true);
+  assert.equal(sameArtworkColors(colors, { ...colors, accent: '#ccddee' }), false);
+  assert.equal(sameArtworkColors(colors, { ...colors, field: null }), false);
+  assert.equal(sameArtworkColors(colors, { ...colors, field: { colors: ['#112233'], neutral: false } }), false);
+  assert.equal(sameArtworkColors(colors, { ...colors, field: { ...colors.field!, neutral: true } }), false);
+  assert.equal(sameArtworkColors(colors, { ...colors, field: { colors: ['#112233', '#445566', '#000000'], neutral: false } }), false);
+  assert.equal(sameArtworkColors({ accent: null, field: null }, { accent: null, field: null }), true);
+});
 
 function photo(size: number, seed: number): Uint8Array {
   const pixels = new Uint8Array(size * size * 4);

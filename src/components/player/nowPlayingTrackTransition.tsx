@@ -59,6 +59,8 @@ interface NowPlayingTrackFadeThroughProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  /** Reconcile metadata in the hidden layer instead of recreating its native views. */
+  preserveContent?: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export function NowPlayingTrackFadeThrough({
   children,
   style,
   contentStyle,
+  preserveContent = false,
 }: NowPlayingTrackFadeThroughProps) {
   const directionHint = useNowPlayingTrackTransitionStore((state) => state.hint);
   const requestedDirection = resolveNowPlayingTrackTransitionDirection(
@@ -256,7 +259,7 @@ export function NowPlayingTrackFadeThrough({
   return (
     <View collapsable={false} style={[{ position: 'relative' }, style]}>
       <Animated.View
-        key={display.key}
+        key={preserveContent ? 'content' : display.key}
         style={[contentStyle, animatedStyle]}
       >
         {renderedChildren}

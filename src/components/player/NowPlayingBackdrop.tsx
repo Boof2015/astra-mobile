@@ -7,6 +7,7 @@ import {
   vec,
 } from '@shopify/react-native-skia';
 import Animated, {
+  runOnUI,
   useAnimatedStyle,
   useDerivedValue,
   useFrameCallback,
@@ -112,22 +113,24 @@ export function NowPlayingBackdrop({
   // whose object identity changes with every resolve, without hiding `field`
   // from the deps (a suppression would drop this component from the compiler).
   const applyField = useEffectEvent(() => {
-    if (!field) {
-      strength.set(withTiming(0, { duration: CROSSFADE_MS }));
-      return;
-    }
-    // Start from whatever is on screen right now, so a skip mid-fade never jumps.
-    const k = fade.get();
-    const from = fromRgb.get();
-    const to = toRgb.get();
-    const shown = from.map((value, index) => value + (to[index] - value) * k);
-    const next = field.colors.flatMap(hexToRgbTriplet);
-    // First field after nothing was showing: no point fading from black.
-    fromRgb.set(strength.get() < 0.01 ? next : shown);
-    toRgb.set(next);
-    fade.set(0);
-    fade.set(withTiming(1, { duration: CROSSFADE_MS }));
-    strength.set(withTiming(fieldStrength(isDark, field.neutral), { duration: CROSSFADE_MS }));
+    const next = field?.colors.flatMap(hexToRgbTriplet) ?? null;
+    const nextStrength = field ? fieldStrength(isDark, field.neutral) : 0;
+    runOnUI(() => {
+      if (!next) {
+        strength.set(withTiming(0, { duration: CROSSFADE_MS }));
+        return;
+      }
+      // Sample the in-flight fade where it lives, without blocking JS.
+      const k = fade.get();
+      const from = fromRgb.get();
+      const to = toRgb.get();
+      const shown = from.map((value, index) => value + (to[index] - value) * k);
+      fromRgb.set(strength.get() < 0.01 ? next : shown);
+      toRgb.set(next);
+      fade.set(0);
+      fade.set(withTiming(1, { duration: CROSSFADE_MS }));
+      strength.set(withTiming(nextStrength, { duration: CROSSFADE_MS }));
+    })();
   });
   useEffect(() => {
     applyField();

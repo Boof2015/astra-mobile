@@ -5,7 +5,8 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  type ComponentProps,
 } from 'react';
 import {
   ActivityIndicator,
@@ -183,6 +184,13 @@ function libraryChromeHeight(options: {
   return height;
 }
 
+// Only the old/current track rows need playback updates. Subscribing the
+// screen itself also rebuilt the album grid hidden under Now Playing.
+function LibraryTrackRow(props: ComponentProps<typeof TrackRow>) {
+  const active = usePlayerStore((state) => state.currentTrack?.path === props.track.path);
+  return <TrackRow {...props} active={active} />;
+}
+
 export default function LibraryScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -224,7 +232,6 @@ export default function LibraryScreen() {
   const scanError = useLibraryStore((s) => s.scanError);
   const libraryStatus = useLibraryStore((s) => s.status);
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
-  const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const shell = useShellLayout();
   const insets = useSafeAreaInsets();
@@ -996,9 +1003,8 @@ export default function LibraryScreen() {
                   ListFooterComponent={trackNextCursor ? listFooter : null}
                   extraData={selectMode ? selectedIds : undefined}
                   renderItem={({ item, index }) => (
-                    <TrackRow
+                    <LibraryTrackRow
                       track={item}
-                      active={item.path === currentPath}
                       onPress={() => playAllFrom(index)}
                       onLongPress={() => enterSelection(item)}
                       onOpenActions={() => setActionTrack(item)}

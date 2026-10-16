@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { withTiming, type SharedValue } from 'react-native-reanimated';
+import { runOnUI, withTiming, type SharedValue } from 'react-native-reanimated';
 import { skipToNext, skipToPreviousTrack } from '@/audio/playbackController';
 import type { NowPlayingArtCover } from '@/components/player/NowPlayingArtCarousel';
 import { predictNeighborArtCover } from '@/components/player/nowPlayingArtNeighbors';
@@ -82,7 +82,9 @@ export function useArtSwipeHandoff(
     queueMicrotask(() => setArtPrediction(null));
     // The carousel (a child, so its effect ran first) took any drag offset. The
     // rack face has no carousel; bring it home.
-    if (artSwipeX.get() !== 0) artSwipeX.set(withTiming(0, motion.quick));
+    runOnUI(() => {
+      if (artSwipeX.get() !== 0) artSwipeX.set(withTiming(0, motion.quick));
+    })();
     playHaptic('confirm');
   }, [artSwipeX, transitionTrackKey]);
 

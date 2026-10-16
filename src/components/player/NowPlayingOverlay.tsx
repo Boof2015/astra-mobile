@@ -81,10 +81,7 @@ import {
 } from '@/components/AppPressable';
 import { motion } from '@/theme/motion';
 import { paletteWithAccent } from '@/theme/scopedAccent';
-import {
-  ARTWORK_COLORS_SETTLE_MS,
-  useNowPlayingArtworkColors,
-} from '@/theme/useNowPlayingArtworkColors';
+import { useNowPlayingArtworkColors } from '@/theme/useNowPlayingArtworkColors';
 import { paletteOverField } from '@/theme/fieldContrast';
 import {
   getNowPlayingArtSlideTravel,
@@ -118,7 +115,6 @@ import { usePlaybackTargetStore } from '@/stores/playbackTargetStore';
 import { usePlayerUiStore } from '@/stores/playerUiStore';
 import { markNowPlayingTrackTransitionDirection } from '@/stores/nowPlayingTrackTransitionStore';
 import { NowPlayingArtCarousel } from '@/components/player/NowPlayingArtCarousel';
-import { prefetchNeighborArtwork } from '@/components/player/nowPlayingArtNeighbors';
 import { useArtSwipeHandoff } from '@/components/player/useArtSwipeHandoff';
 import { resolveMiniPlayerSwipe } from '@/components/miniPlayerSwipe';
 import { isPlayerOnScreen } from '@/stores/playerPresence';
@@ -511,14 +507,6 @@ export function NowPlayingOverlay({
   // queue mirror so the carousel slides it in at once, before the skip lands.
   const artSwipeX = useSharedValue(0);
   const { artPrediction, commitArtSwipe } = useArtSwipeHandoff(transitionTrackKey, artSwipeX);
-
-  // Warm both neighbors' covers once the switch has settled, so the next skip
-  // either way slides in a decoded image.
-  useEffect(() => {
-    if (!foreground || isDesktopTarget) return undefined;
-    const timer = setTimeout(prefetchNeighborArtwork, ARTWORK_COLORS_SETTLE_MS + 150);
-    return () => clearTimeout(timer);
-  }, [foreground, isDesktopTarget, transitionTrackKey]);
 
   const suspendPanForChildTransition = () => {
     panEnabled.set(false);
@@ -1580,6 +1568,7 @@ export function NowPlayingOverlay({
                       {renderArtworkFace ? (
                         <NowPlayingArtCarousel
                           cover={displayedArtCover}
+                          size={artBoxSize}
                           direction={predictionLive ? artPrediction.direction : undefined}
                           travel={artSlideTravel}
                           dragX={artSwipeX}
@@ -1677,6 +1666,7 @@ export function NowPlayingOverlay({
                   ) : null}
                   <NowPlayingTrackFadeThrough
                     transitionKey={transitionTrackKey}
+                    preserveContent
                     style={[
                       styles.trackInfoFrame,
                       { height: deck.identityRowHeight },
@@ -1686,6 +1676,7 @@ export function NowPlayingOverlay({
                     <View style={styles.trackTextStack}>
                       <MarqueeText
                         variant="heading"
+                        resetKey={transitionTrackKey}
                         containerStyle={[
                           styles.trackTitle,
                           { height: deck.titleLineHeight },
@@ -1717,6 +1708,7 @@ export function NowPlayingOverlay({
                       accessibilityState={{ selected: isFavorite }}
                     >
                       <PlayerStateIcon
+                        key={transitionTrackKey}
                         selected={isFavorite}
                         size={SUB_ICON_SIZE + 4}
                         inactive={

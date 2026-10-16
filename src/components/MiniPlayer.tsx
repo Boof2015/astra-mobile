@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/immutability, react-hooks/refs -- Reanimated gesture state and async transition refs are intentionally mutable. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -115,6 +114,177 @@ function sameMiniPlayerMedia(
     left.title === right.title &&
     left.subtitle === right.subtitle &&
     left.artworkUri === right.artworkUri;
+}
+
+/** Keep async swipe refs out of the component that builds the gesture during render. */
+function useMiniPlayerSwipeHandoff(
+  presentation: PlaybackPresentation,
+  liveMedia: MiniPlayerMediaPresentation,
+  mediaWidth: number,
+  sendDesktopControl: ReturnType<typeof useDesktopRemoteStore.getState>['sendControl'],
+) {
+  const [displayedMedia, setDisplayedMedia] = useState(liveMedia);
+  const [transitionPending, setTransitionPending] = useState(false);
+  const mediaTranslateX = useSharedValue(0);
+  const mediaOpacity = useSharedValue(1);
+  const cueSide = useSharedValue(0);
+  const cueOpacity = useSharedValue(0);
+  const armed = useSharedValue(false);
+  const transitionOnUi = useSharedValue(false);
+  const pendingSwipeRef = useRef<PendingMiniPlayerSwipe | null>(null);
+  const swipeIdRef = useRef(0);
+  const incomingDirectionRef = useRef<MiniPlayerSwipeDirection | null>(null);
+
+  const rejectPendingSwipe = useCallback((id: number, haptic = true) => {
+    const pending = pendingSwipeRef.current;
+    if (!pending || pending.id !== id) return;
+    clearTimeout(pending.timeout);
+    pendingSwipeRef.current = null;
+    incomingDirectionRef.current = null;
+    transitionOnUi.set(false);
+    armed.set(false);
+    setTransitionPending(false);
+    mediaTranslateX.set(withTiming(0, motion.quick));
+    mediaOpacity.set(withTiming(1, motion.quick));
+    cueOpacity.set(withTiming(0, motion.quick));
+    if (haptic) playHaptic('reject');
+  }, [armed, cueOpacity, mediaOpacity, mediaTranslateX, transitionOnUi]);
+
+  const completePendingSwipe = useCallback((
+    id: number,
+    nextMedia: MiniPlayerMediaPresentation
+  ) => {
+    const pending = pendingSwipeRef.current;
+    if (!pending || pending.id !== id) return;
+    clearTimeout(pending.timeout);
+    pendingSwipeRef.current = null;
+    transitionOnUi.set(false);
+    armed.set(false);
+    setTransitionPending(false);
+    incomingDirectionRef.current = pending.direction;
+    mediaTranslateX.set(pending.direction === 'next'
+      ? pending.mediaWidth / 2
+      : -pending.mediaWidth / 2);
+    mediaOpacity.set(COMMITTED_MEDIA_OPACITY);
+    cueOpacity.set(withTiming(0, motion.quick));
+    setDisplayedMedia(nextMedia);
+    playHaptic('confirm');
+  }, [armed, cueOpacity, mediaOpacity, mediaTranslateX, transitionOnUi]);
+
+  const dispatchPendingSwipe = useCallback((id: number) => {
+    const pending = pendingSwipeRef.current;
+    if (!pending || pending.id !== id) return;
+    if (pending.target === 'desktop') {
+      markNowPlayingTrackTransitionDirection(
+        pending.direction,
+        pending.target,
+      );
+    }
+    const command = pending.target === 'desktop'
+      ? sendDesktopControl(pending.direction === 'next' ? 'next' : 'previous')
+      : pending.direction === 'next'
+        ? skipToNext()
+        : skipToPrevious();
+    void command.catch(() => rejectPendingSwipe(id));
+  }, [rejectPendingSwipe, sendDesktopControl]);
+
+  const beginPendingSwipe = useCallback((direction: MiniPlayerSwipeDirection) => {
+    if (pendingSwipeRef.current || mediaWidth <= 0 || !presentation.hasTrack) {
+      transitionOnUi.set(false);
+      armed.set(false);
+      mediaTranslateX.set(withTiming(0, motion.quick));
+      mediaOpacity.set(withTiming(1, motion.quick));
+      cueOpacity.set(withTiming(0, motion.quick));
+      playHaptic('reject');
+      return;
+    }
+    const id = ++swipeIdRef.current;
+    const timeout = setTimeout(
+      () => rejectPendingSwipe(id),
+      motion.quick.duration + SWIPE_RESPONSE_TIMEOUT_MS
+    );
+    pendingSwipeRef.current = {
+      id,
+      direction,
+      target: presentation.target,
+      trackKey: presentation.trackKey,
+      mediaWidth,
+      timeout,
+    };
+    transitionOnUi.set(true);
+    setTransitionPending(true);
+    setDisplayedMedia((current) => sameMiniPlayerMedia(current, liveMedia) ? current : liveMedia);
+    const exitX = direction === 'next' ? -mediaWidth / 2 : mediaWidth / 2;
+    cueSide.set(direction === 'next' ? -1 : 1);
+    cueOpacity.set(withTiming(1, motion.quick));
+    mediaOpacity.set(withTiming(COMMITTED_MEDIA_OPACITY, motion.quick));
+    mediaTranslateX.set(withTiming(exitX, motion.quick, (finished) => {
+      if (finished) runOnJS(dispatchPendingSwipe)(id);
+      else runOnJS(rejectPendingSwipe)(id);
+    }));
+  }, [
+    armed,
+    cueOpacity,
+    cueSide,
+    dispatchPendingSwipe,
+    liveMedia,
+    mediaOpacity,
+    mediaTranslateX,
+    mediaWidth,
+    presentation.hasTrack,
+    presentation.target,
+    presentation.trackKey,
+    rejectPendingSwipe,
+    transitionOnUi,
+  ]);
+
+  useEffect(() => {
+    if (pendingSwipeRef.current) return;
+    setDisplayedMedia((current) => sameMiniPlayerMedia(current, liveMedia) ? current : liveMedia);
+  }, [liveMedia]);
+
+  useEffect(() => {
+    const pending = pendingSwipeRef.current;
+    if (!pending) return;
+    if (presentation.target !== pending.target) {
+      rejectPendingSwipe(pending.id, false);
+      return;
+    }
+    if (!presentation.visible || !presentation.hasTrack) {
+      rejectPendingSwipe(pending.id);
+      return;
+    }
+    if (presentation.trackKey !== pending.trackKey) {
+      completePendingSwipe(pending.id, liveMedia);
+    }
+  }, [
+    completePendingSwipe,
+    liveMedia,
+    presentation.hasTrack,
+    presentation.target,
+    presentation.trackKey,
+    presentation.visible,
+    rejectPendingSwipe,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!incomingDirectionRef.current) return;
+    incomingDirectionRef.current = null;
+    mediaTranslateX.set(withTiming(0, motion.snap));
+    mediaOpacity.set(withTiming(1, motion.snap));
+  }, [displayedMedia.key, mediaOpacity, mediaTranslateX]);
+
+  useEffect(() => () => {
+    const pending = pendingSwipeRef.current;
+    if (pending) clearTimeout(pending.timeout);
+    pendingSwipeRef.current = null;
+    cancelAnimation(mediaTranslateX);
+    cancelAnimation(mediaOpacity);
+    cancelAnimation(cueOpacity);
+  }, [cueOpacity, mediaOpacity, mediaTranslateX]);
+
+  return { displayedMedia, transitionPending, mediaTranslateX, mediaOpacity, cueSide, cueOpacity,
+    armed, transitionOnUi, beginPendingSwipe };
 }
 
 function MiniProgress({
@@ -234,166 +404,11 @@ export function MiniPlayer({
       presentation.title,
     ]
   );
-  const [displayedMedia, setDisplayedMedia] = useState(liveMedia);
   const [mediaWidth, setMediaWidth] = useState(0);
-  const [transitionPending, setTransitionPending] = useState(false);
-  const mediaTranslateX = useSharedValue(0);
-  const mediaOpacity = useSharedValue(1);
-  const cueSide = useSharedValue(0);
-  const cueOpacity = useSharedValue(0);
-  const armed = useSharedValue(false);
-  const transitionOnUi = useSharedValue(false);
-  const pendingSwipeRef = useRef<PendingMiniPlayerSwipe | null>(null);
-  const swipeIdRef = useRef(0);
-  const incomingDirectionRef = useRef<MiniPlayerSwipeDirection | null>(null);
-
-  const rejectPendingSwipe = useCallback((id: number, haptic = true) => {
-    const pending = pendingSwipeRef.current;
-    if (!pending || pending.id !== id) return;
-    clearTimeout(pending.timeout);
-    pendingSwipeRef.current = null;
-    incomingDirectionRef.current = null;
-    transitionOnUi.value = false;
-    armed.value = false;
-    setTransitionPending(false);
-    mediaTranslateX.value = withTiming(0, motion.quick);
-    mediaOpacity.value = withTiming(1, motion.quick);
-    cueOpacity.value = withTiming(0, motion.quick);
-    if (haptic) playHaptic('reject');
-  }, [armed, cueOpacity, mediaOpacity, mediaTranslateX, transitionOnUi]);
-
-  const completePendingSwipe = useCallback((
-    id: number,
-    nextMedia: MiniPlayerMediaPresentation
-  ) => {
-    const pending = pendingSwipeRef.current;
-    if (!pending || pending.id !== id) return;
-    clearTimeout(pending.timeout);
-    pendingSwipeRef.current = null;
-    transitionOnUi.value = false;
-    armed.value = false;
-    setTransitionPending(false);
-    incomingDirectionRef.current = pending.direction;
-    mediaTranslateX.value = pending.direction === 'next'
-      ? pending.mediaWidth / 2
-      : -pending.mediaWidth / 2;
-    mediaOpacity.value = COMMITTED_MEDIA_OPACITY;
-    cueOpacity.value = withTiming(0, motion.quick);
-    setDisplayedMedia(nextMedia);
-    playHaptic('confirm');
-  }, [armed, cueOpacity, mediaOpacity, mediaTranslateX, transitionOnUi]);
-
-  const dispatchPendingSwipe = useCallback((id: number) => {
-    const pending = pendingSwipeRef.current;
-    if (!pending || pending.id !== id) return;
-    if (pending.target === 'desktop') {
-      markNowPlayingTrackTransitionDirection(
-        pending.direction,
-        pending.target,
-      );
-    }
-    const command = pending.target === 'desktop'
-      ? sendDesktopControl(pending.direction === 'next' ? 'next' : 'previous')
-      : pending.direction === 'next'
-        ? skipToNext()
-        : skipToPrevious();
-    void command.catch(() => rejectPendingSwipe(id));
-  }, [rejectPendingSwipe, sendDesktopControl]);
-
-  const beginPendingSwipe = useCallback((direction: MiniPlayerSwipeDirection) => {
-    if (pendingSwipeRef.current || mediaWidth <= 0 || !presentation.hasTrack) {
-      transitionOnUi.value = false;
-      armed.value = false;
-      mediaTranslateX.value = withTiming(0, motion.quick);
-      mediaOpacity.value = withTiming(1, motion.quick);
-      cueOpacity.value = withTiming(0, motion.quick);
-      playHaptic('reject');
-      return;
-    }
-    const id = ++swipeIdRef.current;
-    const timeout = setTimeout(
-      () => rejectPendingSwipe(id),
-      motion.quick.duration + SWIPE_RESPONSE_TIMEOUT_MS
-    );
-    pendingSwipeRef.current = {
-      id,
-      direction,
-      target: presentation.target,
-      trackKey: presentation.trackKey,
-      mediaWidth,
-      timeout,
-    };
-    transitionOnUi.value = true;
-    setTransitionPending(true);
-    setDisplayedMedia((current) => sameMiniPlayerMedia(current, liveMedia) ? current : liveMedia);
-    const exitX = direction === 'next' ? -mediaWidth / 2 : mediaWidth / 2;
-    cueSide.value = direction === 'next' ? -1 : 1;
-    cueOpacity.value = withTiming(1, motion.quick);
-    mediaOpacity.value = withTiming(COMMITTED_MEDIA_OPACITY, motion.quick);
-    mediaTranslateX.value = withTiming(exitX, motion.quick, (finished) => {
-      if (finished) runOnJS(dispatchPendingSwipe)(id);
-      else runOnJS(rejectPendingSwipe)(id);
-    });
-  }, [
-    armed,
-    cueOpacity,
-    cueSide,
-    dispatchPendingSwipe,
-    liveMedia,
-    mediaOpacity,
-    mediaTranslateX,
-    mediaWidth,
-    presentation.hasTrack,
-    presentation.target,
-    presentation.trackKey,
-    rejectPendingSwipe,
-    transitionOnUi,
-  ]);
-
-  useEffect(() => {
-    if (pendingSwipeRef.current) return;
-    setDisplayedMedia((current) => sameMiniPlayerMedia(current, liveMedia) ? current : liveMedia);
-  }, [liveMedia]);
-
-  useEffect(() => {
-    const pending = pendingSwipeRef.current;
-    if (!pending) return;
-    if (presentation.target !== pending.target) {
-      rejectPendingSwipe(pending.id, false);
-      return;
-    }
-    if (!presentation.visible || !presentation.hasTrack) {
-      rejectPendingSwipe(pending.id);
-      return;
-    }
-    if (presentation.trackKey !== pending.trackKey) {
-      completePendingSwipe(pending.id, liveMedia);
-    }
-  }, [
-    completePendingSwipe,
-    liveMedia,
-    presentation.hasTrack,
-    presentation.target,
-    presentation.trackKey,
-    presentation.visible,
-    rejectPendingSwipe,
-  ]);
-
-  useLayoutEffect(() => {
-    if (!incomingDirectionRef.current) return;
-    incomingDirectionRef.current = null;
-    mediaTranslateX.value = withTiming(0, motion.snap);
-    mediaOpacity.value = withTiming(1, motion.snap);
-  }, [displayedMedia.key, mediaOpacity, mediaTranslateX]);
-
-  useEffect(() => () => {
-    const pending = pendingSwipeRef.current;
-    if (pending) clearTimeout(pending.timeout);
-    pendingSwipeRef.current = null;
-    cancelAnimation(mediaTranslateX);
-    cancelAnimation(mediaOpacity);
-    cancelAnimation(cueOpacity);
-  }, [cueOpacity, mediaOpacity, mediaTranslateX]);
+  const { displayedMedia, transitionPending, mediaTranslateX, mediaOpacity, cueSide, cueOpacity,
+    armed, transitionOnUi, beginPendingSwipe } = useMiniPlayerSwipeHandoff(
+    presentation, liveMedia, mediaWidth, sendDesktopControl,
+  );
 
   const mediaStyle = useAnimatedStyle(() => ({
     opacity: mediaOpacity.value,
@@ -425,13 +440,13 @@ export function MiniPlayer({
         );
         const threshold = Math.max(1, miniPlayerSwipeDistance(mediaWidth));
         const progress = Math.min(1, Math.abs(translation) / threshold);
-        mediaTranslateX.value = translation;
-        mediaOpacity.value = 1 - progress * 0.15;
-        cueSide.value = translation > 0 ? 1 : translation < 0 ? -1 : 0;
-        cueOpacity.value = progress;
+        mediaTranslateX.set(translation);
+        mediaOpacity.set(1 - progress * 0.15);
+        cueSide.set(translation > 0 ? 1 : translation < 0 ? -1 : 0);
+        cueOpacity.set(progress);
         const nowArmed = Math.abs(translation) >= threshold;
         if (nowArmed !== armed.value) {
-          armed.value = nowArmed;
+          armed.set(nowArmed);
           runOnJS(playHaptic)(nowArmed ? 'threshold' : 'thresholdExit');
         }
       })
@@ -442,17 +457,17 @@ export function MiniPlayer({
           mediaWidth,
         });
         if (!direction) return;
-        armed.value = false;
-        transitionOnUi.value = true;
+        armed.set(false);
+        transitionOnUi.set(true);
         runOnJS(beginPendingSwipe)(direction);
       })
       .onFinalize(() => {
         if (transitionOnUi.value) return;
         if (armed.value) runOnJS(playHaptic)('thresholdExit');
-        armed.value = false;
-        mediaTranslateX.value = withTiming(0, motion.quick);
-        mediaOpacity.value = withTiming(1, motion.quick);
-        cueOpacity.value = withTiming(0, motion.quick);
+        armed.set(false);
+        mediaTranslateX.set(withTiming(0, motion.quick));
+        mediaOpacity.set(withTiming(1, motion.quick));
+        cueOpacity.set(withTiming(0, motion.quick));
       }),
     [
       armed,

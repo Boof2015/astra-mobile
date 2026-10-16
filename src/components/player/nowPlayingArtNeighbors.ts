@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { rntpToTrack } from '@/audio/sampleTracks';
 import { playerBackdropArtworkSource } from '@/library/artwork';
 import { useQueueStore } from '@/stores/queueStore';
@@ -22,15 +21,4 @@ export function predictNeighborArtCover(direction: 'next' | 'previous'): NowPlay
     uri: neighbor.artworkData ?? null,
     thumb: playerBackdropArtworkSource(neighbor),
   };
-}
-
-/** Decode both neighbors' covers into memory so a skip either way shows them at once. */
-export function prefetchNeighborArtwork(): void {
-  const uris: string[] = [];
-  for (const direction of ['next', 'previous'] as const) {
-    const cover = predictNeighborArtCover(direction);
-    if (cover?.thumb) uris.push(cover.thumb);
-    if (cover?.uri) uris.push(cover.uri);
-  }
-  if (uris.length > 0) void Image.prefetch(uris, 'memory-disk').catch(() => {});
 }

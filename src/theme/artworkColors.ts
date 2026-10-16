@@ -16,6 +16,17 @@ export interface ArtworkColors {
   field: ArtworkField | null;
 }
 
+/** Different tracks can resolve the same cover; keep their scoped palette stable. */
+export function sameArtworkColors(a: ArtworkColors, b: ArtworkColors): boolean {
+  if (a === b) return true;
+  if (a.accent !== b.accent) return false;
+  if (a.field === b.field) return true;
+  if (!a.field || !b.field || a.field.neutral !== b.field.neutral) return false;
+  const other = b.field.colors;
+  return a.field.colors.length === other.length &&
+    a.field.colors.every((color, index) => color === other[index]);
+}
+
 export interface ArtworkAccentRequest {
   method: CoverArtAccentMethod;
   target: AdaptiveAccentTarget;

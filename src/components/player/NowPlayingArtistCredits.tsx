@@ -25,11 +25,15 @@ export function NowPlayingArtistCredits({
 }) {
   const styles = useStyles();
   const [availableWidth, setAvailableWidth] = useState(0);
-  const [measurements, setMeasurements] = useState<Readonly<Record<string, number>>>({});
   const signature = useMemo(
     () => JSON.stringify(tokens.map(({ artist, separator }) => [artist, separator])),
     [tokens]
   );
+  const [measured, setMeasured] = useState<{ signature: string; widths: Readonly<Record<string, number>> }>({
+    signature, widths: {},
+  });
+  if (measured.signature !== signature) setMeasured({ signature, widths: {} });
+  const measurements = measured.signature === signature ? measured.widths : {};
 
   const prefixWidths: Record<number, number | undefined> = {};
   const moreLabelWidths: Record<number, number | undefined> = {};
@@ -51,10 +55,10 @@ export function NowPlayingArtistCredits({
   const recordWidth = (key: string, event: TextLayoutEvent) => {
     const width = Math.ceil(event.nativeEvent.lines[0]?.width ?? 0);
     if (width <= 0) return;
-    setMeasurements((current) =>
-      Math.abs((current[key] ?? 0) - width) <= 1
+    setMeasured((current) =>
+      current.signature !== signature || Math.abs((current.widths[key] ?? 0) - width) <= 1
         ? current
-        : { ...current, [key]: width }
+        : { signature, widths: { ...current.widths, [key]: width } }
     );
   };
 
@@ -114,7 +118,7 @@ export function NowPlayingArtistCredits({
           const key = `${signature}:prefix:${count}`;
           return (
             <Text
-              key={key}
+              key={`prefix:${count}`}
               variant="body"
               numberOfLines={1}
               onTextLayout={(event) => recordWidth(key, event)}
@@ -129,7 +133,7 @@ export function NowPlayingArtistCredits({
           const key = `${signature}:more:${count}`;
           return (
             <Text
-              key={key}
+              key={`more:${count}`}
               variant="body"
               numberOfLines={1}
               onTextLayout={(event) => recordWidth(key, event)}

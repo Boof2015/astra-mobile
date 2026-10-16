@@ -32,12 +32,17 @@ const MUST_COMPILE: { file: URL; functions: string[] }[] = [
   },
   {
     file: new URL('./NowPlayingArtCarousel.tsx', import.meta.url),
-    functions: ['NowPlayingArtCarousel'],
+    functions: ['NowPlayingArtCarousel', 'DecodedCover'],
   },
   {
     file: new URL('./useArtSwipeHandoff.ts', import.meta.url),
     functions: ['useArtSwipeHandoff'],
   },
+  { file: new URL('../MiniPlayer.tsx', import.meta.url), functions: ['MiniPlayer', 'MiniProgress', 'PhoneMiniProgress', 'useMiniPlayerSwipeHandoff'] },
+  { file: new URL('../WaveformSeekBar.tsx', import.meta.url), functions: ['WaveformSeekBar'] },
+  { file: new URL('../MarqueeText.tsx', import.meta.url), functions: ['MarqueeText'] },
+  { file: new URL('./NowPlayingArtistCredits.tsx', import.meta.url), functions: ['NowPlayingArtistCredits'] },
+  { file: new URL('../../theme/useNowPlayingArtworkColors.ts', import.meta.url), functions: ['useNowPlayingArtworkColors'] },
   { file: new URL('../lyrics/SyncedLyrics.tsx', import.meta.url), functions: ['SyncedLyrics', 'Column', 'Row'] },
   { file: new URL('../lyrics/LyricsLine.tsx', import.meta.url), functions: ['LyricsLineComponent', 'Unit', 'UnitText', 'WordLight'] },
   { file: new URL('../lyrics/LyricsPlaybackClock.tsx', import.meta.url), functions: ['LyricsPlaybackClock'] },
