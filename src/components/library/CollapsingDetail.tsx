@@ -14,6 +14,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import type { FlashListRef } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -40,6 +41,7 @@ import {
   DETAIL_BAR_H,
   getDetailExpandedHeight,
   getDetailHeroLayout,
+  getDetailMinContentHeight,
 } from '@/components/library/detailHeroLayout';
 
 // Collapsing detail header. A fixed-size clipping layer translates upward with
@@ -53,6 +55,7 @@ import {
 const ART_COLLAPSED = DETAIL_ART_COLLAPSED;
 const BAR_H = DETAIL_BAR_H;
 const FADE_H = 150;
+type DetailListMeasurement = Pick<FlashListRef<unknown>, 'getChildContainerDimensions'>;
 
 /**
  * Scroll plumbing. Measures the hero block so the header height (and thus the
@@ -61,7 +64,7 @@ const FADE_H = 150;
  * buttons before `collapsed` enables the header's icon buttons, so neither steals
  * taps mid-transition.
  */
-export function useDetailCollapse() {
+export function useDetailCollapse(bottomInset: number) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const hero = getDetailHeroLayout(width, height, insets.top);
@@ -78,6 +81,29 @@ export function useDetailCollapse() {
     measured && measured.wide === hero.wide ? measured.height : fallback,
     hero.maxExpandedHeight
   );
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [rowsHeight, setRowsHeight] = useState<number | null>(null);
+  const listRef = useRef<DetailListMeasurement | null>(null);
+  const onListRef = useCallback((list: DetailListMeasurement | null) => {
+    listRef.current = list;
+  }, []);
+  const onListContentLayout = useCallback(() => {
+    if (!listRef.current) return;
+    // FlashList's row container excludes padding and the scroll content's
+    // minHeight. Measuring onContentSizeChange instead would count our own
+    // added space and keep the fix enabled after a list shrinks to fit.
+    const next = listRef.current.getChildContainerDimensions().height;
+    setRowsHeight((previous) => previous === next ? previous : next);
+  }, []);
+  const naturalContentHeight = rowsHeight === null
+    ? null
+    : insets.top + expandedHeight + rowsHeight + bottomInset;
+  const minContentHeight = getDetailMinContentHeight(
+    viewportHeight, expandedHeight, naturalContentHeight
+  );
+  const onListLayout = useCallback((e: LayoutChangeEvent) => {
+    setViewportHeight(e.nativeEvent.layout.height);
+  }, []);
   const ref = useRef({ heroFaded: false, collapsed: false });
   const [state, setState] = useState({ heroFaded: false, collapsed: false });
   const collapseDistance = useSharedValue(expandedHeight - BAR_H);
@@ -129,6 +155,10 @@ export function useDetailCollapse() {
     scrollY,
     ...state,
     expandedHeight,
+    minContentHeight,
+    onListRef,
+    onListContentLayout,
+    onListLayout,
     onHeroBlockLayout,
     onScroll,
     scrollEventThrottle: 16 as const,

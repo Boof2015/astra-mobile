@@ -107,8 +107,11 @@ export default function PlaylistScreen() {
   const markPlayed = usePlaylistStore((s) => s.markPlayed);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const insets = useSafeAreaInsets();
-  const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
-    useDetailCollapse();
+  const {
+    scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
+    expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
+    onListRef, onListContentLayout,
+  } = useDetailCollapse(sceneBottomInset);
 
   const [actionEntry, setActionEntry] = useState<PlaylistTrackEntry | null>(null);
   const [missingEntry, setMissingEntry] = useState<PlaylistTrackEntry | null>(null);
@@ -283,16 +286,21 @@ export default function PlaylistScreen() {
   return (
     <Screen padded={false} style={styles.screen}>
       <ReanimatedFlashList
+        ref={onListRef}
+        onLoad={onListContentLayout}
+        onCommitLayoutEffect={onListContentLayout}
         data={entries}
         keyExtractor={(entry) => String(entry.id)}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
+        onLayout={onListLayout}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => {
           if (!isFavorites) void loadNextEntries();
         }}
         onEndReachedThreshold={2}
         contentContainerStyle={{
+          minHeight: minContentHeight,
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
           paddingBottom: sceneBottomInset,

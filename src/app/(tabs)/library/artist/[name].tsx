@@ -90,8 +90,11 @@ export default function ArtistScreen() {
   }>();
   const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
-  const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
-    useDetailCollapse();
+  const {
+    scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
+    expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
+    onListRef, onListContentLayout,
+  } = useDetailCollapse(sceneBottomInset);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -314,11 +317,15 @@ export default function ArtistScreen() {
   return (
     <Screen padded={false} style={styles.screen}>
       <ReanimatedFlashList
+        ref={onListRef}
+        onLoad={onListContentLayout}
+        onCommitLayoutEffect={onListContentLayout}
         data={listItems}
         keyExtractor={(item) => item.key}
         showsVerticalScrollIndicator={false}
         renderItem={renderItem}
         onScroll={onScroll}
+        onLayout={onListLayout}
         scrollEventThrottle={scrollEventThrottle}
         // This screen composes four paged sources into one list and had no paging
         // trigger at all, so anything past the first page was unreachable. Each
@@ -331,6 +338,7 @@ export default function ArtistScreen() {
         }}
         onEndReachedThreshold={2}
         contentContainerStyle={{
+          minHeight: minContentHeight,
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
           paddingBottom: sceneBottomInset,

@@ -4,6 +4,7 @@ import {
   DETAIL_BAR_H,
   getDetailExpandedHeight,
   getDetailHeroLayout,
+  getDetailMinContentHeight,
 } from './detailHeroLayout.ts';
 
 const WINDOWS = [
@@ -131,4 +132,80 @@ test('the fallback height is a sane stand-in before the block is measured', () =
       );
     }
   }
+});
+
+test('only naturally scrollable detail lists need to reach the compact header', () => {
+  for (const entry of WINDOWS) {
+    for (const [width, height, inset] of [entry.portrait, entry.landscape]) {
+      const hero = getDetailHeroLayout(width, height, inset);
+      // The phone tab bar occupies layout space; its floating mini-player
+      // requires bottom padding. A landscape rail occupies neither.
+      const viewport = height - (hero.wide ? 0 : 80);
+      const bottomPadding = hero.wide ? 0 : 76;
+      for (const blockHeight of BLOCK_HEIGHTS) {
+        const expanded = getDetailExpandedHeight(hero, blockHeight);
+        const firstRowTop = inset + expanded;
+        for (const rowsHeight of [0, 72, 3 * 72, 7 * 76, 30 * 72, 180 + 320]) {
+          const naturalHeight = firstRowTop + rowsHeight + bottomPadding;
+          const minHeight = getDetailMinContentHeight(viewport, expanded, naturalHeight);
+          const contentHeight = Math.max(naturalHeight, minHeight);
+          const endOffset = Math.max(0, contentHeight - viewport);
+          if (naturalHeight <= viewport) {
+            assert.equal(minHeight, 0, 'a page that fits must not gain artificial scrolling');
+            assert.equal(endOffset, 0);
+            continue;
+          }
+          assert.ok(
+            firstRowTop - endOffset <= inset + DETAIL_BAR_H,
+            `${entry.name} ${width}x${height}, ${rowsHeight}dp of rows: header stops partway`
+          );
+          // Once the natural list can fully collapse, it needs no extra space.
+          if (naturalHeight - viewport >= expanded - DETAIL_BAR_H) {
+            assert.equal(contentHeight, naturalHeight);
+          }
+          // The last row still clears the floating mini-player at the end.
+          assert.ok(firstRowTop + rowsHeight - endOffset <= viewport - bottomPadding);
+        }
+      }
+    }
+  }
+});
+
+test('the seven-track regression gains only the missing scroll distance', () => {
+  const viewport = 811;
+  const expanded = getDetailExpandedHeight(getDetailHeroLayout(411, 891, 40), 154);
+  const naturalHeight = 40 + expanded + 7 * 76 + 76;
+  // Previously stopped after 273dp, before the artwork settled at 352dp.
+  assert.equal(naturalHeight - viewport, 273);
+  const contentHeight = Math.max(naturalHeight, getDetailMinContentHeight(viewport, expanded, naturalHeight));
+  assert.equal(contentHeight - naturalHeight, 115);
+  assert.equal(contentHeight - viewport, 388);
+});
+
+test('pages that fit, including empty and one-track releases, keep their natural height', () => {
+  const topPadding = 40 + 436;
+  for (const rowsHeight of [0, 72, 3 * 72]) {
+    assert.equal(getDetailMinContentHeight(811, 436, topPadding + rowsHeight + 76), 0);
+  }
+  assert.equal(getDetailMinContentHeight(811, 436, 811), 0); // Exactly fits.
+  assert.equal(getDetailMinContentHeight(811, 436, 812), 1199); // Begins partial collapse.
+  assert.equal(getDetailMinContentHeight(811, 436, 1199), 0); // Already reaches full collapse.
+});
+
+test('viewport, header and content changes can enable and remove the scroll floor', () => {
+  assert.equal(getDetailMinContentHeight(0, 436, 1084), 0);
+  assert.equal(getDetailMinContentHeight(811, 436, null), 0); // Not measured yet.
+  assert.equal(getDetailMinContentHeight(811, 436, 1084), 1199);
+  assert.equal(getDetailMinContentHeight(811, 500, 1148), 1263); // Wrapped title / larger text.
+  assert.equal(getDetailMinContentHeight(411, 220, 500), 583); // Rotation into the rail layout.
+  assert.equal(getDetailMinContentHeight(411.25, 220.5, 500), 584); // Never round the reach short.
+  assert.equal(getDetailMinContentHeight(1100, 436, 1084), 0); // Larger viewport now fits.
+  // Content grows, then shrinks while the previous minimum was active. Always
+  // use natural content height so the extra space cannot sustain itself.
+  assert.deepEqual(
+    [624, 1084, 1600, 1084, 624].map((naturalHeight) =>
+      getDetailMinContentHeight(811, 436, naturalHeight)
+    ),
+    [0, 1199, 0, 1199, 0]
+  );
 });

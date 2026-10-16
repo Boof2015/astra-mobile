@@ -64,6 +64,24 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * Extend only lists whose natural scroll range stops partway through collapse.
+ * Pages that fit already stay expanded; long lists need no additional space.
+ * Both content heights include the existing top/bottom padding. The natural
+ * height must exclude this minimum so resizing/removing rows can disable it.
+ */
+export function getDetailMinContentHeight(
+  viewportHeight: number,
+  expandedHeight: number,
+  naturalContentHeight: number | null
+): number {
+  if (viewportHeight <= 0 || naturalContentHeight === null) return 0;
+  const naturalScrollRange = naturalContentHeight - viewportHeight;
+  const collapseDistance = Math.max(0, expandedHeight - DETAIL_BAR_H);
+  if (naturalScrollRange <= 0 || naturalScrollRange >= collapseDistance) return 0;
+  return Math.ceil(viewportHeight + collapseDistance);
+}
+
 export function getDetailHeroLayout(
   windowWidth: number,
   windowHeight: number,

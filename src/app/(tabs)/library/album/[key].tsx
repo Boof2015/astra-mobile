@@ -44,8 +44,11 @@ export default function AlbumScreen() {
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const { goBack, backLabel } = useLibraryDetailBack();
   const insets = useSafeAreaInsets();
-  const { scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle, expandedHeight, onHeroBlockLayout } =
-    useDetailCollapse();
+  const {
+    scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
+    expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
+    onListRef, onListContentLayout,
+  } = useDetailCollapse(sceneBottomInset);
 
   const totalDuration =
     album?.total_duration ?? tracks.reduce((sum, track) => sum + track.duration, 0);
@@ -107,15 +110,20 @@ export default function AlbumScreen() {
   return (
     <Screen padded={false} style={styles.screen}>
       <ReanimatedFlashList
+        ref={onListRef}
+        onLoad={onListContentLayout}
+        onCommitLayoutEffect={onListContentLayout}
         data={albumItems}
         keyExtractor={(item) => (item.kind === 'disc' ? `disc-${item.disc}` : String(item.track.id))}
         getItemType={(item) => item.kind}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
+        onLayout={onListLayout}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={2}
         contentContainerStyle={{
+          minHeight: minContentHeight,
           paddingTop: insets.top + expandedHeight,
           paddingHorizontal: spacing.lg,
           paddingBottom: sceneBottomInset,
