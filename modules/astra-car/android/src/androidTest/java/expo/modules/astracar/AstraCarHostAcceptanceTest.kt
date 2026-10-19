@@ -103,6 +103,13 @@ class AstraCarHostAcceptanceTest {
         worstMetadataDelay = maxOf(worstMetadataDelay, delay)
         assertTrue("Metadata lagged by $delay ms", delay <= 1_000)
         waitUntil("Track $index did not resume") { controller.playbackState?.state == PlaybackStateCompat.STATE_PLAYING }
+        // No Queue-tab subscription exists. A newly opened controller must still see the current item.
+        val reopened = MediaControllerCompat(context, browser.sessionToken)
+        waitUntil("Now-playing queue is stale at transition $index") {
+          val first = reopened.queue?.firstOrNull()
+          first != null && first.description.mediaId == reopened.metadata?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID) &&
+            first.queueId == reopened.playbackState?.activeQueueItemId && (reopened.queue?.size ?: 0) <= 100
+        }
         val native = nativeController()!!.playbackState!!
         val car = controller.playbackState!!
         val difference = kotlin.math.abs((car.position - native.position) +

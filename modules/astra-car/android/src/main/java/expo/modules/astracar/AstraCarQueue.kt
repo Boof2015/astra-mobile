@@ -3,11 +3,70 @@ package expo.modules.astracar
 import android.content.Context
 import org.json.JSONObject
 import expo.modules.astralibraryscanner.data.AstraLibraryRepository
+import expo.modules.astralibraryscanner.data.AstraCatalogDatabase
+import expo.modules.astralibraryscanner.data.AstraUserDatabase
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class AstraCarQueue(private val context: Context) {
+class AstraCarQueue(
+  private val context: Context,
+  private val providedCatalog: AstraCatalogDatabase? = null,
+  private val providedUser: AstraUserDatabase? = null,
+) {
   private val repository get() = AstraLibraryRepository.get(context)
+
+  /** Read one current-first window against the captured occurrence, never a newer bridge snapshot. */
+  internal suspend fun sessionWindow(snapshot: AstraCarPlaybackSnapshot): AstraCarQueueWindow? {
+    val identity = AstraCarQueueIdentity.of(snapshot)
+    val active = snapshot.track ?: return AstraCarQueueWindow(identity, emptyList(), 0, 0)
+    if (active.sessionId == null) return withContext(Dispatchers.Main.immediate) {
+      val live = AstraCarPlaybackBridge.snapshot ?: return@withContext null
+      if (AstraCarQueueIdentity.of(live) != identity) return@withContext null
+      val position = live.nativeIndex.takeIf { it >= 0 }?.toLong() ?: active.queuePosition
+      val tracks = AstraCarPlaybackBridge.readQueue(position.toInt(), 100)
+      if (tracks.firstOrNull()?.entryId != active.entryId) return@withContext null
+      AstraCarQueueWindow(identity, tracks, live.queueCount.toLong(), position)
+    }
+    val users = providedUser ?: repository.userDb()
+    val catalog = (providedCatalog ?: repository.catalogDb()).catalogDao()
+    val dao = users.userDao()
+    val id = identity.session.substringBeforeLast(':', "")
+    val epoch = identity.session.substringAfterLast(':').toLongOrNull() ?: return null
+    val entryId = active.entryId.toLongOrNull() ?: return null
+    return users.withTransaction {
+      val session = dao.getPlaybackSession(id) ?: return@withTransaction null
+      if (session.createdAt != epoch) return@withTransaction null
+      val entry = dao.getQueueEntry(id, entryId) ?: return@withTransaction null
+      val entries = dao.getQueueWindow(id, entry.position, 100)
+      val tracks = catalog.getActiveTracks(entries.map { it.trackPath }.distinct()).associateBy { it.path }
+      val items = entries.mapNotNull { row ->
+        // Keep the active item even if a catalog rescan temporarily removes its row.
+        if (row.entryId == entryId) active.copy(queuePosition = row.position)
+        else tracks[row.trackPath]?.let { track ->
+          AstraCarTrack(track.path, track.title, track.artist, track.album,
+            track.artworkHash?.let { "file://${context.filesDir}/artwork/$it" }, track.sourceId, track.artworkSourceId,
+            row.entryId.toString(), row.position, (track.duration * 1000).toLong(), identity.session)
+        }
+      }
+      AstraCarQueueWindow(identity, items, dao.countQueueEntries(id), entry.position, session.queueRevision)
+    }
+  }
+
+  /** Called after all other asynchronous work, immediately before publishing on the main thread. */
+  internal suspend fun isSessionWindowCurrent(window: AstraCarQueueWindow): Boolean {
+    if (window.identity.entryId == null) return true
+    if (window.revision == null) return withContext(Dispatchers.Main.immediate) {
+      val live = AstraCarPlaybackBridge.snapshot ?: return@withContext false
+      AstraCarQueueIdentity.of(live) == window.identity && live.queueCount.toLong() == window.count &&
+        (live.nativeIndex.takeIf { it >= 0 }?.toLong() ?: live.track?.queuePosition) == window.position &&
+        AstraCarPlaybackBridge.readQueue(window.position.toInt(), 100) == window.tracks
+    }
+    val id = window.identity.session.substringBeforeLast(':', "")
+    val epoch = window.identity.session.substringAfterLast(':').toLongOrNull()
+    val session = (providedUser ?: repository.userDb()).userDao().getPlaybackSession(id)
+    return session != null && session.createdAt == epoch && session.queueRevision == window.revision
+  }
 
   /** Restore a paused card and full Room queue before React or an engine exists. */
   suspend fun restoreCard() {

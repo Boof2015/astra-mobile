@@ -58,6 +58,34 @@ object AstraCarNowPlayingStore {
   private fun JSONObject.nullable(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
 }
 
+/** Publish the current-first queue before any playback state can refer to its active ID. */
+internal class AstraCarSessionProjection(context: Context, private val session: MediaSessionCompat) {
+  val queue = AstraCarSessionQueue()
+  private val catalog = AstraCarCatalog(context)
+  private val presenter = AstraCarSessionPresenter(context, session)
+  private var publishedEntries: List<AstraCarSessionQueue.Entry>? = null
+  private var artworkRevision = -1L
+  private var targets = emptyMap<Long, String>()
+
+  fun target(id: Long): String? = targets[id]
+
+  fun render(snapshot: AstraCarPlaybackSnapshot, favorite: Boolean) {
+    queue.align(snapshot)
+    if (publishedEntries != queue.entries || artworkRevision != AstraCarPlaybackBridge.artworkRevision) {
+      publishedEntries = queue.entries
+      artworkRevision = AstraCarPlaybackBridge.artworkRevision
+      val items = queue.entries.map { entry ->
+        MediaSessionCompat.QueueItem(catalog.queueItem(entry.track, entry.identity.session).description, entry.id)
+      }
+      targets = items.associate { it.queueId to it.description.mediaId!! }
+      session.setQueue(items)
+    }
+    presenter.apply(snapshot, favorite, queue.activeId,
+      hasNext = snapshot.track != null && (queue.position + 1 < queue.count || AstraCarPlaybackBridge.repeat == "all"),
+      hasPrevious = snapshot.track != null)
+  }
+}
+
 /** Metadata and playback state have independent lifetimes: changing a button never reloads art. */
 class AstraCarSessionPresenter(private val context: Context, private val session: MediaSessionCompat) {
   private var metadataKey: List<Any?>? = null

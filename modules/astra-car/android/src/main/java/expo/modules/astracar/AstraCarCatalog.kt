@@ -249,8 +249,11 @@ class AstraCarCatalog(
     AstraCarMediaIds.track(row.path, parent), row.title, row.artist, row.album,
     art(row.artworkHash, row.sourceId, row.artworkSourceId), MediaItem.FLAG_PLAYABLE, actions, (row.duration * 1000).toLong())
 
-  suspend fun queueItem(track: AstraCarTrack, current: Boolean = false): MediaItem = item(
-    AstraCarMediaIds.encode(AstraCarMediaId("queueEntry", key = track.entryId, session = track.sessionId ?: queue.sessionId())),
+  suspend fun queueItem(track: AstraCarTrack, current: Boolean = false): MediaItem =
+    queueItem(track, track.sessionId ?: queue.sessionId(), current)
+
+  fun queueItem(track: AstraCarTrack, session: String, current: Boolean = false): MediaItem = item(
+    AstraCarMediaIds.encode(AstraCarMediaId("queueEntry", key = track.entryId, session = session)),
     track.title, if (current) "Now playing · ${track.artist}" else track.artist, track.album, AstraCarArtwork.forTrack(context, track, false), MediaItem.FLAG_PLAYABLE, duration = track.durationMs)
 
   private fun art(hash: String?, source: Long?, artId: String?): Uri = when {

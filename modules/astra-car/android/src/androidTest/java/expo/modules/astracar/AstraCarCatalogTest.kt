@@ -27,6 +27,36 @@ class AstraCarCatalogTest {
   }
   @After fun close() { db.close(); users.close() }
 
+  @Test fun sessionQueueUsesCapturedOccurrenceAndRejectsChangedRevisionsAndEpochs() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val reader = AstraCarQueue(context, db, users)
+    seed((0..129).map { track(it, "Song $it") })
+    val dao = users.userDao()
+    val session = PlaybackSessionEntity("active-context", "{}", "content://track/0", null, 0, 10, 10, queueRevision = 1)
+    val entries = (0L..129L).map { PlaybackQueueEntryEntity(session.id, it, "content://track/$it", it) }
+    dao.replacePlaybackQueue(session, entries)
+    val active = AstraCarTrack("content://track/11", "Song 11", "Artist", "Album",
+      entryId = "11", queuePosition = 11, sessionId = "active-context:10")
+    val snapshot = AstraCarPlaybackSnapshot(1, 1, active, "playing", 0, 100_000, 1f, 0)
+    val window = reader.sessionWindow(snapshot)!!
+    assertEquals(11L, window.position) // Room's active-position mirror still says zero.
+    assertEquals((11L..110L).map { "$it" }, window.tracks.map { it.entryId })
+    assertTrue(reader.isSessionWindowCurrent(window))
+    val reordered = entries.reversed().mapIndexed { index, row -> row.copy(position = index.toLong()) }
+    dao.replacePlaybackQueue(session.copy(queueRevision = 2), reordered)
+    assertFalse(reader.isSessionWindowCurrent(window))
+    val moved = reader.sessionWindow(snapshot)!!
+    assertEquals(118L, moved.position) // Resolve occurrence identity, not its old position in RNTP.
+    assertEquals((11L downTo 0L).map { "$it" }, moved.tracks.map { it.entryId })
+    dao.replacePlaybackQueue(session.copy(createdAt = 11, queueRevision = 2), entries)
+    assertFalse(reader.isSessionWindowCurrent(moved))
+    assertNull(reader.sessionWindow(snapshot))
+    val replacement = snapshot.copy(track = active.copy(sessionId = "active-context:11"))
+    assertNotNull(reader.sessionWindow(replacement))
+    dao.replacePlaybackQueue(session.copy(createdAt = 11, queueRevision = 3), entries.filter { it.entryId != 11L })
+    assertNull(reader.sessionWindow(replacement))
+  }
+
   @Test fun lettersCoverEverySongIncludingAccentsNonLatinAndDensePrefixes() = runBlocking {
     val names = ('A'..'Z').flatMap { letter -> (1..12).map { "$letter song %03d".format(it) } } +
       (1..205).map { "Echo %03d".format(it) } + listOf("Été", "東京", "Привет", "123 song", "🚀")
