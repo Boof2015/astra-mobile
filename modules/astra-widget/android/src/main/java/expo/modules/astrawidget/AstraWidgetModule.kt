@@ -18,6 +18,9 @@ class AstraWidgetNowPlayingState : Record {
   val artworkUri: String? = null
 
   @Field
+  val artworkFullUri: String? = null
+
+  @Field
   val playbackState: String = "stopped"
 
   @Field
@@ -41,12 +44,62 @@ class AstraWidgetRecentItemState : Record {
   val artworkUri: String? = null
 }
 
+class AstraWidgetThemeTokensRecord : Record {
+  @Field
+  val bgPrimary: String = ""
+
+  @Field
+  val bgSecondary: String = ""
+
+  @Field
+  val bgTertiary: String = ""
+
+  @Field
+  val textPrimary: String = ""
+
+  @Field
+  val accent: String = ""
+
+  @Field
+  val accentText: String = ""
+
+  internal fun toTokens() = AppThemeTokens(bgPrimary, bgSecondary, bgTertiary, textPrimary, accent, accentText)
+}
+
+class AstraWidgetAppThemeRecord : Record {
+  @Field
+  val dark: AstraWidgetThemeTokensRecord = AstraWidgetThemeTokensRecord()
+
+  @Field
+  val light: AstraWidgetThemeTokensRecord = AstraWidgetThemeTokensRecord()
+
+  @Field
+  val materialYou: Boolean = false
+}
+
 class AstraWidgetModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AstraWidget")
 
+    // The widget's buttons, delivered here while Astra's JS is running.
+    Events("onCommand")
+
+    OnStartObserving("onCommand") {
+      AstraWidgetCommands.attach { command -> sendEvent("onCommand", mapOf("command" to command)) }
+    }
+
+    OnStopObserving("onCommand") {
+      AstraWidgetCommands.detach()
+    }
+
+    OnDestroy {
+      AstraWidgetCommands.detach()
+    }
+
     Function("setNowPlaying") { state: AstraWidgetNowPlayingState ->
       val context = requireContext()
+      val firstPush = !AstraWidgetCommands.jsAlive
+      AstraWidgetCommands.jsAlive = true
       val previous = AstraWidgetStateStore.load(context)
       val recentlyPlayed =
         if (state.replaceRecentlyPlayed) {
@@ -66,13 +119,25 @@ class AstraWidgetModule : Module() {
         title = state.title,
         artist = state.artist,
         artworkUri = if (state.hasTrack) state.artworkUri else null,
+        artworkFullUri = if (state.hasTrack) state.artworkFullUri else null,
         playbackState = state.playbackState,
         hasTrack = state.hasTrack,
         recentlyPlayed = recentlyPlayed,
       )
       AstraWidgetStateStore.save(context, next)
       // Built off the JS thread and coalesced; see requestUpdateAll.
-      if (previous != next) AstraWidgetUpdater.requestUpdateAll(context)
+      // The first push also replaces whatever a JS-less process last drew.
+      if (previous != next || firstPush) AstraWidgetUpdater.requestUpdateAll(context)
+    }
+
+    // The app theme for the "Astra" style, pushed whenever it changes.
+    Function("setAppTheme") { theme: AstraWidgetAppThemeRecord ->
+      val context = requireContext()
+      val changed = AstraWidgetThemeStore.save(
+        context,
+        AstraWidgetAppTheme(theme.dark.toTokens(), theme.light.toTokens(), theme.materialYou),
+      )
+      if (changed) AstraWidgetUpdater.requestUpdateAll(context)
     }
   }
 

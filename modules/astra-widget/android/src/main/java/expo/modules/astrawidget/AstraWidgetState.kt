@@ -7,7 +7,10 @@ import org.json.JSONObject
 data class AstraWidgetState(
   val title: String?,
   val artist: String?,
+  /** The 128px thumbnail: what the cover colors are computed from, as in the app. */
   val artworkUri: String?,
+  /** The full-size cover, decoded down for the art tile so large sizes stay sharp. */
+  val artworkFullUri: String?,
   val playbackState: String,
   val hasTrack: Boolean,
   val recentlyPlayed: List<AstraWidgetRecentItem>,
@@ -24,6 +27,7 @@ object AstraWidgetStateStore {
   private const val KEY_TITLE = "title"
   private const val KEY_ARTIST = "artist"
   private const val KEY_ARTWORK_URI = "artwork_uri"
+  private const val KEY_ARTWORK_FULL_URI = "artwork_full_uri"
   private const val KEY_PLAYBACK_STATE = "playback_state"
   private const val KEY_HAS_TRACK = "has_track"
   private const val KEY_RECENTLY_PLAYED = "recently_played"
@@ -35,6 +39,7 @@ object AstraWidgetStateStore {
       .putString(KEY_TITLE, state.title)
       .putString(KEY_ARTIST, state.artist)
       .putString(KEY_ARTWORK_URI, state.artworkUri)
+      .putString(KEY_ARTWORK_FULL_URI, state.artworkFullUri)
       .putString(KEY_PLAYBACK_STATE, state.playbackState)
       .putBoolean(KEY_HAS_TRACK, state.hasTrack)
       .putString(KEY_RECENTLY_PLAYED, encodeRecentlyPlayed(state.recentlyPlayed))
@@ -47,6 +52,7 @@ object AstraWidgetStateStore {
       title = prefs.getString(KEY_TITLE, null),
       artist = prefs.getString(KEY_ARTIST, null),
       artworkUri = prefs.getString(KEY_ARTWORK_URI, null),
+      artworkFullUri = prefs.getString(KEY_ARTWORK_FULL_URI, null),
       playbackState = prefs.getString(KEY_PLAYBACK_STATE, "stopped") ?: "stopped",
       hasTrack = prefs.getBoolean(KEY_HAS_TRACK, false),
       recentlyPlayed = decodeRecentlyPlayed(prefs.getString(KEY_RECENTLY_PLAYED, null)),

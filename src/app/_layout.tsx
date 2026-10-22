@@ -17,6 +17,7 @@ import {
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
 import { usePlaybackSync } from '@/audio/usePlaybackSync';
+import { syncWidgetAppTheme } from '@/audio/widgetSync';
 import { NowPlayingHost } from '@/components/player/NowPlayingHost';
 import { PlayerDock } from '@/components/player/PlayerDock';
 import { QuickSearchOverlay } from '@/components/search/QuickSearchOverlay';
@@ -79,6 +80,8 @@ function PlaybackSync() {
  * Re-reads system theme inputs (OS scheme + monet wallpaper ramps) on each
  * return to foreground — wallpaper changes can only happen while backgrounded.
  * OS dark/light toggles are covered by the Appearance listener in themeStore.
+ * Also hands the home-screen widget the theme whenever it changes; the widget
+ * persists it, so headless updates have it too.
  */
 function ThemeSystemSync() {
   useEffect(() => {
@@ -86,6 +89,13 @@ function ThemeSystemSync() {
       if (state === 'active') useThemeStore.getState().refreshSystemInputs();
     });
     return () => subscription.remove();
+  }, []);
+  useEffect(() => {
+    const push = (state: ReturnType<typeof useThemeStore.getState>) => {
+      if (state.loaded) syncWidgetAppTheme(state);
+    };
+    push(useThemeStore.getState());
+    return useThemeStore.subscribe(push);
   }, []);
   return null;
 }

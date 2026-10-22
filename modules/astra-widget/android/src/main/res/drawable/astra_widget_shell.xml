@@ -1,0 +1,6 @@
+<!-- The card's outline. Transparent: the root clips to it (API 31+), and the
+     background layer inside paints the actual surface. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <solid android:color="#00000000" />
+  <corners android:radius="@dimen/astra_widget_radius" />
+</shape>

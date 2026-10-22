@@ -11,5 +11,19 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/astra_now_playing_widget_info" />
     </receiver>
+
+    <!-- The long-press Customize sheet. Its own empty affinity keeps it out of
+         Astra's task, so finishing it lands back on the home screen. -->
+    <activity
+      android:name="expo.modules.astrawidget.AstraWidgetConfigureActivity"
+      android:excludeFromRecents="true"
+      android:exported="true"
+      android:label="@string/astra_widget_configure_label"
+      android:taskAffinity=""
+      android:theme="@style/AstraWidgetConfigureTheme">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+      </intent-filter>
+    </activity>
   </application>
 </manifest>

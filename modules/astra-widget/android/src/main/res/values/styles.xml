@@ -1,0 +1,43 @@
+<resources>
+  <!-- The Customize sheet floats over the home screen, so its window is clear. -->
+  <style name="AstraWidgetConfigureTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+  </style>
+
+  <!-- Widget type. Colors are applied at render time; Inter is the app's face. -->
+  <style name="AstraWidget.Title" parent="">
+    <item name="android:fontFamily">@font/inter_semibold</item>
+    <item name="android:textSize">15sp</item>
+    <item name="android:maxLines">1</item>
+    <item name="android:ellipsize">end</item>
+    <item name="android:includeFontPadding">false</item>
+    <item name="android:textColor">#ffffffff</item>
+  </style>
+  <style name="AstraWidget.Artist" parent="">
+    <item name="android:fontFamily">@font/inter_regular</item>
+    <item name="android:textSize">13sp</item>
+    <item name="android:maxLines">1</item>
+    <item name="android:ellipsize">end</item>
+    <item name="android:includeFontPadding">false</item>
+    <item name="android:textColor">#ffffffff</item>
+    <item name="android:layout_marginTop">3dp</item>
+  </style>
+  <style name="AstraWidget.Label" parent="">
+    <item name="android:fontFamily">@font/inter_semibold</item>
+    <item name="android:textSize">11sp</item>
+    <item name="android:letterSpacing">0.06</item>
+    <item name="android:textAllCaps">true</item>
+    <item name="android:maxLines">1</item>
+    <item name="android:includeFontPadding">false</item>
+    <item name="android:textColor">#ffffffff</item>
+  </style>
+  <style name="AstraWidget.Skip" parent="">
+    <item name="android:layout_width">40dp</item>
+    <item name="android:layout_height">40dp</item>
+    <item name="android:scaleType">center</item>
+  </style>
+</resources>

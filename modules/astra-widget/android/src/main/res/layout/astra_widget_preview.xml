@@ -1,0 +1,85 @@
+<!-- The widget picker's preview and the layout shown before the first render.
+     Static Astra classic colors: it can't run code, so nothing is tinted. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@android:id/background"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/astra_widget_shell"
+  android:clipToOutline="true">
+
+  <ImageView
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:importantForAccessibility="no"
+    android:scaleType="fitXY"
+    android:src="@drawable/astra_widget_fill"
+    android:tint="#0c0f18" />
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="16dp">
+
+    <FrameLayout
+      android:layout_width="96dp"
+      android:layout_height="96dp"
+      android:background="@drawable/astra_widget_preview_tile">
+
+      <ImageView
+        android:layout_width="44dp"
+        android:layout_height="26dp"
+        android:layout_gravity="center"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:src="@drawable/astra_widget_mark"
+        android:tint="#5b8aff" />
+    </FrameLayout>
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_marginStart="14dp"
+      android:layout_weight="1"
+      android:orientation="vertical">
+
+      <TextView
+        style="@style/AstraWidget.Title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Astra"
+        android:textColor="#e2e8f4"
+        android:textSize="16sp" />
+
+      <TextView
+        style="@style/AstraWidget.Artist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tap to play"
+        android:textColor="#a9c0ff" />
+    </LinearLayout>
+
+    <FrameLayout
+      android:layout_width="52dp"
+      android:layout_height="52dp"
+      android:layout_marginStart="8dp">
+
+      <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:src="@drawable/astra_widget_play_circle"
+        android:tint="#5b8aff" />
+
+      <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:padding="13dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/astra_widget_ic_play"
+        android:tint="#080a0f" />
+    </FrameLayout>
+  </LinearLayout>
+</FrameLayout>

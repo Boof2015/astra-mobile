@@ -6,6 +6,8 @@ import { AppRegistry } from 'react-native';
 import TrackPlayer from 'react-native-track-player';
 import { handleAstraCarCommand } from './src/car/carCommandService';
 import { PlaybackService } from './src/audio/playbackService';
+import { registerWidgetCommands } from './src/audio/widgetCommands';
 
 TrackPlayer.registerPlaybackService(() => PlaybackService);
 AppRegistry.registerHeadlessTask('AstraCarCommand', () => handleAstraCarCommand);
+registerWidgetCommands();

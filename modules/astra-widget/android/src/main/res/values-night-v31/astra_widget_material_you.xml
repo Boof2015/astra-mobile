@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated: Material You widget roles. System variant follows dark mode; _light/_dark are forced. -->
+<resources>
+  <color name="astra_widget_my_neutral_surface">@android:color/system_neutral1_900</color>
+  <color name="astra_widget_my_neutral_tile">@android:color/system_neutral2_800</color>
+  <color name="astra_widget_my_neutral_title">@android:color/system_neutral1_50</color>
+  <color name="astra_widget_my_neutral_subtitle">@android:color/system_neutral2_200</color>
+  <color name="astra_widget_my_neutral_icon">@android:color/system_neutral1_100</color>
+  <color name="astra_widget_my_neutral_accent">@android:color/system_accent1_200</color>
+  <color name="astra_widget_my_neutral_on_accent">@android:color/system_accent1_800</color>
+  <color name="astra_widget_my_tinted_surface">@android:color/system_accent2_900</color>
+  <color name="astra_widget_my_tinted_tile">@android:color/system_accent2_800</color>
+  <color name="astra_widget_my_tinted_title">@android:color/system_neutral1_50</color>
+  <color name="astra_widget_my_tinted_subtitle">@android:color/system_accent1_100</color>
+  <color name="astra_widget_my_tinted_icon">@android:color/system_neutral1_100</color>
+  <color name="astra_widget_my_tinted_accent">@android:color/system_accent1_200</color>
+  <color name="astra_widget_my_tinted_on_accent">@android:color/system_accent1_800</color>
+  <color name="astra_widget_my_bold_surface">@android:color/system_accent1_800</color>
+  <color name="astra_widget_my_bold_tile">@android:color/system_accent1_700</color>
+  <color name="astra_widget_my_bold_title">@android:color/system_accent1_50</color>
+  <color name="astra_widget_my_bold_subtitle">@android:color/system_accent1_200</color>
+  <color name="astra_widget_my_bold_icon">@android:color/system_accent1_100</color>
+  <color name="astra_widget_my_bold_accent">@android:color/system_accent1_200</color>
+  <color name="astra_widget_my_bold_on_accent">@android:color/system_accent1_800</color>
+</resources>

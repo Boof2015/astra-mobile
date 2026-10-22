@@ -2,8 +2,16 @@ import TrackPlayer, { State, type Track as RntpTrack } from 'react-native-track-
 
 import type { PlaybackState, Track } from '@/types/audio';
 import type { DbTrack } from '@/types/library';
-import { artworkThumbFromSource, artworkThumbUri } from '@/library/artwork';
-import { AstraWidget, type AstraWidgetRecentItem } from '../../modules/astra-widget';
+import { artworkThumbFromSource, artworkUri as fullArtworkUri } from '@/library/artwork';
+import type { AccentPreference } from '@/theme/accents';
+import type { Palette } from '@/theme/palettes';
+import { resolveTheme, type BaseThemeId, type PreferredDark } from '@/theme/resolve';
+import {
+  AstraWidget,
+  type AstraWidgetAppTheme,
+  type AstraWidgetRecentItem,
+  type AstraWidgetThemeTokens,
+} from '../../modules/astra-widget';
 
 function mapRntpState(state?: State): PlaybackState {
   switch (state) {
@@ -29,6 +37,7 @@ let lastPushed: {
   title: string | null;
   artist: string | null;
   artworkUri: string | null;
+  artworkFullUri: string | null;
   playbackState: PlaybackState;
   hasTrack: boolean;
   recents: AstraWidgetRecentItem[] | null;
@@ -55,10 +64,12 @@ export function setWidgetNowPlaying(
 ): void {
   const title = track?.title ?? null;
   const artist = track?.artist ?? null;
-  // RemoteViews never needs the full player cover. Feeding it the existing
-  // thumbnail also avoids reading the full artwork file into a temporary byte
-  // array for every play/pause widget refresh.
+  // The widget clusters the thumbnail for its cover colors, exactly as the app
+  // does, and decodes the full cover (natively, once per track, sampled down)
+  // only for the art tile, which outgrows the thumbnail on larger sizes.
+  // Inline data: covers have no thumbnail, so they arrive as `artworkUri` alone.
   const artworkUri = artworkThumbFromSource(track?.artworkData) ?? null;
+  const artworkFullUri = track?.artworkData?.startsWith('file://') ? track.artworkData : null;
   const hasTrack = Boolean(track);
 
   const coreSame =
@@ -66,6 +77,7 @@ export function setWidgetNowPlaying(
     lastPushed.title === title &&
     lastPushed.artist === artist &&
     lastPushed.artworkUri === artworkUri &&
+    lastPushed.artworkFullUri === artworkFullUri &&
     lastPushed.playbackState === playbackState &&
     lastPushed.hasTrack === hasTrack;
   // `recentlyPlayed === undefined` means "leave the recents as they are".
@@ -77,6 +89,7 @@ export function setWidgetNowPlaying(
     title,
     artist,
     artworkUri,
+    artworkFullUri,
     playbackState,
     hasTrack,
     ...(recentlyPlayed === undefined
@@ -90,6 +103,7 @@ export function setWidgetNowPlaying(
     title,
     artist,
     artworkUri,
+    artworkFullUri,
     playbackState,
     hasTrack,
     recents: recentlyPlayed === undefined ? (lastPushed?.recents ?? null) : recentlyPlayed,
@@ -122,8 +136,51 @@ export function buildWidgetRecentItems(
     .map((track) => ({
       title: track.title,
       artist: track.artist,
-      artworkUri: track.artwork_hash ? artworkThumbUri(track.artwork_hash) : null,
+      // Full covers, decoded natively at tile size: the thumbnail is softer
+      // than a large widget's recents tiles.
+      artworkUri: track.artwork_hash ? fullArtworkUri(track.artwork_hash) : null,
     }));
+}
+
+function widgetTokens(colors: Palette): AstraWidgetThemeTokens {
+  return {
+    bgPrimary: colors.bgPrimary,
+    bgSecondary: colors.bgSecondary,
+    bgTertiary: colors.bgTertiary,
+    textPrimary: colors.textPrimary,
+    accent: colors.accent,
+    accentText: colors.accentText,
+  };
+}
+
+let lastTheme: string | null = null;
+
+/**
+ * Hands the widget's "Astra" style the app theme. The widget has its own
+ * Light/Dark/System choice, so it gets both versions: the user's dark theme
+ * (their preferred dark when the app is on Light or System) and Light, each with
+ * their accent. On Material You the widget uses the system's own live colors.
+ */
+export function syncWidgetAppTheme(input: {
+  baseTheme: BaseThemeId;
+  preferredDark: PreferredDark;
+  accentPreference: AccentPreference;
+  materialYouAvailable: boolean;
+}): void {
+  const { baseTheme, preferredDark, accentPreference } = input;
+  const darkBase =
+    baseTheme === 'midnight' || baseTheme === 'dark' || baseTheme === 'amoled' ? baseTheme : preferredDark;
+  const resolve = (base: BaseThemeId, systemScheme: 'light' | 'dark') =>
+    resolveTheme({ baseTheme: base, preferredDark, accentPreference, systemScheme, materialYouRamps: null }).colors;
+  const theme: AstraWidgetAppTheme = {
+    dark: widgetTokens(resolve(darkBase, 'dark')),
+    light: widgetTokens(resolve('light', 'light')),
+    materialYou: baseTheme === 'materialYou' && input.materialYouAvailable,
+  };
+  const key = JSON.stringify(theme);
+  if (key === lastTheme) return;
+  lastTheme = key;
+  AstraWidget.setAppTheme(theme);
 }
 
 export async function syncWidgetNowPlayingFromTrackPlayer(): Promise<void> {

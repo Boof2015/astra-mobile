@@ -1,9 +1,12 @@
+<!-- Ionicons play-skip-forward, the glyph now playing uses, from the bundled font. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
   android:width="24dp"
   android:height="24dp"
-  android:viewportWidth="24"
-  android:viewportHeight="24">
-  <path
-    android:fillColor="#e2e8f4"
-    android:pathData="M6,5 L15,12 L6,19 Z M17,5 L19,5 L19,19 L17,19 Z" />
+  android:viewportWidth="512"
+  android:viewportHeight="512">
+  <group android:translateY="-7">
+    <path
+      android:fillColor="#ffffffff"
+      android:pathData="M394,72Q401,68 407.5,71.5Q414,75 416,83Q416,87 416,262Q416,437 415,441Q412,456 397,454Q387,452 385,443Q384,440 384,371Q384,302 383.5,302Q383,302 266.5,372Q150,442 146,443Q137,447 127,446Q105,441 98,419L96,413V262V111L98,105Q102,92 113,84.5Q124,77 138,79Q143,79 147.5,81.5Q152,84 267.5,153Q383,222 383.5,222Q384,222 384,153Q384,84 385,81Q387,75 394,72Z" />
+  </group>
 </vector>

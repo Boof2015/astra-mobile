@@ -1,0 +1,4 @@
+<resources>
+  <!-- Widget corner radius. API 31+ takes the launcher's own (values-v31). -->
+  <dimen name="astra_widget_radius">24dp</dimen>
+</resources>

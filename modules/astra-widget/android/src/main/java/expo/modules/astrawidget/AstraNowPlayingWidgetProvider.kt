@@ -4,11 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
-import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
-import android.view.KeyEvent
 
 class AstraNowPlayingWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(
@@ -28,28 +24,17 @@ class AstraNowPlayingWidgetProvider : AppWidgetProvider() {
     AstraWidgetUpdater.updateWidget(context, appWidgetManager, appWidgetId, newOptions)
   }
 
-  override fun onReceive(context: Context, intent: Intent) {
-    super.onReceive(context, intent)
-
-    when (intent.action) {
-      ACTION_PREVIOUS -> dispatchMediaKey(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-      ACTION_PLAY_PAUSE -> dispatchMediaKey(context, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-      ACTION_NEXT -> dispatchMediaKey(context, KeyEvent.KEYCODE_MEDIA_NEXT)
-    }
+  override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+    AstraWidgetConfigStore.delete(context, appWidgetIds)
   }
 
-  private fun dispatchMediaKey(context: Context, keyCode: Int) {
-    val audioManager =
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        context.getSystemService(AudioManager::class.java)
-      } else {
-        @Suppress("DEPRECATION")
-        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-      } ?: return
+  override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
+    AstraWidgetConfigStore.remap(context, oldWidgetIds, newWidgetIds)
+  }
 
-    val eventTime = SystemClock.uptimeMillis()
-    audioManager.dispatchMediaKeyEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, keyCode, 0))
-    audioManager.dispatchMediaKeyEvent(KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, keyCode, 0))
+  override fun onReceive(context: Context, intent: Intent) {
+    super.onReceive(context, intent)
+    AstraWidgetCommands.send(context, intent.action)
   }
 
   companion object {

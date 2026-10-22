@@ -1,0 +1,5 @@
+<!-- The card's surface, tinted at render time. No stroke: tone alone separates layers. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <solid android:color="#ffffffff" />
+  <corners android:radius="@dimen/astra_widget_radius" />
+</shape>

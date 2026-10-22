@@ -1,4 +1,5 @@
 <resources>
   <string name="astra_widget_name">Astra Now Playing</string>
-  <string name="astra_widget_description">Astra playback controls</string>
+  <string name="astra_widget_description">What\'s playing, with playback controls and recently played</string>
+  <string name="astra_widget_configure_label">Customize widget</string>
 </resources>

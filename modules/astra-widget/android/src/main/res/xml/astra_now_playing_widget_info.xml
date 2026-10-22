@@ -1,12 +1,17 @@
+<!-- configuration_optional: placing the widget never opens the Customize sheet
+     (API 31+); reconfigurable: long-press → Customize opens it any time. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:configure="expo.modules.astrawidget.AstraWidgetConfigureActivity"
   android:description="@string/astra_widget_description"
-  android:initialLayout="@layout/astra_widget_3x1"
-  android:minWidth="180dp"
-  android:minHeight="40dp"
-  android:minResizeWidth="180dp"
+  android:initialLayout="@layout/astra_widget_preview"
+  android:minWidth="250dp"
+  android:minHeight="110dp"
+  android:minResizeWidth="160dp"
   android:minResizeHeight="40dp"
+  android:previewLayout="@layout/astra_widget_preview"
   android:resizeMode="horizontal|vertical"
-  android:targetCellWidth="3"
-  android:targetCellHeight="1"
+  android:targetCellWidth="4"
+  android:targetCellHeight="2"
   android:updatePeriodMillis="0"
-  android:widgetCategory="home_screen" />
+  android:widgetCategory="home_screen"
+  android:widgetFeatures="reconfigurable|configuration_optional" />
