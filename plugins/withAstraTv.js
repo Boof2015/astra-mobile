@@ -31,51 +31,94 @@ ${content}
 `;
 }
 
-function artwork(paths, width, canvasWidth, canvasHeight, sourceWidth, sourceHeight) {
-  const scale = width / sourceWidth;
-  return `    <group android:scaleX="${scale}" android:scaleY="${scale}"
-        android:translateX="${(canvasWidth - width) / 2}" android:translateY="${(canvasHeight - sourceHeight * scale) / 2}">
-${paths.map(item => `        <path android:fillColor="${item.fill}" android:pathData="${item.d}" />`).join('\n')}
-    </group>`;
+function hexColor(fill) {
+  if (fill === 'white') return '#ffffff';
+  const rgb = fill.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  if (rgb) return `#${rgb.slice(1).map(value => Number(value).toString(16).padStart(2, '0')).join('')}`;
+  if (/^#[0-9a-f]{6}$/i.test(fill)) return fill;
+  throw new Error(`Unsupported fill "${fill}" in the TV banner lockup.`);
 }
 
-async function writeTvResources(projectRoot, androidRoot) {
-  // These are the supplied brand vectors, not font-rendered approximations.
-  const svg = await fs.readFile(path.join(projectRoot, 'assets/branding/astra-full.svg'), 'utf8');
-  const paths = [...svg.matchAll(/<path\b[^>]*\bd="([^"]+)"[^>]*\bstyle="([^"]+)"[^>]*\/>/g)]
-    .map(([, d, style]) => ({ d, fill: style.match(/fill:([^;]+)/)?.[1] }));
-  if (!svg.includes('viewBox="0 0 1625 182"') || paths.length !== 7 || paths.some(item => !item.fill)) {
-    throw new Error('The Astra wordmark geometry changed; update the TV vector conversion.');
+/**
+ * The brand SVG as vector-drawable groups and paths. Covers what the Affinity
+ * exports contain: nested <g transform="matrix(s,0,0,s,x,y)"> (uniform scale
+ * and translate) around flat-filled <path>s. Anything else throws, so a new
+ * export can't render wrong without anyone noticing.
+ */
+function svgToVectorContent(svg) {
+  const rootRule = svg.match(/<svg\b[^>]*fill-rule:(\w+)/)?.[1] ?? 'nonzero';
+  const lines = [];
+  let depth = 1;
+  let paths = 0;
+  for (const [, closing, tag, attributes] of svg.matchAll(/<(\/?)(g|path)\b([^>]*?)\/?>/g)) {
+    const indent = '    '.repeat(depth);
+    if (tag === 'g' && closing) {
+      depth -= 1;
+      lines.push(`${'    '.repeat(depth)}</group>`);
+    } else if (tag === 'g') {
+      const transform = attributes.match(/transform="([^"]+)"/)?.[1];
+      let group = '<group>';
+      if (transform) {
+        const matrix = transform.match(/^matrix\(([^)]+)\)$/)?.[1].split(',').map(Number);
+        if (!matrix || matrix.length !== 6 || matrix[1] !== 0 || matrix[2] !== 0 || matrix[0] !== matrix[3]) {
+          throw new Error(`Unsupported transform "${transform}" in the TV banner lockup.`);
+        }
+        const [scale, , , , x, y] = matrix;
+        group = `<group android:scaleX="${scale}" android:scaleY="${scale}" android:translateX="${x}" android:translateY="${y}">`;
+      }
+      lines.push(`${indent}${group}`);
+      depth += 1;
+    } else {
+      const d = attributes.match(/\bd="([^"]+)"/)?.[1];
+      const style = attributes.match(/style="([^"]+)"/)?.[1] ?? '';
+      const fill = style.match(/fill:([^;]+)/)?.[1] ?? attributes.match(/\bfill="([^"]+)"/)?.[1];
+      if (!d || !fill) throw new Error('Every path in the TV banner lockup needs geometry and a flat fill.');
+      const rule = style.match(/fill-rule:(\w+)/)?.[1] ?? rootRule;
+      lines.push(`${indent}<path android:fillColor="${hexColor(fill)}" android:fillType="${rule === 'evenodd' ? 'evenOdd' : 'nonZero'}" android:pathData="${d}" />`);
+      paths += 1;
+    }
   }
-  const mark = paths.filter(item => item.fill !== '#fff');
-  const foreground = vector(108, 108, 108, 108, artwork(mark, 48, 108, 108, 312.114, 182));
-  const adaptive = `<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/iconBackground" />
-    <foreground android:drawable="@drawable/astra_tv_icon_foreground" />
-</adaptive-icon>
+  if (depth !== 1 || paths === 0) throw new Error('The TV banner lockup has unbalanced groups or no paths.');
+  return lines.join('\n');
+}
+
+// Earlier builds drew a separate TV launcher icon. The TV now uses the app's
+// own adaptive icon, so these must not survive a non-clean prebuild.
+const RETIRED_TV_RESOURCES = [
+  'drawable/astra_tv_icon_foreground.xml',
+  'mipmap-television-anydpi/ic_launcher.xml',
+  'mipmap-television-anydpi/ic_launcher_round.xml',
+  'mipmap-television-anydpi-v26/ic_launcher.xml',
+  'mipmap-television-anydpi-v26/ic_launcher_round.xml',
+];
+
+async function writeTvResources(projectRoot, androidRoot) {
+  // The banner is the brand's own layers on one 1920×1080 canvas: the field as
+  // an image (its grain can't be a vector) and the lockup as vector paths.
+  const lockupSvg = await fs.readFile(path.join(projectRoot, 'assets/branding/tv-banner-lockup.svg'), 'utf8');
+  if (!lockupSvg.includes('viewBox="0 0 1920 1080"')) {
+    throw new Error('The TV banner lockup must share the 1920×1080 banner canvas.');
+  }
+  const lockup = vector(160, 90, 1920, 1080, svgToVectorContent(lockupSvg));
+  const banner = `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="160dp" android:height="90dp" android:drawable="@drawable/astra_tv_banner_background" />
+    <item android:width="160dp" android:height="90dp" android:drawable="@drawable/astra_tv_banner_lockup" />
+</layer-list>
 `;
-  const background = (shape) => `    <path android:fillColor="#05070A" android:pathData="${shape}" />\n`;
-  const banner = vector(160, 90, 320, 180,
-    background('M0,0h320v180h-320z') + artwork(paths, 272, 320, 180, 1625, 182));
-  const legacy = vector(80, 80, 72, 72,
-    background('M0,0h72v72h-72z') + artwork(mark, 48, 72, 72, 312.114, 182));
-  const round = vector(80, 80, 72, 72,
-    background('M36,0a36,36 0,1 1,0,72a36,36 0,1 1,0,-72') + artwork(mark, 48, 72, 72, 312.114, 182));
-  // UI-mode qualifiers leave Expo's phone/tablet icons untouched, including
-  // older TVs and launchers that request the round resource explicitly.
-  const resources = {
+  const resources = path.join(androidRoot, 'app/src/main/res');
+  const files = {
     'drawable/astra_tv_banner.xml': banner,
-    'drawable/astra_tv_icon_foreground.xml': foreground,
-    'mipmap-television-anydpi/ic_launcher.xml': legacy,
-    'mipmap-television-anydpi/ic_launcher_round.xml': round,
-    'mipmap-television-anydpi-v26/ic_launcher.xml': adaptive,
-    'mipmap-television-anydpi-v26/ic_launcher_round.xml': adaptive,
+    'drawable/astra_tv_banner_lockup.xml': lockup,
+    'drawable-nodpi/astra_tv_banner_background.png': await fs.readFile(path.join(projectRoot, 'assets/branding/tv-banner-background.png')),
   };
-  for (const [file, xml] of Object.entries(resources)) {
-    const destination = path.join(androidRoot, 'app/src/main/res', file);
+  for (const [file, contents] of Object.entries(files)) {
+    const destination = path.join(resources, file);
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.writeFile(destination, xml);
+    await fs.writeFile(destination, contents);
+  }
+  for (const file of RETIRED_TV_RESOURCES) {
+    await fs.rm(path.join(resources, file), { force: true });
   }
 }
 

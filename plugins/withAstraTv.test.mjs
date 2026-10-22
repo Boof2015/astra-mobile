@@ -37,15 +37,23 @@ test('generated TV branding leaves existing phone resources untouched across reg
     const phone = path.join(resources, 'mipmap-anydpi-v26/ic_launcher.xml');
     await mkdir(path.dirname(phone), { recursive: true });
     await writeFile(phone, 'existing phone icon');
+    // A TV icon override left by an earlier prebuild must not outlive the switch to the app icon.
+    const retired = path.join(resources, 'mipmap-television-anydpi-v26/ic_launcher.xml');
+    await mkdir(path.dirname(retired), { recursive: true });
+    await writeFile(retired, 'old TV icon');
     const projectRoot = path.resolve(import.meta.dirname, '..');
     await writeTvResources(projectRoot, androidRoot);
     const banner = await readFile(path.join(resources, 'drawable/astra_tv_banner.xml'), 'utf8');
+    const lockup = await readFile(path.join(resources, 'drawable/astra_tv_banner_lockup.xml'), 'utf8');
     await writeTvResources(projectRoot, androidRoot);
     assert.equal(await readFile(phone, 'utf8'), 'existing phone icon');
     assert.equal(await readFile(path.join(resources, 'drawable/astra_tv_banner.xml'), 'utf8'), banner);
-    for (const version of ['', '-v26']) for (const name of ['ic_launcher', 'ic_launcher_round']) {
-      assert.ok((await readFile(path.join(resources, `mipmap-television-anydpi${version}/${name}.xml`), 'utf8')).includes(version ? '<adaptive-icon' : '<vector'));
-    }
+    assert.equal(await readFile(path.join(resources, 'drawable/astra_tv_banner_lockup.xml'), 'utf8'), lockup);
+    assert.ok(banner.includes('@drawable/astra_tv_banner_background') && banner.includes('@drawable/astra_tv_banner_lockup'));
+    assert.ok(lockup.includes('android:viewportWidth="1920"'));
+    assert.equal(lockup.match(/<path /g)?.length, 7);
+    assert.ok((await readFile(path.join(resources, 'drawable-nodpi/astra_tv_banner_background.png'))).length > 0);
+    await assert.rejects(readFile(retired, 'utf8'));
   } finally {
     await rm(androidRoot, { recursive: true, force: true });
   }
