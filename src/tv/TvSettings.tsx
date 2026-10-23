@@ -29,7 +29,7 @@ import { clearAllWaveformCache } from '@/scope/waveform';
 import { pauseListeningHistoryTracking, resumeListeningHistoryTracking } from '@/audio/listeningHistoryTracker';
 import { notifyListeningHistoryChanged } from '@/listeningStats/events';
 import { createBuildInfo } from '@/release/buildInfo';
-import { capabilityList, formatChannels, formatDiagnosticFormat, formatDiagnosticSource, formatEncoding, formatSampleRate, outputDescription, type AudioDiagnosticsSnapshot } from '@/audio/audioDiagnostics';
+import { capabilityList, formatChannels, formatDeviceOutput, formatDiagnosticFormat, formatDiagnosticSource, formatEncoding, formatSampleRate, mixerSupport, outputDescription, type AudioDiagnosticsSnapshot } from '@/audio/audioDiagnostics';
 import { TvButton, TvFocusRegion, useTvActive, useTvFocus } from './TvFocus';
 import { useTvBackHandler } from './TvBack';
 import { TvNameFlow } from './TvNameFlow';
@@ -269,8 +269,10 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
     const d = diagnostics; const c = d?.capabilities;
     rows = [readout('output', 'Current output', d?.route?.kind === 'speaker' ? 'TV speakers' : d?.route?.label ?? 'Not reported'),
       readout('source', 'Source', formatDiagnosticSource(d?.source ?? null)), readout('astra-output', 'Astra output', outputDescription(d), 'Stream sent to Android; device processing may differ.'),
-      readout('device-output', 'Device output', 'Not reported by Android'), readout('rates', 'Sample rates', capabilityList(c?.sampleRates, formatSampleRate)),
+      readout('device-output', 'Android output', formatDeviceOutput(d), 'Format Android sends to the device; a DAC or Bluetooth codec may convert again.'), readout('rates', 'Sample rates', capabilityList(c?.sampleRates, formatSampleRate)),
       readout('channels', 'Channels', capabilityList(c?.channelCounts, formatChannels)), readout('formats', 'Reported formats', c?.encodings.map(formatEncoding).join(' · ') || 'Not reported'),
+      readout('rate-matching', 'Sample-rate matching', mixerSupport(d, 'match'), 'Android 14 option for USB DACs. Astra leaves the output format to Android.'),
+      readout('bit-perfect', 'Bit-perfect', mixerSupport(d, 'bit-perfect')),
       readout('decoder', 'Decoder', d?.decoder ?? 'Not reported'), readout('sink', 'Decoded / sink input', formatDiagnosticFormat(d?.sinkInput ?? null)),
       readout('eq', 'EQ setting', d ? d.processing.eqEnabled ? `On · ${d.processing.preampDb ?? 0} dB preamp` : 'Off' : 'Not reported'),
       readout('gain', 'Native gain target', d?.processing.gainTargetDb == null ? 'Not reported' : `${d.processing.gainTargetDb.toFixed(1)} dB`)];

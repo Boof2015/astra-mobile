@@ -4,7 +4,9 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioMixerAttributes
 import android.media.MediaRouter
 import android.os.Build
 import android.os.Handler
@@ -20,6 +22,10 @@ class AstraAudioRouteModule : Module() {
   private var deviceCallback: AudioDeviceCallback? = null
   private var routeCallback: MediaRouter.Callback? = null
   private var listening = false
+  private val mediaAttributes: AudioAttributes = AudioAttributes.Builder()
+    .setUsage(AudioAttributes.USAGE_MEDIA)
+    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+    .build()
 
   override fun definition() = ModuleDefinition {
     Name("AstraAudioRoute")
@@ -183,10 +189,6 @@ class AstraAudioRouteModule : Module() {
     }
     val predicted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       try {
-        val mediaAttributes = AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_MEDIA)
-          .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-          .build()
         audioManager().getAudioDevicesForAttributes(mediaAttributes).filter { it.isSink }
       } catch (_: Throwable) {
         emptyList()
@@ -205,12 +207,14 @@ class AstraAudioRouteModule : Module() {
   /** Getter only: never starts route synchronization or applies an EQ/device profile. */
   private fun snapshotDiagnostics(): Map<String, Any?> {
     val (device, provenance) = selectDiagnosticDevice()
-    return AudioDiagnosticsBridge.state.snapshot() + mapOf(
+    val base = AudioDiagnosticsBridge.state.snapshot()
+    return base + mapOf(
       "route" to device?.let {
         val route = snapshotRoute(it, selectedRouteName())
         route + ("label" to externalDeviceLabel(kindForType(it.type), it.productName?.toString(), route["label"] as String))
       },
       "routeProvenance" to provenance,
+      "deviceOutput" to runCatching { deviceOutput(probeRequest(device?.id, base["output"] as? Map<*, *>)) }.getOrNull(),
       "capabilities" to device?.let { runCatching { deviceCapabilities(it) }.getOrNull() },
       "processing" to mapOf(
         "eqEnabled" to EqBridge.enabled,
@@ -219,6 +223,42 @@ class AstraAudioRouteModule : Module() {
       ),
       "updatedAt" to System.currentTimeMillis(),
     )
+  }
+
+  /**
+   * A plain PCM track takes a free direct output that exactly matches its format before
+   * Android's mixer, and a direct output serves one client. So when one exists for Astra's
+   * format, Astra holds it and the device runs at Astra's format. The AAudio probe would be
+   * turned away to the mixer there (and could claim the path itself while the player
+   * re-creates its track), so it only runs when no direct path matches.
+   */
+  private fun deviceOutput(request: ProbeRequest): Map<String, Any?>? {
+    if (hasDirectPath(request)) {
+      return DiagnosticFormat(request.sampleRate, encodingForAaudioFormat(request.aaudioFormat), request.channels)
+        .toMap() + ("path" to "direct")
+    }
+    // Samsung's AudioFlinger retunes the output per track (S22 Ultra, USB: a 96 kHz track
+    // runs the link at 192 kHz while AAudio still reports 48 kHz), so the probe would lie.
+    if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) return DiagnosticFormat().toMap() + ("path" to "vendor")
+    return HardwareOutputProbe.current(request)?.toMap()?.plus("path" to "mixer")
+  }
+
+  private fun hasDirectPath(request: ProbeRequest): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || request.sampleRate <= 0) return false
+    val encoding = when (encodingForAaudioFormat(request.aaudioFormat)) {
+      "pcm-16" -> AudioFormat.ENCODING_PCM_16BIT
+      "pcm-float" -> AudioFormat.ENCODING_PCM_FLOAT
+      "pcm-24" -> AudioFormat.ENCODING_PCM_24BIT_PACKED
+      "pcm-32" -> AudioFormat.ENCODING_PCM_32BIT
+      else -> return false
+    }
+    val channelMask = when (request.channels) {
+      1 -> AudioFormat.CHANNEL_OUT_MONO
+      2 -> AudioFormat.CHANNEL_OUT_STEREO
+      else -> return false
+    }
+    val format = AudioFormat.Builder().setSampleRate(request.sampleRate).setEncoding(encoding).setChannelMask(channelMask).build()
+    return AudioManager.getDirectPlaybackSupport(format, mediaAttributes) and AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED != 0
   }
 
   private fun deviceCapabilities(device: AudioDeviceInfo): Map<String, Any?> {
@@ -234,11 +274,28 @@ class AstraAudioRouteModule : Module() {
         }
       }.getOrNull()
     } else null
+    val mixerUnavailableReason = when {
+      kindForType(device.type) != "usb" -> "not-usb"
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> "android-version"
+      else -> null
+    }
+    val mixer = if (mixerUnavailableReason == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      runCatching {
+        mixerProfileMaps(audioManager().getSupportedMixerAttributes(device).map {
+          MixerProfile(
+            it.format.sampleRate, diagnosticEncoding(it.format.encoding), it.format.channelCount,
+            it.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT,
+          )
+        })
+      }.getOrNull()
+    } else null
     return mapOf(
       "sampleRates" to device.sampleRates.filter { it > 0 }.distinct().sorted(),
       "encodings" to device.encodings.map { diagnosticEncoding(it) }.filterNotNull().distinct(),
       "channelCounts" to device.channelCounts.filter { it > 0 }.distinct().sorted(),
       "profiles" to profiles,
+      "mixer" to mixer,
+      "mixerUnavailableReason" to mixerUnavailableReason,
     )
   }
 
