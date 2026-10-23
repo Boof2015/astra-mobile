@@ -13,10 +13,12 @@ import { spacing } from '../../theme/spacing.ts';
  * They are separate questions, so they are separate knobs here:
  *
  * - **panes** — can the graph sit above the controls, the way it does on a
- *   phone? That is a question about *height*, not orientation, and it is the
- *   same question the navigation rail answers. A phone in landscape has ~411dp
- *   and genuinely cannot stack; a tablet in landscape has plenty and should look
- *   like the phone does.
+ *   phone? A phone in landscape has ~411dp and genuinely cannot stack. A tablet
+ *   in landscape *can*, but shouldn't: once the header, preset row, console,
+ *   preamp and bottom bar are paid out of ~800dp, the curve was left ~150dp
+ *   (10" landscape, 2026-10-22), with the fixed-width strips stranding half the
+ *   width. So any window wider than it is tall splits, and stacking is for
+ *   windows taller than wide — phones, portrait tablets, unfolded foldables.
  * - **editor** — chip strip plus a detail panel for the selected band, or a
  *   console of full per-band strips? That depends on the width the *editor*
  *   gets, which is the side pane when split and the whole scene when stacked.
@@ -85,15 +87,17 @@ const RAIL_HEIGHT_COMPACT = 104;
 /**
  * Above this the taller rail still leaves the graph a useful share.
  *
- * Set from the other direction: a tablet in landscape is ~800dp tall, and once
- * the header, mode switcher, preset row and preamp are paid for, the regular
- * rail would leave the response curve about 230dp. The rail concedes first —
- * the graph is the thing you are reading.
+ * Set from the other direction: in a stacked window ~800dp tall, once the
+ * header, mode switcher, preset row and preamp are paid for, the regular rail
+ * would leave the response curve about 230dp. The rail concedes first — the
+ * graph is the thing you are reading.
  */
 const RAIL_REGULAR_MIN_HEIGHT = 900;
 
 export function getEQLayout(availableWidth: number, availableHeight: number): EQLayout {
-  const split = availableHeight < STACK_MIN_HEIGHT && availableWidth >= SPLIT_MIN_WIDTH;
+  const split =
+    availableWidth >= SPLIT_MIN_WIDTH &&
+    (availableHeight < STACK_MIN_HEIGHT || availableWidth > availableHeight);
   const sidePaneWidth = split
     ? Math.min(
         SIDE_PANE_MAX_WIDTH,

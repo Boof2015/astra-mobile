@@ -15,26 +15,21 @@ const TABLET_PORTRAIT = { w: 800, h: 1180 };
 const TABLET_LANDSCAPE = { w: 1280, h: 800 };
 /** A tablet in landscape with the player dock open — the dock takes 460dp. */
 const TABLET_LANDSCAPE_DOCKED = { w: 820, h: 800 };
+/** Stacked, but under the regular rail's 900dp — an unfolded foldable, bars paid. */
+const SHORT_STACKED = { w: 800, h: 880 };
 
-test('stacks the graph over the controls wherever there is height to do it', () => {
-  for (const win of [
-    PHONE_PORTRAIT,
-    FOLD_COVER,
-    FOLD_OPEN,
-    TABLET_PORTRAIT,
-    TABLET_LANDSCAPE,
-    TABLET_LANDSCAPE_DOCKED,
-  ]) {
+test('stacks the graph over the controls in windows taller than wide', () => {
+  for (const win of [PHONE_PORTRAIT, FOLD_COVER, FOLD_OPEN, TABLET_PORTRAIT, SHORT_STACKED]) {
     assert.equal(getEQLayout(win.w, win.h).panes, 'stacked', `${win.w}x${win.h}`);
   }
 });
 
-test('splits into two panes only where stacking would not fit', () => {
-  // The rule is scarce height, not landscape: a tablet in landscape stacks.
-  for (const win of [PHONE_LANDSCAPE, SMALL_PHONE_LANDSCAPE]) {
+test('splits where stacking would not fit, and in any landscape window', () => {
+  // A landscape tablet could stack, but the curve came out ~150dp tall with half
+  // the width empty; split, it gets the whole height.
+  for (const win of [PHONE_LANDSCAPE, SMALL_PHONE_LANDSCAPE, TABLET_LANDSCAPE, TABLET_LANDSCAPE_DOCKED]) {
     assert.equal(getEQLayout(win.w, win.h).panes, 'split', `${win.w}x${win.h}`);
   }
-  assert.equal(getEQLayout(TABLET_LANDSCAPE.w, TABLET_LANDSCAPE.h).panes, 'stacked');
 });
 
 test('never splits into a pane too narrow to edit in', () => {
@@ -51,9 +46,15 @@ test('a phone sees exactly the editor it has today, in both orientations', () =>
   assert.equal(getEQLayout(FOLD_COVER.w, FOLD_COVER.h).editor, 'strip');
 });
 
-test('gives tablets and unfolded foldables the console', () => {
-  for (const win of [FOLD_OPEN, TABLET_PORTRAIT, TABLET_LANDSCAPE, TABLET_LANDSCAPE_DOCKED]) {
+test('gives stacked tablets and unfolded foldables the console', () => {
+  for (const win of [FOLD_OPEN, TABLET_PORTRAIT, SHORT_STACKED]) {
     assert.equal(getEQLayout(win.w, win.h).editor, 'console', `${win.w}x${win.h}`);
+  }
+});
+
+test('a landscape tablet edits in the side pane, as a phone in landscape does', () => {
+  for (const win of [TABLET_LANDSCAPE, TABLET_LANDSCAPE_DOCKED]) {
+    assert.equal(getEQLayout(win.w, win.h).editor, 'strip', `${win.w}x${win.h}`);
   }
 });
 
@@ -84,7 +85,7 @@ test('a split pane never grows wide enough to hold a console', () => {
 });
 
 test('the console height is a sum of declared parts, rail included', () => {
-  for (const win of [FOLD_OPEN, TABLET_PORTRAIT, TABLET_LANDSCAPE]) {
+  for (const win of [FOLD_OPEN, TABLET_PORTRAIT, SHORT_STACKED]) {
     const layout = getEQLayout(win.w, win.h);
     assert.equal(layout.consoleHeight - layout.railHeight, 156, `${win.w}x${win.h}`);
   }
@@ -92,15 +93,17 @@ test('the console height is a sum of declared parts, rail included', () => {
 
 test('shortens the gain rail rather than the graph on shorter windows', () => {
   const tall = getEQLayout(TABLET_PORTRAIT.w, TABLET_PORTRAIT.h);
-  const short = getEQLayout(TABLET_LANDSCAPE.w, TABLET_LANDSCAPE.h);
+  const short = getEQLayout(SHORT_STACKED.w, SHORT_STACKED.h);
   assert.ok(short.railHeight < tall.railHeight);
   assert.ok(short.consoleHeight < tall.consoleHeight);
 });
 
 test('both knobs are monotonic — growing a window never takes capability away', () => {
+  // Widening past square trades the console for the split by design, so the
+  // console's monotonicity is checked across windows that stay taller than wide.
   let seenConsole = false;
   for (let width = 0; width <= 2000; width += 1) {
-    const console_ = getEQLayout(width, 1000).editor === 'console';
+    const console_ = getEQLayout(width, 2001).editor === 'console';
     if (console_) seenConsole = true;
     assert.ok(!(seenConsole && !console_), `console lost again at width ${width}`);
   }

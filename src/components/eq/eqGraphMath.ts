@@ -158,7 +158,10 @@ export function buildGridPaths(width: number, height: number): { minor: SkPath; 
   return { minor, major, zero };
 }
 
-/** Frequency labels along the bottom axis — one per 1-2-5 step. */
+/**
+ * Frequency labels along the bottom axis — one per 1-2-5 step. No 20k: it sits in the
+ * bottom-right corner, under the right-edge "-12" gain label.
+ */
 export const FREQ_TICKS: { freq: number; label: string }[] = [
   { freq: 20, label: '20' },
   { freq: 50, label: '50' },
@@ -169,7 +172,6 @@ export const FREQ_TICKS: { freq: number; label: string }[] = [
   { freq: 2000, label: '2k' },
   { freq: 5000, label: '5k' },
   { freq: 10000, label: '10k' },
-  { freq: 20000, label: '20k' },
 ];
 
 /** Gain labels up the right edge. */
