@@ -113,14 +113,10 @@ export default function LastFmScreen() {
           <Ionicons name={profileIcon(profile)} size={20} color={colors.accent} />
         </View>
         <View style={styles.rowMeta}>
-          <View style={styles.rowTitleLine}>
-            <Text variant="body" numberOfLines={1} style={styles.rowName}>
-              {profile.name}
-            </Text>
-            <Text variant="label" color={colors.textTertiary}>
-              {profile.protocolLabel}
-            </Text>
-          </View>
+          {/* No protocol badge: the official label is the name itself. */}
+          <Text variant="body" numberOfLines={1}>
+            {profile.name}
+          </Text>
           <Text
             variant="caption"
             color={subtitleError ? colors.warning : colors.textSecondary}

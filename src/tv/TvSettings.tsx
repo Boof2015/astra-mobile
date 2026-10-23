@@ -141,7 +141,9 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
   const readout = (id: string, label: string, value: string, sub?: string) => link(id, label, () => open(`readout:${id}`, label, sub ?? '▲ ▼ page through details · Back returns', value), value, sub);
   const scan = maintenance('scan', 'Scan for Changes', () => useLibraryStore.getState().rescan(), 'Library scan complete.', 'Rescan configured music folders.');
   const openServer = (source: RemoteSourceRow) => open(`server:${source.id}`, source.name, source.type === 'jellyfin' ? 'Jellyfin connection' : 'Subsonic connection');
-  const openProfile = (profile: LastFmProfileStatus) => open(`profile:${profile.id}`, profile.name, profile.protocolLabel);
+  // The official profile's protocol label is its name, so it gets no protocol line.
+  const profileProtocol = (profile: LastFmProfileStatus) => profile.kind === 'official' ? undefined : profile.protocolLabel;
+  const openProfile = (profile: LastFmProfileStatus) => open(`profile:${profile.id}`, profile.name, profileProtocol(profile));
   const updateScrobbling = async (action: () => ReturnType<typeof lastfm.setEnabled>) => {
     const result = await action(); if (!result || result.lastError) throw new Error(result?.lastError || useLastFmSettingsStore.getState().errorMessage || 'Could not update scrobbling.');
   };
@@ -244,7 +246,7 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
       link('remove', 'Remove server', () => confirm('Remove server?', 'Remove this connection and its imported library from this TV. Your server files are kept.', 'Remove', () => change(async () => { await remote.deleteSource(source.id, true); setHistory(previous => previous.slice(0, -1)); request(settingsRowId('servers', 'add')); })), undefined, undefined, !!progress)] : [];
   } else if (leaf?.key === 'lastfm') {
     rows = [toggle('enabled', 'Enable scrobbling', lastfm.status?.enabled ?? false, enabled => updateScrobbling(() => lastfm.setEnabled(enabled)), 'Submit listening activity to your enabled destinations.', !lastfm.status?.profiles.some(profile => profile.connected)),
-      ...(lastfm.status?.profiles ?? []).map(profile => link(`profile:${profile.id}`, profile.name, () => openProfile(profile), profile.connected ? profile.username ?? 'Configured' : 'Connect', profile.lastError ?? profile.protocolLabel)),
+      ...(lastfm.status?.profiles ?? []).map(profile => link(`profile:${profile.id}`, profile.name, () => openProfile(profile), profile.connected ? profile.username ?? 'Configured' : 'Connect', profile.lastError ?? profileProtocol(profile))),
       link('add', 'Add destination', () => open('add-scrobbler', 'Add destination', 'Choose a scrobbling protocol')),
       ...(lastfm.status?.pendingScrobbles ? [link('retry', 'Retry queued scrobbles', requestLastFmFlush, String(lastfm.status.pendingScrobbles))] : [])];
   } else if (leaf?.key === 'add-scrobbler') rows = [
