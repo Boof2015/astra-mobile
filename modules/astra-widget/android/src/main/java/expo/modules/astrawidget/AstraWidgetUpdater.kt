@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.net.Uri
@@ -239,13 +240,15 @@ object AstraWidgetUpdater {
     fun titleLines(showRecents: Boolean): Int = if (compact(showRecents)) 1 else 2
 
     /**
-     * The play button when the layout's own doesn't fit: a compact card at its
-     * minimum has 78dp for title · artist · play, a compact deck 104dp.
+     * The play button: each layout's own size, smaller where it doesn't fit. A
+     * compact card at its minimum has 78dp for title · artist · play, a compact
+     * deck 104dp.
      */
-    fun playDp(showRecents: Boolean): Int? = when {
-      family == Family.CARD && compactCard -> 40
-      family == Family.LARGE && compactDeck(showRecents) -> 44
-      else -> null
+    fun playDp(showRecents: Boolean): Int = when (family) {
+      Family.STRIP -> 44
+      Family.SQUARE_SIDE, Family.SQUARE_STACKED -> 48
+      Family.CARD -> if (compactCard) 40 else 52
+      Family.LARGE -> if (compactDeck(showRecents)) 44 else 52
     }
 
     val recentTiles: Int = if (widthDp >= 440) 7 else if (widthDp >= 360) 6 else 5
@@ -323,6 +326,12 @@ object AstraWidgetUpdater {
 
   // ── Rendering ────────────────────────────────────────────
 
+  /**
+   * When the layout id matches the view it already shows, the launcher replays
+   * a render's actions onto that view instead of inflating fresh, and buckets
+   * share layouts. So any property one render sets, every render sets: a branch
+   * that only hides, shrinks or dims leaves the next render inheriting it.
+   */
   private class Render(
     private val context: Context,
     private val state: AstraWidgetState,
@@ -358,9 +367,10 @@ object AstraWidgetUpdater {
       bindArt(views, bucket)
       bindControls(views, bucket)
       bucket.artCap?.let { views.setInt(R.id.astra_widget_art, "setMaxWidth", px(it)) }
-      if (bucket.family == Family.STRIP && !bucket.stripText) {
-        views.setViewVisibility(R.id.astra_widget_text, View.GONE)
-        if (responsive) views.setInt(R.id.astra_widget_content, "setGravity", Gravity.CENTER)
+      if (bucket.family == Family.STRIP) {
+        views.show(R.id.astra_widget_text, bucket.stripText)
+        val gravity = if (bucket.stripText) Gravity.CENTER_VERTICAL else Gravity.CENTER
+        if (responsive) views.setInt(R.id.astra_widget_content, "setGravity", gravity)
       }
       if (bucket.family == Family.LARGE) bindLarge(views, bucket)
       openAppPendingIntent(context)?.let { views.setOnClickPendingIntent(android.R.id.background, it) }
@@ -368,6 +378,9 @@ object AstraWidgetUpdater {
     }
 
     private fun px(dp: Int): Int = (dp * density).roundToInt()
+
+    private fun RemoteViews.show(id: Int, visible: Boolean) =
+      setViewVisibility(id, if (visible) View.VISIBLE else View.GONE)
 
     private fun RemoteViews.textColor(id: Int, res: Int?, pick: (WidgetRoles) -> Int) {
       when {
@@ -377,10 +390,19 @@ object AstraWidgetUpdater {
       }
     }
 
+    /**
+     * API 31+ tints through the image tint list alone: a color filter left by
+     * one style would override the tint list another style sets.
+     */
     private fun RemoteViews.tint(id: Int, res: Int?, pick: (WidgetRoles) -> Int) {
       when {
         responsive && res != null -> setColorStateList(id, "setImageTintList", res)
-        responsive -> setColorInt(id, "setColorFilter", pick(paint.day), pick(paint.night))
+        responsive -> setColorStateList(
+          id,
+          "setImageTintList",
+          ColorStateList.valueOf(pick(paint.day)),
+          ColorStateList.valueOf(pick(paint.night)),
+        )
         else -> setInt(id, "setColorFilter", pick(current))
       }
     }
@@ -400,7 +422,9 @@ object AstraWidgetUpdater {
       if (responsive && (paint.day.field != null || paint.night.field != null)) {
         val (w, h) = bucket.fieldPx()
         views.themedImage(bg) { images.field(it, w, h) }
+        views.setColorStateList(bg, "setImageTintList", null)
       } else {
+        views.setImageViewResource(bg, R.drawable.astra_widget_fill)
         views.tint(bg, my?.surface) { it.argb(it.surface) }
       }
     }
@@ -412,13 +436,13 @@ object AstraWidgetUpdater {
       views.textColor(R.id.astra_widget_artist, my?.subtitle) { it.argb(it.subtitle) }
       if (bucket.family == Family.CARD || bucket.family == Family.LARGE) {
         views.setInt(R.id.astra_widget_title, "setMaxLines", bucket.titleLines(showRecents))
-        if (bucket.showEyebrow(showRecents)) {
+        val eyebrow = bucket.showEyebrow(showRecents)
+        views.show(R.id.astra_widget_eyebrow, eyebrow)
+        if (eyebrow) {
           val label = if (!state.hasTrack) "Astra" else if (playing) "Now playing" else "Paused"
           views.setTextViewText(R.id.astra_widget_eyebrow_label, label)
           views.textColor(R.id.astra_widget_eyebrow_label, my?.muted) { it.mutedArgb }
           views.tint(R.id.astra_widget_eyebrow_mark, my?.accent) { it.argb(it.accent) }
-        } else {
-          views.setViewVisibility(R.id.astra_widget_eyebrow, View.GONE)
         }
       }
     }
@@ -440,8 +464,8 @@ object AstraWidgetUpdater {
     }
 
     private fun bindControls(views: RemoteViews, bucket: Bucket) {
-      views.setViewVisibility(R.id.astra_widget_previous, if (bucket.showPrevious) View.VISIBLE else View.GONE)
-      views.setViewVisibility(R.id.astra_widget_next, if (bucket.showNext) View.VISIBLE else View.GONE)
+      views.show(R.id.astra_widget_previous, bucket.showPrevious)
+      views.show(R.id.astra_widget_next, bucket.showNext)
 
       views.setImageViewResource(
         R.id.astra_widget_play_icon,
@@ -461,8 +485,8 @@ object AstraWidgetUpdater {
       views.tint(R.id.astra_widget_previous, my?.icon) { it.argb(it.icon) }
       views.tint(R.id.astra_widget_next, my?.icon) { it.argb(it.icon) }
 
-      val playDp = bucket.playDp(showRecents)
-      if (playDp != null && responsive) {
+      if (responsive) {
+        val playDp = bucket.playDp(showRecents)
         views.setViewLayoutWidth(R.id.astra_widget_play_pause, playDp.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
         views.setViewLayoutHeight(R.id.astra_widget_play_pause, playDp.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
         // The glyph stays half the button.
@@ -477,7 +501,7 @@ object AstraWidgetUpdater {
 
     private fun bindControl(views: RemoteViews, viewId: Int, action: String, requestCode: Int) {
       views.setBoolean(viewId, "setEnabled", state.hasTrack)
-      if (!state.hasTrack && responsive) views.setFloat(viewId, "setAlpha", 0.38f)
+      if (responsive) views.setFloat(viewId, "setAlpha", if (state.hasTrack) 1f else 0.38f)
       views.setOnClickPendingIntent(viewId, controlPendingIntent(context, action, requestCode))
     }
 
@@ -489,21 +513,17 @@ object AstraWidgetUpdater {
         views.setViewLayoutHeight(R.id.astra_widget_art, art, TypedValue.COMPLEX_UNIT_DIP)
         views.setViewLayoutHeight(R.id.astra_widget_deck_column, art, TypedValue.COMPLEX_UNIT_DIP)
       }
-      if (!showRecents) {
-        views.setViewVisibility(R.id.astra_widget_recent_container, View.GONE)
-        return
-      }
+      views.show(R.id.astra_widget_recent_container, showRecents)
+      if (!showRecents) return
 
       val openRecents = openRecentlyPlayedPendingIntent(context)
       views.setOnClickPendingIntent(R.id.astra_widget_recent_container, openRecents)
       views.textColor(R.id.astra_widget_recents_header, my?.muted) { it.mutedArgb }
       val fraction = max(outerRadiusDp - 16, 8f).let { min(it, 10f) } / 50f
       for (index in RECENT_IDS.indices) {
-        val item = recents.getOrNull(index)
-        if (item == null || index >= bucket.recentTiles) {
-          views.setViewVisibility(RECENT_IDS[index], View.GONE)
-          continue
-        }
+        val item = recents.getOrNull(index)?.takeIf { index < bucket.recentTiles }
+        views.show(RECENT_IDS[index], item != null)
+        if (item == null) continue
         val imageId = RECENT_IMAGE_IDS[index]
         val bitmap = images.art(context, item.artworkUri, RECENT_PX, fraction)
         if (bitmap != null) {
@@ -513,11 +533,11 @@ object AstraWidgetUpdater {
         }
         views.setContentDescription(imageId, item.title.cleanOrFallback("Recently played"))
         views.setOnClickPendingIntent(imageId, openRecents)
+        val labelId = RECENT_LABEL_IDS[index]
+        views.show(labelId, bucket.recentLabels)
         if (bucket.recentLabels) {
-          val labelId = RECENT_LABEL_IDS[index]
           views.setTextViewText(labelId, item.title.cleanOrFallback("Recently played"))
           views.textColor(labelId, my?.muted) { it.mutedArgb }
-          views.setViewVisibility(labelId, View.VISIBLE)
         }
       }
     }

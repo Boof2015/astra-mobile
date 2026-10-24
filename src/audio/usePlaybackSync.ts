@@ -104,6 +104,7 @@ export function usePlaybackSync(): void {
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
+  const libraryInitialized = useLibraryStore((s) => s.initialized);
 
   useEffect(
     () => subscribeToListeningHistory((change) => {
@@ -209,11 +210,13 @@ export function usePlaybackSync(): void {
       track?.path ?? null,
       stablePlayback.current
     );
+    // The store's recents are [] until the library loads; replacing the
+    // widget's with that would collapse its recents row on every launch.
     setWidgetNowPlaying(
       track,
       mappedPlaybackState,
-      buildWidgetRecentItems(recentlyPlayedTracks, track?.path),
+      libraryInitialized ? buildWidgetRecentItems(recentlyPlayedTracks, track?.path) : undefined,
     );
-  }, [activeTrack, rawPlaybackState, recentlyPlayedTracks, restoredSessionPending, restoredTrack]);
+  }, [activeTrack, libraryInitialized, rawPlaybackState, recentlyPlayedTracks, restoredSessionPending, restoredTrack]);
 
 }
