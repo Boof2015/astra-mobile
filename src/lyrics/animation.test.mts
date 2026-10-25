@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lyricGapProgress, lyricOpacity, lyricStagger, lyricWordProgress, mobileLyricRipple, mobileLyricStagger, MOBILE_LYRICS_MOTION, MOBILE_NATIVE_SCROLL_MS } from './animation.ts';
+import { LAST_WORD_HOLD, lyricGapProgress, lyricOpacity, lyricStagger, lyricWordEndMs, lyricWordProgress, mobileLyricRipple, mobileLyricStagger, MOBILE_LYRICS_MOTION, MOBILE_NATIVE_SCROLL_MS } from './animation.ts';
 import { getSyncedLyricsDisplayLines, getSyncedLyricsGapProgress, resolveLyricsWordTiming } from './presentation.ts';
 
 test('shared UI word clock matches presentation through duplicate cues and backward seeks', () => {
@@ -59,4 +59,33 @@ test('native scrolling needs no whole-line compensation at either end of a rippl
       }
     }
   }
+});
+
+test('the last word sweeps on the line pace and finishes before the line moves on', () => {
+  // Watch Me: "Camera on, camera off", next line at 11.44s.
+  const words = [8740, 8980, 10140, 10570].map(timestampMs => ({ timestampMs, text: 'word' }));
+  assert.equal(lyricWordEndMs(words, 0, 11440), 8980);
+  assert.equal(lyricWordEndMs(words, 2, 11440), 10570);
+  const end = lyricWordEndMs(words, 3, 11440)!;
+  assert.equal(end, 11440 - LAST_WORD_HOLD.releaseMs);
+  assert.ok(lyricWordProgress(10570, end, 10.8) > 0 && lyricWordProgress(10570, end, 10.8) < 1);
+  assert.equal(lyricWordProgress(10570, end, 11.33), 1);
+});
+
+test('a last word before a long instrumental holds no longer than the pace allows', () => {
+  const fast = [0, 250, 500, 750].map(timestampMs => ({ timestampMs, text: 'w' }));
+  assert.equal(lyricWordEndMs(fast, 3, 30000), 750 + 625);
+  const slow = [0, 900, 1800].map(timestampMs => ({ timestampMs, text: 'w' }));
+  assert.equal(lyricWordEndMs(slow, 2, 30000), 1800 + LAST_WORD_HOLD.maxMs);
+  const clipped = [0, 50, 100].map(timestampMs => ({ timestampMs, text: 'w' }));
+  assert.equal(lyricWordEndMs(clipped, 2, 30000), 100 + LAST_WORD_HOLD.minMs);
+});
+
+test('single words, unknown ends and lines with no room keep a defined sweep', () => {
+  const single = [{ timestampMs: 8000, text: 'Mwah' }];
+  assert.equal(lyricWordEndMs(single, 0, 20000), 8000 + LAST_WORD_HOLD.singleWordMs);
+  assert.equal(lyricWordEndMs(single, 0, null), 8000 + LAST_WORD_HOLD.singleWordMs);
+  assert.equal(lyricWordEndMs(single, 0, 8100), undefined);
+  assert.equal(lyricWordProgress(8000, lyricWordEndMs(single, 0, 8100), 8.01), 1);
+  assert.equal(lyricWordEndMs(single, 3, 20000), undefined);
 });

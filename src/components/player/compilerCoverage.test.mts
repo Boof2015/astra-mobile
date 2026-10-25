@@ -46,6 +46,7 @@ const MUST_COMPILE: { file: URL; functions: string[] }[] = [
   { file: new URL('../lyrics/SyncedLyrics.tsx', import.meta.url), functions: ['SyncedLyrics', 'Column', 'Row'] },
   { file: new URL('../lyrics/LyricsLine.tsx', import.meta.url), functions: ['LyricsLineComponent', 'Unit', 'UnitText', 'WordLight'] },
   { file: new URL('../lyrics/LyricsPlaybackClock.tsx', import.meta.url), functions: ['LyricsPlaybackClock'] },
+  { file: new URL('./CachedLyricPeek.tsx', import.meta.url), functions: ['CachedLyricPeek', 'PeekWordClock', 'PeekWords', 'PeekWord', 'PeekWordLight'] },
   { file: new URL('../lyrics/useLyricsFollow.ts', import.meta.url), functions: ['useLyricsFollow'] },
   { file: new URL('../lyrics/LyricsRowMotion.tsx', import.meta.url), functions: ['LyricsRowMotion'] },
 ];

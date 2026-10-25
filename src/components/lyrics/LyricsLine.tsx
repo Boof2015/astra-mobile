@@ -7,7 +7,7 @@ import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useColors } from '@/theme/themed';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { getPreferredLyricsTranslation } from '@/lyrics/presentation';
-import { balancedLyricWidth, lyricUnits, lyricWordProgress, MOBILE_LYRICS_MOTION, type LyricUnit } from '@/lyrics/animation';
+import { balancedLyricWidth, lyricUnits, lyricWordEndMs, lyricWordProgress, MOBILE_LYRICS_MOTION, type LyricUnit } from '@/lyrics/animation';
 import { sameLyricsLinePresentation, type LyricsLinePresentation } from './lyricsLinePresentation';
 import { LYRICS_EASE } from './useLyricsFollow';
 
@@ -18,25 +18,33 @@ interface UnitStyle {
   glow: string;
 }
 
+/** Half-size ruby, as Japanese is typeset (desktop's rt is .46em). Readings
+ * were .38 and shrunk to their base's width, so 私[わたし] drew at ~8dp. */
+const READING_SCALE = .5;
+const READING_ZONE = .62;
+
 /** Size includes the app's capped font scale, keeping text, readings and the
- * sweep on exactly the same measured grid. */
+ * sweep on exactly the same measured grid. Every segment is the same box, its
+ * base text starting READING_ZONE down, so all bases share one baseline. A
+ * reading wider than its base widens the box, as browser ruby does, instead of
+ * shrinking. */
 const UnitText = memo(function UnitText({ unit, band, appearance, glow = false }: {
   unit: LyricUnit; band: boolean; appearance: UnitStyle; glow?: boolean;
 }) {
   const { size, color } = appearance;
-  const readingHeight = size * .5;
-  return <View style={{ flexDirection: 'row', paddingTop: band ? readingHeight : 0 }}>
-    {unit.segments.map((segment, index) => <View key={index} style={{ flexShrink: 1 }}>
+  const readingHeight = size * READING_ZONE;
+  return <View style={{ flexDirection: 'row' }}>
+    {unit.segments.map((segment, index) => <View key={index}
+      style={{ flexShrink: 1, alignItems: 'center', paddingTop: band && !segment.reading ? readingHeight : 0 }}>
+      {!!segment.reading && <Text variant="label" allowFontScaling={false} color={color} numberOfLines={1}
+        style={{ height: readingHeight, fontSize: size * READING_SCALE, lineHeight: readingHeight, textAlign: 'center', includeFontPadding: false }}>
+        {segment.reading}
+      </Text>}
       <Text variant="heading" allowFontScaling={false} color={color} numberOfLines={1} adjustsFontSizeToFit
         style={{ fontSize: size, lineHeight: size * 1.34, letterSpacing: size * -.012, includeFontPadding: false,
           ...(glow ? { textShadowColor: appearance.glow, textShadowRadius: size * 8 / 30, textShadowOffset: { width: 0, height: 0 } } : {}) }}>
         {segment.text}
       </Text>
-      {!!segment.reading && <Text variant="label" allowFontScaling={false} color={color} numberOfLines={1} adjustsFontSizeToFit
-        style={{ position: 'absolute', top: -readingHeight, left: 0, right: 0, height: readingHeight,
-          fontSize: size * .38, lineHeight: readingHeight, textAlign: 'center', includeFontPadding: false }}>
-        {segment.reading}
-      </Text>}
     </View>)}
   </View>;
 });
@@ -78,7 +86,7 @@ const Unit = memo(function Unit({ unit, index, band, appearance, clock, start, e
   </Animated.View>;
 });
 
-function LyricsLineComponent({ line, size, width, right, label, clock, warm, reduced, settings, onSeek }: LyricsLinePresentation) {
+function LyricsLineComponent({ line, endMs, size, width, right, label, clock, warm, reduced, settings, onSeek }: LyricsLinePresentation) {
   const colors = useColors();
   const { furiganaEnabled, wordTimingEnabled, translationsEnabled, translationPriority, voiceLabelsEnabled } = settings;
   const units = useMemo(() => lyricUnits(line, furiganaEnabled), [line, furiganaEnabled]);
@@ -107,7 +115,7 @@ function LyricsLineComponent({ line, size, width, right, label, clock, warm, red
         : <View style={{ width: balancedWidth, flexDirection: 'row', flexWrap: 'wrap', justifyContent: right ? 'flex-end' : 'flex-start' }}>
           {units.map((unit, index) => <Unit key={index} unit={unit} index={index} band={band} appearance={appearance}
             clock={wordTimingEnabled && line.words?.length ? clock : undefined}
-            start={line.words?.[index]?.timestampMs ?? 0} end={line.words?.[index + 1]?.timestampMs}
+            start={line.words?.[index]?.timestampMs ?? 0} end={line.words ? lyricWordEndMs(line.words, index, endMs) : undefined}
             warm={warm && wordTimingEnabled && !!line.words?.length} reduced={reduced} measure={measure} />)}
         </View>}
       {!!translation && <Text variant="label" allowFontScaling={false} color={colors.textPrimary} textBreakStrategy="balanced"

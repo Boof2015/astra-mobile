@@ -1,4 +1,4 @@
-import type { LyricsFurigana, LyricsLine } from './types';
+import type { LyricsFurigana, LyricsLine, LyricsWord } from './types';
 
 export type LyricSegment = { text: string; reading?: string };
 export type LyricUnit = { segments: LyricSegment[]; wordIndex?: number };
@@ -8,6 +8,29 @@ export function lyricWordProgress(startMs: number, endMs: number | undefined, se
   'worklet';
   const ms = seconds * 1000;
   return ms < startMs ? 0 : endMs === undefined || endMs <= startMs ? 1 : Math.min(1, (ms - startMs) / (endMs - startMs));
+}
+
+/**
+ * The last word has no next tag to end its sweep, and real files don't carry
+ * Enhanced LRC's trailing end tag (none of 281 word-timed lines checked,
+ * 2026-10-24), so it used to fill the instant it started. Its hold is inferred
+ * from the line's own pace, and it finishes `releaseMs` before the line stops
+ * being current, where the row loses its clock.
+ */
+export const LAST_WORD_HOLD = { paceFactor: 2.5, minMs: 500, maxMs: 1600, singleWordMs: 1000, releaseMs: 120 } as const;
+
+/** End of a word's sweep; undefined fills it at once (lyricWordProgress). */
+export function lyricWordEndMs(words: LyricsWord[], index: number, rowEndMs: number | null): number | undefined {
+  const next = words[index + 1];
+  if (next) return next.timestampMs;
+  const start = words[index]?.timestampMs;
+  if (start === undefined) return undefined;
+  const durations = words.slice(1).map((word, i) => word.timestampMs - words[i].timestampMs).filter(ms => ms > 0).sort((a, b) => a - b);
+  const hold = durations.length
+    ? Math.max(LAST_WORD_HOLD.minMs, Math.min(LAST_WORD_HOLD.maxMs, durations[Math.floor(durations.length / 2)] * LAST_WORD_HOLD.paceFactor))
+    : LAST_WORD_HOLD.singleWordMs;
+  const end = Math.min(start + hold, rowEndMs === null ? Infinity : rowEndMs - LAST_WORD_HOLD.releaseMs);
+  return end > start ? end : undefined;
 }
 
 export function lyricSegments(text: string, readings: LyricsFurigana[] = []): LyricSegment[] {

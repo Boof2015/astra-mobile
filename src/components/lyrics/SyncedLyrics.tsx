@@ -44,7 +44,7 @@ const Row = memo(function Row({ item, motion, opacity, current, past, warm, near
     browsing={browsing} reduced={reduced} right={right} spacing={size * 20 / 30} onLayout={onLayout}>
     {item.kind === 'gap'
       ? <LyricsGap clock={clock} start={item.progressStartMs} end={item.progressEndMs} past={past} width={Math.min(220, Math.max(110, width * .3))} />
-      : <LyricsLine line={item.line} size={size} width={width} right={right} label={label} clock={clock}
+      : <LyricsLine line={item.line} endMs={item.endMs} size={size} width={width} right={right} label={label} clock={clock}
         warm={warm} reduced={reduced} settings={settings} onSeek={seek} />}
   </LyricsRowMotion>;
 });

@@ -4,7 +4,7 @@ import { sameLyricsLinePresentation as same, type LyricsLinePresentation } from 
 import { DEFAULT_LYRICS_DISPLAY_SETTINGS } from '../../lyrics/displaySettings.ts';
 
 const line: LyricsLinePresentation = {
-  line: { timestampMs: 1000, text: 'A test line' }, size: 22, width: 340,
+  line: { timestampMs: 1000, text: 'A test line' }, endMs: 4000, size: 22, width: 340,
   right: false, label: null, warm: false, reduced: false,
   settings: { ...DEFAULT_LYRICS_DISPLAY_SETTINGS }, onSeek: () => {},
 };
@@ -21,7 +21,7 @@ test('UI clock ticks never invalidate the React text presentation', () => {
 test('layout, singer, animation eligibility and reading aids invalidate text', () => {
   assert.equal(same(line, { ...line }), true);
   for (const next of [
-    { size: 26 }, { width: 500 }, { right: true }, { label: 'Singer B' },
+    { endMs: 5000 }, { endMs: null }, { size: 26 }, { width: 500 }, { right: true }, { label: 'Singer B' },
     { warm: true }, { reduced: true }, { settings: { ...line.settings, furiganaEnabled: false } },
     { settings: { ...line.settings, wordTimingEnabled: false } },
     { settings: { ...line.settings, translationsEnabled: false } },

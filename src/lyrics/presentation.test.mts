@@ -200,3 +200,17 @@ test('lyrics retry keeps its action while showing loading feedback', () => {
 
   assert.deepEqual(state, { message: 'Finding lyrics…', retryable: true });
 });
+
+test('each lyric row ends where the next row starts, or at the track end', () => {
+  const display = getSyncedLyricsDisplayLines([
+    { timestampMs: 0, text: 'A' },
+    { timestampMs: 2000, text: 'B' },
+    { timestampMs: 3000, text: '', kind: 'silence' },
+    { timestampMs: 5000, text: 'C' },
+    { timestampMs: 30000, text: 'D' },
+  ], { durationSeconds: 35 });
+  const ends = display.map(row => row.kind === 'lyric' ? [row.text, row.endMs] : ['gap', row.timestampMs]);
+  assert.deepEqual(ends, [['A', 2000], ['B', 3000], ['gap', 3000], ['C', 9000], ['gap', 9000], ['D', 35000]]);
+  const unknown = getSyncedLyricsDisplayLines([{ timestampMs: 0, text: 'A' }]);
+  assert.equal(unknown[0].kind === 'lyric' ? unknown[0].endMs : undefined, null);
+});

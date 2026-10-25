@@ -49,6 +49,9 @@ export type SyncedLyricsDisplayLine =
       key: string;
       timestampMs: number;
       text: string;
+      /** When the line stops being current: the next row's start, else the
+       * track's end (null when the duration is unknown). */
+      endMs: number | null;
     }
   | {
       kind: 'gap';
@@ -151,6 +154,14 @@ export function getSyncedLyricsDisplayLines(
   lines.forEach((line, cueIndex) => {
     const displayIndex = displayLines.length;
     if (isRenderableSyncedLine(line)) {
+      const nextCue = lines[cueIndex + 1] ?? null;
+      const nextCueGapMs = nextCue ? nextCue.timestampMs - line.timestampMs : null;
+      const outroGapMs = durationMs === null ? null : durationMs - line.timestampMs;
+      const shouldInsertGap =
+        (nextCueGapMs !== null && nextCueGapMs >= neutralGapThresholdMs) ||
+        (!nextCue && outroGapMs !== null && outroGapMs >= neutralGapThresholdMs);
+      const gapTimestampMs = line.timestampMs + postLineHoldMs;
+
       displayLines.push({
         kind: 'lyric',
         line,
@@ -160,17 +171,12 @@ export function getSyncedLyricsDisplayLines(
         key: `lyric:${line.timestampMs}:${cueIndex}`,
         timestampMs: line.timestampMs,
         text: line.text,
+        // A silence cue becomes a gap row at its own timestamp, so the next
+        // cue's start is always the next row's start.
+        endMs: shouldInsertGap ? gapTimestampMs : nextCue?.timestampMs ?? durationMs,
       });
 
-      const nextCue = lines[cueIndex + 1] ?? null;
-      const nextCueGapMs = nextCue ? nextCue.timestampMs - line.timestampMs : null;
-      const outroGapMs = durationMs === null ? null : durationMs - line.timestampMs;
-      const shouldInsertGap =
-        (nextCueGapMs !== null && nextCueGapMs >= neutralGapThresholdMs) ||
-        (!nextCue && outroGapMs !== null && outroGapMs >= neutralGapThresholdMs);
-
       if (shouldInsertGap) {
-        const gapTimestampMs = line.timestampMs + postLineHoldMs;
         const progressEndMs = findNextRenderableLineTimestamp(lines, cueIndex + 1) ?? durationMs;
         displayLines.push({
           kind: 'gap',

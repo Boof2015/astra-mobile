@@ -1,16 +1,28 @@
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import Animated, { Keyframe, ReduceMotion } from 'react-native-reanimated';
+import { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Animated, {
+  Keyframe,
+  ReduceMotion,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { Text } from '@/components/Text';
+import { GradientMask } from '@/components/GradientMask';
 import { TactilePressable } from '@/components/player/TactilePressable';
 import {
   applyPlaybackSnapshot,
   createPlaybackClock,
   projectPlaybackClock,
 } from '@/audio/playbackClock';
+import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
+import { lyricWordEndMs, lyricWordProgress } from '@/lyrics/animation';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
 import {
   getActiveSyncedLyricsLine,
+  getSyncedLyricsDisplayLines,
   LYRICS_DISPLAY_LEAD_MS,
 } from '@/lyrics/presentation';
 import { fonts } from '@/theme';
@@ -87,6 +99,196 @@ function useActiveLyricLine(
 /** Matches what the deck reserves when a caller doesn't pass a height. */
 const DEFAULT_ROW_HEIGHT = NOW_PLAYING_LYRIC_LINE_HEIGHT + 4;
 
+/** Soft edge of the sweep, the lyrics view's 16/30 of the font size at 16. */
+const SWEEP_FEATHER = 9;
+
+/**
+ * The word sweep's UI clock, on the same lead as the line choice. Only this
+ * null-rendering child follows the 2Hz progress mirror, so the peek itself
+ * still renders once per line.
+ */
+function PeekWordClock({
+  path,
+  active,
+  seconds,
+}: {
+  path: string;
+  active: boolean;
+  seconds: SharedValue<number>;
+}) {
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+  const isPlaying = usePlayerStore(
+    (s) => active && s.playbackState === 'playing'
+  );
+  const progress = useAnimatedPlaybackProgress({
+    currentTime,
+    duration,
+    isPlaying,
+    active,
+    trackKey: path,
+  });
+  useAnimatedReaction(
+    () => {
+      const time = duration > 0 ? progress.value * duration : currentTime;
+      return isPlaying ? Math.floor(time * 30) / 30 : time;
+    },
+    (time) => {
+      seconds.set(time + LYRICS_DISPLAY_LEAD_MS / 1000);
+    },
+    [duration, currentTime, isPlaying]
+  );
+  return null;
+}
+
+/** The sung part of one word: the lyrics view's feathered sweep, in the primary color. */
+function PeekWordLight({
+  text,
+  width,
+  height,
+  progress,
+}: {
+  text: string;
+  width: number;
+  height: number;
+  progress: SharedValue<number>;
+}) {
+  const styles = useStyles();
+  const sweep = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: -width - SWEEP_FEATHER + progress.value * (width + SWEEP_FEATHER) },
+    ],
+  }));
+  const glyph = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: width + SWEEP_FEATHER - progress.value * (width + SWEEP_FEATHER) },
+    ],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[StyleSheet.absoluteFill, sweep]}
+    >
+      <GradientMask
+        width={width + SWEEP_FEATHER}
+        height={height}
+        horizontal
+        stops={[0, 0, width / (width + SWEEP_FEATHER), 1]}
+      >
+        <Animated.View style={[{ width }, glyph]}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.line, styles.sung]}>
+            {text}
+          </Text>
+        </Animated.View>
+      </GradientMask>
+    </Animated.View>
+  );
+}
+
+function PeekWord({
+  text,
+  start,
+  end,
+  seconds,
+  onHeight,
+}: {
+  text: string;
+  start: number;
+  end: number | undefined;
+  seconds: SharedValue<number>;
+  onHeight?: (height: number) => void;
+}) {
+  const styles = useStyles();
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const progress = useDerivedValue(() => lyricWordProgress(start, end, seconds.value));
+  const onLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setLayout((previous) =>
+      previous.width === width && previous.height === height ? previous : { width, height }
+    );
+    onHeight?.(height);
+  };
+  return (
+    <View onLayout={onLayout}>
+      {/* Android lays the text out at floor(width), and the row's pixel rounding
+          can leave a word one pixel short of what it measured. A trailing space
+          hangs past that, but a line's last word has none, so it ellipsized
+          ("droppi…"). Fitting shrinks it about a pixel instead, as the lyrics
+          view's words already do. */}
+      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.line}>
+        {text}
+      </Text>
+      {layout.width > 0 ? (
+        <PeekWordLight
+          text={text}
+          width={layout.width}
+          height={layout.height}
+          progress={progress}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A word-timed line as wrapping word units, each sweeping from the peek's
+ * secondary color to primary as it's sung. Units can't ellipsize, so a line
+ * that needs more rows than the peek may show reports `onOverflow` and the
+ * caller falls back to the plain, ellipsized line. Rows are measured, never
+ * estimated.
+ */
+function PeekWords({
+  line,
+  endMs,
+  lines,
+  seconds,
+  onOverflow,
+}: {
+  line: LyricsLine;
+  endMs: number | null;
+  lines: 1 | 2;
+  seconds: SharedValue<number>;
+  onOverflow: () => void;
+}) {
+  const styles = useStyles();
+  const words = line.words ?? [];
+  const [measured, setMeasured] = useState({ row: 0, word: 0 });
+  useEffect(() => {
+    if (measured.row > 0 && measured.word > 0 && measured.row > measured.word * lines + 0.5) {
+      onOverflow();
+    }
+  }, [lines, measured, onOverflow]);
+  return (
+    <View
+      style={styles.words}
+      onLayout={(event) => {
+        const row = event.nativeEvent.layout.height;
+        setMeasured((previous) => (previous.row === row ? previous : { ...previous, row }));
+      }}
+    >
+      {words.map((word, index) => (
+        <PeekWord
+          key={index}
+          text={word.text}
+          start={word.timestampMs}
+          end={lyricWordEndMs(words, index, endMs)}
+          seconds={seconds}
+          onHeight={
+            index === 0
+              ? (wordHeight) =>
+                  setMeasured((previous) =>
+                    previous.word === wordHeight ? previous : { ...previous, word: wordHeight }
+                  )
+              : undefined
+          }
+        />
+      ))}
+    </View>
+  );
+}
+
 interface CachedLyricPeekProps {
   track: Track;
   active: boolean;
@@ -118,6 +320,7 @@ export function CachedLyricPeek({
   const memoryResult = useLyricsStore((s) => s.byPath[track.path]?.result ?? null);
   const loadForTrack = useLyricsStore((s) => s.loadForTrack);
   const onlineLookupEnabled = useLyricsSettingsStore((s) => s.onlineLookupEnabled);
+  const wordTimingEnabled = useLyricsSettingsStore((s) => s.wordTimingEnabled);
   const lyricsSettingsLoaded = useLyricsSettingsStore((s) => s.loaded);
   const [cached, setCached] = useState<{
     path: string;
@@ -166,8 +369,33 @@ export function CachedLyricPeek({
     ? `${track.path}:${activeLine?.timestampMs ?? -1}:${text}`
     : null;
 
+  const wordTimed = useMemo(
+    () => !!syncedLines?.some((line) => line.words?.length),
+    [syncedLines]
+  );
+  const sweepEnabled = wordTimingEnabled && wordTimed;
+  const display = useMemo(
+    () =>
+      sweepEnabled && syncedLines
+        ? getSyncedLyricsDisplayLines(syncedLines, { durationSeconds: duration })
+        : null,
+    [duration, sweepEnabled, syncedLines]
+  );
+  const activeRow = display?.find(
+    (row) => row.kind === 'lyric' && row.line === activeLine
+  );
+  const endMs = activeRow?.kind === 'lyric' ? activeRow.endMs : null;
+  const seconds = useSharedValue(0);
+  const [overflowed, setOverflowed] = useState<string | null>(null);
+  const fitKey = `${lineKey}:${lines}`;
+  const sweeping =
+    sweepEnabled && !!activeLine?.words?.length && overflowed !== fitKey;
+
   return (
     <View style={[styles.wrap, lines > 1 && styles.overflowing, { height }]}>
+      {sweepEnabled && active && !hidden ? (
+        <PeekWordClock path={track.path} active={active} seconds={seconds} />
+      ) : null}
       <TactilePressable
         style={[styles.pressable, lines > 1 && styles.overflowing]}
         disabled={!text}
@@ -184,13 +412,23 @@ export function CachedLyricPeek({
             pointerEvents="none"
             style={styles.lineFrame}
           >
-            <Text
-              numberOfLines={lines}
-              ellipsizeMode="tail"
-              style={styles.line}
-            >
-              {text}
-            </Text>
+            {sweeping && activeLine ? (
+              <PeekWords
+                line={activeLine}
+                endMs={endMs}
+                lines={lines}
+                seconds={seconds}
+                onOverflow={() => setOverflowed(fitKey)}
+              />
+            ) : (
+              <Text
+                numberOfLines={lines}
+                ellipsizeMode="tail"
+                style={styles.line}
+              >
+                {text}
+              </Text>
+            )}
           </Animated.View>
         ) : null}
       </TactilePressable>
@@ -229,5 +467,12 @@ const useStyles = createThemedStyles((colors) => ({
     fontSize: 16,
     // Must stay in step with the deck's reservation for this row.
     lineHeight: NOW_PLAYING_LYRIC_LINE_HEIGHT,
+  },
+  sung: {
+    color: colors.textPrimary,
+  },
+  words: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
 }));

@@ -3,7 +3,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { Easing, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import { getPreferredLyricsTranslation, type SyncedLyricsDisplayLine } from '@/lyrics/presentation';
 import type { LyricsLine } from '@/lyrics/types';
-import { balancedLyricWidth, lyricOpacity, lyricUnits, lyricWordProgress, type TvLyricUnit } from './playerLyricsModel';
+import { balancedLyricWidth, lyricOpacity, lyricUnits, lyricWordEndMs, lyricWordProgress, type TvLyricUnit } from './playerLyricsModel';
 import { TvGradientMask, TvText } from './TvPrimitives';
 import { useTvTheme } from './useTvTheme';
 import { LYRICS_MOTION, lyricStagger, lyricGapProgress } from '@/lyrics/animation';
@@ -11,7 +11,9 @@ import { LYRICS_MOTION, lyricStagger, lyricGapProgress } from '@/lyrics/animatio
 const WIDTH = 472;
 const EASE = Easing.bezier(.22, 1, .36, 1);
 const TEXT_HEIGHT = 40.2;
-const READING_HEIGHT = 15;
+/** Half-size ruby over the 30px line; it was 11.4px and shrunk to its base's width. */
+const READING_SIZE = 15;
+const READING_HEIGHT = 19;
 export type TvLyricsSettings = { wordTimingEnabled: boolean; furiganaEnabled: boolean; translationsEnabled: boolean; translationPriority: string[]; voiceLabelsEnabled: boolean };
 
 /** Move a feathered viewport across static glyphs, counter-translating its
@@ -26,11 +28,13 @@ function WordLight({ unit, width, band, progress, color }: { unit: TvLyricUnit; 
   </Animated.View>;
 }
 
+/** Every segment is the same box, its base starting READING_HEIGHT down. A
+ * reading wider than its base widens the box, as browser ruby does. */
 const UnitText = memo(function UnitText({ unit, band, color, glow = false }: { unit: TvLyricUnit; band: boolean; color: string; glow?: boolean }) {
-  return <View style={{ flexDirection: 'row', paddingTop: band ? READING_HEIGHT : 0 }}>
-    {unit.segments.map((segment, i) => <View key={i} style={{ flexShrink: 1 }}>
+  return <View style={{ flexDirection: 'row' }}>
+    {unit.segments.map((segment, i) => <View key={i} style={{ flexShrink: 1, alignItems: 'center', paddingTop: band && !segment.reading ? READING_HEIGHT : 0 }}>
+      {!!segment.reading && <TvText size={READING_SIZE} weight="medium" color={color} numberOfLines={1} style={{ height: READING_HEIGHT, lineHeight: READING_HEIGHT, textAlign: 'center' }}>{segment.reading}</TvText>}
       <TvText size={30} weight="semibold" color={color} numberOfLines={1} adjustsFontSizeToFit style={{ lineHeight: TEXT_HEIGHT, letterSpacing: -.36, ...(glow ? { textShadowColor: '#eaf0ff26', textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } } : {}) }}>{segment.text}</TvText>
-      {!!segment.reading && <TvText size={11.4} weight="medium" color={color} numberOfLines={1} adjustsFontSizeToFit style={{ position: 'absolute', top: -READING_HEIGHT, left: 0, right: 0, height: READING_HEIGHT, lineHeight: READING_HEIGHT, textAlign: 'center' }}>{segment.reading}</TvText>}
     </View>)}
   </View>;
 });
@@ -55,7 +59,7 @@ const Unit = memo(function Unit({ unit, index, band, clock, start, end, warm, re
   </Animated.View>;
 });
 
-const LyricText = memo(function LyricText({ line, settings, right, clock, warm, reduced }: { line: LyricsLine; settings: TvLyricsSettings; right: boolean; clock?: SharedValue<number>; warm: boolean; reduced: boolean }) {
+const LyricText = memo(function LyricText({ line, endMs, settings, right, clock, warm, reduced }: { line: LyricsLine; endMs: number | null; settings: TvLyricsSettings; right: boolean; clock?: SharedValue<number>; warm: boolean; reduced: boolean }) {
   const tv = useTvTheme();
   const units = useMemo(() => lyricUnits(line, settings.furiganaEnabled), [line, settings.furiganaEnabled]);
   const band = units.some(unit => unit.segments.some(segment => segment.reading));
@@ -75,7 +79,7 @@ const LyricText = memo(function LyricText({ line, settings, right, clock, warm, 
       ? <TvText size={30} weight="semibold" color={tv.strong} textBreakStrategy="balanced" style={{ width: WIDTH, lineHeight: TEXT_HEIGHT, letterSpacing: -.36, textAlign: right ? 'right' : 'left', ...(clock ? { textShadowColor: '#eaf0ff26', textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } } : {}) }}>{line.text}</TvText>
       : <View style={{ width: balance?.units === units ? balance.width : WIDTH, flexDirection: 'row', flexWrap: 'wrap', justifyContent: right ? 'flex-end' : 'flex-start' }}>
         {units.map((unit, i) => <Unit key={i} unit={unit} index={i} band={band}
-          clock={settings.wordTimingEnabled && line.words?.length ? clock : undefined} start={line.words?.[i]?.timestampMs ?? 0} end={line.words?.[i + 1]?.timestampMs}
+          clock={settings.wordTimingEnabled && line.words?.length ? clock : undefined} start={line.words?.[i]?.timestampMs ?? 0} end={line.words ? lyricWordEndMs(line.words, i, endMs) : undefined}
           warm={warm && settings.wordTimingEnabled && !!line.words?.length} reduced={reduced} measure={measure} />)}
       </View>}
     {!!translation && <TvText size={16} weight="medium" color={tv.strong} textBreakStrategy="balanced" style={{ marginTop: 6, opacity: .62, lineHeight: 21.6, textAlign: right ? 'right' : 'left' }}>{translation.text}</TvText>}
@@ -111,7 +115,7 @@ export const TvLyricLine = memo(function TvLyricLine({ item, distance, current, 
   return <Animated.View renderToHardwareTextureAndroid={nearby} onLayout={event => measure(item.displayIndex, event)} style={[{ width: WIDTH, marginBottom: 26, transformOrigin: right ? 'right center' : 'left center' }, motion]}>
     {item.kind === 'gap' ? <Gap clock={clock} start={item.progressStartMs} end={item.progressEndMs} past={distance < 0} /> : <>
       {settings.voiceLabelsEnabled && !!label && <TvText mono size={10} color={tv.muted} style={{ letterSpacing: 1.4, marginBottom: 6, textAlign: right ? 'right' : 'left' }}>{label}</TvText>}
-      <LyricText line={item.line} settings={settings} right={right} clock={clock} warm={distance >= -1 && distance <= 2} reduced={reduced} />
+      <LyricText line={item.line} endMs={item.endMs} settings={settings} right={right} clock={clock} warm={distance >= -1 && distance <= 2} reduced={reduced} />
     </>}
   </Animated.View>;
 });
