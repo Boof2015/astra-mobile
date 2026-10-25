@@ -1,4 +1,4 @@
-export { balancedLyricWidth, lyricOpacity, lyricSegments, lyricUnits, lyricVoices, lyricWordEndMs, lyricWordProgress, type LyricSegment as TvLyricSegment, type LyricUnit as TvLyricUnit } from '../lyrics/animation.ts';
+export { balancedLyricWidth, lyricOpacity, lyricSegments, lyricUnits, lyricUnitText, lyricVoices, lyricWordEndMs, lyricWordProgress, type LyricSegment as TvLyricSegment, type LyricUnit as TvLyricUnit } from '../lyrics/animation.ts';
 
 /** Keep one viewport of measured overscan on both sides of the moving lyrics. */
 export function lyricInWindow(top: number, height: number, anchor: number): boolean {

@@ -7,7 +7,7 @@ import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { useColors } from '@/theme/themed';
 import { rgbaFromHex } from '@/theme/colorUtils';
 import { getPreferredLyricsTranslation } from '@/lyrics/presentation';
-import { balancedLyricWidth, lyricUnits, lyricWordEndMs, lyricWordProgress, MOBILE_LYRICS_MOTION, type LyricUnit } from '@/lyrics/animation';
+import { balancedLyricWidth, lyricUnitText, lyricUnits, lyricWordEndMs, lyricWordProgress, MOBILE_LYRICS_MOTION, type LyricUnit } from '@/lyrics/animation';
 import { sameLyricsLinePresentation, type LyricsLinePresentation } from './lyricsLinePresentation';
 import { LYRICS_EASE } from './useLyricsFollow';
 
@@ -40,10 +40,10 @@ const UnitText = memo(function UnitText({ unit, band, appearance, glow = false }
         style={{ height: readingHeight, fontSize: size * READING_SCALE, lineHeight: readingHeight, textAlign: 'center', includeFontPadding: false }}>
         {segment.reading}
       </Text>}
-      <Text variant="heading" allowFontScaling={false} color={color} numberOfLines={1} adjustsFontSizeToFit
+      <Text variant="heading" allowFontScaling={false} color={color} numberOfLines={1}
         style={{ fontSize: size, lineHeight: size * 1.34, letterSpacing: size * -.012, includeFontPadding: false,
           ...(glow ? { textShadowColor: appearance.glow, textShadowRadius: size * 8 / 30, textShadowOffset: { width: 0, height: 0 } } : {}) }}>
-        {segment.text}
+        {lyricUnitText(segment.text)}
       </Text>
     </View>)}
   </View>;

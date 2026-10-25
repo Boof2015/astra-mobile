@@ -3,7 +3,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { Easing, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import { getPreferredLyricsTranslation, type SyncedLyricsDisplayLine } from '@/lyrics/presentation';
 import type { LyricsLine } from '@/lyrics/types';
-import { balancedLyricWidth, lyricOpacity, lyricUnits, lyricWordEndMs, lyricWordProgress, type TvLyricUnit } from './playerLyricsModel';
+import { balancedLyricWidth, lyricOpacity, lyricUnitText, lyricUnits, lyricWordEndMs, lyricWordProgress, type TvLyricUnit } from './playerLyricsModel';
 import { TvGradientMask, TvText } from './TvPrimitives';
 import { useTvTheme } from './useTvTheme';
 import { LYRICS_MOTION, lyricStagger, lyricGapProgress } from '@/lyrics/animation';
@@ -34,7 +34,7 @@ const UnitText = memo(function UnitText({ unit, band, color, glow = false }: { u
   return <View style={{ flexDirection: 'row' }}>
     {unit.segments.map((segment, i) => <View key={i} style={{ flexShrink: 1, alignItems: 'center', paddingTop: band && !segment.reading ? READING_HEIGHT : 0 }}>
       {!!segment.reading && <TvText size={READING_SIZE} weight="medium" color={color} numberOfLines={1} style={{ height: READING_HEIGHT, lineHeight: READING_HEIGHT, textAlign: 'center' }}>{segment.reading}</TvText>}
-      <TvText size={30} weight="semibold" color={color} numberOfLines={1} adjustsFontSizeToFit style={{ lineHeight: TEXT_HEIGHT, letterSpacing: -.36, ...(glow ? { textShadowColor: '#eaf0ff26', textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } } : {}) }}>{segment.text}</TvText>
+      <TvText size={30} weight="semibold" color={color} numberOfLines={1} style={{ lineHeight: TEXT_HEIGHT, letterSpacing: -.36, ...(glow ? { textShadowColor: '#eaf0ff26', textShadowRadius: 8, textShadowOffset: { width: 0, height: 0 } } : {}) }}>{lyricUnitText(segment.text)}</TvText>
     </View>)}
   </View>;
 });

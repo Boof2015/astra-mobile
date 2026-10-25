@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LAST_WORD_HOLD, lyricGapProgress, lyricOpacity, lyricStagger, lyricWordEndMs, lyricWordProgress, mobileLyricRipple, mobileLyricStagger, MOBILE_LYRICS_MOTION, MOBILE_NATIVE_SCROLL_MS } from './animation.ts';
+import { LAST_WORD_HOLD, lyricGapProgress, lyricOpacity, lyricStagger, lyricUnitText, lyricWordEndMs, lyricWordProgress, mobileLyricRipple, mobileLyricStagger, MOBILE_LYRICS_MOTION, MOBILE_NATIVE_SCROLL_MS } from './animation.ts';
 import { getSyncedLyricsDisplayLines, getSyncedLyricsGapProgress, resolveLyricsWordTiming } from './presentation.ts';
 
 test('shared UI word clock matches presentation through duplicate cues and backward seeks', () => {
@@ -88,4 +88,12 @@ test('single words, unknown ends and lines with no room keep a defined sweep', (
   assert.equal(lyricWordEndMs(single, 0, 8100), undefined);
   assert.equal(lyricWordProgress(8000, lyricWordEndMs(single, 0, 8100), 8.01), 1);
   assert.equal(lyricWordEndMs(single, 3, 20000), undefined);
+});
+
+test('word units without trailing whitespace get a hanging hair space, others stay as written', () => {
+  assert.equal(lyricUnitText('Camera '), 'Camera ');
+  assert.equal(lyricUnitText('dropping'), 'dropping\u200A');
+  assert.equal(lyricUnitText('うっせぇ'), 'うっせぇ\u200A');
+  assert.equal(lyricUnitText('in\u3000'), 'in\u3000');
+  assert.equal(lyricUnitText(lyricUnitText('off')), 'off\u200A');
 });

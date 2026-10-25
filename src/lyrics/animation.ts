@@ -33,6 +33,18 @@ export function lyricWordEndMs(words: LyricsWord[], index: number, rowEndMs: num
   return end > start ? end : undefined;
 }
 
+/**
+ * Text for one word unit. Android lays word text out at floor(width), and the
+ * row's pixel rounding can leave a unit a pixel short of what it measured.
+ * Trailing whitespace hangs past that edge; a unit without any (a line's last
+ * word, CJK) gets a hair space so it can't ellipsize ("droppi…"). Font fitting
+ * is not the fix: with a fixed lineHeight it shrinks to its 4dp floor whenever
+ * rounding also costs a pixel of height (S25 Ultra, 2026-10-25).
+ */
+export function lyricUnitText(text: string): string {
+  return /\s$/.test(text) ? text : `${text}\u200A`;
+}
+
 export function lyricSegments(text: string, readings: LyricsFurigana[] = []): LyricSegment[] {
   const result: LyricSegment[] = [];
   let cursor = 0;

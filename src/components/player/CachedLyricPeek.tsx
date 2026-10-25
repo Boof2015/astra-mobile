@@ -18,7 +18,7 @@ import {
   projectPlaybackClock,
 } from '@/audio/playbackClock';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
-import { lyricWordEndMs, lyricWordProgress } from '@/lyrics/animation';
+import { lyricUnitText, lyricWordEndMs, lyricWordProgress } from '@/lyrics/animation';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
 import {
   getActiveSyncedLyricsLine,
@@ -178,7 +178,7 @@ function PeekWordLight({
         stops={[0, 0, width / (width + SWEEP_FEATHER), 1]}
       >
         <Animated.View style={[{ width }, glyph]}>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.line, styles.sung]}>
+          <Text numberOfLines={1} style={[styles.line, styles.sung]}>
             {text}
           </Text>
         </Animated.View>
@@ -212,12 +212,7 @@ function PeekWord({
   };
   return (
     <View onLayout={onLayout}>
-      {/* Android lays the text out at floor(width), and the row's pixel rounding
-          can leave a word one pixel short of what it measured. A trailing space
-          hangs past that, but a line's last word has none, so it ellipsized
-          ("droppi…"). Fitting shrinks it about a pixel instead, as the lyrics
-          view's words already do. */}
-      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.line}>
+      <Text numberOfLines={1} style={styles.line}>
         {text}
       </Text>
       {layout.width > 0 ? (
@@ -271,7 +266,7 @@ function PeekWords({
       {words.map((word, index) => (
         <PeekWord
           key={index}
-          text={word.text}
+          text={lyricUnitText(word.text)}
           start={word.timestampMs}
           end={lyricWordEndMs(words, index, endMs)}
           seconds={seconds}
