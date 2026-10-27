@@ -1,7 +1,7 @@
 import { ActionButton } from '@/components/ActionButton';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,7 @@ import { encodeSignalWebUrl } from '@/audio/signalShare';
 import { enqueueEnd, playTracks } from '@/audio/playbackController';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { playHaptic } from '@/lib/haptics';
+import { useCameraAccess } from '@/lib/useCameraAccess';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
@@ -37,7 +38,14 @@ export default function SignalScanScreen() {
   const colors = useColors();
   const router = useRouter();
   const cameraRef = useRef<CameraView>(null);
-  const [permission, requestPermission] = useCameraPermissions();
+  const {
+    status: cameraStatus,
+    requestAccess,
+    scannerReady,
+    cameraKey,
+    onCameraReady,
+    onMountError,
+  } = useCameraAccess();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SignalPayload | null>(null);
   const [phase, setPhase] = useState<SignalScanPhase>('idle');
@@ -91,10 +99,12 @@ export default function SignalScanScreen() {
     try {
       const payload = await decodeSignalFromUri(uri, useGuideCrop ? { previewSize } : undefined);
       await finishReadingBeat();
+      playHaptic('confirm');
       setResult(payload);
       setPhase('success');
     } catch {
       await finishReadingBeat();
+      playHaptic('reject');
       setError("Couldn't read Signal. Line the code up in the frame, hold steady, and try again.");
       setPhase('failure');
     } finally {
@@ -104,19 +114,23 @@ export default function SignalScanScreen() {
 
   const capture = async () => {
     if (busy) return;
+    // Stands in for the system shutter click, which is muted below.
+    playHaptic('action');
     beginReading();
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 1 });
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 1, shutterSound: false });
       if (photo?.uri) {
         await runDecode(photo.uri, true);
       } else {
         await finishReadingBeat();
+        playHaptic('reject');
         setError("Couldn't capture that image. Hold steady and try again.");
         setPhase('failure');
         setBusy(false);
       }
     } catch {
       await finishReadingBeat();
+      playHaptic('reject');
       setError("Couldn't capture that image. Hold steady and try again.");
       setPhase('failure');
       setBusy(false);
@@ -182,7 +196,7 @@ export default function SignalScanScreen() {
     }
   };
 
-  const standaloneResult = result !== null && !permission?.granted;
+  const standaloneResult = result !== null && cameraStatus !== 'granted';
   const resultContent = result ? (
     <SignalResolutionPanel
       payload={result}
@@ -221,16 +235,14 @@ export default function SignalScanScreen() {
             Keep the full white Signal card visible and hold steady.
           </Text>
 
-          {!permission ? (
-            <View style={styles.center} />
-          ) : !permission.granted ? (
+          {cameraStatus === 'prompt' || cameraStatus === 'blocked' ? (
             <View style={styles.permissionCard}>
               <Ionicons name="camera-outline" size={28} color={colors.accent} />
               <Text variant="body">Camera access is needed to scan a Signal.</Text>
               <ActionButton
-                onPress={() => void requestPermission()}
+                onPress={() => void requestAccess()}
                 variant="primary"
-                label="Allow camera"
+                label={cameraStatus === 'blocked' ? 'Open settings' : 'Allow camera'}
               />
               <ActionButton
                 onPress={() => void pickImage()}
@@ -239,13 +251,18 @@ export default function SignalScanScreen() {
                 style={{ alignSelf: 'center', marginTop: spacing.sm }}
               />
             </View>
+          ) : !scannerReady ? (
+            <View style={styles.center} />
           ) : (
             <View style={styles.scannerFrame}>
               <CameraView
+                key={cameraKey}
                 ref={cameraRef}
                 style={styles.camera}
                 facing="back"
                 onLayout={(event) => setPreviewSize(event.nativeEvent.layout)}
+                onCameraReady={onCameraReady}
+                onMountError={onMountError}
               />
               <View pointerEvents="none" style={styles.scanGuide}>
                 <View style={[styles.guideCorner, styles.guideTopLeft]} />

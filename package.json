@@ -110,6 +110,7 @@
     "test:library-jump": "node --experimental-strip-types --test src/library/sectionJump.test.mts src/stores/libraryJump.test.mts",
     "test:library-sort": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/librarySortDirection.test.mts",
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
+    "test:camera-access": "node --experimental-strip-types --test src/lib/cameraAccess.test.mts",
     "test:app-dialog": "node --experimental-strip-types --test src/components/dialogs/dialogQueue.test.mts",
     "test:home-greeting": "node --experimental-strip-types --test src/home/homeGreeting.test.mts src/home/homeLayout.test.mts",
     "test:theme": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/theme/accentColors.test.mts src/theme/artworkAccentMath.test.mts src/theme/adaptiveAccent.test.mts src/theme/artworkField.test.mts src/theme/fieldContrast.test.mts src/theme/artworkColors.test.mts src/theme/artworkAccentPreferences.test.mts",

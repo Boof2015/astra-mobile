@@ -7,7 +7,6 @@ import {
 } from 'react-native';
 import {
   CameraView,
-  useCameraPermissions,
   type BarcodeScanningResult
 } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,13 +20,21 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { useDesktopRemoteStore } from '@/stores/desktopRemoteStore';
+import { useCameraAccess } from '@/lib/useCameraAccess';
 
 export default function DesktopRemoteScanScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
   const pairFromInput = useDesktopRemoteStore((s) => s.pairFromInput);
-  const [permission, requestPermission] = useCameraPermissions();
+  const {
+    status: cameraStatus,
+    requestAccess,
+    scannerReady,
+    cameraKey,
+    onCameraReady,
+    onMountError,
+  } = useCameraAccess();
   const [locked, setLocked] = useState(false);
 
   const onScanned = (result: BarcodeScanningResult) => {
@@ -55,27 +62,30 @@ export default function DesktopRemoteScanScreen() {
         Scan pairing QR
       </Text>
 
-      {!permission ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.accent} />
-        </View>
-      ) : !permission.granted ? (
+      {cameraStatus === 'prompt' || cameraStatus === 'blocked' ? (
         <View style={styles.permissionCard}>
           <Ionicons name="camera-outline" size={28} color={colors.accent} />
           <Text variant="body">Camera access is needed to scan the desktop pairing QR.</Text>
           <ActionButton
-            onPress={() => void requestPermission()}
+            onPress={() => void requestAccess()}
             variant="primary"
-            label="Allow camera"
+            label={cameraStatus === 'blocked' ? 'Open settings' : 'Allow camera'}
           />
+        </View>
+      ) : !scannerReady ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : (
         <View style={styles.scannerFrame}>
           <CameraView
+            key={cameraKey}
             style={styles.camera}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={locked ? undefined : onScanned}
+            onCameraReady={onCameraReady}
+            onMountError={onMountError}
           />
           <View pointerEvents="none" style={styles.scanBox} />
           {locked ? (
