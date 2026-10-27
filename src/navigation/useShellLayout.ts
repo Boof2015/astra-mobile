@@ -1,6 +1,7 @@
 import { PixelRatio, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getShellLayout, type ShellLayout } from './shellLayout';
+import { useInShellScene } from './shellRailContext';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useDelayedUnmountPresence } from '@/components/delayedPresence';
 import { motion } from '@/theme/motion';
@@ -43,15 +44,24 @@ export function useShellShowsScreenTitle(): boolean {
 }
 
 /**
- * What a scrollable surface must reserve at its bottom to clear chrome that
- * sits outside the layout flow.
+ * What a scrollable surface must reserve at its bottom to clear whatever sits
+ * over it outside the layout flow.
  *
- * Only the phone shape floats a mini-player pill over the scene; the rail docks
- * it and the split bar seats it, and both reserve their own height. Reserving
- * the pill's footprint in those modes is dead space at the end of every list —
- * which is what happened in landscape before this existed. Always use this
- * rather than `layout.miniPlayerFloat` directly.
+ * Inside the tabs navigator that's the shell's account: the phone shape floats
+ * a mini-player pill over the scene, split floats its card pair, and the rail
+ * floats nothing but leaves the scene running down to the system bar.
+ * Reserving the pill's footprint in the other modes is dead space at the end of
+ * every list — which is what happened in landscape before this existed. Always
+ * use this rather than `layout.miniPlayerFloat` directly.
+ *
+ * A root-stack screen covers the tab bar and everything on it, so the only
+ * thing over its bottom edge is the system navigation bar. Opaque on some
+ * devices — a Samsung tablet's 3-button bar cut the end off every settings page
+ * before this answered for those screens too.
  */
 export function useSceneBottomInset(): number {
-  return useShellLayout().sceneBottomInset;
+  const inShellScene = useInShellScene();
+  const shell = useShellLayout();
+  const insets = useSafeAreaInsets();
+  return inShellScene ? shell.sceneBottomInset : insets.bottom;
 }

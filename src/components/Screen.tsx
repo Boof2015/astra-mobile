@@ -3,7 +3,7 @@ import {
   type ViewProps
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useShellRailPresent } from '@/navigation/shellRailContext';
+import { useInShellScene, useShellRailPresent } from '@/navigation/shellRailContext';
 import { useShellLayout } from '@/navigation/useShellLayout';
 import { ScreenTopBleedContext, useTopFadeBand } from '@/components/screenTopBleed';
 import { TopFadeScrim } from '@/components/TopFadeScrim';
@@ -25,10 +25,27 @@ interface ScreenProps extends ViewProps {
    * padding; `useScreenTopBleed` is how it learns the amount.
    */
   bleedTop?: boolean;
+  /**
+   * Let content scroll behind the system navigation bar instead of stopping
+   * above it. Only means anything outside the tabs navigator — see below.
+   *
+   * For screens whose scroll surface runs to the bottom of the window. The
+   * surface must re-pay the inset as `contentContainerStyle` padding, from
+   * `useSceneBottomInset`, so its last row comes to rest above the bar.
+   */
+  bleedBottom?: boolean;
 }
 
 /**
  * Base screen container: background + safe-area insets.
+ *
+ * The bottom inset is the shell's inside `(tabs)` — its bar pays the system
+ * inset in flow, and anything it floats over the scene is reserved through
+ * `useSceneBottomInset` — so a tab scene pays nothing here. Everywhere else it
+ * is this screen's, and paid by default: a root-stack screen covers the tab
+ * bar, leaving nothing else to pay it, and on an opaque 3-button bar (a Samsung
+ * tablet's) the end of every settings page was simply cut off. A screen that
+ * scrolls buys out with `bleedBottom`, the mirror of `bleedTop`.
  *
  * Horizontal insets matter in landscape, where a display cutout lands on one of
  * the long edges. The rail already pays the leading one when it's up — see
@@ -50,10 +67,18 @@ interface ScreenProps extends ViewProps {
  * the status bar, and `CollapsingDetail` brings its own scrim and collapsed
  * bar. A `bgPrimary` wash on top of that would mute the art it exists to show.
  */
-export function Screen({ children, style, padded = true, bleedTop = false, ...rest }: ScreenProps) {
+export function Screen({
+  children,
+  style,
+  padded = true,
+  bleedTop = false,
+  bleedBottom = false,
+  ...rest
+}: ScreenProps) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const railPresent = useShellRailPresent();
+  const inShellScene = useInShellScene();
   // The dock claims the trailing edge, so it pays that inset — the mirror of
   // the rail taking the leading one. `sceneInsetRight` is the shell's answer.
   const sceneInsetRight = useShellLayout().sceneInsetRight;
@@ -70,6 +95,7 @@ export function Screen({ children, style, padded = true, bleedTop = false, ...re
             paddingTop: insets.top - topBleed,
             paddingLeft: railPresent ? 0 : insets.left,
             paddingRight: sceneInsetRight,
+            paddingBottom: inShellScene || bleedBottom ? 0 : insets.bottom,
           },
           style,
         ]}

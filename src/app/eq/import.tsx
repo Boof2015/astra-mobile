@@ -60,7 +60,8 @@ export default function EQPresetImportScreen() {
   }
 
   return (
-    <Screen>
+    // The sheet runs to the bottom of the window and pays the inset itself.
+    <Screen bleedBottom>
       <EQPresetPreviewSheet
         preset={preset}
         title="Shared EQ preset"

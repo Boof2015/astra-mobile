@@ -8,6 +8,7 @@ import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import {
   ScreenHeader,
   ScreenHeaderAction,
@@ -54,6 +55,7 @@ export default function LastFmScreen() {
   const colors = useColors();
   const router = useRouter();
   const header = useScreenHeader({ actionCount: 1 });
+  const sceneBottomInset = useSceneBottomInset();
   const status = useLastFmSettingsStore((s) => s.status);
   const authHint = useLastFmSettingsStore((s) => s.authHint);
   const errorMessage = useLastFmSettingsStore((s) => s.errorMessage);
@@ -199,12 +201,15 @@ export default function LastFmScreen() {
   return (
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
-    <Screen padded={false} style={styles.screen}>
+    <Screen padded={false} bleedBottom style={styles.screen}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
-        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: header.contentPaddingTop, paddingBottom: spacing.xxl + sceneBottomInset },
+        ]}
       >
         <View style={styles.card}>
           <View style={styles.toggleRow}>
@@ -304,7 +309,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
   },
   card: {
     borderRadius: radius.md,

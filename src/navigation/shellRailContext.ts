@@ -22,3 +22,21 @@ export const ShellRailContext = createContext(false);
 export function useShellRailPresent(): boolean {
   return useContext(ShellRailContext);
 }
+
+/**
+ * Whether the current scene is one of the tab shell's own scenes.
+ *
+ * The bottom edge belongs to different things depending on the answer. Inside
+ * `(tabs)` the shell has chrome down there — a bar that pays the system inset in
+ * flow, a floating pill or card pair the scene must clear — and
+ * `sceneBottomInset` is its account of what the scene owes. A root-stack screen
+ * like `/settings/playback` covers all of that, so the only thing left over its
+ * bottom edge is the system navigation bar. As with the rail, the window's
+ * shape can't tell the two apart, so the tabs layout publishes it.
+ */
+export const ShellSceneContext = createContext(false);
+
+/** True for screens rendered inside the tabs navigator. */
+export function useInShellScene(): boolean {
+  return useContext(ShellSceneContext);
+}

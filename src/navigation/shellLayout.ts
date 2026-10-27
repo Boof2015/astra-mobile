@@ -251,13 +251,13 @@ export interface ShellLayout {
   sceneInsetRight: number;
   /**
    * What a scrollable surface must reserve at its bottom so its last row isn't
-   * hidden by chrome that sits *outside* the layout flow.
+   * hidden by something that sits *outside* the layout flow.
    *
-   * Only `tabs` floats anything over the scene: `rail` docks the mini player in
-   * the rail and `split` seats it in the bar, and both of those are in flow and
-   * reserve their own space. Surfaces read this rather than
-   * `layout.miniPlayerFloat` directly, or landscape pays for a pill that isn't
-   * there.
+   * `tabs` floats the pill (its bar is in flow and pays the system inset
+   * itself), `split` floats the card pair over the system inset, and `rail`
+   * floats nothing but leaves the scene running down to the system bar. Surfaces
+   * read this through `useSceneBottomInset` rather than `layout.miniPlayerFloat`
+   * directly, or landscape pays for a pill that isn't there.
    */
   sceneBottomInset: number;
 }
@@ -401,8 +401,10 @@ export function getShellLayout(
     sceneWidth,
     sceneInsetRight,
     // Both shapes that float chrome over the scene owe it the space back. The
-    // rail is the only one that doesn't, because it sits beside the scene
-    // rather than on top of it.
+    // rail floats nothing — it sits beside the scene rather than on top of it —
+    // but that leaves the scene running to the bottom of the window, so it owes
+    // the system bar instead. Usually 0 on a phone, whose 3-button bar moves to
+    // the side in landscape; not on a gesture handle or a short tablet window.
     sceneBottomInset:
       mode === 'tabs'
         // Docked, the pill is gone — the dock is the player — so the plain bar
@@ -410,7 +412,7 @@ export function getShellLayout(
         ? (docked ? 0 : layoutTokens.miniPlayerFloat)
         : mode === 'split'
           ? splitBar.blockHeight + insets.bottom
-          : 0,
+          : insets.bottom,
   };
 }
 

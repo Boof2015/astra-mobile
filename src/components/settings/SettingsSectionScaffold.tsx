@@ -15,6 +15,7 @@ import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { HapticSwitch } from '@/components/HapticSwitch';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
 export type SettingsIconName = keyof typeof Ionicons.glyphMap;
 
@@ -30,16 +31,25 @@ export function SettingsSectionScreen({
   const styles = useStyles();
   const router = useRouter();
   const header = useScreenHeader({});
+  const sceneBottomInset = useSceneBottomInset();
 
   return (
     // The header is an overlay the content scrolls under, so the screen keeps
-    // neither the top inset nor the gutter — both move into the ScrollView.
-    <Screen padded={false} style={styles.screen}>
+    // neither the top inset nor the gutter — both move into the ScrollView. The
+    // bottom inset moves there too: content passes behind the navigation bar
+    // and comes to rest above it.
+    <Screen padded={false} bleedBottom style={styles.screen}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
-        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: header.contentPaddingTop,
+            paddingBottom: spacing.xxl + sceneBottomInset,
+          },
+        ]}
       >
         {children}
       </Animated.ScrollView>
@@ -165,7 +175,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
   sectionLabel: {

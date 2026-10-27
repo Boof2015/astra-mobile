@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import { Text } from '@/components/Text';
 import { HapticSwitch } from '@/components/HapticSwitch';
 import { SyncConflictDetails } from '@/components/sync/SyncConflictDetails';
@@ -129,6 +130,7 @@ export default function DesktopSyncScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
+  const sceneBottomInset = useSceneBottomInset();
   const status = useDesktopSyncStore((s) => s.status);
   const lastSyncAt = useDesktopSyncStore((s) => s.lastSyncAt);
   const lastSummary = useDesktopSyncStore((s) => s.lastSummary);
@@ -167,7 +169,7 @@ export default function DesktopSyncScreen() {
     : '';
 
   return (
-    <Screen>
+    <Screen bleedBottom>
       <View style={styles.topBar}>
         <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
@@ -176,7 +178,7 @@ export default function DesktopSyncScreen() {
           </Text>
         </AppPressable>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + sceneBottomInset }]}>
         <View style={styles.hero}>
           <Ionicons name="sync-outline" size={30} color={colors.accent} />
           <View style={styles.heroText}>
@@ -301,7 +303,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 2,
   },
   content: {
-    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
   hero: {

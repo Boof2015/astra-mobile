@@ -7,7 +7,7 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { useReducedMotion } from 'react-native-reanimated';
 import { TabBar, type TabItem } from '@/components/TabBar';
 import { useShellLayout } from '@/navigation/useShellLayout';
-import { ShellRailContext } from '@/navigation/shellRailContext';
+import { ShellRailContext, ShellSceneContext } from '@/navigation/shellRailContext';
 import {
   TAB_PRESS_SWALLOW_MS,
   TAB_ROUTE_ORDER,
@@ -76,88 +76,92 @@ function MobileTabsLayout() {
   return (
     // Tells every scene below that the rail is already standing in the leading
     // cutout's way, so `Screen` pays only the trailing inset. Screens outside
-    // this navigator get the default `false` and pay both.
+    // this navigator get the default `false` and pay both. `ShellSceneContext`
+    // does the same for the bottom edge: in here the shell's chrome is down
+    // there, out there only the system bar is.
     <ShellRailContext.Provider value={shell.mode === 'rail'}>
-      <Tabs
-        detachInactiveScreens={false}
-        screenOptions={screenOptions}
-        tabBar={({ state, navigation }) => {
-          const activeRouteName = state.routes[state.index]?.name;
-          const items: TabItem[] = state.routes.map((route, index) => ({
-            key: route.key,
-            name: route.name,
-            focused: isDisplayedTabFocused(
-              route.name,
-              index,
-              state.index,
-              activeRouteName,
-            ),
-          }));
+      <ShellSceneContext.Provider value>
+        <Tabs
+          detachInactiveScreens={false}
+          screenOptions={screenOptions}
+          tabBar={({ state, navigation }) => {
+            const activeRouteName = state.routes[state.index]?.name;
+            const items: TabItem[] = state.routes.map((route, index) => ({
+              key: route.key,
+              name: route.name,
+              focused: isDisplayedTabFocused(
+                route.name,
+                index,
+                state.index,
+                activeRouteName,
+              ),
+            }));
 
-          const handlePress = (item: TabItem) => {
-            // Interrupting the native-driver scene animation can drop its
-            // completion frame and leave the incoming scene invisible; swallow
-            // taps until the current transition has finished.
-            const now = Date.now();
-            if (now - lastSwitchAt.current < TAB_PRESS_SWALLOW_MS) return;
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: item.key,
-              canPreventDefault: true,
-            });
-            if (event.defaultPrevented) return;
+            const handlePress = (item: TabItem) => {
+              // Interrupting the native-driver scene animation can drop its
+              // completion frame and leave the incoming scene invisible; swallow
+              // taps until the current transition has finished.
+              const now = Date.now();
+              if (now - lastSwitchAt.current < TAB_PRESS_SWALLOW_MS) return;
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: item.key,
+                canPreventDefault: true,
+              });
+              if (event.defaultPrevented) return;
 
-            const actuallyFocused = state.routes[state.index]?.key === item.key;
-            if (actuallyFocused) {
-              // Re-tapping the active tab resets its nested stack. This is the
-              // one-tap escape from a deep library chain (artist → album →
-              // another artist), which is why back itself only pops one level.
-              const nested = state.routes[state.index]?.state;
-              if (nested?.key && (nested.index ?? 0) > 0) {
-                navigation.dispatch({ ...popToTop(), target: nested.key });
-                // Escaping the chain is the whole press; the list underneath
-                // keeps the place the user left it in.
+              const actuallyFocused = state.routes[state.index]?.key === item.key;
+              if (actuallyFocused) {
+                // Re-tapping the active tab resets its nested stack. This is the
+                // one-tap escape from a deep library chain (artist → album →
+                // another artist), which is why back itself only pops one level.
+                const nested = state.routes[state.index]?.state;
+                if (nested?.key && (nested.index ?? 0) > 0) {
+                  navigation.dispatch({ ...popToTop(), target: nested.key });
+                  // Escaping the chain is the whole press; the list underneath
+                  // keeps the place the user left it in.
+                  return;
+                }
+                // Already at this tab's root, so the press means "top of the
+                // list" — which is also the only offset where pull-to-search arms.
+                emitTabReselect(item.name);
                 return;
               }
-              // Already at this tab's root, so the press means "top of the
-              // list" — which is also the only offset where pull-to-search arms.
-              emitTabReselect(item.name);
-              return;
-            }
 
-            // Rewind the tab being *left*, after the fade rather than on the way
-            // in; see `tabStackReset` for why arrival is the wrong side of the
-            // transition. Read before navigating, while `state` still describes
-            // the tab we are leaving.
-            const resetTarget = leavingStackResetTarget(state);
-            lastSwitchAt.current = now;
-            navigation.navigate(item.name);
-            if (!resetTarget) return;
+              // Rewind the tab being *left*, after the fade rather than on the way
+              // in; see `tabStackReset` for why arrival is the wrong side of the
+              // transition. Read before navigating, while `state` still describes
+              // the tab we are leaving.
+              const resetTarget = leavingStackResetTarget(state);
+              lastSwitchAt.current = now;
+              navigation.navigate(item.name);
+              if (!resetTarget) return;
 
-            if (pendingStackReset.current) clearTimeout(pendingStackReset.current);
-            pendingStackReset.current = setTimeout(() => {
-              pendingStackReset.current = null;
-              const current = navigation.getState() as TabsStateLike | undefined;
-              if (!shouldApplyStackReset(current, resetTarget)) return;
-              // A targeted action bubbles to the root and back down through every
-              // mounted navigator, focused or not — which holds only because this
-              // navigator keeps inactive scenes attached and unfrozen
-              // (`detachInactiveScreens={false}` + `freezeOnBlur: false` below).
-              navigation.dispatch({ ...popToTop(), target: resetTarget });
-            }, TAB_STACK_RESET_DELAY_MS);
-          };
+              if (pendingStackReset.current) clearTimeout(pendingStackReset.current);
+              pendingStackReset.current = setTimeout(() => {
+                pendingStackReset.current = null;
+                const current = navigation.getState() as TabsStateLike | undefined;
+                if (!shouldApplyStackReset(current, resetTarget)) return;
+                // A targeted action bubbles to the root and back down through every
+                // mounted navigator, focused or not — which holds only because this
+                // navigator keeps inactive scenes attached and unfrozen
+                // (`detachInactiveScreens={false}` + `freezeOnBlur: false` below).
+                navigation.dispatch({ ...popToTop(), target: resetTarget });
+              }, TAB_STACK_RESET_DELAY_MS);
+            };
 
-          return <TabBar items={items} onPress={handlePress} shell={shell} />;
-        }}
-      >
-        {TAB_ROUTE_ORDER.map((name) => (
-          <Tabs.Screen
-            key={name}
-            name={name}
-            options={name === 'stats' ? { href: null } : undefined}
-          />
-        ))}
-      </Tabs>
+            return <TabBar items={items} onPress={handlePress} shell={shell} />;
+          }}
+        >
+          {TAB_ROUTE_ORDER.map((name) => (
+            <Tabs.Screen
+              key={name}
+              name={name}
+              options={name === 'stats' ? { href: null } : undefined}
+            />
+          ))}
+        </Tabs>
+      </ShellSceneContext.Provider>
     </ShellRailContext.Provider>
   );
 }

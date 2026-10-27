@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import { Text } from '@/components/Text';
 import { EQPresetPreviewSheet } from '@/components/eq/EQPresetPreviewSheet';
 import { decodeEQPresetQr } from '@/audio/eqShare';
@@ -28,6 +29,7 @@ import type { EQPreset } from '@/types/audio';
 
 export default function EQPresetScanScreen() {
   const styles = useStyles();
+  const sceneBottomInset = useSceneBottomInset();
   const colors = useColors();
   const router = useRouter();
   const returnToTabs = useReturnToTabs();
@@ -50,7 +52,9 @@ export default function EQPresetScanScreen() {
   };
 
   return (
-    <Screen>
+    // Bleeds so the preview sheet can run to the bottom of the window — it
+    // pays the inset itself. The scanner card pays it as margin instead.
+    <Screen bleedBottom>
       <View style={styles.header}>
         <AppPressable feedback="control"  style={styles.back} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
@@ -77,7 +81,7 @@ export default function EQPresetScanScreen() {
           />
         </View>
       ) : (
-        <View style={styles.scannerFrame}>
+        <View style={[styles.scannerFrame, { marginBottom: spacing.xl + sceneBottomInset }]}>
           <CameraView
             style={styles.camera}
             facing="back"
@@ -150,7 +154,6 @@ const useStyles = createThemedStyles((colors) => ({
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.bgSecondary,
-    marginBottom: spacing.xl,
   },
   camera: {
     flex: 1,

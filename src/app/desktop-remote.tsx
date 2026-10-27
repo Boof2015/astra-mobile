@@ -21,6 +21,7 @@ import { useReturnToTabs } from '@/navigation/returnToTabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AstraLogo } from '@/components/AstraLogo';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
@@ -240,6 +241,7 @@ export default function DesktopRemoteScreen() {
   const pairingRouteFingerprint = pairingParams.fingerprint;
   const pairingRouteProtocolVersion = pairingParams.protocolVersion;
   const insets = useSafeAreaInsets();
+  const sceneBottomInset = useSceneBottomInset();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const initialized = useDesktopRemoteStore((s) => s.initialized);
   const connectionState = useDesktopRemoteStore((s) => s.connectionState);
@@ -364,7 +366,7 @@ export default function DesktopRemoteScreen() {
   const renderSetup = () => (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + sceneBottomInset }]}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.hero}>
@@ -643,7 +645,9 @@ export default function DesktopRemoteScreen() {
   const showController = Boolean(connection && connectionState !== 'unpaired');
 
   return (
-    <Screen padded={!showController}>
+    // Both views pay the bottom inset themselves — the setup list as scroll
+    // padding, the controller in its own layout — so the screen bleeds.
+    <Screen padded={!showController} bleedBottom>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -686,7 +690,6 @@ const useStyles = createThemedStyles((colors) => ({
     gap: 2,
   },
   content: {
-    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
   loading: {

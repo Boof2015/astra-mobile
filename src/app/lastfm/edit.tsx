@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
 import {
@@ -98,6 +99,9 @@ export default function LastFmEditScreen() {
   const styles = useStyles();
   const colors = useColors();
   const router = useRouter();
+  // Both steps scroll behind the navigation bar and come to rest above it.
+  const sceneBottomInset = useSceneBottomInset();
+  const contentStyle = { paddingBottom: spacing.xxl + sceneBottomInset };
   const { id } = useLocalSearchParams<{ id?: string }>();
   const status = useLastFmSettingsStore((s) => s.status);
   const createCustomProfile = useLastFmSettingsStore((s) => s.createCustomProfile);
@@ -187,7 +191,7 @@ export default function LastFmEditScreen() {
   const backLabel = step === 'details' && !editing ? 'Service' : 'Scrobbling';
 
   return (
-    <Screen>
+    <Screen bleedBottom>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -202,7 +206,7 @@ export default function LastFmEditScreen() {
         </View>
 
         {step === 'type' ? (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={contentStyle}>
             <Text variant="title" style={styles.heading}>
               Add destination
             </Text>
@@ -239,7 +243,7 @@ export default function LastFmEditScreen() {
         ) : (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={contentStyle}
             keyboardShouldPersistTaps="handled"
           >
             <Text variant="title" style={styles.heading}>
@@ -323,9 +327,6 @@ const useStyles = createThemedStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-  },
-  content: {
-    paddingBottom: spacing.xxl,
   },
   heading: {
     marginTop: spacing.lg,

@@ -8,6 +8,7 @@ import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import {
   ScreenHeader,
   ScreenHeaderAction,
@@ -49,6 +50,7 @@ export default function SourcesScreen() {
   const router = useRouter();
   const sources = useRemoteSourcesStore((s) => s.sources);
   const header = useScreenHeader({ actionCount: sources.length > 0 ? 2 : 1 });
+  const sceneBottomInset = useSceneBottomInset();
   const progressById = useRemoteSourcesStore((s) => s.progressById);
   const syncSource = useRemoteSourcesStore((s) => s.syncSource);
   const syncAll = useRemoteSourcesStore((s) => s.syncAll);
@@ -110,12 +112,15 @@ export default function SourcesScreen() {
   return (
     // The header is an overlay the content scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the ScrollView.
-    <Screen padded={false} style={styles.screen}>
+    <Screen padded={false} bleedBottom style={styles.screen}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={header.onScroll}
         scrollEventThrottle={header.scrollEventThrottle}
-        contentContainerStyle={[styles.content, { paddingTop: header.contentPaddingTop }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: header.contentPaddingTop, paddingBottom: spacing.xxl + sceneBottomInset },
+        ]}
       >
         {sources.length === 0 ? (
           <View style={styles.empty}>
@@ -216,7 +221,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
   empty: {

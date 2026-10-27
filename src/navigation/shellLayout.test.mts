@@ -255,9 +255,10 @@ test('both cards are the same height, because they are peers', () => {
 test('the shapes that float chrome over the scene are the ones that reserve it', () => {
   // Surfaces reserve `sceneBottomInset`. Tabs floats a pill and split floats a
   // pair of cards, so both owe the space back; the rail sits *beside* the scene
-  // and owes nothing — reserving there is dead space at the end of every list.
+  // and owes no chrome — reserving the pill there is dead space at the end of
+  // every list. It still owes the system bar the scene now runs down to.
   assert.ok(getShellLayout(411, 891, PORTRAIT, 1).sceneBottomInset > 0);
-  assert.equal(getShellLayout(891, 411, LANDSCAPE, 1).sceneBottomInset, 0);
+  assert.equal(getShellLayout(891, 411, LANDSCAPE, 1).sceneBottomInset, LANDSCAPE.bottom);
 
   const tablet = getShellLayout(768, 1024, PORTRAIT, 1);
   assert.equal(

@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Screen } from '@/components/Screen';
+import { useSceneBottomInset } from '@/navigation/useShellLayout';
 import { ScreenHeader, useScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { TrackRow } from '@/components/library/TrackRow';
@@ -36,6 +37,7 @@ function EmptyList() {
 
 export default function RecentlyPlayedScreen() {
   const header = useScreenHeader({ hasSubtitle: true });
+  const sceneBottomInset = useSceneBottomInset();
   const router = useRouter();
   const tracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
@@ -52,7 +54,7 @@ export default function RecentlyPlayedScreen() {
   return (
     // The header is an overlay the list scrolls under, so the screen keeps
     // neither the top inset nor the gutter — both move into the list itself.
-    <Screen padded={false} style={styles.screen}>
+    <Screen padded={false} bleedBottom style={styles.screen}>
       <ReanimatedFlashList
         data={tracks}
         keyExtractor={(track) => track.path}
@@ -70,7 +72,10 @@ export default function RecentlyPlayedScreen() {
           />
         )}
         ListEmptyComponent={<EmptyList />}
-        contentContainerStyle={[styles.listContent, { paddingTop: header.contentPaddingTop }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: header.contentPaddingTop, paddingBottom: spacing.xxl + sceneBottomInset },
+        ]}
       />
 
       <ScreenHeader
@@ -93,7 +98,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
   },
   emptyState: {
     alignItems: 'center',
