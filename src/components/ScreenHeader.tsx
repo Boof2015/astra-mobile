@@ -29,7 +29,9 @@ import { useShellLayout } from '@/navigation/useShellLayout';
 import { MAX_FONT_SCALE, fontSize, radius, variantLineHeight } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import { HeaderBackButton } from '@/components/HeaderBackButton';
 import {
+  SCREEN_BAR_H,
   SCREEN_HEADER_ACTION_SIZE,
   SCREEN_HEADER_EXPANDED_ACTION_SIZE,
   compactActionsOpacityAt,
@@ -173,7 +175,6 @@ export function ScreenHeader({
   chrome?: ReactNode;
 }) {
   const styles = useStyles();
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const { scrollY, layout } = header;
 
@@ -215,6 +216,18 @@ export function ScreenHeader({
     (flags, previous) => {
       if (flags === previous) return;
       runOnJS(updateInteraction)((flags & 1) !== 0, (flags & 2) !== 0);
+    },
+  );
+
+  // Once the back label has faded, it leaves layout so its tap area doesn't sit
+  // over the title that slides into the same slot. Like the handoff above, this
+  // flips at a threshold, not per frame.
+  const [labelLive, setLabelLive] = useState(true);
+  useAnimatedReaction(
+    () => labelOpacityAt(scrollY.value, settle) > 0,
+    (live, previous) => {
+      if (live === previous) return;
+      runOnJS(setLabelLive)(live);
     },
   );
 
@@ -277,27 +290,23 @@ export function ScreenHeader({
     lineHeight: layout.titleLine,
   };
 
+  // The label only exists on a collapsible header: a static one puts its title
+  // in the label's slot instead.
   const chevron =
     onBack != null ? (
-      <AppPressable feedback="control"
-
-        unstable_pressDelay={SCROLL_PRESS_DELAY}
+      <HeaderBackButton
         onPress={onBack}
-        hitSlop={12}
-        style={[
-          styles.chevron,
-          {
-            top: layout.barCenterY - layout.chevronSize / 2,
-            left: layout.chevronLeft,
-            width: layout.chevronSize,
-            height: layout.chevronSize,
-          },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Ionicons name="chevron-back" size={layout.chevronSize} color={colors.textPrimary} />
-      </AppPressable>
+        top={layout.barCenterY - SCREEN_BAR_H / 2}
+        height={SCREEN_BAR_H}
+        chevronLeft={layout.chevronLeft}
+        chevronSize={layout.chevronSize}
+        labelLeft={layout.barTextLeft}
+        labelRight={layout.labelRight}
+        label={layout.collapsible ? backLabel : undefined}
+        labelFont={styles.label}
+        labelStyle={labelStyle}
+        labelLive={labelLive}
+      />
     ) : null;
 
   const actionCluster =
@@ -451,24 +460,6 @@ export function ScreenHeader({
             </Animated.View>
           ) : null}
 
-          {backLabel ? (
-            <Animated.Text
-              numberOfLines={1}
-              style={[
-                styles.label,
-                {
-                  top: layout.barCenterY - variantLineHeight.label / 2,
-                  left: layout.barTextLeft,
-                  right: layout.labelRight,
-                },
-                labelStyle,
-              ]}
-              pointerEvents="none"
-            >
-              {backLabel}
-            </Animated.Text>
-          ) : null}
-
           {expandedActionBlock}
 
           {chevron}
@@ -602,15 +593,8 @@ const useStyles = createThemedStyles((colors) => ({
     textAlignVertical: 'center',
   },
   label: {
-    position: 'absolute',
-    color: colors.textSecondary,
     fontSize: fontSize.sm,
     lineHeight: variantLineHeight.label,
-  },
-  chevron: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   actions: {
     position: 'absolute',

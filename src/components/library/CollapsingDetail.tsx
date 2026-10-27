@@ -36,6 +36,7 @@ import { Text } from '@/components/Text';
 import { radius, spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
+import { HeaderBackButton } from '@/components/HeaderBackButton';
 import {
   DETAIL_ART_COLLAPSED,
   DETAIL_BAR_H,
@@ -55,6 +56,7 @@ import {
 const ART_COLLAPSED = DETAIL_ART_COLLAPSED;
 const BAR_H = DETAIL_BAR_H;
 const FADE_H = 150;
+const LABEL_FONT = { fontSize: 15 };
 type DetailListMeasurement = Pick<FlashListRef<unknown>, 'getChildContainerDimensions'>;
 
 /**
@@ -411,27 +413,22 @@ export function CollapsingHeader({
         </Animated.View>
       </Animated.View>
 
-      <AppPressable feedback="control"  unstable_pressDelay={SCROLL_PRESS_DELAY}
+      {/* The label is invisible by the time the hero fades, so it gives its
+          tap area back to the collapsed thumbnail and title. */}
+      <HeaderBackButton
         onPress={onBack}
-        hitSlop={8}
-        style={[styles.chevron, { top: barCenterY - 12, left: spacing.md }]}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-      </AppPressable>
-      <Animated.Text
-        numberOfLines={1}
-        style={[
-          styles.label,
-          // Bounded so a long artist name ellipsizes instead of running off the
-          // edge; clears the overflow button when the screen has one.
-          { top: barCenterY - 10, left: spacing.md + 26, right: onMore ? 56 : spacing.md },
-          labelStyle,
-        ]}
-      >
-        {backLabel}
-      </Animated.Text>
+        top={insets.top}
+        height={BAR_H}
+        chevronLeft={spacing.md}
+        chevronSize={24}
+        labelLeft={spacing.md + 26}
+        // Clears the overflow button when the screen has one.
+        labelRight={onMore ? 56 : spacing.md}
+        label={backLabel}
+        labelFont={LABEL_FONT}
+        labelStyle={labelStyle}
+        labelLive={!heroFaded}
+      />
 
       <Animated.Text
         numberOfLines={1}
@@ -573,18 +570,6 @@ const useStyles = createThemedStyles((colors) => ({
   secondaryAction: {
     flex: 0,
     minWidth: 116,
-  },
-  chevron: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    position: 'absolute',
-    color: colors.textSecondary,
-    fontSize: 15,
   },
   barTitle: {
     position: 'absolute',
