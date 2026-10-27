@@ -2433,6 +2433,24 @@ class AstraLibraryRepository private constructor(
     )
   }
 
+  /**
+   * Re-decorates already-loaded artist rows after an image change. Portraits live
+   * in the user DB, not the catalog, so this needs no cursor and must never be
+   * answered by re-reading page 1 — that collapsed the list under a live scroll.
+   * Accepts display names or keys; both normalize to the same key.
+   */
+  suspend fun getArtistSummaries(
+    groupingMode: String,
+    artists: List<String>,
+  ): List<Map<String, Any?>> = withCatalogRecovery { database ->
+    val dao = database.catalogDao()
+    val revision = dao.getRevision()
+    val mode = if (groupingMode == "fileTags") "fileTags" else "astra"
+    artists.map(::normalizeArtistKey).filter(String::isNotEmpty).distinct()
+      .chunked(MAX_PAGE_SIZE)
+      .flatMap { keys -> bridgeArtistSummaries(dao.getArtistSummariesByKey(revision, mode, keys)) }
+  }
+
   suspend fun getArtistAlbums(
     artistKey: String,
     groupingMode: String,

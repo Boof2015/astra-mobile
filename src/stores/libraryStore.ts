@@ -202,6 +202,36 @@ function prependWindow<T>(
   return [...incoming.filter((item) => !known.has(key(item))), ...current];
 }
 
+function sameArtistImage(current: Artist, next: Artist): boolean {
+  return (
+    current.artwork_hash === next.artwork_hash &&
+    current.artwork_source === next.artwork_source &&
+    current.artwork_hashes.length === next.artwork_hashes.length &&
+    current.artwork_hashes.every((hash, index) => hash === next.artwork_hashes[index])
+  );
+}
+
+/**
+ * Copies portrait fields onto loaded rows, keeping every untouched row — and the
+ * array itself when nothing moved — by identity. A sweep reports every lookup,
+ * mostly misses, and those must not re-render the list.
+ */
+function withArtistImages(current: Artist[], updates: Map<string, Artist>): Artist[] {
+  let changed = false;
+  const next = current.map((artist) => {
+    const update = updates.get(artist.artist);
+    if (!update || sameArtistImage(artist, update)) return artist;
+    changed = true;
+    return {
+      ...artist,
+      artwork_hash: update.artwork_hash,
+      artwork_hashes: update.artwork_hashes,
+      artwork_source: update.artwork_source,
+    };
+  });
+  return changed ? next : current;
+}
+
 /**
  * Dropping back to page 1 under a live scroll offset leaves the list looking at an
  * offset past the new content end, which lands the user at the bottom of a list they
@@ -232,6 +262,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   };
   let anchorGeneration = 0;
   let artistImageRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Artists whose portrait changed since the last patch; `all` after a bulk clear.
+  let pendingArtistImages = { all: false, keys: new Set<string>() };
 
   // Re-entrancy guards, per list and per direction, so a backward refill, a forward
   // page and a different view's load never block one another — the single shared flag
@@ -240,6 +272,28 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
   type ListKey = 'tracks' | 'albums' | 'artists';
   const forwardBusy: Record<ListKey, boolean> = { tracks: false, albums: false, artists: false };
   const backwardBusy: Record<ListKey, boolean> = { tracks: false, albums: false, artists: false };
+
+  // Portraits are decoration from the user DB, not catalog: cursors stay valid,
+  // so patch the loaded rows in place. Routing this through refresh() re-read
+  // page 1 and remounted the list at the top for every lookup an image sweep
+  // made, as soon as the window had grown past its first page.
+  const patchArtistImages = async () => {
+    const { all, keys } = pendingArtistImages;
+    pendingArtistImages = { all: false, keys: new Set() };
+    const state = get();
+    const names = all
+      ? [...new Set([...state.artists, ...state.homeArtists].map((artist) => artist.artist))]
+      : [...keys];
+    if (names.length === 0) return;
+    const groupingMode = useSettingsStore.getState().artistGroupingMode;
+    const rows = await AstraLibraryData.getArtistSummaries<Artist>(groupingMode, names);
+    if (useSettingsStore.getState().artistGroupingMode !== groupingMode) return;
+    const updates = new Map(rows.map((row) => [row.artist, row]));
+    set((current) => ({
+      artists: withArtistImages(current.artists, updates),
+      homeArtists: withArtistImages(current.homeArtists, updates),
+    }));
+  };
 
   const onProgress = (progress: ScanProgress) => {
     set({ scanProgress: progress });
@@ -612,11 +666,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
               set({ sectionAnchors: [] });
               void get().refresh();
             });
-            AstraLibraryData.addListener('onArtistImagesChanged', () => {
+            AstraLibraryData.addListener('onArtistImagesChanged', (event) => {
+              if ('all' in event) {
+                pendingArtistImages.all = true;
+              } else if (event.groupingMode === useSettingsStore.getState().artistGroupingMode) {
+                pendingArtistImages.keys.add(event.artistKey);
+              } else {
+                return;
+              }
               if (artistImageRefreshTimer) clearTimeout(artistImageRefreshTimer);
               artistImageRefreshTimer = setTimeout(() => {
                 artistImageRefreshTimer = null;
-                void get().refresh();
+                void patchArtistImages().catch((error) => {
+                  console.warn('[library] could not apply artist images', error);
+                });
               }, 300);
             });
             useSettingsStore.subscribe((next, previous) => {

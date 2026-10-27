@@ -116,20 +116,27 @@ export function useNativeArtistDetail(
   }, [artistKey, groupingMode, section]);
 
   useEffect(() => {
+    let active = true;
     queueMicrotask(() => void reset());
     const catalogSubscription = AstraLibraryData.addListener(
       'onCatalogChanged',
       () => void reset()
     );
+    // A portrait only changes the hero. reset() would drop every loaded track
+    // and strand a reader scrolled past the first page.
     const imageSubscription = AstraLibraryData.addListener(
       'onArtistImagesChanged',
       (event) => {
+        if (!artistKey) return;
         if ('all' in event || (event.artistKey === artistKey && event.groupingMode === groupingMode)) {
-          void reset();
+          void AstraLibraryData.getArtistSummaries<Artist>(groupingMode, [artistKey]).then((rows) => {
+            if (active && rows[0]) setSummary(rows[0]);
+          });
         }
       }
     );
     return () => {
+      active = false;
       catalogSubscription.remove();
       imageSubscription.remove();
     };

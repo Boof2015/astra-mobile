@@ -558,6 +558,15 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     cursor: string | null,
     limit: number
   ): Promise<NativePage<T> & { summary: S | null }>;
+  /**
+   * Current rows for the given artists (display names or keys), portraits
+   * applied. For patching loaded rows after `onArtistImagesChanged` — never
+   * re-read page 1 for that, it collapses the list under a live scroll.
+   */
+  getArtistSummaries<T>(
+    groupingMode: 'astra' | 'fileTags',
+    artists: string[]
+  ): Promise<T[]>;
   getArtistAlbums<T>(
     artistKey: string,
     groupingMode: 'astra' | 'fileTags',

@@ -483,6 +483,10 @@ class AstraLibraryDataModule : Module() {
       }
     }
 
+    AsyncFunction("getArtistSummaries") Coroutine { groupingMode: String, artists: List<String> ->
+      repository().getArtistSummaries(groupingMode, artists)
+    }
+
     AsyncFunction("getArtistAlbums") Coroutine {
         artistKey: String,
         groupingMode: String,

@@ -1203,6 +1203,20 @@ interface CatalogDao {
 
   @Query(
     """
+      SELECT * FROM artist_summaries
+      WHERE revision = :revision
+        AND grouping_mode = :groupingMode
+        AND artist_key IN (:artistKeys)
+    """,
+  )
+  suspend fun getArtistSummariesByKey(
+    revision: Long,
+    groupingMode: String,
+    artistKeys: List<String>,
+  ): List<ArtistSummaryEntity>
+
+  @Query(
+    """
       SELECT COUNT(*) FROM artist_summaries
       WHERE revision = :revision
         AND grouping_mode = :groupingMode
