@@ -779,3 +779,50 @@ test('a sliding cover always ends fully off screen', () => {
     }
   }
 });
+
+test('a sliding cover clears the screen with the companion pane out', () => {
+  // The pane pushes the player left as a transform, so the cover's center is
+  // not the window's. Measured from the window's, a skip back left the outgoing
+  // cover parked in plain view over the lyrics.
+  let checked = 0;
+  for (const [width, height] of [
+    [1248, 752],
+    [1280, 720],
+    [1366, 1000],
+  ]) {
+    for (const companion of ['queue', 'lyrics'] as const) {
+      for (const scope of [false, true]) {
+        const fit = getTabletCompanionLayout(width, height, scope, 1, companion);
+        if (!fit) continue;
+        checked += 1;
+        const layout = fit.playerLayout;
+        const scale = scope && !layout.isWide && layout.artSizeScopeOff > 0
+          ? layout.artSizeScopeOn / layout.artSizeScopeOff
+          : 1;
+        const box = scope && !layout.isWide ? layout.artSizeScopeOff : layout.artSize;
+        const shellLeft = (width - fit.shellWidth) / 2;
+        // As `NowPlayingOverlay` computes it: the stacked player's center,
+        // shifted left by half the pane's footprint.
+        const centerX = width / 2 - (fit.companionWidth + fit.gap) / 2;
+        const label = `${width}x${height} ${companion} scope=${scope}`;
+        // The cover sits in the player region, left of the pane.
+        assert.ok(centerX - box / 2 >= shellLeft, `${label}: cover starts left of the shell`);
+        assert.ok(
+          centerX + box / 2 <= shellLeft + fit.playerRegionWidth,
+          `${label}: cover overlaps the pane`
+        );
+        const travel = getNowPlayingArtSlideTravel(box, centerX, width, scale);
+        for (const direction of [-1, 1]) {
+          const parkedCenter = centerX + direction * travel * scale;
+          const near = parkedCenter - (box * scale) / 2;
+          const far = parkedCenter + (box * scale) / 2;
+          assert.ok(
+            far <= 0 || near >= width,
+            `${label} dir=${direction}: card parks at ${near.toFixed(0)}..${far.toFixed(0)}`
+          );
+        }
+      }
+    }
+  }
+  assert.ok(checked >= 8, `only ${checked} companion windows qualified`);
+});

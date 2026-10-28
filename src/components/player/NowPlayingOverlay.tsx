@@ -1142,7 +1142,14 @@ export function NowPlayingOverlay({
   const predictionLive = artPrediction !== null && artPrediction.fromKey === transitionTrackKey;
   const displayedArtCover = predictionLive ? artPrediction.cover : currentArtCover;
   const artVisualScale = railChoreographed && effectiveScopeStageVisible ? railArtScale : 1;
-  const artCenterX = layout.isWide ? shellLeft + layout.leftPaneWidth / 2 : windowWidth / 2;
+  // The companion pane pushes the player left as a transform, so the layout
+  // never says the cover moved. Keyed on the pane being mounted, not open: the
+  // shifted center is the farthest the cover gets from the right edge while
+  // the pane slides either way. Plain arithmetic on purpose — a helper's return
+  // value passed on to another call makes the compiler skip the component.
+  const artCenterX =
+    (layout.isWide ? shellLeft + layout.leftPaneWidth / 2 : windowWidth / 2) +
+    (tabletCompanionLayout ? -companionFootprint / 2 : 0);
   const artSlideTravel = getNowPlayingArtSlideTravel(
     artBoxSize,
     artCenterX,
