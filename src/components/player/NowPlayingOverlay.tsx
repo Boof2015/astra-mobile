@@ -552,6 +552,9 @@ export function NowPlayingOverlay({
     void setCompanionOpen(!alreadyShowing);
   };
 
+  // Only the tablet pane is a state the button toggles; a phone's sheet is
+  // modal and covers it.
+  const queueSelected = hasTabletCompanion && nowPlayingCompanion === 'queue';
   const showQueue = () => {
     if (companionCapable) {
       if (!isDesktopTarget) void setLyricsVisible(false);
@@ -1503,8 +1506,18 @@ export function NowPlayingOverlay({
                             haptic="selection"
                             onPress={showQueue}
                             accessibilityLabel="Desktop queue"
+                            accessibilityState={{ selected: queueSelected }}
                           >
-                            <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                            <PlayerStateIcon
+                              selected={queueSelected}
+                              size={SUB_ICON_SIZE + 2}
+                              inactive={
+                                <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.textTertiary} />
+                              }
+                              active={
+                                <Ionicons name="list-outline" size={SUB_ICON_SIZE + 2} color={colors.accent} />
+                              }
+                            />
                           </TactilePressable>
                         ) : null}
                       </View>
@@ -1871,11 +1884,25 @@ export function NowPlayingOverlay({
                         haptic="selection"
                         onPress={showQueue}
                         accessibilityLabel="Queue"
+                        accessibilityState={{ selected: queueSelected }}
                       >
-                        <Ionicons
-                          name="list-outline"
+                        <PlayerStateIcon
+                          selected={queueSelected}
                           size={SUB_ICON_SIZE + 2}
-                          color={colors.textTertiary}
+                          inactive={
+                            <Ionicons
+                              name="list-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.textTertiary}
+                            />
+                          }
+                          active={
+                            <Ionicons
+                              name="list-outline"
+                              size={SUB_ICON_SIZE + 2}
+                              color={colors.accent}
+                            />
+                          }
                         />
                       </TactilePressable>
                       {phoneLyricsCapable ? (

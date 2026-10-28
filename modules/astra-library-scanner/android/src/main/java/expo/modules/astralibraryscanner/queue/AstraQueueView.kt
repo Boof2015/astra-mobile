@@ -10,6 +10,12 @@ class AstraQueueView(
 ) : ExpoView(context, appContext) {
   private val content = QueueContentView(context)
 
+  // React Native swallows requestLayout() from native children, so rows the
+  // RecyclerView receives after the first layout never got measured: the
+  // companion pane showed "Up next" over an empty list. The sheet is immune
+  // because a dialog is a plain Android hierarchy.
+  override val shouldUseAndroidLayout: Boolean = true
+
   var active: Boolean = true
     set(value) {
       field = value
