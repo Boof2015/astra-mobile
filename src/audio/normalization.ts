@@ -10,7 +10,7 @@
 export const NORM_MIN_GAIN_DB = -18;
 export const NORM_MAX_GAIN_DB = 6;
 export const NORM_PEAK_CEILING_LINEAR = 0.98;
-export const DEFAULT_TARGET_LUFS = -12;
+export const DEFAULT_TARGET_LUFS = -14;
 
 export type ReplayGainMode = 'auto' | 'track' | 'album';
 export type NormalizationMode = 'off' | 'replaygain' | 'normalization';
