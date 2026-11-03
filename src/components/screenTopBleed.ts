@@ -19,10 +19,10 @@ import { topFadeBand, type TopFadeBand } from '@/components/topFadeMath';
  * The top safe-area inset the surrounding `Screen` did *not* pay, and which its
  * content therefore owes.
  *
- * For descendants that pin themselves to the top of a screen without knowing
- * which screen they are on — `PullSearchGesture`'s chip is the live case, and
- * it is shared between a screen that bleeds (Home) and one that doesn't
- * (Library). Zero by default, so everything that has not opted in is untouched.
+ * For descendants that pin themselves to the top of a screen, such as Home's
+ * `PullSearchGesture` chip. Screens that override their own top padding, like
+ * Library, must supply that inset separately. Zero by default, so everything
+ * that has not opted in is untouched.
  */
 export const ScreenTopBleedContext = createContext(0);
 

@@ -852,7 +852,11 @@ export default function LibraryScreen() {
     // The header is an overlay the lists scroll under, so the screen keeps
     // neither the top inset nor the gutter — both move into the lists.
     <Screen padded={false} style={styles.screen}>
-      <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
+      <PullSearchGesture
+        atTop={scrollTop.atTop}
+        onOpen={openSearch}
+        indicatorTopInset={insets.top}
+      >
         {showLibraryStatus ? (
           <View style={[styles.statusArea, { paddingTop: header.contentPaddingTop }]}>
             <EmptyLibrary />

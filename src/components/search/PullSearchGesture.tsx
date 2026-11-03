@@ -138,11 +138,14 @@ export function PullSearchGesture({
   enabled = true,
   atTop,
   onOpen,
+  indicatorTopInset,
 }: {
   children: ReactNode;
   enabled?: boolean;
   atTop: boolean;
   onOpen: () => void;
+  /** Top inset owed by the indicator when its screen manages safe-area padding itself. */
+  indicatorTopInset?: number;
 }) {
   const styles = useStyles();
   const colors = useColors();
@@ -256,10 +259,9 @@ export function PullSearchGesture({
 
   const progress = clamp(pull / OPEN_THRESHOLD, 0, 1);
   const indicatorStyle = {
-    // The chip pins to the top of whatever screen it's on, and on a screen that
-    // bleeds under the status bar (Home) that top is the top of the *window*.
-    // Zero on Library, which doesn't bleed, so nothing moves there.
-    top: topBleed + spacing.xs,
+    // Home inherits its unpaid inset from Screen. Library manages its own
+    // edge-to-edge header and supplies the inset explicitly.
+    top: (indicatorTopInset ?? topBleed) + spacing.xs,
     opacity: pull <= 0 ? 0 : Math.max(0.72, progress),
     transform: [
       { translateY: -18 + (clamp(pull, 0, MAX_PULL) / MAX_PULL) * 38 },
