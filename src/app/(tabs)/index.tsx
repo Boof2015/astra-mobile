@@ -586,6 +586,8 @@ export default function HomeScreen() {
   const libraryStatus = useLibraryStore((s) => s.status);
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
+  const favoriteSummary = usePlaylistStore((s) => s.favoriteSummary);
+  const favoriteCount = favoriteSummary?.track_count ?? 0;
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
@@ -807,14 +809,15 @@ export default function HomeScreen() {
     </>
   ) : null;
 
-  const playlistsSection = favoriteTracks.length > 0 || homePlaylists.length > 0 ? (
+  const playlistsSection = favoriteCount > 0 || homePlaylists.length > 0 ? (
     <>
       <SectionHeader title="Favorites & Playlists" />
       <View style={styles.listBlock}>
-        {favoriteTracks.length > 0 ? (
+        {favoriteCount > 0 ? (
           <PlaylistRow
             name="Favorites"
-            trackCount={favoriteTracks.length}
+            trackCount={favoriteCount}
+            missingCount={favoriteSummary?.missing_track_count}
             coverHash={favoriteTracks[0]?.artwork_hash ?? null}
             pinned
             onPress={() => openLibrary({ kind: 'playlist', id: 'favorites' })}

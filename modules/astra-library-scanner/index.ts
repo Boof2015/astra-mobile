@@ -504,6 +504,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     limit: number
   ): Promise<{ items: T[]; nextOffset: number | null; totalCount: number }>;
   getFavoritePaths(): Promise<string[]>;
+  getFavoriteSummary<T>(): Promise<T>;
   getFavoriteTracks<T>(limit: number): Promise<T[]>;
   setFavorite(path: string, favorite: boolean): Promise<void>;
   getDesktopSyncState<T>(): Promise<T>;

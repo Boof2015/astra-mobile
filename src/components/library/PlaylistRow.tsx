@@ -26,7 +26,7 @@ export function PlaylistRow({
   onLongPress,
 }: {
   name: string;
-  trackCount: number;
+  trackCount: number | null;
   missingCount?: number;
   coverHash: string | null;
   /** Favorites pseudo-playlist: heart cover instead of artwork/logo. */
@@ -54,7 +54,7 @@ export function PlaylistRow({
           : undefined
       }
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${dynamic ? 'dynamic playlist, ' : ''}${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
+      accessibilityLabel={`${name}${dynamic ? ', dynamic playlist' : ''}${trackCount == null ? '' : `, ${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}`}
     >
       <View style={styles.cover}>
         {coverHash ? (
@@ -82,7 +82,7 @@ export function PlaylistRow({
         </View>
         <Text variant="label" numberOfLines={1}>
           {dynamic ? 'Dynamic · ' : ''}
-          {`${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
+          {trackCount == null ? null : `${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`}
           {missingCount > 0 ? (
             <Text variant="label" color={colors.warning}>
               {`  ·  ${missingCount} missing`}

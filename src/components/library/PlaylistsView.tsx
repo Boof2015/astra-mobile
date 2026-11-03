@@ -62,7 +62,7 @@ export function PlaylistsView({
   const colors = useColors();
   const router = useRouter();
   const playlists = usePlaylistStore((s) => s.playlists);
-  const favoriteCount = usePlaylistStore((s) => s.favoriteTracks.length);
+  const favoriteSummary = usePlaylistStore((s) => s.favoriteSummary);
 
   return (
     <View style={styles.container}>
@@ -85,7 +85,8 @@ export function PlaylistsView({
             {listHeader}
             <PlaylistRow
               name="Favorites"
-              trackCount={favoriteCount}
+              trackCount={favoriteSummary?.track_count ?? null}
+              missingCount={favoriteSummary?.missing_track_count}
               coverHash={null}
               pinned
               onPress={() => router.push('/library/playlist/favorites')}

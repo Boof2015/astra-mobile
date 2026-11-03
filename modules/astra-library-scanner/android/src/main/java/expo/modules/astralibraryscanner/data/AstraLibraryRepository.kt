@@ -1811,12 +1811,13 @@ class AstraLibraryRepository private constructor(
     return userDao.getPlaylists().map { playlist ->
       if (playlist.kind == "dynamic") {
         val queries = runCatching { DynamicPlaylistCompiler.compile(playlist.dynamicRulesJson, 0, 1) }.getOrNull()
-        val count = queries?.let { catalogDao.runDynamicCountQuery(it.count) } ?: 0L
+        val summary = queries?.let { catalogDao.runTrackTotalsQuery(it.summary) } ?: TrackTotals(0, 0.0)
         val first = queries?.let { catalogDao.runDynamicTrackQuery(it.tracks).firstOrNull() }
         playlist.toBridgeMap(
-          trackCount = count,
+          trackCount = summary.trackCount,
           missingCount = 0,
           artworkHash = first?.artworkHash,
+          totalDuration = summary.totalDuration,
         )
       } else {
         val entries = userDao.getPlaylistTracks(playlist.id)
@@ -1828,6 +1829,7 @@ class AstraLibraryRepository private constructor(
         playlist.toBridgeMap(
           trackCount = activePaths.size.toLong(),
           missingCount = entries.count { it.trackPath !in activePaths }.toLong(),
+          totalDuration = activeByPath.values.sumOf { it.duration },
           artworkHash = entries.asSequence()
             .mapNotNull { entry -> activeByPath[entry.trackPath]?.artworkHash }
             .firstOrNull(),
@@ -1851,7 +1853,7 @@ class AstraLibraryRepository private constructor(
     )
     val row = entity.copy(id = requireUser().userDao().insertPlaylist(entity))
     flushSnapshot()
-    return row.toBridgeMap(0, 0, null)
+    return row.toBridgeMap(0, 0, null, 0.0)
   }
 
   suspend fun getDynamicPlaylistRules(playlistId: Long): String {
@@ -2031,6 +2033,24 @@ class AstraLibraryRepository private constructor(
     val tracks = requireCatalog().catalogDao().getActiveTracks(favorites.map(FavoriteEntity::trackPath))
       .associateBy(ActiveTrackView::path)
     return favorites.mapNotNull { tracks[it.trackPath]?.toBridgeMap() }
+  }
+
+  suspend fun getFavoriteSummary(): Map<String, Any?> {
+    initialize()
+    val paths = requireUser().userDao().getFavorites().map(FavoriteEntity::trackPath)
+    val dao = requireCatalog().catalogDao()
+    var count = 0L
+    var duration = 0.0
+    for (batch in paths.chunked(400)) {
+      val totals = dao.getTrackTotals(batch)
+      count += totals.trackCount
+      duration += totals.totalDuration
+    }
+    return mapOf(
+      "track_count" to count.toDouble(),
+      "missing_track_count" to (paths.size - count).toDouble(),
+      "total_duration" to duration,
+    )
   }
 
   suspend fun setFavorite(path: String, favorite: Boolean) {

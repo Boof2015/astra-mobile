@@ -8,6 +8,7 @@ import org.json.JSONObject
 data class DynamicQueries(
   val tracks: SupportSQLiteQuery,
   val count: SupportSQLiteQuery,
+  val summary: SupportSQLiteQuery,
 )
 
 /** Allow-list compiler: rules become bound parameters; no user text becomes SQL. */
@@ -102,6 +103,16 @@ object DynamicPlaylistCompiler {
       ),
       count = SimpleSQLiteQuery(
         "SELECT ${if (ruleLimit > 0) "MIN(COUNT(*), $ruleLimit)" else "COUNT(*)"} $base",
+        args.toTypedArray(),
+      ),
+      // A rule limit selects the first N sorted tracks; a page limit must never
+      // affect the summary. Unlimited rules need no sort for aggregation.
+      summary = if (ruleLimit > 0) SimpleSQLiteQuery(
+        "SELECT COUNT(*) AS trackCount, COALESCE(SUM(duration), 0.0) AS totalDuration " +
+          "FROM (SELECT t.duration $base ORDER BY $sortExpression $direction, t.path ASC LIMIT ?)",
+        (args + ruleLimit).toTypedArray(),
+      ) else SimpleSQLiteQuery(
+        "SELECT COUNT(*) AS trackCount, COALESCE(SUM(t.duration), 0.0) AS totalDuration $base",
         args.toTypedArray(),
       ),
     )

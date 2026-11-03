@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import type { Playlist } from '../types/playlist.ts';
+import type { Playlist, PlaylistSummary, PlaylistTrackEntry } from '../types/playlist.ts';
 import type { DbTrack } from '../types/library.ts';
 
 const require = createRequire(import.meta.url);
@@ -13,7 +13,7 @@ function playlist(id: number, name: string): Playlist {
   return {
     id, name, kind: 'normal', created_at: id, updated_at: id,
     last_played_at: null, auto_cover_hash: null, track_count: 2,
-    missing_track_count: 0, remote_source_id: null,
+    missing_track_count: 0, total_duration: 360, remote_source_id: null,
   };
 }
 
@@ -25,6 +25,7 @@ function savedData() {
     favoriteTracks: [
       { id: 1, path: 'content://music/one', title: 'Favorite track' },
     ] as Pick<DbTrack, 'id' | 'path' | 'title'>[],
+    favoriteSummary: { track_count: 1, missing_track_count: 1, total_duration: 180 } as PlaylistSummary,
   };
 }
 
@@ -33,7 +34,7 @@ function savedData() {
 function harness(data = savedData(), status = 'ready') {
   const modules = new Map<string, Record<string, any>>();
   const listeners = new Map<string, () => void>();
-  const calls = { playlists: 0, favoritePaths: 0, favoriteTracks: 0 };
+  const calls = { playlists: 0, favoritePaths: 0, favoriteTracks: 0, favoriteSummary: 0 };
   const emptyPage = async () => ({ items: [], nextCursor: null, totalCount: 0 });
   const native = {
     initialize: async () => ({ status, trackCount: 0, recoveryNotice: null }),
@@ -51,6 +52,12 @@ function harness(data = savedData(), status = 'ready') {
     listPlaylists: async () => { calls.playlists++; return [...data.playlists]; },
     getFavoritePaths: async () => { calls.favoritePaths++; return [...data.favoritePaths]; },
     getFavoriteTracks: async () => { calls.favoriteTracks++; return [...data.favoriteTracks]; },
+    getFavoriteSummary: async () => { calls.favoriteSummary++; return { ...data.favoriteSummary }; },
+    getPlaylistEntries: async (_id: number, _offset: number, _limit: number): Promise<{
+      items: PlaylistTrackEntry[]; totalCount: number; nextOffset: number | null;
+    }> => ({ items: [], totalCount: 0, nextOffset: null }),
+    setFavorite: async (_path: string, _favorite: boolean) => {},
+    removePlaylistEntry: async (_id: number, _path: string) => {},
   };
   const settings = {
     getState: () => ({ load: async () => {}, includeSingles: false, artistGroupingMode: 'album_artist' }),
@@ -97,6 +104,7 @@ function assertLoaded(h: ReturnType<typeof harness>) {
   assert.deepEqual(state.playlists, h.data.playlists);
   assert.deepEqual(state.favoritePaths, new Set(h.data.favoritePaths));
   assert.deepEqual(state.favoriteTracks, h.data.favoriteTracks);
+  assert.deepEqual(state.favoriteSummary, h.data.favoriteSummary);
 }
 
 test('library initialization loads saved playlists and favorites without a mutation', async () => {
@@ -105,7 +113,7 @@ test('library initialization loads saved playlists and favorites without a mutat
   await h.library.getState().initialize();
   assert.equal(h.library.getState().initialized, true);
   assertLoaded(h);
-  assert.deepEqual(h.calls, { playlists: 1, favoritePaths: 1, favoriteTracks: 1 });
+  assert.deepEqual(h.calls, { playlists: 1, favoritePaths: 1, favoriteTracks: 1, favoriteSummary: 1 });
 });
 
 test('initialization awaits playlist loading alongside catalog reads', async () => {
@@ -138,10 +146,11 @@ test('catalog changes refresh playlist counts, artwork, and favorite tracks', { 
   const h = harness();
   await h.library.getState().initialize();
   h.data.playlists = h.data.playlists.map((row) => ({
-    ...row, track_count: 1, missing_track_count: 1, auto_cover_hash: 'new-cover',
+    ...row, track_count: 1, missing_track_count: 1, total_duration: 123, auto_cover_hash: 'new-cover',
   }));
   h.data.favoritePaths = ['content://music/two'];
   h.data.favoriteTracks = [{ id: 2, path: 'content://music/two', title: 'New favorite' }];
+  h.data.favoriteSummary = { track_count: 1, missing_track_count: 0, total_duration: 123 };
   const refreshed = new Promise<void>((resolve) => {
     const unsubscribe = h.library.subscribe((state, previous) => {
       if (state.homeAlbums !== previous.homeAlbums) {
@@ -171,6 +180,7 @@ test('failed playlist reads retain loaded data and the next library refresh reco
   assert.equal(h.playlists.getState().playlists, previous.playlists);
   assert.equal(h.playlists.getState().favoritePaths, previous.favoritePaths);
   assert.equal(h.playlists.getState().favoriteTracks, previous.favoriteTracks);
+  assert.equal(h.playlists.getState().favoriteSummary, previous.favoriteSummary);
   h.native.listPlaylists = listPlaylists;
   await h.library.getState().refresh();
   assertLoaded(h);
@@ -189,7 +199,9 @@ test('failed initial playlist loading can be retried through library initializat
 });
 
 test('an empty database loads an empty playlist and favorites state', async () => {
-  const h = harness({ playlists: [], favoritePaths: [], favoriteTracks: [] }, 'empty');
+  const h = harness({ playlists: [], favoritePaths: [], favoriteTracks: [],
+    favoriteSummary: { track_count: 0, missing_track_count: 0, total_duration: 0 },
+  }, 'empty');
   await h.library.getState().initialize();
   assertLoaded(h);
   assert.equal(h.calls.playlists, 1);
@@ -200,6 +212,73 @@ test('fatal user data skips playlist and favorites reads', async () => {
   await h.library.getState().initialize();
   assert.equal(h.library.getState().initialized, true);
   assert.equal(h.library.getState().status, 'fatalUserData');
-  assert.deepEqual(h.calls, { playlists: 0, favoritePaths: 0, favoriteTracks: 0 });
+  assert.deepEqual(h.calls, { playlists: 0, favoritePaths: 0, favoriteTracks: 0, favoriteSummary: 0 });
   assert.deepEqual(h.playlists.getState().playlists, []);
+  assert.equal(h.playlists.getState().favoriteSummary, null);
+});
+
+test('235-track playlist totals survive entry pagination and refresh after removal', async () => {
+  const h = harness();
+  h.data.playlists = [{ ...playlist(1, 'Large playlist'), track_count: 235, total_duration: 42300 }];
+  h.native.getPlaylistEntries = async (_id, offset, limit) => ({
+    items: Array.from({ length: Math.min(limit, 235 - offset) }, (_, i) => ({ id: offset + i })) as PlaylistTrackEntry[],
+    totalCount: 235,
+    nextOffset: offset + limit < 235 ? offset + limit : null,
+  });
+  await h.playlists.getState().refresh();
+  const summary = h.playlists.getState().playlists[0];
+  await h.playlists.getState().openPlaylist(1);
+  assert.equal(h.playlists.getState().activeEntries.length, 100);
+  assert.equal(h.playlists.getState().playlists[0].track_count, 235);
+  await h.playlists.getState().loadNextEntries();
+  assert.equal(h.playlists.getState().activeEntries.length, 200);
+  assert.equal(h.playlists.getState().playlists[0], summary);
+  await h.playlists.getState().loadNextEntries();
+  assert.equal(h.playlists.getState().activeEntries.length, 235);
+  assert.equal(h.playlists.getState().playlists[0], summary);
+  h.native.removePlaylistEntry = async () => {
+    h.data.playlists = [{ ...summary, track_count: 234, total_duration: 42120 }];
+  };
+  await h.playlists.getState().removeFromPlaylist(1, 'removed');
+  assert.equal(h.playlists.getState().playlists[0].track_count, 234);
+  assert.equal(h.playlists.getState().playlists[0].total_duration, 42120);
+});
+
+test('Favorites totals are independent of the 500 loaded rows and refresh on toggles', async () => {
+  const h = harness();
+  assert.equal(h.playlists.getState().favoriteSummary, null);
+  h.data.favoritePaths = Array.from({ length: 606 }, (_, i) => `track:${i}`);
+  h.data.favoriteTracks = h.data.favoritePaths.slice(0, 500).map((path, id) => ({ id, path, title: path }));
+  h.data.favoriteSummary = { track_count: 605, missing_track_count: 1, total_duration: 108900 };
+  await h.playlists.getState().refresh();
+  assert.equal(h.playlists.getState().favoriteTracks.length, 500);
+  assertLoaded(h);
+  h.native.setFavorite = async (path, favorite) => {
+    assert.equal(favorite, false);
+    h.data.favoritePaths = h.data.favoritePaths.filter(value => value !== path);
+    h.data.favoriteSummary = { track_count: 604, missing_track_count: 1, total_duration: 108720 };
+  };
+  await h.playlists.getState().toggleFavorite({ path: 'track:604' });
+  assertLoaded(h);
+});
+
+test('pending and failed summary reads retain successful totals, then recover', async () => {
+  const h = harness();
+  await h.playlists.getState().refresh();
+  const previous = h.playlists.getState();
+  let reject!: (error: Error) => void;
+  h.native.getFavoriteSummary = () => new Promise<PlaylistSummary>((_resolve, fail) => { reject = fail; });
+  h.data.favoriteSummary = { track_count: 999, missing_track_count: 2, total_duration: 9999 };
+  const pending = h.playlists.getState().refresh();
+  assert.equal(h.playlists.getState().favoriteSummary, previous.favoriteSummary);
+  reject(new Error('summary unavailable'));
+  await assert.rejects(pending, /summary unavailable/);
+  assert.equal(h.playlists.getState().favoriteSummary, previous.favoriteSummary);
+  assert.equal(h.playlists.getState().playlists, previous.playlists);
+  h.native.getFavoriteSummary = async () => { throw new Error('summary unavailable'); };
+  await assert.rejects(h.playlists.getState().toggleFavorite({ path: 'new' }), /summary unavailable/);
+  assert.equal(h.playlists.getState().favoriteSummary, previous.favoriteSummary);
+  h.native.getFavoriteSummary = async () => ({ ...h.data.favoriteSummary });
+  await h.playlists.getState().refresh();
+  assertLoaded(h);
 });

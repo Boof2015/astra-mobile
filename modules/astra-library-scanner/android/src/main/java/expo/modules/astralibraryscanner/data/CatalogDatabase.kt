@@ -19,6 +19,8 @@ data class TrackSyncRow(
   val mtime: Long,
 )
 
+data class TrackTotals(val trackCount: Long, val totalDuration: Double)
+
 data class SectionAnchorRow(
   @androidx.room.ColumnInfo(name = "section_label") val sectionLabel: String,
   @androidx.room.ColumnInfo(name = "sort_key") val sortKey: String,
@@ -252,6 +254,9 @@ interface CatalogDao {
 
   @Query("SELECT * FROM active_tracks WHERE path IN (:paths)")
   suspend fun getActiveTracks(paths: List<String>): List<ActiveTrackView>
+
+  @Query("SELECT COUNT(*) AS trackCount, COALESCE(SUM(duration), 0.0) AS totalDuration FROM active_tracks WHERE path IN (:paths)")
+  suspend fun getTrackTotals(paths: List<String>): TrackTotals
 
   @Query("SELECT * FROM active_tracks ORDER BY path")
   suspend fun getAllActiveTracksForNativeMatching(): List<ActiveTrackView>
@@ -1565,6 +1570,9 @@ interface CatalogDao {
 
   @RawQuery
   suspend fun runDynamicCountQuery(query: SupportSQLiteQuery): Long
+
+  @RawQuery
+  suspend fun runTrackTotalsQuery(query: SupportSQLiteQuery): TrackTotals
 
   @RawQuery
   suspend fun getCarBrowseGroups(query: SupportSQLiteQuery): List<CarBrowseGroup>

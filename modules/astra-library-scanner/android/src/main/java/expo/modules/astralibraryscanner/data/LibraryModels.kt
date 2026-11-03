@@ -251,6 +251,7 @@ fun PlaylistEntity.toBridgeMap(
   trackCount: Long,
   missingCount: Long,
   artworkHash: String?,
+  totalDuration: Double,
 ): Map<String, Any?> = mapOf(
   "id" to id.toDouble(),
   "name" to name,
@@ -261,5 +262,6 @@ fun PlaylistEntity.toBridgeMap(
   "auto_cover_hash" to artworkHash,
   "track_count" to trackCount.toDouble(),
   "missing_track_count" to missingCount.toDouble(),
+  "total_duration" to totalDuration,
   "remote_source_id" to remoteSourceId?.toDouble(),
 )

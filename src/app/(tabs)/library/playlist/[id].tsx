@@ -95,6 +95,7 @@ export default function PlaylistScreen() {
 
   const playlists = usePlaylistStore((s) => s.playlists);
   const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
+  const favoriteSummary = usePlaylistStore((s) => s.favoriteSummary);
   const activeEntries = usePlaylistStore((s) => s.activeEntries);
   const openPlaylist = usePlaylistStore((s) => s.openPlaylist);
   const loadNextEntries = usePlaylistStore((s) => s.loadNextEntries);
@@ -165,8 +166,6 @@ export default function PlaylistScreen() {
     }
     return map;
   }, [entries]);
-
-  const totalDuration = playable.reduce((sum, track) => sum + track.duration, 0);
 
   const startPlayback = (index: number) => {
     if (playable.length === 0) return;
@@ -275,13 +274,14 @@ export default function PlaylistScreen() {
         ]
       : [];
 
-  const meta = [
-    `${playable.length} ${playable.length === 1 ? 'track' : 'tracks'}`,
-    entries.length > playable.length ? `${entries.length - playable.length} missing` : null,
-    formatDuration(totalDuration),
+  const summary = isFavorites ? favoriteSummary : playlist;
+  const meta = summary ? [
+    `${summary.track_count} ${summary.track_count === 1 ? 'track' : 'tracks'}`,
+    summary.missing_track_count > 0 ? `${summary.missing_track_count} missing` : null,
+    formatDuration(summary.total_duration),
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join(' · ') : null;
 
   return (
     <Screen padded={false} style={styles.screen}>
@@ -334,7 +334,7 @@ export default function PlaylistScreen() {
         }
         backdropUri={coverHash ? artworkThumbUri(coverHash) : null}
         title={name}
-        heroMeta={<Text variant="label">{meta}</Text>}
+        heroMeta={meta == null ? null : <Text variant="label">{meta}</Text>}
         heroExtra={
           isDynamic && playlistId != null ? (
             <ActionButton

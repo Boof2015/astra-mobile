@@ -364,6 +364,10 @@ class AstraLibraryDataModule : Module() {
       repositoryCall { getFavoritePaths() }
     }
 
+    AsyncFunction("getFavoriteSummary").Coroutine<Map<String, Any?>> {
+      repositoryCall { getFavoriteSummary() }
+    }
+
     AsyncFunction("getFavoriteTracks") Coroutine { limit: Int ->
       repositoryCall { getFavoriteTracks(limit) }
     }

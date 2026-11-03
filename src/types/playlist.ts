@@ -4,7 +4,16 @@
 import type { DbTrack } from './library';
 import type { PlaylistKind } from '@/shared/playlists/dynamicPlaylist';
 
-export interface Playlist {
+export interface PlaylistSummary {
+  /** Entries whose track exists in the library, across the entire collection. */
+  track_count: number;
+  /** Entries whose track is gone (folder removed / file deleted). */
+  missing_track_count: number;
+  /** Duration of all available tracks, in seconds. */
+  total_duration: number;
+}
+
+export interface Playlist extends PlaylistSummary {
   id: number;
   name: string;
   kind: PlaylistKind;
@@ -13,10 +22,6 @@ export interface Playlist {
   last_played_at: number | null;
   /** First entry's artwork — computed, not stored. */
   auto_cover_hash: string | null;
-  /** Entries whose track exists in the library. */
-  track_count: number;
-  /** Entries whose track is gone (folder removed / file deleted). */
-  missing_track_count: number;
   /** Set when this playlist mirrors a remote server playlist (-> remote_sources.id). */
   remote_source_id: number | null;
 }

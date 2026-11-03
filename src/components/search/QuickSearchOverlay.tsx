@@ -604,7 +604,7 @@ function QuickSearchPanel({
   const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
 
   const playlists = usePlaylistStore((s) => s.playlists);
-  const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
+  const favoriteSummary = usePlaylistStore((s) => s.favoriteSummary);
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
 
   const [query, setQuery] = useState(initialQuery);
@@ -782,13 +782,13 @@ function QuickSearchPanel({
   const allPlaylistResults = useMemo(() => {
     if (!hasQuery) return [] as PlaylistResult[];
     const candidates: SearchPlaylist[] = [
-      {
+      ...(favoriteSummary ? [{
         id: 'favorites',
         name: 'Favorites',
-        trackCount: favoriteTracks.length,
+        trackCount: favoriteSummary.track_count,
         coverHash: null,
         pinned: true,
-      },
+      } satisfies SearchPlaylist] : []),
       ...playlists.map(playlistFromRow),
     ];
     return candidates
@@ -806,7 +806,7 @@ function QuickSearchPanel({
       })
       .filter((result): result is PlaylistResult => result !== null)
       .sort(compareScoredResults);
-  }, [favoriteTracks.length, hasQuery, playlists, trimmedQuery]);
+  }, [favoriteSummary, hasQuery, playlists, trimmedQuery]);
 
   const trackResults = showAllLibrary
     ? allTrackResults.slice(0, ALL_TRACK_RESULT_LIMIT)

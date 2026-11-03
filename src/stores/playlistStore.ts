@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import type { DbTrack } from '@/types/library';
-import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
+import type { Playlist, PlaylistSummary, PlaylistTrackEntry } from '@/types/playlist';
 import {
   serializeDynamicPlaylistRules,
   normalizeDynamicPlaylistRules,
@@ -35,6 +35,7 @@ interface PlaylistStore {
   playlists: Playlist[];
   favoritePaths: Set<string>;
   favoriteTracks: DbTrack[];
+  favoriteSummary: PlaylistSummary | null;
   activePlaylistId: number | null;
   activeEntries: PlaylistTrackEntry[];
   activeEntriesTotal: number;
@@ -107,12 +108,13 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
   };
 
   const refreshAll = async () => {
-    const [playlists, favoritePaths, favoriteTracks] = await Promise.all([
+    const [playlists, favoritePaths, favoriteTracks, favoriteSummary] = await Promise.all([
       AstraLibraryData.listPlaylists<Playlist>(),
       AstraLibraryData.getFavoritePaths(),
       AstraLibraryData.getFavoriteTracks<DbTrack>(500),
+      AstraLibraryData.getFavoriteSummary<PlaylistSummary>(),
     ]);
-    set({ playlists, favoritePaths: new Set(favoritePaths), favoriteTracks });
+    set({ playlists, favoritePaths: new Set(favoritePaths), favoriteTracks, favoriteSummary });
     await reloadActive();
   };
 
@@ -120,6 +122,7 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
     playlists: [],
     favoritePaths: new Set<string>(),
     favoriteTracks: [],
+    favoriteSummary: null,
     activePlaylistId: null,
     activeEntries: [],
     activeEntriesTotal: 0,
@@ -231,11 +234,12 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
       else optimistic.delete(track.path);
       set({ favoritePaths: optimistic });
       await AstraLibraryData.setFavorite(track.path, favorite);
-      const [paths, tracks] = await Promise.all([
+      const [paths, tracks, favoriteSummary] = await Promise.all([
         AstraLibraryData.getFavoritePaths(),
         AstraLibraryData.getFavoriteTracks<DbTrack>(500),
+        AstraLibraryData.getFavoriteSummary<PlaylistSummary>(),
       ]);
-      set({ favoritePaths: new Set(paths), favoriteTracks: tracks });
+      set({ favoritePaths: new Set(paths), favoriteTracks: tracks, favoriteSummary });
     },
 
     markPlayed: async (id) => {
