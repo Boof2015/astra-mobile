@@ -977,12 +977,11 @@ export default function DynamicPlaylistEditorScreen() {
         const createdPlaylist = await createDynamicPlaylist(trimmedName, normalizedRules);
         router.replace(`/library/playlist/${createdPlaylist.id}`);
       } catch (err) {
+        setIsSaving(false);
         showAppDialog({
           title: 'Save failed',
           message: err instanceof Error ? err.message : String(err),
         });
-      } finally {
-        setIsSaving(false);
       }
     })();
   };
@@ -1126,7 +1125,10 @@ export default function DynamicPlaylistEditorScreen() {
               </Text>
             </View>
 
-            <View pointerEvents={isLoadingRules || isSaving ? 'none' : 'auto'}>{renderGroup(rules.filter, 1)}</View>
+            {/* Keep the native parent stable when loading/saving changes pointerEvents. */}
+            <View collapsable={false} pointerEvents={isLoadingRules || isSaving ? 'none' : 'auto'}>
+              {renderGroup(rules.filter, 1)}
+            </View>
             {normalizedRulesError && <Text variant="label" color={colors.warning} accessibilityRole="alert">{normalizedRulesError}</Text>}
           </View>
 
