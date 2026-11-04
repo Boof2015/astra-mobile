@@ -1,27 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { AccessibilityInfo, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
-  Keyframe,
+  Easing,
   ReduceMotion,
+  cancelAnimation,
+  runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
+  useReducedMotion,
   useSharedValue,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import { Text } from '@/components/Text';
 import { GradientMask } from '@/components/GradientMask';
 import { TactilePressable } from '@/components/player/TactilePressable';
-import {
-  applyPlaybackSnapshot,
-  createPlaybackClock,
-  projectPlaybackClock,
-} from '@/audio/playbackClock';
 import { useAnimatedPlaybackProgress } from '@/audio/useAnimatedPlaybackProgress';
 import { lyricUnitText, lyricWordEndMs, lyricWordProgress } from '@/lyrics/animation';
 import { peekCachedLyricsForTrack } from '@/lyrics/lyrics';
 import {
-  getActiveSyncedLyricsLine,
   getSyncedLyricsDisplayLines,
   LYRICS_DISPLAY_LEAD_MS,
 } from '@/lyrics/presentation';
@@ -33,29 +31,21 @@ import { useLyricsStore } from '@/stores/lyricsStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { LyricsLine, LyricsLookupResult } from '@/lyrics/types';
 import type { Track } from '@/types/audio';
-
-const ENTERING = new Keyframe({
-  0: { opacity: 0, transform: [{ translateY: 6 }] },
-  100: { opacity: 1, transform: [{ translateY: 0 }] },
-})
-  .duration(190)
-  .reduceMotion(ReduceMotion.System);
-
-const EXITING = new Keyframe({
-  0: { opacity: 1, transform: [{ translateY: 0 }] },
-  100: { opacity: 0, transform: [{ translateY: -6 }] },
-})
-  .duration(160)
-  .reduceMotion(ReduceMotion.System);
-
-/**
- * How often the active line is re-checked while playing. The check is cheap;
- * what matters is that the component only re-renders when the line changes.
- * It used to follow a 15Hz smooth clock and re-render on every tick (~33
- * renders per skip in the trace, 2026-10-02) to show a line that changes every
- * few seconds.
- */
-const LINE_POLL_MS = 100;
+import {
+  currentLyricPeekLine,
+  initialLyricPeekTransition,
+  PEEK_ENTER_MS,
+  PEEK_EXIT_MS,
+  PEEK_SLIDE_PX,
+  releaseLyricPeekSlot,
+  requestLyricPeek,
+  scheduleLyricPeekCompletion,
+  watchLyricPeekLine,
+  type LyricPeekCue,
+  type LyricPeekSelection,
+  type LyricPeekSource,
+  type LyricPeekTransition,
+} from './lyricPeekState';
 
 /**
  * The synced line at the current playback position, re-rendering only when it
@@ -63,37 +53,27 @@ const LINE_POLL_MS = 100;
  * selector, so the 2Hz progress mirror does not re-render the peek either.
  */
 function useActiveLyricLine(
-  lines: LyricsLine[] | null,
-  duration: number,
+  source: LyricPeekSource,
   isPlaying: boolean
 ): LyricsLine | null {
-  const [line, setLine] = useState<LyricsLine | null>(null);
-  useEffect(() => {
-    if (!lines) {
-      queueMicrotask(() => setLine(null));
-      return undefined;
-    }
-    let clock = createPlaybackClock(usePlayerStore.getState().currentTime, duration, isPlaying);
-    const update = () => {
-      const time = projectPlaybackClock(clock, duration, Date.now());
-      const next = getActiveSyncedLyricsLine(lines, time + LYRICS_DISPLAY_LEAD_MS / 1000, {
-        durationSeconds: duration,
-      });
-      setLine((previous) => (previous === next ? previous : next));
-    };
-    const unsubscribe = usePlayerStore.subscribe((state, previous) => {
-      if (state.currentTime === previous.currentTime) return;
-      clock = applyPlaybackSnapshot(clock, state.currentTime, duration, Date.now());
-      update();
-    });
-    queueMicrotask(update);
-    const poll = isPlaying ? setInterval(update, LINE_POLL_MS) : null;
-    return () => {
-      unsubscribe();
-      if (poll) clearInterval(poll);
-    };
-  }, [duration, isPlaying, lines]);
-  return line;
+  const [selection, setSelection] = useState<LyricPeekSelection | null>(null);
+  useLayoutEffect(() => watchLyricPeekLine({
+    source,
+    isPlaying,
+    readPlayback: () => {
+      const state = usePlayerStore.getState();
+      return { path: state.currentTrack?.path ?? null, currentTime: state.currentTime };
+    },
+    subscribe: (update) => usePlayerStore.subscribe((state, previous) => {
+      if (state.currentTime !== previous.currentTime || state.currentTrack?.path !== previous.currentTrack?.path) update();
+    }),
+    changed: (next) => setSelection((previous) =>
+      previous?.source === next.source && previous.line === next.line ? previous : next
+    ),
+  }), [source, isPlaying]);
+  // Effects have not run yet on a source change. Never label the old selection
+  // with the new track, even for that first render.
+  return currentLyricPeekLine(source, selection);
 }
 
 /** Matches what the deck reserves when a caller doesn't pass a height. */
@@ -284,6 +264,88 @@ function PeekWords({
   );
 }
 
+/** Measurements belong to the slot's cue, including while it is exiting. */
+function PeekLine({ cue, lines, sweepEnabled, seconds }: {
+  cue: LyricPeekCue;
+  lines: 1 | 2;
+  sweepEnabled: boolean;
+  seconds: SharedValue<number>;
+}) {
+  const styles = useStyles();
+  const [overflowedLines, setOverflowedLines] = useState<1 | 2 | null>(null);
+  return sweepEnabled && cue.line.words?.length && overflowedLines !== lines ? (
+    <PeekWords line={cue.line} endMs={cue.endMs} lines={lines} seconds={seconds}
+      onOverflow={() => setOverflowedLines(lines)} />
+  ) : (
+    <Text numberOfLines={lines} ellipsizeMode="tail" style={styles.line}>
+      {cue.line.text.trim()}
+    </Text>
+  );
+}
+
+/** Stable native frame: React owns removal; no exiting layout animation can
+ * reparent this text above the player or retain it after its parent is gone. */
+function PeekSlot({ entry, index, front, generation, animate, release, lines, sweepEnabled, seconds }: {
+  entry: LyricPeekTransition['slots'][number];
+  index: number;
+  front: number;
+  generation: number;
+  animate: boolean;
+  release: (index: number, generation: number) => void;
+  lines: 1 | 2;
+  sweepEnabled: boolean;
+  seconds: SharedValue<number>;
+}) {
+  const styles = useStyles();
+  const opacity = useSharedValue(0);
+  const y = useSharedValue(0);
+  const id = entry?.id;
+  const outgoing = index !== front;
+  useLayoutEffect(() => {
+    cancelAnimation(opacity);
+    cancelAnimation(y);
+    const target = id === undefined || outgoing ? 0 : 1;
+    if (id === undefined || !animate) {
+      opacity.set(target);
+      y.set(0);
+      return undefined;
+    }
+
+    const duration = outgoing ? PEEK_EXIT_MS : PEEK_ENTER_MS;
+    const targetY = outgoing ? -PEEK_SLIDE_PX : 0;
+    if (!outgoing) {
+      opacity.set(0);
+      y.set(PEEK_SLIDE_PX);
+    }
+    const config = { duration, easing: Easing.linear, reduceMotion: ReduceMotion.System };
+    const completion = scheduleLyricPeekCompletion(duration, () => {
+      if (outgoing) release(index, generation);
+    }, () => {
+      cancelAnimation(opacity);
+      cancelAnimation(y);
+      opacity.set(target);
+      y.set(targetY);
+    });
+    const complete = completion.finish;
+    opacity.set(withTiming(target, config, (finished) => {
+      if (finished) runOnJS(complete)();
+    }));
+    y.set(withTiming(targetY, config));
+    return () => {
+      completion.cancel();
+      cancelAnimation(opacity);
+      cancelAnimation(y);
+    };
+  }, [animate, generation, id, index, opacity, outgoing, release, y]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: y.value }] }));
+  return (
+    <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+      style={[styles.lineFrame, style]}>
+      {entry ? <PeekLine key={entry.id} cue={entry.cue} lines={lines} sweepEnabled={sweepEnabled} seconds={seconds} /> : null}
+    </Animated.View>
+  );
+}
+
 interface CachedLyricPeekProps {
   track: Track;
   active: boolean;
@@ -358,11 +420,9 @@ export function CachedLyricPeek({
   const result = memoryResult?.status === 'hit' ? memoryResult : storedResult;
   const syncedLines =
     active && !hidden && result?.status === 'hit' ? result.lyrics.syncedLines : null;
-  const activeLine = useActiveLyricLine(syncedLines, duration, isPlaying);
+  const source = useMemo(() => ({ path: track.path, lines: syncedLines, duration }), [track.path, syncedLines, duration]);
+  const activeLine = useActiveLyricLine(source, isPlaying);
   const text = activeLine?.text.trim() || null;
-  const lineKey = text
-    ? `${track.path}:${activeLine?.timestampMs ?? -1}:${text}`
-    : null;
 
   const wordTimed = useMemo(
     () => !!syncedLines?.some((line) => line.words?.length),
@@ -381,10 +441,23 @@ export function CachedLyricPeek({
   );
   const endMs = activeRow?.kind === 'lyric' ? activeRow.endMs : null;
   const seconds = useSharedValue(0);
-  const [overflowed, setOverflowed] = useState<string | null>(null);
-  const fitKey = `${lineKey}:${lines}`;
-  const sweeping =
-    sweepEnabled && !!activeLine?.words?.length && overflowed !== fitKey;
+  const initialReducedMotion = useReducedMotion();
+  const [reducedMotion, setReducedMotion] = useState(initialReducedMotion);
+  useEffect(() => {
+    let live = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => { if (live) setReducedMotion(value); });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
+    return () => { live = false; subscription.remove(); };
+  }, []);
+  const cue = useMemo(() => text && activeLine ? { line: activeLine, endMs } : null, [text, activeLine, endMs]);
+  const [transition, setTransition] = useState(() => initialLyricPeekTransition(source));
+  // Reconcile before commit, so a changed/hidden source cannot render either
+  // old slot while waiting for a passive effect to clear it.
+  const requested = requestLyricPeek(transition, source, cue, !reducedMotion);
+  if (requested !== transition) setTransition(requested);
+  const release = useCallback((index: number, generation: number) => {
+    setTransition((current) => releaseLyricPeekSlot(current, index, generation));
+  }, []);
 
   return (
     <View style={[styles.wrap, lines > 1 && styles.overflowing, { height }]}>
@@ -399,33 +472,11 @@ export function CachedLyricPeek({
         accessibilityRole={text ? 'button' : undefined}
         accessibilityLabel={text ? `Open lyrics: ${text}` : undefined}
       >
-        {text && lineKey ? (
-          <Animated.View
-            key={lineKey}
-            entering={ENTERING}
-            exiting={EXITING}
-            pointerEvents="none"
-            style={styles.lineFrame}
-          >
-            {sweeping && activeLine ? (
-              <PeekWords
-                line={activeLine}
-                endMs={endMs}
-                lines={lines}
-                seconds={seconds}
-                onOverflow={() => setOverflowed(fitKey)}
-              />
-            ) : (
-              <Text
-                numberOfLines={lines}
-                ellipsizeMode="tail"
-                style={styles.line}
-              >
-                {text}
-              </Text>
-            )}
-          </Animated.View>
-        ) : null}
+        {transition.slots.map((entry, index) => (
+          <PeekSlot key={index} entry={entry} index={index} front={transition.front}
+            generation={transition.generation} animate={transition.animate} release={release}
+            lines={lines} sweepEnabled={sweepEnabled} seconds={seconds} />
+        ))}
       </TactilePressable>
     </View>
   );

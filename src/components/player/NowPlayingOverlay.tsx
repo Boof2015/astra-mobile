@@ -1679,7 +1679,8 @@ export function NowPlayingOverlay({
                       lines={lyricPeekLines === 2 ? 2 : 1}
                       active={surfacesLive && !queueOpen}
                       hidden={
-                        hasTabletCompanion && nowPlayingCompanion === 'lyrics'
+                        (phoneLyricsCapable && lyricsVisible) ||
+                        (hasTabletCompanion && nowPlayingCompanion === 'lyrics')
                       }
                       onOpenLyrics={showLyrics}
                     />
