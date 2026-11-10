@@ -17,6 +17,7 @@ import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import { BleedRail } from '@/components/BleedRail';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Text } from '@/components/Text';
 import { showAppDialog } from '@/components/dialogs/AppDialog';
@@ -1097,11 +1098,7 @@ export default function DynamicPlaylistEditorScreen() {
             <Text variant="caption" style={styles.sectionLabel}>
               STARTERS
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.presetRow}
-            >
+            <BleedRail contentContainerStyle={styles.presetRow}>
               {DYNAMIC_PLAYLIST_PRESETS.map((preset) => (
                 <AppPressable
                   key={preset.id}
@@ -1115,7 +1112,7 @@ export default function DynamicPlaylistEditorScreen() {
                   </Text>
                 </AppPressable>
               ))}
-            </ScrollView>
+            </BleedRail>
           </View>
 
           <View style={styles.section}>
@@ -1247,7 +1244,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   presetRow: {
     gap: spacing.sm,
-    paddingRight: spacing.lg,
   },
   presetChip: {
     minHeight: 38,

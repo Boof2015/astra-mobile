@@ -10,6 +10,13 @@ import { TopFadeScrim } from '@/components/TopFadeScrim';
 import { spacing } from '@/theme';
 import { createThemedStyles } from '@/theme/themed';
 
+/**
+ * The content gutter a padded screen applies on each side. Exported for the
+ * screens that pay it themselves (`padded={false}`) and for anything that has
+ * to cancel it, like `BleedRail`.
+ */
+export const SCREEN_GUTTER = spacing.lg;
+
 interface ScreenProps extends ViewProps {
   /** Apply default horizontal padding. */
   padded?: boolean;
@@ -117,7 +124,7 @@ const useStyles = createThemedStyles((colors) => ({
     flex: 1,
   },
   padded: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: SCREEN_GUTTER,
   },
 }));
 

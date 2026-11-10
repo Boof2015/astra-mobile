@@ -14,7 +14,8 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Screen } from '@/components/Screen';
+import { Screen, SCREEN_GUTTER } from '@/components/Screen';
+import { BleedRail } from '@/components/BleedRail';
 import { useTopBleedInset } from '@/components/screenTopBleed';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -623,7 +624,9 @@ export default function HomeScreen() {
   // width and has to lay out like one.
   const [contentWidth, setContentWidth] = useState(0);
   const measureContent = useCallback((event: LayoutChangeEvent) => {
-    setContentWidth(event.nativeEvent.layout.width);
+    // The scroll frame runs edge to edge so the rail can; the gutters are paid
+    // inside it, and the layout is keyed on what is left between them.
+    setContentWidth(Math.max(0, event.nativeEvent.layout.width - SCREEN_GUTTER * 2));
   }, []);
   const home = getHomeLayout(contentWidth);
 
@@ -792,11 +795,7 @@ export default function HomeScreen() {
   const recentlyAddedSection = recentlyAddedAlbums.length > 0 ? (
     <>
       <SectionHeader title="Recently Added" />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.albumRail}
-      >
+      <BleedRail contentContainerStyle={styles.albumRail}>
         {recentlyAddedAlbums.map((album) => (
           <RecentlyAddedAlbum
             key={album.identity_key}
@@ -805,7 +804,7 @@ export default function HomeScreen() {
             onPress={() => openAlbum(album)}
           />
         ))}
-      </ScrollView>
+      </BleedRail>
     </>
   ) : null;
 
@@ -838,13 +837,19 @@ export default function HomeScreen() {
   ) : null;
 
   return (
-    <Screen bleedTop>
+    <Screen bleedTop padded={false}>
       <PullSearchGesture atTop={scrollTop.atTop} onOpen={openSearch}>
         <PullSearchScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
-          contentContainerStyle={{ paddingTop: topBleed, paddingBottom: sceneBottomInset }}
+          contentContainerStyle={{
+            paddingTop: topBleed,
+            paddingBottom: sceneBottomInset,
+            // Paid here rather than by `Screen` so the scroll frame reaches the
+            // edges of the scene — `BleedRail` needs somewhere to bleed into.
+            paddingHorizontal: SCREEN_GUTTER,
+          }}
           onLayout={measureContent}
           onScroll={scrollTop.onScroll}
           scrollEventThrottle={scrollTop.scrollEventThrottle}
@@ -986,7 +991,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   albumRail: {
     gap: spacing.md,
-    paddingRight: spacing.lg,
   },
   recentAlbum: {
     // Width comes from the layout — the rail keeps the full scene width, so its

@@ -4,7 +4,6 @@ import {
   type ComponentProps
 } from 'react';
 import {
-  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '@/components/Screen';
+import { BleedRail } from '@/components/BleedRail';
 import { ReanimatedFlashList } from '@/components/ReanimatedFlashList';
 import { Text } from '@/components/Text';
 import { AstraLogo } from '@/components/AstraLogo';
@@ -532,11 +532,7 @@ function AlbumRail({
 }) {
   const styles = useStyles();
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.albumRail}
-    >
+    <BleedRail contentContainerStyle={styles.albumRail}>
       {albums.map((album) => (
         <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
           key={album.identity_key}
@@ -566,7 +562,7 @@ function AlbumRail({
           </Text>
         </AppPressable>
       ))}
-    </ScrollView>
+    </BleedRail>
   );
 }
 
@@ -667,7 +663,6 @@ const useStyles = createThemedStyles((colors) => ({
   },
   albumRail: {
     gap: spacing.md,
-    paddingRight: spacing.lg,
     paddingBottom: spacing.sm,
   },
   albumCard: {
