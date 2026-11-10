@@ -127,6 +127,16 @@ class PlaybackQueueOrderTest {
   }
 
   @Test
+  fun nextEntryIdNeverReusesAnIdThatIsAlreadyInTheQueue() {
+    // The normal case: the session counter is ahead of every row.
+    assertEquals(12L, nextFreeQueueEntryId(12, (0L until 12L).toList()))
+    // A counter that fell behind must not hand out a live row's id.
+    assertEquals(13L, nextFreeQueueEntryId(12, (0L..12L).toList()))
+    assertEquals(41L, nextFreeQueueEntryId(0, listOf(3L, 40L, 7L)))
+    assertEquals(5L, nextFreeQueueEntryId(5, emptyList()))
+  }
+
+  @Test
   fun restorationAccountsForUnavailableRowsWithoutMatchingAnotherCopy() {
     assertEquals(2, restoredPlaybackActiveIndex(listOf(0L, 2L, 3L, 4L), 3))
     assertEquals(1, restoredPlaybackActiveIndex(listOf(0L, 2L, 4L), 3))

@@ -16,6 +16,17 @@ internal data class PlaybackQueueOrder(
 internal fun restoredPlaybackActiveIndex(retainedPositions: List<Long>, activePosition: Long): Int =
   retainedPositions.indexOfLast { it <= activePosition }.coerceAtLeast(0)
 
+/**
+ * The id to give the next row added to a queue.
+ *
+ * The session's counter is the normal source, but a row's id is its primary
+ * key and additions are written with an upsert: an id that is already taken
+ * does not fail, it relocates the existing row and leaves a hole in the
+ * position column. So never trust the counter below the ids actually in use.
+ */
+internal fun nextFreeQueueEntryId(sessionNextEntryId: Long, existingEntryIds: Iterable<Long>): Long =
+  maxOf(sessionNextEntryId, (existingEntryIds.maxOrNull() ?: -1L) + 1L)
+
 internal fun createPlaybackQueueOrder(
   original: List<OrderedQueueItem>,
   anchorPath: String?,

@@ -490,7 +490,10 @@ interface UserDao {
       return anchor.toLong()
     }
     val position = anchor + 1
-    val entryId = maxOf(session.nextEntryId, entries.maxOf { it.entryId } + 1)
+    val entryId = nextFreeQueueEntryId(
+      session.nextEntryId,
+      entries.map(PlaybackQueueEntryEntity::entryId),
+    )
     entries.add(position, PlaybackQueueEntryEntity(sessionId, position.toLong(), path, entryId))
     val original = getOriginalQueueEntries(sessionId).toMutableList()
     if (session.shuffleSeed != null) {
@@ -664,6 +667,12 @@ interface UserDao {
     entries: List<PlaybackQueueEntryEntity>,
     originalEntries: List<PlaybackOriginalQueueEntryEntity>,
   ) {
+    // Rows are upserted by entry id, so a repeated id would not insert a second
+    // row — it would move the first one and leave its position empty. Fail the
+    // edit instead of writing an order with a hole in it.
+    check(entries.mapTo(HashSet(entries.size), PlaybackQueueEntryEntity::entryId).size == entries.size) {
+      "Queue entry ids must be unique."
+    }
     val oldEntries = getAllQueueEntries(session.id)
     putPlaybackSession(session)
     // Removals and single moves — the edits a user performs on an open queue —

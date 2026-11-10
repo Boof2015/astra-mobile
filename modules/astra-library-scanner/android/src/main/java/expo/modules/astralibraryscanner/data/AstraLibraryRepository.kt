@@ -175,6 +175,18 @@ class AstraLibraryRepository private constructor(
   private val userRecoveryMutex = Mutex()
   private val catalogWriterMutex = Mutex()
   private val snapshotMutex = Mutex()
+  /**
+   * Serializes every write to the active playback queue.
+   *
+   * Queue edits are read-modify-write: they read the session and its entries,
+   * compute a new order, then commit. JavaScript, the native queue sheet and
+   * Android Auto all issue them on their own coroutines, so without this two
+   * overlapping edits compute from the same state — the second silently drops
+   * the first's change, or reuses its entry id and leaves a hole in the dense
+   * position column. Not reentrant: the `*Locked` bodies must not call the
+   * public wrappers.
+   */
+  private val playbackQueueMutex = Mutex()
   private val listeners = CopyOnWriteArraySet<(LibraryStatusSnapshot) -> Unit>()
   private val catalogListeners = CopyOnWriteArraySet<(Long) -> Unit>()
   private val snapshots = UserSnapshotStore(applicationContext)
@@ -1141,6 +1153,15 @@ class AstraLibraryRepository private constructor(
     anchorPath: String?,
     shuffle: Boolean,
     requestedSeed: Long?,
+  ): Map<String, Any?> = playbackQueueMutex.withLock {
+    createPlaybackContextLocked(context, anchorPath, shuffle, requestedSeed)
+  }
+
+  private suspend fun createPlaybackContextLocked(
+    context: Map<String, Any?>,
+    anchorPath: String?,
+    shuffle: Boolean,
+    requestedSeed: Long?,
   ): Map<String, Any?> {
     initialize()
     val catalogDao = requireCatalog().catalogDao()
@@ -1252,15 +1273,22 @@ class AstraLibraryRepository private constructor(
 
   suspend fun updatePlaybackPosition(sessionId: String, activePosition: Long) {
     initialize()
-    val dao = requireUser().userDao()
-    val total = dao.countQueueEntries(sessionId)
-    if (total == 0L) return
-    val bounded = activePosition.coerceIn(0, total - 1)
-    val anchor = dao.getQueueWindow(sessionId, bounded, 1).firstOrNull()?.trackPath
-    dao.updatePlaybackPosition(sessionId, bounded, anchor, System.currentTimeMillis())
+    // Under the queue lock so the bound is checked against the same row count
+    // the position is written for, not one a concurrent removal just shrank.
+    playbackQueueMutex.withLock {
+      val dao = requireUser().userDao()
+      val total = dao.countQueueEntries(sessionId)
+      if (total == 0L) return
+      val bounded = activePosition.coerceIn(0, total - 1)
+      val anchor = dao.getQueueWindow(sessionId, bounded, 1).firstOrNull()?.trackPath
+      dao.updatePlaybackPosition(sessionId, bounded, anchor, System.currentTimeMillis())
+    }
   }
 
-  suspend fun restorePlaybackContext(): Map<String, Any?>? {
+  suspend fun restorePlaybackContext(): Map<String, Any?>? =
+    playbackQueueMutex.withLock { restorePlaybackContextLocked() }
+
+  private suspend fun restorePlaybackContextLocked(): Map<String, Any?>? {
     initialize()
     val database = requireUser()
     val dao = database.userDao()
@@ -1303,6 +1331,13 @@ class AstraLibraryRepository private constructor(
   suspend fun mutatePlaybackContext(
     operation: String,
     values: Map<String, Any?>,
+  ): Map<String, Any?>? = playbackQueueMutex.withLock {
+    mutatePlaybackContextLocked(operation, values)
+  }
+
+  private suspend fun mutatePlaybackContextLocked(
+    operation: String,
+    values: Map<String, Any?>,
   ): Map<String, Any?>? {
     initialize()
     val database = requireUser()
@@ -1339,7 +1374,10 @@ class AstraLibraryRepository private constructor(
       .toMutableList()
     var active = session.activePosition.toInt().coerceIn(current.indices)
     val activeEntryId = current[active].entryId
-    var nextEntryId = session.nextEntryId
+    var nextEntryId = nextFreeQueueEntryId(
+      session.nextEntryId,
+      current.map(OrderedQueueItem::entryId) + original.map(OrderedQueueItem::entryId),
+    )
 
     fun move(items: MutableList<OrderedQueueItem>, from: Int, to: Int) {
       QueueReorder.applyMove(items, from, to)
