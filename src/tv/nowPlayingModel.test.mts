@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canPlayerIdle, playerNeighbor, seekPreview, restorePlayerPresentation, playerViewWithVisualizer } from './nowPlayingModel.ts';
+import { canPlayerIdle, playerNeighbor, playerTime, seekPreview, restorePlayerPresentation, playerViewWithVisualizer } from './nowPlayingModel.ts';
 import { queueEntryKey, queueMoveTarget } from './playerQueueModel.ts';
+
+test('TV playback times show hours for long tracks and preserve short and invalid values', () => {
+  assert.equal(playerTime(271.3), '4:31');
+  assert.equal(playerTime(3599.999), '59:59');
+  assert.equal(playerTime(3600), '1:00:00');
+  assert.equal(playerTime(3661.9), '1:01:01');
+  assert.equal(playerTime(86400), '24:00:00');
+  assert.equal(playerTime(20390 * 60 + 12), '339:50:12');
+  for (const seconds of [0, -1, NaN, Infinity, -Infinity]) {
+    assert.equal(playerTime(seconds), '0:00');
+  }
+});
 
 test('cover routes follow control geometry and stop at the edges', () => {
   assert.equal(playerNeighbor('play', 'right', false), 'seek');

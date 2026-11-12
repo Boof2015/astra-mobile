@@ -34,7 +34,7 @@ export function TvPlaylistRow({ entry, id, optionsId, index, playing, editing, g
       <TvArtwork uri={entry.track ? trackArtworkThumbSource(entry.track) : null} size={34} />
       <View style={{ flex: 1 }}><TvText numberOfLines={1} weight="medium" color={entry.track ? playing ? tv.accent : hot ? tv.strong : tv.caption : tv.muted}>{title}</TvText>
         <TvText size={11} numberOfLines={1} color={tv.muted}>{entry.track ? artist : `${artist} · Unavailable`}</TvText></View>
-      <TvText mono size={11} color={tv.muted} style={{ width: 46, textAlign: 'right', marginRight: 43 }}>{entry.track ? formatDuration(entry.track.duration) : '—'}</TvText>
+      <TvText mono size={11} color={tv.muted} numberOfLines={1} style={{ minWidth: 46, flexShrink: 0, textAlign: 'right', marginRight: 43 }}>{entry.track ? formatDuration(entry.track.duration) : '—'}</TvText>
     </TvButton>
     {grabbed && <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, borderRadius: 2, backgroundColor: tv.accent }} />}
     <TvButton id={optionsId} label={`Options for ${title}`} disabled={editing} links={{ ...optionLinks, left: id }} onFocus={() => enter(true)} onPress={options}

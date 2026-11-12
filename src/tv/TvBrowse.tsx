@@ -101,7 +101,7 @@ export function TvTrackRow({ track, id, optionsId, top, left, width, number, tit
         {number === undefined && <TvText size={11} color={tv.muted} numberOfLines={1}>{secondary}</TvText>}</View>
       {number === undefined && !compact && <TvText size={11.5} color={tv.muted} numberOfLines={1} style={{ width: 200 }}>{track.album}</TvText>}
       {number === undefined && !compact && <TvText mono size={10.5} color={tv.faint} style={{ width: 86 }}>{track.format.toUpperCase()}</TvText>}
-      <TvText mono size={11} color={tv.muted} style={{ width: 46, textAlign: 'right', marginRight: 43 }}>{formatDuration(track.duration)}</TvText>
+      <TvText mono size={11} color={tv.muted} numberOfLines={1} style={{ minWidth: 46, flexShrink: 0, textAlign: 'right', marginRight: 43 }}>{formatDuration(track.duration)}</TvText>
     </TvButton>
     <TvButton id={optionsId} label={`Options for ${track.title}`} onFocus={() => enter(true)} onPress={options} links={{ ...optionLinks, left: id }}
       style={{ position: 'absolute', right: 7, top: 9, width: 28, height: 30, alignItems: 'center' }}>

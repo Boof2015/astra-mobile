@@ -32,7 +32,7 @@ import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
 import { artworkThumbUri, artworkUri } from '@/library/artwork';
-import { formatDuration } from '@/lib/format';
+import { formatCollectionDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
@@ -278,7 +278,7 @@ export default function PlaylistScreen() {
   const meta = summary ? [
     `${summary.track_count} ${summary.track_count === 1 ? 'track' : 'tracks'}`,
     summary.missing_track_count > 0 ? `${summary.missing_track_count} missing` : null,
-    formatDuration(summary.total_duration),
+    formatCollectionDuration(summary.total_duration),
   ]
     .filter(Boolean)
     .join(' · ') : null;

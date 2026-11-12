@@ -1,3 +1,5 @@
+import { formatDuration } from '../lib/format.ts';
+
 export type TvPlayerView = 'cover' | 'lyrics' | 'visualizer';
 export type TvVisualizer = 'off' | 'oscilloscope' | 'spectrum';
 
@@ -43,7 +45,4 @@ export function canPlayerIdle(playing: boolean, foreground: boolean, seeking: bo
   return playing && foreground && !seeking && !overlay;
 }
 
-export const playerTime = (seconds: number) => {
-  const time = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  return `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`;
-};
+export const playerTime = formatDuration;

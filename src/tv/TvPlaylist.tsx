@@ -6,7 +6,7 @@ import { AstraLibraryData } from '../../modules/astra-library-scanner';
 import { enqueueLibraryQuery, playLibraryQuery } from '@/audio/playbackController';
 import { usePlaylistStore } from '@/stores/playlistStore';
 import { usePlayerStore } from '@/stores/playerStore';
-import { formatDuration } from '@/lib/format';
+import { formatCollectionDuration } from '@/lib/format';
 import type { DbTrack } from '@/types/library';
 import type { PlaylistTrackEntry } from '@/types/playlist';
 import { TvPlaylistArt } from './TvCards';
@@ -149,7 +149,7 @@ export function TvPlaylist({ playlist: initial, nav, actions, setEntry }: Detail
     <View style={box(51, 80, 172, 172)}><TvPlaylistArt playlist={playlist} size={172} /></View>
     <TvText mono size={10.5} color={tv.accent} style={[box(51, 268, 210), { letterSpacing: 1.6 }]}>{playlist !== 'favorites' && playlist.kind === 'dynamic' ? 'DYNAMIC PLAYLIST' : 'PLAYLIST'}</TvText>
     <TvText size={26} weight="semibold" numberOfLines={1} style={[box(51, 284, 228), { lineHeight: 30 }]}>{name}</TvText>
-    <TvText size={12} color={tv.muted} style={box(51, 324, 228)}>{page.totalCount} tracks{!page.nextCursor && page.items.length ? ` · ${formatDuration(page.items.reduce((sum, entry) => sum + (entry.track?.duration ?? 0), 0))}` : ''}</TvText>
+    <TvText size={12} color={tv.muted} style={box(51, 324, 228)}>{page.totalCount} tracks{!page.nextCursor && page.items.length ? ` · ${formatCollectionDuration(page.items.reduce((sum, entry) => sum + (entry.track?.duration ?? 0), 0))}` : ''}</TvText>
     <TvText mono size={10.5} color={tv.muted} style={box(51, 346, 228)}>{playlist === 'favorites' ? 'YOUR LIKED TRACKS' : `UPDATED ${new Date(playlist.updated_at).toLocaleDateString()}`}</TvText>
     {buttons.map((button, i) => <TvButton key={button.label} id={`action:${i}`} label={button.label} disabled={!playable || !!reorder} onPress={button.run} links={{ up: i ? `action:${i - 1}` : nav, down: i < 2 ? `action:${i + 1}` : hasOptions ? 'playlist:options' : undefined, right: first }}
       style={[box(51, (hasOptions ? 373 : 409) + i * 36, 196, 32), { paddingHorizontal: 12, backgroundColor: i ? tv.hover : tv.fill, borderWidth: 1, borderColor: tv.border }]}><TvText color={i ? tv.text : tv.accent}>{button.label}</TvText></TvButton>)}

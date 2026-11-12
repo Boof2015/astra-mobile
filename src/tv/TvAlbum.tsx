@@ -7,7 +7,7 @@ import type { NativeAlbumSummary } from '@/library/nativePages';
 import { albumArtworkSource } from './artwork';
 import { usePlayerStore } from '@/stores/playerStore';
 import { enqueueLibraryQuery, playLibraryQuery } from '@/audio/playbackController';
-import { formatDuration } from '@/lib/format';
+import { formatCollectionDuration } from '@/lib/format';
 import { useTvPage } from './useTvPage';
 import { TvButton, useTvActive, useTvFocus } from './TvFocus';
 import { TvTrackRow } from './TvBrowse';
@@ -56,7 +56,7 @@ export function TvAlbum({ album, nav, trackMenu, run, setEntry }: {
       <TvText mono size={10.5} color={tv.accent} style={{ marginTop: 12, letterSpacing: 1.6 }}>ALBUM</TvText>
       <TvText size={26} weight="semibold" numberOfLines={2} style={{ marginTop: 4, lineHeight: 30 }}>{album.album}</TvText>
       <TvText size={13} color={tv.muted} numberOfLines={1} style={{ marginTop: 4 }}>{album.artist}</TvText>
-      <TvText mono size={10.5} color={tv.muted} numberOfLines={1} style={{ marginTop: 4 }}>{page.totalCount || album.track_count} tracks · {formatDuration(page.summary?.total_duration ?? page.items.reduce((sum, track) => sum + track.duration, 0))}</TvText>
+      <TvText mono size={10.5} color={tv.muted} numberOfLines={1} style={{ marginTop: 4 }}>{page.totalCount || album.track_count} tracks · {formatCollectionDuration(page.summary?.total_duration ?? page.items.reduce((sum, track) => sum + track.duration, 0))}</TvText>
       <View style={{ marginTop: 14, gap: 4 }}>
         {buttons.map((button, i) => <TvButton key={button.title} id={`action:${i}`} label={button.title} disabled={!page.items.length}
           links={{ up: i ? `action:${i - 1}` : nav, down: i < 2 ? `action:${i + 1}` : undefined, right: content }} onPress={button.action}

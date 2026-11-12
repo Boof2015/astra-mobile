@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 
 const TEST_SCRIPTS = [
   'test:release-config',
+  'test:format',
   'test:press-feedback',
   'test:queue-actions',
   'test:car',

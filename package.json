@@ -73,6 +73,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "test:format": "node --experimental-strip-types --test src/lib/format.test.mts",
     "test:car": "node --experimental-strip-types --test src/car/carCommandQueue.test.mts src/audio/queueLoader.test.mts",
     "test:queue-actions": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/audio/virtualPlaybackWindow.test.mts src/audio/playbackController.test.mts src/components/swipeableRowState.test.mts",
     "test:lastfm": "node --experimental-strip-types --test src/services/lastfm/scrobbleService.test.mts",

@@ -17,7 +17,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { playLibraryQuery } from '@/audio/playbackController';
 import { useNativeAlbumDetail } from '@/library/nativePages';
 import { albumArtworkSource, artworkThumbUri, artworkUri } from '@/library/artwork';
-import { formatDuration } from '@/lib/format';
+import { formatCollectionDuration } from '@/lib/format';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
 import type { DbTrack } from '@/types/library';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
@@ -102,7 +102,7 @@ export default function AlbumScreen() {
   const meta = [
     (album?.year ?? fallbackTrack?.year) ? String(album?.year ?? fallbackTrack?.year) : null,
     `${totalCount} ${totalCount === 1 ? 'track' : 'tracks'}`,
-    formatDuration(totalDuration),
+    formatCollectionDuration(totalDuration),
   ]
     .filter(Boolean)
     .join(' · ');
