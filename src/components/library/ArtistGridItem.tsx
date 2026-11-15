@@ -63,9 +63,11 @@ export function ArtistGridItem({ artist, onPress }: { artist: Artist; onPress: (
 const useStyles = createThemedStyles((colors) => ({
   item: {
     flex: 1,
+    borderRadius: radius.md,
     marginBottom: spacing.lg,
   },
   art: {
+    width: '100%',
     aspectRatio: 1,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,

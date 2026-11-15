@@ -995,6 +995,7 @@ const useStyles = createThemedStyles((colors) => ({
   recentAlbum: {
     // Width comes from the layout — the rail keeps the full scene width, so its
     // tiles are what grows when the scene does.
+    borderRadius: radius.md,
   },
   recentAlbumTitle: {
     marginTop: spacing.sm,

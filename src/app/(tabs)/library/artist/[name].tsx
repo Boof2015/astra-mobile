@@ -534,7 +534,7 @@ function AlbumRail({
   return (
     <BleedRail contentContainerStyle={styles.albumRail}>
       {albums.map((album) => (
-        <AppPressable unstable_pressDelay={SCROLL_PRESS_DELAY}
+        <AppPressable feedback="tile" unstable_pressDelay={SCROLL_PRESS_DELAY}
           key={album.identity_key}
           style={styles.albumCard}
           onPress={() => onAlbumPress(album)}
@@ -667,10 +667,11 @@ const useStyles = createThemedStyles((colors) => ({
   },
   albumCard: {
     width: 132,
+    borderRadius: radius.md,
   },
   albumArt: {
-    width: 132,
-    height: 132,
+    width: '100%',
+    aspectRatio: 1,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
     borderColor: colors.glassBorder,

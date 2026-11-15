@@ -45,9 +45,11 @@ export function AlbumGridItem({ album, onPress }: { album: Album; onPress: () =>
 const useStyles = createThemedStyles((colors) => ({
   item: {
     flex: 1,
+    borderRadius: radius.md,
     marginBottom: spacing.lg,
   },
   art: {
+    width: '100%',
     aspectRatio: 1,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
