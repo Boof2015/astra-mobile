@@ -47,7 +47,7 @@ export default function AlbumScreen() {
   const {
     scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
     expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
-    onListRef, onListContentLayout,
+    onListRef, onListContentLayout, onListTouchStart, onListTouchEnd, artTapRef,
   } = useDetailCollapse(sceneBottomInset);
 
   const totalDuration =
@@ -119,6 +119,8 @@ export default function AlbumScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onLayout={onListLayout}
+        onTouchStart={onListTouchStart}
+        onTouchEnd={onListTouchEnd}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={2}
@@ -153,6 +155,8 @@ export default function AlbumScreen() {
           )
         }
         backdropUri={backdropUri}
+        artworkViewerUri={artSource}
+        artTapRef={artTapRef}
         title={album?.album ?? tracks[0]?.album ?? 'Album'}
         heroMeta={
           <>

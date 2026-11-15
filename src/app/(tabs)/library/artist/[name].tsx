@@ -93,7 +93,7 @@ export default function ArtistScreen() {
   const {
     scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
     expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
-    onListRef, onListContentLayout,
+    onListRef, onListContentLayout, onListTouchStart, onListTouchEnd, artTapRef,
   } = useDetailCollapse(sceneBottomInset);
   const groupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const detailGroupingMode = credit === '1' ? 'astra' : groupingMode;
@@ -326,6 +326,8 @@ export default function ArtistScreen() {
         renderItem={renderItem}
         onScroll={onScroll}
         onLayout={onListLayout}
+        onTouchStart={onListTouchStart}
+        onTouchEnd={onListTouchEnd}
         scrollEventThrottle={scrollEventThrottle}
         // This screen composes four paged sources into one list and had no paging
         // trigger at all, so anything past the first page was unreachable. Each
@@ -347,6 +349,8 @@ export default function ArtistScreen() {
       <CollapsingHeader
         artwork={artistArtwork(detail.artworkHashes, colors, styles)}
         backdropUri={backdropHash ? artworkThumbUri(backdropHash) : null}
+        artworkViewerUri={artistViewerUri(detail.artworkHashes)}
+        artTapRef={artTapRef}
         title={name}
         heroMeta={
           <View style={styles.stats}>
@@ -456,6 +460,14 @@ function buildListItems(
   }
 
   return items;
+}
+
+/**
+ * The one image the header shows, for the full-screen viewer. Follows
+ * artistArtwork below: a mosaic or the fallback icon has nothing to open.
+ */
+function artistViewerUri(hashes: string[]): string | null {
+  return hashes.length > 0 && hashes.length < 4 ? artworkUri(hashes[0]) : null;
 }
 
 /** Inner artwork for the collapsing header: 2x2 album mosaic, single cover, or fallback. */

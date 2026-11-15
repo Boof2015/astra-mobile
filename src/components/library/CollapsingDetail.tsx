@@ -5,12 +5,15 @@ import {
   useEffect,
   useRef,
   useState,
-  type ReactNode
+  type ReactNode,
+  type RefObject
 } from 'react';
 import {
+  Platform,
   StyleSheet,
   View,
   useWindowDimensions,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -39,11 +42,21 @@ import { AppPressable, SCROLL_PRESS_DELAY } from '@/components/AppPressable';
 import { HeaderBackButton } from '@/components/HeaderBackButton';
 import {
   DETAIL_ART_COLLAPSED,
+  DETAIL_ART_SCALE_START,
+  DETAIL_ART_SETTLE_INSET,
+  DETAIL_ART_SHIFT_START,
   DETAIL_BAR_H,
+  DETAIL_THUMB_CENTER_X,
+  getDetailArtFrame,
   getDetailExpandedHeight,
   getDetailHeroLayout,
   getDetailMinContentHeight,
 } from '@/components/library/detailHeroLayout';
+import { ArtworkViewer } from '@/components/library/ArtworkViewer';
+import {
+  isArtworkTap,
+  type ArtworkViewerOrigin,
+} from '@/components/library/artworkViewerLayout';
 
 // Collapsing detail header. A fixed-size clipping layer translates upward with
 // the scroll while its contents counter-translate, producing a rising bottom
@@ -58,6 +71,9 @@ const BAR_H = DETAIL_BAR_H;
 const FADE_H = 150;
 const LABEL_FONT = { fontSize: 15 };
 type DetailListMeasurement = Pick<FlashListRef<unknown>, 'getChildContainerDimensions'>;
+const ART_ACCESSIBILITY_ACTIONS = [{ name: 'activate' as const }];
+/** Receives a tap that landed on the list, in window coordinates. */
+type DetailArtTapHandler = (pageX: number, pageY: number) => void;
 
 /**
  * Scroll plumbing. Measures the hero block so the header height (and thus the
@@ -153,6 +169,26 @@ export function useDetailCollapse(bottomInset: number) {
     },
   });
 
+  // The header is an overlay above the list, and anything touchable in it
+  // swallows the drag that would scroll the page. So the artwork stays
+  // untouchable and its tap is read here instead, from the list underneath:
+  // these events observe the touch without claiming it, so a drag that starts
+  // on the artwork still scrolls. The header decides whether the tap hit.
+  const artTapRef = useRef<DetailArtTapHandler | null>(null);
+  const listTouch = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onListTouchStart = useCallback((e: GestureResponderEvent) => {
+    const { touches, pageX, pageY, timestamp } = e.nativeEvent;
+    listTouch.current = touches.length === 1 ? { x: pageX, y: pageY, at: timestamp } : null;
+  }, []);
+  const onListTouchEnd = useCallback((e: GestureResponderEvent) => {
+    const start = listTouch.current;
+    listTouch.current = null;
+    if (!start) return;
+    const { pageX, pageY, timestamp } = e.nativeEvent;
+    if (!isArtworkTap(start.x, start.y, start.at, pageX, pageY, timestamp)) return;
+    artTapRef.current?.(pageX, pageY);
+  }, []);
+
   return {
     scrollY,
     ...state,
@@ -161,6 +197,9 @@ export function useDetailCollapse(bottomInset: number) {
     onListRef,
     onListContentLayout,
     onListLayout,
+    onListTouchStart,
+    onListTouchEnd,
+    artTapRef,
     onHeroBlockLayout,
     onScroll,
     scrollEventThrottle: 16 as const,
@@ -172,7 +211,13 @@ function BottomFade() {
   const colors = useColors();
   const [width, setWidth] = useState(0);
   return (
-    <View style={styles.fade} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    // Decorative, and in landscape it lies across the artwork: left touchable
+    // it would take the tap (and the scroll drag) meant for the list below.
+    <View
+      style={styles.fade}
+      pointerEvents="none"
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
       {width > 0 ? (
         <Canvas style={StyleSheet.absoluteFill}>
           <Rect x={0} y={0} width={width} height={FADE_H}>
@@ -206,9 +251,19 @@ export function CollapsingHeader({
   collapsed,
   expandedHeight,
   onHeroBlockLayout,
+  artworkViewerUri,
+  artTapRef,
 }: {
   /** Fills the morphing art container (album cover, artist mosaic, or fallback). */
   artwork: ReactNode;
+  /**
+   * Full-size source of the artwork when it is one real image. Tapping the
+   * expanded artwork then opens it full screen; leave it out for fallbacks and
+   * mosaics. Needs `artTapRef` and the list's touch handlers from
+   * useDetailCollapse.
+   */
+  artworkViewerUri?: string | null;
+  artTapRef?: RefObject<DetailArtTapHandler | null>;
   backdropUri: string | null;
   title: string;
   /** The middle of the hero block, between title and buttons (subtitle/meta or stat chips). */
@@ -236,13 +291,59 @@ export function CollapsingHeader({
   const { width: W, height: H } = useWindowDimensions();
   const hero = getDetailHeroLayout(W, H, insets.top);
   const dist = expandedHeight - BAR_H;
-  const settle = dist - 36;
+  const settle = dist - DETAIL_ART_SETTLE_INSET;
 
   const maxH = insets.top + expandedHeight;
   const minH = insets.top + BAR_H;
   const barCenterY = insets.top + BAR_H / 2;
   const artExpandedTop = insets.top + hero.artTop;
-  const thumbCenterX = spacing.md + 24 + spacing.sm + ART_COLLAPSED / 2;
+  const thumbCenterX = DETAIL_THUMB_CENTER_X;
+
+  // Artwork viewer. The viewer hides the hero artwork while it stands in for
+  // it, so the two read as one object leaving the page and coming back.
+  const containerRef = useRef<View>(null);
+  const artOpacity = useSharedValue(1);
+  const [viewerOrigin, setViewerOrigin] = useState<ArtworkViewerOrigin | null>(null);
+  const canViewArtwork = !Platform.isTV && !!artworkViewerUri && !heroFaded;
+  const openArtworkViewer = (pageX?: number, pageY?: number) => {
+    if (!canViewArtwork || viewerOrigin) return;
+    // `measure`'s page coordinates, not `measureInWindow`: on Android the
+    // latter subtracts the status bar, which an edge-to-edge window draws
+    // under, so the viewer landed one inset above the artwork. Page
+    // coordinates share their origin with touch events and with the viewer's
+    // full-screen modal.
+    containerRef.current?.measure((_x, _y, _width, _height, left, top) => {
+      const y = scrollY.value;
+      const frame = getDetailArtFrame(hero, insets.top, expandedHeight, y);
+      const originX = left + frame.x;
+      const originY = top + frame.y;
+      if (pageX !== undefined && pageY !== undefined) {
+        const inside =
+          pageX >= originX && pageX <= originX + frame.size &&
+          pageY >= originY && pageY <= originY + frame.size;
+        // Rows scroll underneath the artwork; a tap that reached one is the row's.
+        const aboveRows = pageY < top + insets.top + expandedHeight - y;
+        if (!inside || !aboveRows) return;
+      }
+      setViewerOrigin({
+        x: originX,
+        y: originY,
+        size: frame.size,
+        radius: radius.lg * frame.scale,
+      });
+    });
+  };
+  useEffect(() => {
+    if (!artTapRef) return;
+    artTapRef.current = openArtworkViewer;
+    return () => {
+      artTapRef.current = null;
+    };
+  });
+  const closeArtworkViewer = () => {
+    artOpacity.value = 1;
+    setViewerOrigin(null);
+  };
   // Measured from where the artwork actually sits: landscape puts it against
   // the leading edge rather than centred, so `W / 2` would fly it off target.
   const txTarget = thumbCenterX - hero.artCenterX;
@@ -291,11 +392,13 @@ export function CollapsingHeader({
       },
     ],
   }));
+  // Keep these ranges in step with getDetailArtFrame, which hit-tests the tap.
   const artStyle = useAnimatedStyle(() => ({
+    opacity: artOpacity.value,
     transform: [
-      { translateX: interpolate(scrollY.value, [dist * 0.4, settle], [0, txTarget], Extrapolation.CLAMP) },
+      { translateX: interpolate(scrollY.value, [dist * DETAIL_ART_SHIFT_START, settle], [0, txTarget], Extrapolation.CLAMP) },
       { translateY: interpolate(scrollY.value, [0, settle], [0, tyTarget], Extrapolation.CLAMP) },
-      { scale: interpolate(scrollY.value, [30, settle], [1, scaleTarget], Extrapolation.CLAMP) },
+      { scale: interpolate(scrollY.value, [DETAIL_ART_SCALE_START, settle], [1, scaleTarget], Extrapolation.CLAMP) },
     ],
   }));
   // Lift + shrink as it fades, so the block recedes into the header rather than
@@ -330,7 +433,13 @@ export function CollapsingHeader({
   }));
 
   return (
-    <View style={[styles.container, { height: maxH }]} pointerEvents="box-none">
+    <View
+      ref={containerRef}
+      // Measured for the viewer's origin, so it must survive view flattening.
+      collapsable={false}
+      style={[styles.container, { height: maxH }]}
+      pointerEvents="box-none"
+    >
       <Animated.View
         style={[StyleSheet.absoluteFill, styles.collapseClip, collapseClipStyle]}
         pointerEvents="box-none"
@@ -477,12 +586,28 @@ export function CollapsingHeader({
           },
           artStyle,
         ]}
+        // Untouchable on purpose: a drag starting here has to reach the list.
+        // The tap arrives through artTapRef; screen readers get an action.
         pointerEvents="none"
+        accessible={canViewArtwork}
+        accessibilityRole={canViewArtwork ? 'imagebutton' : undefined}
+        accessibilityLabel={canViewArtwork ? `View ${title} artwork` : undefined}
+        accessibilityActions={canViewArtwork ? ART_ACCESSIBILITY_ACTIONS : undefined}
+        onAccessibilityAction={canViewArtwork ? () => openArtworkViewer() : undefined}
       >
         {artwork}
       </Animated.View>
       </Animated.View>
       </Animated.View>
+      {viewerOrigin && artworkViewerUri ? (
+        <ArtworkViewer
+          uri={artworkViewerUri}
+          origin={viewerOrigin}
+          label={title}
+          heroOpacity={artOpacity}
+          onClosed={closeArtworkViewer}
+        />
+      ) : null}
     </View>
   );
 }

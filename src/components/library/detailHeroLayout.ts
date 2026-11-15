@@ -18,6 +18,19 @@ import { spacing } from '../../theme/spacing.ts';
 const ART_SIZE = 210;
 export const DETAIL_ART_COLLAPSED = 34;
 export const DETAIL_BAR_H = 48;
+/** Horizontal center of the collapsed thumbnail: past the back chevron. */
+export const DETAIL_THUMB_CENTER_X = spacing.md + 24 + spacing.sm + DETAIL_ART_COLLAPSED / 2;
+/**
+ * Collapse tween of the artwork. The header's animated style and
+ * `getDetailArtFrame` both read these, so the tap target cannot drift from
+ * where the artwork is drawn.
+ */
+/** The artwork finishes tucking away this far before the header is fully collapsed. */
+export const DETAIL_ART_SETTLE_INSET = 36;
+/** Share of the collapse distance scrolled before the artwork starts moving sideways. */
+export const DETAIL_ART_SHIFT_START = 0.4;
+/** Scroll offset at which the artwork starts shrinking. */
+export const DETAIL_ART_SCALE_START = 30;
 const ART_TOP = 44;
 /** Gap between the artwork and the block that follows it. */
 const ART_TO_BLOCK_GAP = 8;
@@ -147,4 +160,61 @@ export function getDetailExpandedHeight(
   const natural =
     (layout.wide ? Math.max(blockBottom, artBottom) : blockBottom) + BLOCK_BOTTOM_PAD;
   return Math.min(natural, layout.maxExpandedHeight);
+}
+
+function tween(
+  value: number,
+  inputStart: number,
+  inputEnd: number,
+  outputStart: number,
+  outputEnd: number
+): number {
+  if (inputEnd <= inputStart) return value >= inputEnd ? outputEnd : outputStart;
+  const progress = clamp((value - inputStart) / (inputEnd - inputStart), 0, 1);
+  return outputStart + (outputEnd - outputStart) * progress;
+}
+
+export interface DetailArtFrame {
+  /** Relative to the header's top-left corner. */
+  x: number;
+  y: number;
+  size: number;
+  /** Current size as a share of the expanded size. */
+  scale: number;
+}
+
+/**
+ * Where the artwork is drawn at a given scroll offset, mirroring the header's
+ * collapse tween. Used to hit-test a tap and to give the artwork viewer the
+ * square it grows out of.
+ */
+export function getDetailArtFrame(
+  hero: DetailHeroLayout,
+  topInset: number,
+  expandedHeight: number,
+  scrollY: number
+): DetailArtFrame {
+  const dist = expandedHeight - DETAIL_BAR_H;
+  const settle = dist - DETAIL_ART_SETTLE_INSET;
+  const expandedTop = topInset + hero.artTop;
+  const barCenterY = topInset + DETAIL_BAR_H / 2;
+  const translateX = tween(
+    scrollY, dist * DETAIL_ART_SHIFT_START, settle,
+    0, DETAIL_THUMB_CENTER_X - hero.artCenterX
+  );
+  const translateY = tween(
+    scrollY, 0, settle,
+    0, barCenterY - (expandedTop + hero.artSize / 2)
+  );
+  const scale = tween(
+    scrollY, DETAIL_ART_SCALE_START, settle,
+    1, DETAIL_ART_COLLAPSED / hero.artSize
+  );
+  const size = hero.artSize * scale;
+  return {
+    x: hero.artLeft + hero.artSize / 2 + translateX - size / 2,
+    y: expandedTop + hero.artSize / 2 + translateY - size / 2,
+    size,
+    scale,
+  };
 }

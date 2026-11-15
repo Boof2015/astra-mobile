@@ -20,6 +20,7 @@ const FILES = [
   new URL('./EQGraph.tsx', import.meta.url),
   new URL('../waveformTransition.ts', import.meta.url),
   new URL('../player/DrawnTransportIcons.tsx', import.meta.url),
+  new URL('../library/artworkViewerLayout.ts', import.meta.url),
 ];
 
 interface Worklet {

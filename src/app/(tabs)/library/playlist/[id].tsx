@@ -111,7 +111,7 @@ export default function PlaylistScreen() {
   const {
     scrollY, heroFaded, collapsed, onScroll, scrollEventThrottle,
     expandedHeight, onHeroBlockLayout, onListLayout, minContentHeight,
-    onListRef, onListContentLayout,
+    onListRef, onListContentLayout, onListTouchStart, onListTouchEnd, artTapRef,
   } = useDetailCollapse(sceneBottomInset);
 
   const [actionEntry, setActionEntry] = useState<PlaylistTrackEntry | null>(null);
@@ -294,6 +294,8 @@ export default function PlaylistScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onLayout={onListLayout}
+        onTouchStart={onListTouchStart}
+        onTouchEnd={onListTouchEnd}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => {
           if (!isFavorites) void loadNextEntries();
@@ -333,6 +335,8 @@ export default function PlaylistScreen() {
           )
         }
         backdropUri={coverHash ? artworkThumbUri(coverHash) : null}
+        artworkViewerUri={coverHash ? artworkUri(coverHash) : null}
+        artTapRef={artTapRef}
         title={name}
         heroMeta={meta == null ? null : <Text variant="label">{meta}</Text>}
         heroExtra={
