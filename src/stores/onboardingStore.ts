@@ -12,15 +12,22 @@ const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
 interface OnboardingStore {
   onboardingComplete: boolean;
   loaded: boolean;
+  /**
+   * In memory only: the wizard was re-armed from Settings › Troubleshooting while
+   * the app is running. Back on the first page then finishes the replay instead
+   * of reaching the Troubleshooting screen still mounted underneath.
+   */
+  replaying: boolean;
   load: () => Promise<void>;
   markComplete: () => Promise<void>;
-  /** Dev affordance: re-arm the wizard (see Experimental settings). */
+  /** Re-arm the wizard (Settings › Troubleshooting › Replay onboarding). */
   reset: () => Promise<void>;
 }
 
 export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   onboardingComplete: false,
   loaded: false,
+  replaying: false,
 
   load: async () => {
     if (get().loaded) return;
@@ -39,12 +46,12 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   },
 
   markComplete: async () => {
-    set({ onboardingComplete: true });
+    set({ onboardingComplete: true, replaying: false });
     await setNativeSetting(ONBOARDING_COMPLETE_KEY, 'true');
   },
 
   reset: async () => {
-    set({ onboardingComplete: false });
+    set({ onboardingComplete: false, replaying: true });
     await setNativeSetting(ONBOARDING_COMPLETE_KEY, 'false');
   },
 }));

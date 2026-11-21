@@ -24,25 +24,8 @@ import {
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { AppPressable } from '@/components/AppPressable';
 import { useRemoteSourcesStore } from '@/stores/remoteSourcesStore';
-import type { RemoteSourceRow, RemoteSyncProgress } from '@/types/remote';
-
-function statusLine(
-  source: RemoteSourceRow,
-  progress: RemoteSyncProgress | null
-): { text: string; tone: 'normal' | 'error' } {
-  if (!source.enabled) return { text: 'Disabled', tone: 'normal' };
-  if (progress) {
-    const pct = progress.total > 0 ? ` ${progress.current}/${progress.total}` : '';
-    return { text: `Syncing… ${progress.phase}${pct}`, tone: 'normal' };
-  }
-  if (source.last_status === 'error') {
-    return { text: source.last_error ?? 'Sync failed', tone: 'error' };
-  }
-  if (source.last_sync_at) {
-    return { text: `Last synced ${new Date(source.last_sync_at).toLocaleString()}`, tone: 'normal' };
-  }
-  return { text: 'Not synced yet', tone: 'normal' };
-}
+import type { RemoteSourceRow } from '@/types/remote';
+import { statusLine } from '@/components/sources/sourceStatus';
 
 export default function SourcesScreen() {
   const styles = useStyles();

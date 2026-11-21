@@ -112,6 +112,7 @@
     "test:library-sort": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/librarySortDirection.test.mts",
     "test:haptics": "node --experimental-strip-types --experimental-specifier-resolution=node --test src/lib/haptics.test.mts",
     "test:camera-access": "node --experimental-strip-types --test src/lib/cameraAccess.test.mts",
+    "test:onboarding": "node --experimental-strip-types --test src/components/onboarding/onboardingSteps.test.mts src/components/onboarding/onboardingLayout.test.mts src/components/sources/serverAddress.test.mts",
     "test:app-dialog": "node --experimental-strip-types --test src/components/dialogs/dialogQueue.test.mts",
     "test:home-spotlight": "node --experimental-strip-types --test src/home/homeSpotlightState.test.mts",
     "test:home-greeting": "node --experimental-strip-types --test src/home/homeGreeting.test.mts src/home/homeLayout.test.mts",

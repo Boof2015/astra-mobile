@@ -49,6 +49,14 @@ const MUST_COMPILE: { file: URL; functions: string[] }[] = [
   { file: new URL('./CachedLyricPeek.tsx', import.meta.url), functions: ['CachedLyricPeek', 'useActiveLyricLine', 'PeekSlot', 'PeekLine', 'PeekWordClock', 'PeekWords', 'PeekWord', 'PeekWordLight'] },
   { file: new URL('../lyrics/useLyricsFollow.ts', import.meta.url), functions: ['useLyricsFollow'] },
   { file: new URL('../lyrics/LyricsRowMotion.tsx', import.meta.url), functions: ['LyricsRowMotion'] },
+  // Onboarding: the flow root re-renders every page, and the shared server form
+  // hook is hosted by both onboarding and Settings.
+  { file: new URL('../onboarding/OnboardingFlow.tsx', import.meta.url), functions: ['OnboardingFlow'] },
+  { file: new URL('../onboarding/OnboardingFrame.tsx', import.meta.url), functions: ['OnboardingFrame', 'KeyboardAwareFrame', 'FrameBody', 'OnboardingChrome', 'ScanChip', 'OnboardingBookend'] },
+  { file: new URL('../onboarding/MusicStep.tsx', import.meta.url), functions: ['MusicStep', 'ScanningRow', 'FolderRow', 'ServerRow'] },
+  { file: new URL('../onboarding/OnboardingBookends.tsx', import.meta.url), functions: ['WelcomePage', 'DonePage', 'StillScanning'] },
+  { file: new URL('../sources/useServerConnectForm.ts', import.meta.url), functions: ['useServerConnectForm'] },
+  { file: new URL('../KeyboardAvoidingArea.tsx', import.meta.url), functions: ['KeyboardAvoidingArea', 'AndroidKeyboardArea'] },
 ];
 
 interface CompilerDetail {

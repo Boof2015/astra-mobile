@@ -39,6 +39,7 @@ const TEST_SCRIPTS = [
   'test:home-spotlight',
   'test:session',
   'test:library-scan',
+  'test:onboarding',
 ];
 
 for (const script of TEST_SCRIPTS) {

@@ -1,87 +1,81 @@
 import { ActionButton } from '@/components/ActionButton';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/Text';
-import { StepHeader } from '@/components/onboarding/StepHeader';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { createThemedStyles, useColors } from '@/theme/themed';
 import { useLibraryStore } from '@/stores/libraryStore';
-import type { ScanNotificationPermission } from '@/library/useScanNotificationPermission';
+import { OnboardingFrame, useOnboardingNav } from './OnboardingFrame';
 
 /**
- * Wizard page for the POST_NOTIFICATIONS grant. Deliberately not the settings
- * `ScanNotificationPermissionCard`: with a whole page to work with, the ask gets
- * a sketch of the actual notification and one unmistakable action instead of a
- * dense list row. The permission state is owned by OnboardingFlow so the footer
- * button can say "Continue" vs "Skip for now" from the same source of truth.
+ * The POST_NOTIFICATIONS ask. Only shown when a folder scan has started and the
+ * grant is missing (see onboardingSteps). The ask is the footer's main action,
+ * so the page never has two primary buttons.
  */
-export function NotificationStep({
-  permission,
-}: {
-  permission: ScanNotificationPermission;
-}) {
+export function NotificationStep() {
   const styles = useStyles();
   const colors = useColors();
+  const nav = useOnboardingNav();
   const isScanning = useLibraryStore((s) => s.isScanning);
-  const { state, granted, denied, working, resolve } = permission;
+  const { state, granted, denied, working, resolve } = nav.notificationPermission;
+
+  const footer = granted ? (
+    <ActionButton style={styles.grow} variant="primary" label="Continue" onPress={nav.next} />
+  ) : (
+    <>
+      <ActionButton style={styles.button} variant="secondary" label="Not now" onPress={nav.next} />
+      <ActionButton
+        style={styles.grow}
+        variant="primary"
+        label={denied ? 'Open Android settings' : 'Allow notifications'}
+        accessibilityLabel={denied ? 'Open Android settings' : 'Allow scan notifications'}
+        disabled={state === null || working}
+        loading={working}
+        onPress={resolve}
+      />
+    </>
+  );
 
   return (
-    <View style={styles.stepBody}>
-      <StepHeader
-        icon="notifications-outline"
-        title="Keep scans running"
-        subtitle={
-          isScanning
-            ? 'Your scan is running now. Android needs permission to show its progress and keep it going after you leave Astra.'
-            : 'Astra shows a temporary progress notification while scanning. It is what lets Android keep a scan running after you leave the app.'
-        }
-      />
-
+    <OnboardingFrame
+      eyebrow="Scanning"
+      title="Keep scans running"
+      subtitle={
+        isScanning
+          ? 'Your scan is running now. Android needs permission to show its progress and keep it going when you leave Astra.'
+          : 'Astra shows a progress notification while it scans. That is what lets Android keep a scan going after you leave the app.'
+      }
+      footer={footer}
+    >
       <NotificationSketch />
-
-      {state === null ? (
-        <ActivityIndicator size="small" color={colors.accent} />
-      ) : granted ? (
+      {granted ? (
         <View style={styles.grantedRow}>
           <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
-          <Text variant="body" color={colors.textPrimary}>
-            {state === 'not_required'
-              ? 'No permission needed on this Android version'
-              : 'Notifications allowed'}
+          <Text variant="body">
+            {state === 'not_required' ? 'No permission needed on this Android version' : 'Notifications allowed'}
           </Text>
         </View>
       ) : (
-        <ActionButton
-          style={styles.button}
-          disabled={working}
-          onPress={resolve}
-          accessibilityLabel={denied ? 'Open Android settings' : 'Allow scan notifications'}
-          variant="primary"
-          label={denied ? 'Open Android settings' : 'Allow notifications'}
-          icon={denied ? 'settings-outline' : 'notifications-outline'}
-          iconSize={19}
-          loading={working}
-        />
+        <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
+          {denied
+            ? 'Notifications are blocked for Astra. Scans still work, but Android may stop a long one once you leave the app.'
+            : 'Optional. Without it, Android may stop a long scan once you leave the app.'}
+        </Text>
       )}
-
-      <Text variant="caption" color={colors.textTertiary} style={styles.footnote}>
-        {denied
-          ? 'Notifications are currently blocked for Astra. Scans still work — they just stop early if Android needs the memory.'
-          : 'Optional. Scans still work without it, but Android may stop a long scan once you leave the app.'}
-      </Text>
-    </View>
+    </OnboardingFrame>
   );
 }
 
-/**
- * Miniature of the real scan notification. Static numbers on purpose — a live
- * counter here would compete with the actual ScanBanner above the page.
- */
+/** Miniature of the real scan notification, following the scan that's running. */
 function NotificationSketch() {
   const styles = useStyles();
   const colors = useColors();
+  const progress = useLibraryStore((s) => s.scanProgress);
+  const isScanning = useLibraryStore((s) => s.isScanning);
+  const counted = isScanning && progress.total > 0 && (progress.phase === 'extracting' || progress.phase === 'analyzing');
+  const fraction = counted ? Math.min(1, progress.processed / progress.total) : 0.38;
   return (
-    <View style={styles.sketch}>
+    <View style={styles.sketch} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={styles.sketchHeader}>
         <View style={styles.sketchAppIcon}>
           <Ionicons name="musical-note" size={11} color={colors.bgPrimary} />
@@ -97,28 +91,33 @@ function NotificationSketch() {
       <Text variant="body" numberOfLines={1}>
         Scanning your library
       </Text>
-      <Text variant="caption" color={colors.textSecondary} numberOfLines={1}>
-        1,204 of 3,180 tracks
+      <Text variant="mono" color={colors.textSecondary} numberOfLines={1}>
+        {counted
+          ? `${progress.processed.toLocaleString('en-US')} of ${progress.total.toLocaleString('en-US')} tracks`
+          : '1,204 of 3,180 tracks'}
       </Text>
       <View style={styles.sketchTrack}>
-        <View style={styles.sketchFill} />
+        <View style={[styles.sketchFill, { width: `${fraction * 100}%` }]} />
       </View>
     </View>
   );
 }
 
 const useStyles = createThemedStyles((colors) => ({
-  stepBody: {
-    width: '100%',
-    gap: spacing.lg,
+  grow: {
+    flex: 1,
+    minHeight: 52,
+  },
+  button: {
+    minHeight: 52,
   },
   sketch: {
     gap: spacing.xs,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.bgTertiary,
   },
   sketchHeader: {
     flexDirection: 'row',
@@ -129,7 +128,7 @@ const useStyles = createThemedStyles((colors) => ({
   sketchAppIcon: {
     width: 18,
     height: 18,
-    borderRadius: 5,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accent,
@@ -144,34 +143,21 @@ const useStyles = createThemedStyles((colors) => ({
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: colors.glassBorder,
     marginTop: spacing.xs,
   },
   sketchFill: {
-    width: '38%',
     height: '100%',
     borderRadius: 2,
     backgroundColor: colors.accent,
   },
-  button: {
-    minHeight: 52,
-    overflow: 'hidden',
-  },
   grantedRow: {
-    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassBg,
+    marginTop: spacing.lg,
   },
   footnote: {
-    textAlign: 'center',
+    marginTop: spacing.lg,
   },
 }));
-
-export default NotificationStep;

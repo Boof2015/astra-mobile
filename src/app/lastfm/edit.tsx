@@ -1,6 +1,7 @@
 import { ActionButton } from '@/components/ActionButton';
+import { KeyboardAvoidingArea } from '@/components/KeyboardAvoidingArea';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -192,10 +193,7 @@ export default function LastFmEditScreen() {
 
   return (
     <Screen bleedBottom>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingArea style={styles.flex}>
         <View style={styles.header}>
           <AppPressable feedback="control"  style={styles.back} onPress={goBack} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
@@ -311,7 +309,7 @@ export default function LastFmEditScreen() {
             ) : null}
           </ScrollView>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAvoidingArea>
     </Screen>
   );
 }

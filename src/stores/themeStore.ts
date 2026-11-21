@@ -210,6 +210,15 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 }));
 
+/**
+ * How the app would look with a different base theme, using every other current
+ * input (accent, preferred dark, OS scheme, wallpaper). For pickers that preview
+ * a choice before it's made, e.g. the onboarding theme swatches.
+ */
+export function previewTheme(baseTheme: BaseThemeId): AppTheme {
+  return recompute({ ...effectiveInputs(useThemeStore.getState()), baseTheme });
+}
+
 // OS dark/light toggles while the app runs. Wallpaper (monet) changes can't
 // happen while Astra is foregrounded — those are covered by the AppState
 // 'active' refresh wired in _layout.tsx.

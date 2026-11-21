@@ -6,14 +6,13 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   TextInput,
   useWindowDimensions,
   View
 } from 'react-native';
+import { KeyboardAvoidingArea } from '@/components/KeyboardAvoidingArea';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -648,10 +647,7 @@ export default function DesktopRemoteScreen() {
     // Both views pay the bottom inset themselves — the setup list as scroll
     // padding, the controller in its own layout — so the screen bleeds.
     <Screen padded={!showController} bleedBottom>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingArea style={styles.flex}>
         {!initialized ? (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
@@ -671,7 +667,7 @@ export default function DesktopRemoteScreen() {
             {renderSetup()}
           </>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAvoidingArea>
     </Screen>
   );
 }
