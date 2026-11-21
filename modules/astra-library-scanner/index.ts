@@ -347,6 +347,26 @@ export interface NativeArtistImageState {
   updatedAt: number | null;
 }
 
+export type HomeSpotlightIdentity =
+  | { kind: 'album'; key: string }
+  | { kind: 'artist'; key: string; groupingMode: 'astra' | 'fileTags' };
+
+export interface HomeSpotlightPreferences {
+  includeSingles: boolean;
+  groupingMode: 'astra' | 'fileTags';
+  includeCollaborations: boolean;
+}
+
+export interface HomeSpotlightRequest extends HomeSpotlightPreferences {
+  recent: readonly HomeSpotlightIdentity[];
+  retain: HomeSpotlightIdentity | null;
+}
+
+export type NativeHomeSpotlight<A, R> = { catalogRevision: string } & (
+  | { kind: 'album'; identity: HomeSpotlightIdentity & { kind: 'album' }; album: A }
+  | { kind: 'artist'; identity: HomeSpotlightIdentity & { kind: 'artist' }; artist: R }
+);
+
 type AstraLibraryDataEvents = {
   onLibraryStatus: (event: LibraryStatusSnapshot) => void;
   onScanProgress: (event: {
@@ -515,6 +535,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
     mergedPlaylist: Record<string, unknown> | null
   ): Promise<void>;
   clearDesktopSyncBaselines(): Promise<void>;
+  getHomeSpotlight<A, R>(options: HomeSpotlightRequest): Promise<NativeHomeSpotlight<A, R> | null>;
   getAlbumPage<T>(
     sort: 'artist' | 'name' | 'recently_added' | 'year',
     direction: 'asc' | 'desc',

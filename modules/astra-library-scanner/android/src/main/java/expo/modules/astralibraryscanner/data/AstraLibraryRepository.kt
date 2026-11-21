@@ -175,6 +175,7 @@ class AstraLibraryRepository private constructor(
   private val userRecoveryMutex = Mutex()
   private val catalogWriterMutex = Mutex()
   private val snapshotMutex = Mutex()
+  private val homeSpotlight = HomeSpotlightData()
   /**
    * Serializes every write to the active playback queue.
    *
@@ -2149,6 +2150,26 @@ class AstraLibraryRepository private constructor(
     initialize()
     requireUser().userDao().clearPlaylistSyncStates()
     scheduleSnapshot()
+  }
+
+  suspend fun getHomeSpotlight(options: Map<String, Any?>): Map<String, Any?>? = withContext(Dispatchers.IO) {
+    withCatalogRecovery { database ->
+      val grouping = if (options["groupingMode"] == "fileTags") "fileTags" else "astra"
+      val history = (options["recent"] as? List<*>)?.mapNotNull(HomeSpotlightIdentity::parse).orEmpty()
+      val selection = homeSpotlight.select(
+        database, options["includeSingles"] == true, grouping, options["includeCollaborations"] == true,
+        history, HomeSpotlightIdentity.parse(options["retain"]),
+      ) ?: return@withCatalogRecovery null
+      mapOf(
+        "kind" to selection.identity.kind,
+        "identity" to selection.identity.toBridgeMap(),
+        "catalogRevision" to selection.revision.toString(),
+      ) + if (selection.album != null) {
+        mapOf("album" to selection.album.toBridgeMap())
+      } else {
+        mapOf("artist" to bridgeArtistSummaries(listOfNotNull(selection.artist)).single())
+      }
+    }
   }
 
   suspend fun getAlbumPage(

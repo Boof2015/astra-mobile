@@ -107,7 +107,6 @@ interface LibraryStore {
   albums: Album[];
   artists: Artist[];
   homeAlbums: Album[];
-  homeArtists: Artist[];
   folders: FolderWithCount[];
   totalTrackCount: number;
   viewMode: ViewMode;
@@ -282,7 +281,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     pendingArtistImages = { all: false, keys: new Set() };
     const state = get();
     const names = all
-      ? [...new Set([...state.artists, ...state.homeArtists].map((artist) => artist.artist))]
+      ? [...new Set(state.artists.map((artist) => artist.artist))]
       : [...keys];
     if (names.length === 0) return;
     const groupingMode = useSettingsStore.getState().artistGroupingMode;
@@ -291,7 +290,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     const updates = new Map(rows.map((row) => [row.artist, row]));
     set((current) => ({
       artists: withArtistImages(current.artists, updates),
-      homeArtists: withArtistImages(current.homeArtists, updates),
     }));
   };
 
@@ -555,7 +553,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
     albums: [],
     artists: [],
     homeAlbums: [],
-    homeArtists: [],
     folders: [],
     totalTrackCount: 0,
     viewMode: 'albums',
@@ -743,7 +740,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         albumPage,
         artistPage,
         homeAlbumPage,
-        homeArtistPage,
         folders,
         recentlyPlayedTracks,
       ] = await Promise.all([
@@ -768,14 +764,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           includeSingles,
           null,
           20
-        ),
-        AstraLibraryData.getArtistPage<Artist>(
-          'name',
-          'asc',
-          groupingMode,
-          includeCollaborations,
-          null,
-          50
         ),
         loadFolders(),
         AstraLibraryData.getRecentlyPlayed<DbTrack>(20),
@@ -829,7 +817,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
           ? { jumpAnchorIndex: 0, sectionJumpRevision: current.sectionJumpRevision + 1 }
           : {}),
         homeAlbums: homeAlbumPage.items ?? [],
-        homeArtists: homeArtistPage.items ?? [],
         folders,
         recentlyPlayedTracks,
       });

@@ -275,7 +275,6 @@ test('artist images patch loaded rows in place and skip no-op updates', async (t
   await h.library.getState().refresh();
   await h.library.getState().loadNextArtists();
   const [head, , untouched] = h.library.getState().artists;
-  const homeArtists = h.library.getState().homeArtists;
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const changed = h.listeners.get('onArtistImagesChanged')!;
   changed({ artistKey: 'next0', groupingMode: 'astra' });
@@ -288,7 +287,6 @@ test('artist images patch loaded rows in place and skip no-op updates', async (t
   assert.equal(patched[1].artwork_hash, 'img:next0');
   assert.deepEqual(patched[1].artwork_hashes, ['img:next0']);
   assert.equal(patched[1].artwork_source, 'deezer');
-  assert.equal(h.library.getState().homeArtists, homeArtists);
 
   changed({ artistKey: 'next0', groupingMode: 'astra' });
   t.mock.timers.tick(300);
@@ -316,5 +314,5 @@ test('a bulk image clear re-reads every loaded artist; the other grouping mode i
   await tick();
   assert.deepEqual(h.calls.map((call) => call.name), ['getArtistSummaries']);
   assert.deepEqual(h.calls[0].args, ['astra', ['A0', 'next0', 'next1']]);
-  assert.equal(h.library.getState().homeArtists[0].artwork_hash, 'img:A0');
+  assert.equal(h.library.getState().artists[0].artwork_hash, 'img:A0');
 });

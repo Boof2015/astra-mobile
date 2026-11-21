@@ -400,6 +400,10 @@ class AstraLibraryDataModule : Module() {
       repositoryCall { clearDesktopSyncBaselines() }
     }
 
+    AsyncFunction("getHomeSpotlight") Coroutine { options: ReadableMap ->
+      repositoryCall { getHomeSpotlight(options.toHashMap()) }
+    }
+
     AsyncFunction("getAlbumPage") Coroutine {
         sort: String,
         direction: String,

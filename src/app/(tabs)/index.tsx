@@ -37,7 +37,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { playLibraryQuery } from '@/audio/playbackController';
-import { filterArtistBrowseList } from '@/library/artistGrouping';
+import { useHomeSpotlight } from '@/home/useHomeSpotlight';
 import { albumArtworkSource, artworkUri } from '@/library/artwork';
 import {
   chooseHomeGreeting,
@@ -59,44 +59,6 @@ import { shouldAnimateScrollToTop } from '@/navigation/scrollToTopBehavior';
 
 const RECENT_ALBUM_LIMIT = 8;
 const PLAYLIST_LIMIT = 4;
-
-type RandomSpotlight =
-  | { kind: 'album'; key: string }
-  | { kind: 'artist'; name: string };
-
-function chooseRandomSpotlight(
-  albums: Album[],
-  artists: Artist[],
-  current: RandomSpotlight | null = null,
-  random: () => number = Math.random
-): RandomSpotlight | null {
-  const kinds: RandomSpotlight['kind'][] = [];
-  if (albums.length > 0) kinds.push('album');
-  if (artists.length > 0) kinds.push('artist');
-  if (kinds.length === 0) return null;
-
-  let kind = kinds[Math.floor(random() * kinds.length)];
-  const currentPoolSize = kind === 'album' ? albums.length : artists.length;
-  if (current?.kind === kind && currentPoolSize === 1 && kinds.length > 1) {
-    kind = kind === 'album' ? 'artist' : 'album';
-  }
-
-  if (kind === 'album') {
-    const candidates =
-      current?.kind === 'album' && albums.length > 1
-        ? albums.filter((album) => album.identity_key !== current.key)
-        : albums;
-    const album = candidates[Math.floor(random() * candidates.length)];
-    return album ? { kind: 'album', key: album.identity_key } : null;
-  }
-
-  const candidates =
-    current?.kind === 'artist' && artists.length > 1
-      ? artists.filter((artist) => artist.artist !== current.name)
-      : artists;
-  const artist = candidates[Math.floor(random() * candidates.length)];
-  return artist ? { kind: 'artist', name: artist.artist } : null;
-}
 
 function compactAlbumMeta(album: Album): string {
   return [
@@ -371,6 +333,7 @@ function RandomSpotlightCard({
   onPlay,
   onShuffle,
   onReroll,
+  rerolling,
   onOpen,
 }: {
   spotlight: { kind: 'album'; album: Album } | { kind: 'artist'; artist: Artist };
@@ -380,6 +343,7 @@ function RandomSpotlightCard({
   onPlay: () => void;
   onShuffle: () => void;
   onReroll: () => void;
+  rerolling: boolean;
   onOpen: () => void;
 }) {
   const styles = useStyles();
@@ -448,7 +412,9 @@ function RandomSpotlightCard({
             <AppPressable
               feedback="control"
               unstable_pressDelay={SCROLL_PRESS_DELAY}
-              style={styles.randomAction}
+              style={[styles.randomAction, rerolling && styles.buttonDisabled]}
+              disabled={rerolling}
+              accessibilityState={{ disabled: rerolling, busy: rerolling }}
               onPress={(event) => runAction(event, onReroll)}
               hitSlop={{ top: 7, right: 4, bottom: 7, left: 4 }}
               accessibilityRole="button"
@@ -580,8 +546,6 @@ export default function HomeScreen() {
   const openLibrary = useHomeLibraryNavigation();
   const totalTrackCount = useLibraryStore((s) => s.totalTrackCount);
   const albums = useLibraryStore((s) => s.homeAlbums);
-  const artists = useLibraryStore((s) => s.homeArtists);
-  const includeCollabArtists = useLibraryStore((s) => s.includeCollabArtists);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const scanError = useLibraryStore((s) => s.scanError);
   const libraryStatus = useLibraryStore((s) => s.status);
@@ -592,12 +556,10 @@ export default function HomeScreen() {
   const currentPath = usePlayerStore((s) => s.currentTrack?.path);
   const openQuickSearch = useSearchStore((s) => s.openQuickSearch);
   const homeGreetingTextMode = useSettingsStore((s) => s.homeGreetingTextMode);
-  const artistGroupingMode = useSettingsStore((s) => s.artistGroupingMode);
   const listeningPreview = useListeningStatsStore((s) => s.homePreview);
   const loadListeningPreview = useListeningStatsStore((s) => s.loadHomePreview);
 
-  const [spotlightOverride, setSpotlightOverride] = useState<RandomSpotlight | null>(null);
-  const [randomSeeds] = useState(() => [Math.random(), Math.random()] as const);
+  const { spotlight: spotlightContent, loading: spotlightLoading, reroll: rerollSpotlight } = useHomeSpotlight();
   const [actionTrack, setActionTrack] = useState<DbTrack | null>(null);
   const scrollTop = useScrollTopGate();
   const hasLibrary = totalTrackCount > 0;
@@ -635,11 +597,6 @@ export default function HomeScreen() {
     [albums]
   );
 
-  const visibleArtists = useMemo(
-    () => filterArtistBrowseList(artists, artistGroupingMode, includeCollabArtists),
-    [artistGroupingMode, artists, includeCollabArtists]
-  );
-
   const homePlaylists = useMemo(
     () =>
       [...playlists]
@@ -651,35 +608,6 @@ export default function HomeScreen() {
         .slice(0, PLAYLIST_LIMIT),
     [playlists]
   );
-
-  const randomSpotlight = useMemo(() => {
-    const overrideValid = spotlightOverride?.kind === 'album'
-      ? albums.some((album) => album.identity_key === spotlightOverride.key)
-      : spotlightOverride?.kind === 'artist'
-        ? visibleArtists.some((artist) => artist.artist === spotlightOverride.name)
-        : false;
-    if (spotlightOverride && overrideValid) return spotlightOverride;
-
-    let seedIndex = 0;
-    return chooseRandomSpotlight(
-      albums,
-      visibleArtists,
-      null,
-      () => randomSeeds[seedIndex++] ?? randomSeeds[0]
-    );
-  }, [albums, randomSeeds, spotlightOverride, visibleArtists]);
-
-  const randomAlbum = randomSpotlight?.kind === 'album'
-    ? albums.find((album) => album.identity_key === randomSpotlight.key) ?? null
-    : null;
-  const randomArtist = randomSpotlight?.kind === 'artist'
-    ? visibleArtists.find((artist) => artist.artist === randomSpotlight.name) ?? null
-    : null;
-  const spotlightContent = randomAlbum
-    ? ({ kind: 'album', album: randomAlbum } as const)
-    : randomArtist
-      ? ({ kind: 'artist', artist: randomArtist } as const)
-      : null;
 
   const recentTracks = recentlyPlayedTracks.slice(0, home.recentTrackCount);
   const canExpandRecentTracks = recentlyPlayedTracks.length > home.recentTrackCount;
@@ -710,14 +638,10 @@ export default function HomeScreen() {
       : {
           kind: 'artist' as const,
           artistKey: spotlightContent.artist.artist,
-          groupingMode: artistGroupingMode,
+          groupingMode: spotlightContent.identity.groupingMode,
           section: 'all' as const,
         };
     void playLibraryQuery(query, { shuffle: shuffled, source });
-  };
-
-  const rerollSpotlight = () => {
-    setSpotlightOverride(chooseRandomSpotlight(albums, visibleArtists, randomSpotlight));
   };
 
   const openSearch = () => openQuickSearch();
@@ -753,6 +677,7 @@ export default function HomeScreen() {
       onPlay={() => playSpotlight()}
       onShuffle={() => playSpotlight(true)}
       onReroll={rerollSpotlight}
+      rerolling={spotlightLoading}
     />
   ) : null;
 

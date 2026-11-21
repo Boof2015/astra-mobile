@@ -36,6 +36,7 @@ const TEST_SCRIPTS = [
   'test:library-jump',
   'test:haptics',
   'test:home-greeting',
+  'test:home-spotlight',
   'test:session',
   'test:library-scan',
 ];

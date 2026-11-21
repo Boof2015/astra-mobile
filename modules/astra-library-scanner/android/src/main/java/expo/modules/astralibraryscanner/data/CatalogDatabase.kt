@@ -1572,6 +1572,9 @@ interface CatalogDao {
   suspend fun runDynamicCountQuery(query: SupportSQLiteQuery): Long
 
   @RawQuery
+  suspend fun getHomeSpotlightKeys(query: SupportSQLiteQuery): List<HomeSpotlightKey>
+
+  @RawQuery
   suspend fun runTrackTotalsQuery(query: SupportSQLiteQuery): TrackTotals
 
   @RawQuery
