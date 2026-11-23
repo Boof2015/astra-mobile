@@ -1,4 +1,5 @@
 import { requireNativeModule, type NativeModule } from 'expo-modules-core';
+import type { RecentTrackSummary } from '../../src/types/library';
 
 /** A single audio file found through SAF or the TV MediaStore adapter. */
 export interface ScannedFile {
@@ -272,9 +273,33 @@ export type LibraryQuery =
   | { kind: 'playlist'; playlistId: number }
   | { kind: 'favorites'; sort?: 'title' }
   | { kind: 'recent' }
+  | { kind: 'recentDay'; generation: string; entryKind: 'session' | 'summary'; id: string; playedAt: number; dayEnd: number }
   | { kind: 'search'; query: string; literalFallback?: boolean }
   | { kind: 'manual'; paths: string[] }
   | { kind: 'dynamicPlaylist'; playlistId: number };
+
+export interface RecentTimelineCursor {
+  generation: string;
+  kind: 'session' | 'summary';
+  before: number | null;
+  id: string | null;
+}
+
+export interface RecentTimelineEntry<T> {
+  kind: 'session' | 'summary';
+  id: string;
+  path: string;
+  playedAt: number;
+  title: string | null;
+  artist: string | null;
+  track: T | null;
+}
+
+export interface RecentTimelinePage<T> {
+  generation: string;
+  items: RecentTimelineEntry<T>[];
+  nextCursor: RecentTimelineCursor | null;
+}
 
 export interface NativePlaybackWindow<T> {
   /** Stable for edits; changes when this saved queue is replaced. */
@@ -475,6 +500,7 @@ declare class AstraLibraryDataModuleType extends NativeModule<AstraLibraryDataEv
   getTvAmbientMoment<T>(playingPath: string, artist: string, grouping: 'astra' | 'fileTags', excluded: string[]): Promise<T | null>;
   clearDetailedListeningHistory<T>(): Promise<T>;
   getRecentlyPlayed<T>(limit: number): Promise<T[]>;
+  getRecentTimelinePage(cursor: RecentTimelineCursor | null, limit: number): Promise<RecentTimelinePage<RecentTrackSummary>>;
   listRemoteSources<T>(): Promise<T[]>;
   getRemoteSource<T>(sourceId: number): Promise<T | null>;
   createRemoteSource<T>(

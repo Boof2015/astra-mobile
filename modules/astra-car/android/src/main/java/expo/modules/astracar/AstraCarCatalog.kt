@@ -85,7 +85,7 @@ class AstraCarCatalog(
     "root" -> 4
     "section" -> when (media.section) {
       "home", "library" -> 3
-      "recent" -> minOf(24, user.countPlaybackHistory())
+      "recent" -> user.countRecentPlaybackHistory(24)
       "recentFavorites" -> minOf(24, user.countFavorites())
       "playlists" -> user.countPlaylists()
       "queue" -> queue.count()

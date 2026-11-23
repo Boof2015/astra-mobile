@@ -23,28 +23,20 @@ import { playHaptic } from '@/lib/haptics';
 import { trackArtworkThumbSource } from '@/library/artwork';
 import { dbTrackToTrack } from '@/library/trackAdapter';
 import { enqueueEnd, enqueueTop } from '@/audio/playbackController';
-import type { DbTrack } from '@/types/library';
+import type { DbTrack, RecentTrackSummary } from '@/types/library';
 
 const ART_SIZE = 44;
 const ROW_MIN_HEIGHT = ART_SIZE + (spacing.sm + 2) * 2;
 const ACTIONS_BUTTON = 34;
 
-export function TrackRow({
-  track,
-  onPress,
-  onLongPress,
-  onOpenActions,
-  showArtist = true,
-  showTrackNumber = false,
-  showFormat = true,
-  subtitle,
-  active = false,
-  swipeToQueue = true,
-  selectionMode = false,
-  selected = false,
-  onToggleSelect,
-}: {
-  track: DbTrack;
+type DisplayTrack = RecentTrackSummary & Partial<Pick<DbTrack,
+  'duration' | 'format' | 'sample_rate' | 'bit_depth' | 'track_number'
+>>;
+
+type TrackRowProps = (
+  | { track: DbTrack; swipeToQueue?: boolean }
+  | { track: DisplayTrack; swipeToQueue: false }
+) & {
   onPress: () => void;
   /** Opens the track actions sheet where wired. */
   onLongPress?: () => void;
@@ -58,14 +50,22 @@ export function TrackRow({
   showFormat?: boolean;
   /** Overrides the secondary line; useful for artist pages that need album context. */
   subtitle?: string;
+  /** Replaces duration for lists that show when a song was played. */
+  trailingText?: string;
+  trailingDetail?: string;
   active?: boolean;
-  /** Swipe right → play next, swipe left → add to queue. Off in queue-like lists. */
-  swipeToQueue?: boolean;
   /** Multi-select: press toggles selection, checkbox leads, swipes/actions off. */
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
-}) {
+};
+
+export function TrackRow(props: TrackRowProps) {
+  const {
+    track, onPress, onLongPress, onOpenActions, showArtist = true, showTrackNumber = false,
+    showFormat = true, subtitle, trailingText, trailingDetail, active = false,
+    selectionMode = false, selected = false, onToggleSelect,
+  } = props;
   const styles = useStyles();
   const colors = useColors();
   // Key the artwork by hash (local) or identity path (remote) so the error fallback
@@ -97,6 +97,11 @@ export function TrackRow({
     onOpenActions?.();
   };
 
+  const trailing = (
+    <Text variant="mono" style={[styles.duration, selectionMode && styles.durationSelection]}>
+      {trailingText ?? formatDuration(track.duration ?? 0)}
+    </Text>
+  );
   const row = (
     <AppPressable
        unstable_pressDelay={SCROLL_PRESS_DELAY}
@@ -158,7 +163,7 @@ export function TrackRow({
               <FormatBadges
                 variant="plain"
                 track={{
-                  format: track.format,
+                  format: track.format ?? '',
                   bitDepth: track.bit_depth ?? undefined,
                   sampleRate: track.sample_rate ?? undefined,
                 }}
@@ -168,9 +173,12 @@ export function TrackRow({
         ) : null}
       </View>
 
-      <Text variant="mono" style={[styles.duration, selectionMode && styles.durationSelection]}>
-        {formatDuration(track.duration)}
-      </Text>
+      {trailingDetail ? (
+        <View style={styles.trailing}>
+          {trailing}
+          <Text variant="caption">{trailingDetail}</Text>
+        </View>
+      ) : trailing}
 
       {onOpenActions && !selectionMode ? (
         <AppPressable
@@ -187,20 +195,20 @@ export function TrackRow({
     </AppPressable>
   );
 
-  if (!swipeToQueue || selectionMode) return row;
+  if (props.swipeToQueue === false || selectionMode) return row;
 
   return (
     <SwipeableRow
       swipeRight={{
         icon: 'play',
         color: colors.accent,
-        onCommit: () => void enqueueTop(dbTrackToTrack(track)),
+        onCommit: () => void enqueueTop(dbTrackToTrack(props.track)),
       }}
       swipeLeft={{
         icon: 'list',
         color: colors.bgTertiary,
         iconColor: colors.accentText,
-        onCommit: () => void enqueueEnd(dbTrackToTrack(track)),
+        onCommit: () => void enqueueEnd(dbTrackToTrack(props.track)),
       }}
     >
       {row}
@@ -268,6 +276,9 @@ const useStyles = createThemedStyles((colors) => ({
     alignItems: 'center',
     gap: spacing.xs,
     marginTop: 2,
+  },
+  trailing: {
+    alignItems: 'flex-end',
   },
   duration: {
     minWidth: 42,

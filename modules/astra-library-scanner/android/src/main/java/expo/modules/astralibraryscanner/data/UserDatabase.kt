@@ -221,11 +221,52 @@ interface UserDao {
   @Query("SELECT * FROM playback_history ORDER BY last_played_at DESC")
   suspend fun getPlaybackHistory(): List<PlaybackHistoryEntity>
 
-  @Query("SELECT * FROM playback_history ORDER BY last_played_at DESC, track_path LIMIT :limit OFFSET :offset")
-  suspend fun getPlaybackHistoryPage(offset: Long, limit: Int): List<PlaybackHistoryEntity>
+  @Query("SELECT * FROM playback_history WHERE last_played_at BETWEEN :since AND :now ORDER BY last_played_at DESC, track_path LIMIT :limit OFFSET :offset")
+  suspend fun getPlaybackHistoryPage(offset: Long, limit: Int, now: Long = System.currentTimeMillis(),
+    since: Long = recentListeningWindowStart(now)): List<PlaybackHistoryEntity>
 
-  @Query("SELECT COUNT(*) FROM playback_history")
-  suspend fun countPlaybackHistory(): Long
+  @Query("SELECT track_path FROM playback_history WHERE last_played_at BETWEEN :since AND :now ORDER BY last_played_at DESC, track_path")
+  suspend fun getRecentPlaybackPaths(now: Long = System.currentTimeMillis(),
+    since: Long = recentListeningWindowStart(now)): List<String>
+
+  @Query("""
+    SELECT session_key AS id, track_path AS path, started_at AS playedAt, title, artist
+    FROM listening_sessions WHERE generation = :generation AND qualified_at IS NOT NULL
+      AND started_at BETWEEN :since AND :before AND (started_at < :before OR session_key < :id)
+    ORDER BY started_at DESC, session_key DESC LIMIT :limit
+  """)
+  suspend fun getRecentSessions(generation: String, since: Long, before: Long, id: String, limit: Int): List<RecentPlayRecord>
+
+  @Query("""
+    SELECT session_key AS id, track_path AS path, started_at AS playedAt, title, artist
+    FROM listening_sessions WHERE generation = :generation AND qualified_at IS NOT NULL
+      AND started_at >= :from AND started_at < :end AND (started_at > :from OR session_key >= :id)
+    ORDER BY started_at, session_key
+  """)
+  suspend fun getRecentSessionsForReplay(generation: String, from: Long, end: Long, id: String): List<RecentPlayRecord>
+
+  @Query("""
+    SELECT track_path AS id, track_path AS path, last_played_at AS playedAt, NULL AS title, NULL AS artist
+    FROM playback_history h WHERE last_played_at BETWEEN :since AND :before AND (last_played_at < :before OR track_path < :id)
+      AND NOT EXISTS (SELECT 1 FROM listening_sessions s WHERE s.generation = :generation
+        AND s.qualified_at = h.last_played_at AND s.track_path = h.track_path)
+    ORDER BY last_played_at DESC, track_path DESC LIMIT :limit
+  """)
+  suspend fun getLastKnownPlays(generation: String, since: Long, before: Long, id: String, limit: Int): List<RecentPlayRecord>
+
+  @Query("""
+    SELECT track_path AS id, track_path AS path, last_played_at AS playedAt, NULL AS title, NULL AS artist
+    FROM playback_history h WHERE last_played_at >= :from AND last_played_at < :end
+      AND (last_played_at > :from OR track_path >= :id)
+      AND NOT EXISTS (SELECT 1 FROM listening_sessions s WHERE s.generation = :generation
+        AND s.qualified_at = h.last_played_at AND s.track_path = h.track_path)
+    ORDER BY last_played_at, track_path
+  """)
+  suspend fun getLastKnownPlaysForReplay(generation: String, from: Long, end: Long, id: String): List<RecentPlayRecord>
+
+  @Query("SELECT COUNT(*) FROM (SELECT 1 FROM playback_history WHERE last_played_at BETWEEN :since AND :now LIMIT :limit)")
+  suspend fun countRecentPlaybackHistory(limit: Int, now: Long = System.currentTimeMillis(),
+    since: Long = recentListeningWindowStart(now)): Long
 
   @Query("SELECT * FROM favorites ORDER BY added_at DESC, track_path LIMIT :limit OFFSET :offset")
   suspend fun getFavoritePage(offset: Long, limit: Int): List<FavoriteEntity>

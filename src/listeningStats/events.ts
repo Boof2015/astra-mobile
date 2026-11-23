@@ -1,5 +1,6 @@
 export interface ListeningHistoryChange {
-  qualifiedNow: boolean;
+  qualifiedNow?: boolean;
+  cleared?: boolean;
 }
 
 const listeners = new Set<(change: ListeningHistoryChange) => void>();
@@ -11,7 +12,6 @@ export function subscribeToListeningHistory(
   return () => listeners.delete(listener);
 }
 
-export function notifyListeningHistoryChanged(qualifiedNow = false): void {
-  const change = { qualifiedNow };
+export function notifyListeningHistoryChanged(change: ListeningHistoryChange = {}): void {
   listeners.forEach((listener) => listener(change));
 }

@@ -1178,6 +1178,9 @@ class AstraLibraryRepository private constructor(
       else -> filterAvailablePaths(paths, catalogDao)
     }
     require(availablePaths.isNotEmpty()) { "This collection has no available tracks." }
+    if (contextKind == "recentDay") {
+      require(availablePaths.first() == anchorPath) { "This song is no longer available." }
+    }
     val seed = requestedSeed ?: System.currentTimeMillis()
     val original = availablePaths.mapIndexed { index, path ->
       OrderedQueueItem(index.toLong(), path)
@@ -1832,7 +1835,7 @@ class AstraLibraryRepository private constructor(
 
   suspend fun getRecentlyPlayed(limit: Int): List<Map<String, Any?>> {
     initialize()
-    val history = requireUser().userDao().getPlaybackHistory().take(limit.coerceIn(1, 100))
+    val history = requireUser().userDao().getPlaybackHistoryPage(0, limit.coerceIn(1, 100))
     if (history.isEmpty()) return emptyList()
     val tracks = requireCatalog().catalogDao().getActiveTracks(history.map { it.trackPath }).associateBy { it.path }
     return history.mapNotNull { item ->
@@ -1841,6 +1844,11 @@ class AstraLibraryRepository private constructor(
         this["last_played_at"] = item.lastPlayedAt.toDouble()
       }
     }
+  }
+
+  suspend fun getRecentTimelinePage(cursor: Map<String, Any?>?, limit: Int): Map<String, Any?> {
+    initialize()
+    return RecentTimeline.page(requireUser(), requireCatalog().catalogDao(), cursor, limit)
   }
 
   suspend fun listPlaylists(): List<Map<String, Any?>> {
@@ -3242,7 +3250,8 @@ class AstraLibraryRepository private constructor(
     }
     "favorites" -> if (context["sort"] == "title") catalogDao.getFavoritePathsByTitle()
       else userDao.getFavorites().map(FavoriteEntity::trackPath)
-    "recent" -> userDao.getPlaybackHistory().map(PlaybackHistoryEntity::trackPath)
+    "recent" -> userDao.getRecentPlaybackPaths()
+    "recentDay" -> RecentTimeline.replayPaths(userDao, context)
     "search" -> {
       val search = context["query"] as? String ?: ""
       val fts = compileFtsQuery(search)

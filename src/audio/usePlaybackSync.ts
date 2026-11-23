@@ -12,6 +12,7 @@ import type { PlaybackState, Track } from '@/types/audio';
 import { rntpToTrack } from './sampleTracks';
 import { buildWidgetRecentItems, setWidgetNowPlaying } from './widgetSync';
 import { subscribeToListeningHistory } from '@/listeningStats/events';
+import { subscribeToLocalDayChanges } from '@/listeningStats/localDayChanges';
 
 const SEEK_ACK_EPS = 0.75;
 const SEEK_ACK_TIMEOUT_MS = 3000;
@@ -105,6 +106,13 @@ export function usePlaybackSync(): void {
   const setPlaybackState = usePlayerStore((s) => s.setPlaybackState);
   const recentlyPlayedTracks = useLibraryStore((s) => s.recentlyPlayedTracks);
   const libraryInitialized = useLibraryStore((s) => s.initialized);
+
+  useEffect(() => {
+    if (!libraryInitialized) return;
+    return subscribeToLocalDayChanges(() => {
+      void useLibraryStore.getState().refreshRecentlyPlayed().catch(() => {});
+    });
+  }, [libraryInitialized]);
 
   useEffect(
     () => subscribeToListeningHistory((change) => {

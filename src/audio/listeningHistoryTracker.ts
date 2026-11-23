@@ -138,7 +138,7 @@ async function persist(
     active = null;
     return;
   }
-  notifyListeningHistoryChanged(result.qualifiedNow);
+  notifyListeningHistoryChanged({ qualifiedNow: result.qualifiedNow });
   session.lastCheckpointSeconds = session.sessionListenedSeconds;
   if (session.sessionListenedSeconds >= LISTENING_QUALIFICATION_SECONDS) {
     session.qualifiedCheckpointSent = true;

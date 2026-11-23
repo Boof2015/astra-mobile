@@ -664,13 +664,15 @@ private fun overlapSeconds(segment: ListeningSegmentEntity, startAt: Long, endAt
   return listened * min(1.0, overlap.toDouble() / wallDuration.toDouble())
 }
 
+/** Today and the preceding 29 local calendar dates, including clock changes. */
+internal fun recentListeningWindowStart(now: Long): Long = addDays(startOfDay(now), -29)
+
 private fun rangeStart(range: String, now: Long, baseline: Long?): Long? {
   if (range == "all") return baseline
-  val today = startOfDay(now)
   return when (range) {
-    "7d" -> addDays(today, -6)
-    "1y" -> addDays(today, -364)
-    else -> addDays(today, -29)
+    "7d" -> addDays(startOfDay(now), -6)
+    "1y" -> addDays(startOfDay(now), -364)
+    else -> recentListeningWindowStart(now)
   }
 }
 

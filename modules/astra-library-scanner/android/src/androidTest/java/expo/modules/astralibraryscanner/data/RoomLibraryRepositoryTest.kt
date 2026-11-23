@@ -1057,6 +1057,120 @@ class RoomLibraryRepositoryTest {
   }
 
   @Test
+  fun recentTimelinePagesAcrossTiesAndClearsToLastKnownPlays() = runBlocking {
+    val dao = user.userDao()
+    val generation = ListeningStatsEngine.status(user)["generation"] as String
+    val path = "content://tracks/a"
+    publish("catalog", listOf(track("catalog", 1, "A", path)))
+    for (index in 0 until 50) {
+      dao.putListeningSession(recentSession(generation, "play-${index.toString().padStart(2, '0')}", path, 100, 200))
+    }
+    dao.putListeningSession(recentSession(generation, "brief", path, 300, null))
+    dao.putPlaybackHistories(listOf(PlaybackHistoryEntity(path, 200, 50), PlaybackHistoryEntity("older", 20, 15)))
+    fun items(page: Map<String, Any?>) = (page["items"] as List<*>).map { it as Map<*, *> }
+    @Suppress("UNCHECKED_CAST")
+    fun cursor(page: Map<String, Any?>) = page["nextCursor"] as Map<String, Any?>?
+    suspend fun read(after: Map<String, Any?>?, limit: Int) = RecentTimeline.page(user, catalog.catalogDao(), after, limit, now = 1000)
+
+    val head = read(null, 50)
+    assertEquals(50, items(head).size)
+    assertEquals("play-49", items(head).first()["id"])
+    assertEquals("play-00", items(head).last()["id"])
+    val tail = read(cursor(head), 50)
+    assertEquals(listOf("older"), items(tail).map { it["id"] })
+    assertNull(items(tail).single()["track"])
+    assertNull(cursor(tail))
+    val first = read(null, 20)
+    val second = read(cursor(first), 20)
+    val third = read(cursor(second), 20)
+    assertEquals(items(head) + items(tail), items(first) + items(second) + items(third))
+
+    ListeningStatsEngine.clear(user)
+    val cleared = read(cursor(first), 20)
+    assertNotEquals(generation, cleared["generation"])
+    assertEquals(listOf(path, "older"), items(cleared).map { it["id"] })
+    assertTrue(items(cleared).all { it["kind"] == "summary" })
+  }
+
+  @Test
+  fun recentDayReplayStartsAtSelectedOccurrenceAndStopsAtMidnight() = runBlocking {
+    val dao = user.userDao()
+    val generation = ListeningStatsEngine.status(user)["generation"] as String
+    val paths = listOf("a", "b", "a", "a", "gone", "a", "next-day")
+    paths.forEachIndexed { index, path ->
+      // The two middle occurrences also exercise the session-key tie breaker.
+      val time = listOf(10L, 11L, 12L, 12L, 13L, 14L, 15L)[index]
+      dao.putListeningSession(recentSession(generation, "s$index", path, time, time + 1))
+    }
+    val context = mapOf("generation" to generation, "playedAt" to 12, "dayEnd" to 15,
+      "entryKind" to "session", "id" to "s3")
+    assertEquals(listOf("a", "gone", "a"), RecentTimeline.replayPaths(dao, context, now = 1000))
+    assertEquals(listOf("b", "a", "gone", "a"), RecentTimeline.replayPaths(dao,
+      context + mapOf("playedAt" to 11, "id" to "s1"), now = 1000))
+    assertTrue(runCatching { RecentTimeline.replayPaths(dao, context + ("id" to "deleted"), now = 1000) }.isFailure)
+
+    dao.putPlaybackHistories(listOf(PlaybackHistoryEntity("old-a", 11), PlaybackHistoryEntity("old-b", 12),
+      PlaybackHistoryEntity("old-c", 15), PlaybackHistoryEntity("b", 12)))
+    assertEquals(listOf("old-a", "old-b"), RecentTimeline.replayPaths(dao,
+      context + mapOf("entryKind" to "summary", "playedAt" to 11, "id" to "old-a"), now = 1000))
+  }
+
+  @Test
+  fun recentWindowBoundsEveryPageAndReplayAndPreservesAllTimeStats() = runBlocking {
+    val dao = user.userDao()
+    val calendar = java.util.Calendar.getInstance()
+    calendar.clear()
+    calendar.set(2026, java.util.Calendar.NOVEMBER, 23, 14, 0)
+    val now = calendar.timeInMillis
+    calendar.clear()
+    calendar.set(2026, java.util.Calendar.OCTOBER, 25, 0, 0)
+    val start = calendar.timeInMillis
+    assertEquals(start, recentListeningWindowStart(now))
+    val generation = ListeningStatsEngine.status(user)["generation"] as String
+    dao.putListeningHistoryMeta(dao.getListeningHistoryMeta()!!.copy(startedAt = start - 1))
+    val records = mapOf("expired" to start - 1, "midnight" to start, "latest" to now, "future" to now + 1)
+    for ((id, at) in records) {
+      dao.putListeningSession(recentSession(generation, id, id, at, at))
+      dao.putPlaybackHistory(PlaybackHistoryEntity(id, at))
+      dao.putPlaybackHistory(PlaybackHistoryEntity("summary-$id", at))
+    }
+    for (i in 1..510) {
+      dao.putListeningSession(recentSession(generation, "repeat-$i", "loop", start + i, start + i))
+    }
+    val ids = mutableListOf<String>()
+    var cursor: Map<String, Any?>? = null
+    do {
+      val page = RecentTimeline.page(user, catalog.catalogDao(), cursor, 50, now)
+      val items = page["items"] as List<*>
+      assertTrue(items.size in 1..50)
+      ids += items.map { (it as Map<*, *>)["id"] as String }
+      @Suppress("UNCHECKED_CAST")
+      val next = page["nextCursor"] as Map<String, Any?>?
+      cursor = next
+    } while (cursor != null)
+    assertEquals(514, ids.size)
+    assertEquals(514, ids.toSet().size)
+    assertEquals(listOf("latest", "midnight", "summary-latest", "summary-midnight"), ids.filterNot { it.startsWith("repeat-") })
+    val paths = listOf("latest", "summary-latest", "midnight", "summary-midnight")
+    assertEquals(paths, dao.getRecentPlaybackPaths(now))
+    assertEquals(paths, dao.getPlaybackHistoryPage(0, 20, now).map { it.trackPath })
+    assertEquals(4L, dao.countRecentPlaybackHistory(24, now))
+    assertEquals(2L, dao.countRecentPlaybackHistory(2, now))
+    for (kind in listOf("session", "summary")) {
+      val context = mapOf("generation" to generation, "entryKind" to kind, "playedAt" to start - 1,
+        "dayEnd" to start, "id" to if (kind == "summary") "summary-expired" else "expired")
+      assertTrue(runCatching { RecentTimeline.replayPaths(dao, context, now) }.isFailure)
+    }
+    val all = ListeningStatsEngine.dashboard(user, catalog.catalogDao(), mapOf("range" to "all", "now" to now))
+    assertEquals(513.0, (all["summary"] as Map<*, *>)["qualifiedPlays"])
+  }
+
+  private fun recentSession(generation: String, id: String, path: String, time: Long, qualified: Long?) =
+    ListeningSessionEntity(sessionKey = id, generation = generation, trackPath = path,
+      title = path, artist = "Artist", album = "Album", albumIdentityKey = "album", sourceType = "local",
+      durationSeconds = 60.0, startedAt = time, qualifiedAt = qualified)
+
+  @Test
   fun listeningStatsCheckpointIsIdempotentAndClearPreservesProtectedHistory() = runBlocking {
     val path = "content://track/listening.flac"
     publish("listening", listOf(track("listening", 1, "Headphones On", path)))

@@ -255,6 +255,13 @@ interface CatalogDao {
   @Query("SELECT * FROM active_tracks WHERE path IN (:paths)")
   suspend fun getActiveTracks(paths: List<String>): List<ActiveTrackView>
 
+  @Query("""
+    SELECT path, title, artist, artwork_hash AS artworkHash, artwork_source_id AS artworkSourceId,
+      source_type AS sourceType, source_id AS sourceId, codec, codec_profile AS codecProfile, is_atmos_joc AS isAtmosJoc
+    FROM active_tracks WHERE path IN (:paths)
+  """)
+  suspend fun getRecentTrackSummaries(paths: List<String>): List<RecentTrackSummary>
+
   @Query("SELECT COUNT(*) AS trackCount, COALESCE(SUM(duration), 0.0) AS totalDuration FROM active_tracks WHERE path IN (:paths)")
   suspend fun getTrackTotals(paths: List<String>): TrackTotals
 

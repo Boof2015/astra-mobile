@@ -62,6 +62,11 @@ export interface DbTrack {
   replay_gain_album_db: number | null;
 }
 
+export type RecentTrackSummary = Pick<DbTrack,
+  'path' | 'title' | 'artist' | 'artwork_hash' | 'artwork_source_id' | 'source_type' | 'source_id' |
+  'codec' | 'codec_profile' | 'is_atmos_joc'
+>;
+
 export interface LibraryFolder {
   id: number;
   tree_uri: string; // SAF tree or astra-media:// TV storage scope

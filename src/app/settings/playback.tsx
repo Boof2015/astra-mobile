@@ -41,7 +41,7 @@ export default function PlaybackSettingsScreen() {
               await pauseListeningHistoryTracking();
               try {
                 await AstraLibraryData.clearDetailedListeningHistory();
-                notifyListeningHistoryChanged();
+                notifyListeningHistoryChanged({ cleared: true });
               } finally {
                 if (useSettingsStore.getState().listeningHistoryEnabled) {
                   resumeListeningHistoryTracking();

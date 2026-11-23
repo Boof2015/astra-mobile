@@ -206,18 +206,12 @@ function HomeMasthead({
   );
 }
 
-function formatCount(count: number, noun: string): string {
-  return `${count} ${count === 1 ? noun : `${noun}s`}`;
-}
-
 function SectionHeader({
   title,
-  trailing,
   actionLabel,
   onActionPress,
 }: {
   title: string;
-  trailing?: string;
   actionLabel?: string;
   onActionPress?: () => void;
 }) {
@@ -225,16 +219,7 @@ function SectionHeader({
   const colors = useColors();
   return (
     <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleGroup}>
-        <Text variant="heading" style={styles.sectionTitle}>
-          {title}
-        </Text>
-        {trailing ? (
-          <Text variant="label" numberOfLines={1}>
-            {trailing}
-          </Text>
-        ) : null}
-      </View>
+      <Text variant="heading" style={styles.sectionTitle}>{title}</Text>
       {onActionPress && actionLabel ? (
         <AppPressable feedback="control" style={styles.seeAllButton}  unstable_pressDelay={SCROLL_PRESS_DELAY} onPress={onActionPress} accessibilityRole="button">
           <Text variant="label" color={colors.accentText}>
@@ -610,7 +595,6 @@ export default function HomeScreen() {
   );
 
   const recentTracks = recentlyPlayedTracks.slice(0, home.recentTrackCount);
-  const canExpandRecentTracks = recentlyPlayedTracks.length > home.recentTrackCount;
 
   const openAlbum = (album: Album) => {
     openLibrary({ kind: 'album', key: album.identity_key });
@@ -691,15 +675,12 @@ export default function HomeScreen() {
     />
   ) : null;
 
-  const recentlyPlayedSection = recentTracks.length > 0 ? (
+  const recentlyPlayedSection = recentTracks.length > 0 || (listeningPreview?.summary.qualifiedPlays ?? 0) > 0 ? (
     <>
       <SectionHeader
         title="Recently Played"
-        trailing={formatCount(recentlyPlayedTracks.length, 'track')}
-        actionLabel={canExpandRecentTracks ? 'See all' : undefined}
-        onActionPress={
-          canExpandRecentTracks ? () => router.push('/recently-played') : undefined
-        }
+        actionLabel="See all"
+        onActionPress={() => router.push('/recently-played')}
       />
       <View style={styles.listBlock}>
         {recentTracks.map((track, index) => (
@@ -898,11 +879,6 @@ const useStyles = createThemedStyles((colors) => ({
     justifyContent: 'space-between',
     gap: spacing.md,
     marginBottom: spacing.md,
-  },
-  sectionTitleGroup: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
   },
   sectionTitle: {
     flex: 1,

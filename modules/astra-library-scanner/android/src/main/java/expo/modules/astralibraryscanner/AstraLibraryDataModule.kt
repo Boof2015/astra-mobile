@@ -234,6 +234,10 @@ class AstraLibraryDataModule : Module() {
       repositoryCall { getRecentlyPlayed(limit) }
     }
 
+    AsyncFunction("getRecentTimelinePage") Coroutine { cursor: Map<String, Any?>?, limit: Int ->
+      repositoryCall { getRecentTimelinePage(cursor, limit) }
+    }
+
     AsyncFunction("listRemoteSources").Coroutine<List<Map<String, Any?>>> {
       repositoryCall { listRemoteSources() }
     }

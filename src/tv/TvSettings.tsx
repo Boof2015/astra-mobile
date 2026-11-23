@@ -192,7 +192,7 @@ export function TvSettings({ actions, setEntry, setImmersive }: { actions: TvAct
     ], !timer.timer && (!track || !localPlayback)),
     toggle('history', 'Listening History', settings.listeningHistoryEnabled, settings.setListeningHistoryEnabled, 'Record listening time and qualified plays on this TV.'),
     { id: 'clear-history', label: 'Clear Detailed Listening History', kind: 'action', run: () => confirm('Clear listening history?', 'Removes detailed listening time and rankings. Play counts, recents, favorites and playlists are kept.', 'Clear history', () => operation('clear-history', async () => {
-      await pauseListeningHistoryTracking(); try { await AstraLibraryData.clearDetailedListeningHistory(); notifyListeningHistoryChanged(); } finally { if (useSettingsStore.getState().listeningHistoryEnabled) resumeListeningHistoryTracking(); }
+      await pauseListeningHistoryTracking(); try { await AstraLibraryData.clearDetailedListeningHistory(); notifyListeningHistoryChanged({ cleared: true }); } finally { if (useSettingsStore.getState().listeningHistoryEnabled) resumeListeningHistoryTracking(); }
     }, 'Detailed listening history cleared.')), disabled: busy !== 'clear-history' && (!!busy || library.isScanning) }],
     [toggle('lookup', 'Online lookup', lyrics.onlineLookupEnabled, async enabled => {
       await lyrics.setOnlineLookupEnabled(enabled);
