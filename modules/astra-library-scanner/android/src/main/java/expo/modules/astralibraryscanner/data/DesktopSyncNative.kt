@@ -9,10 +9,10 @@ import java.util.UUID
 private val SYNC_WHITESPACE = Regex("\\s+")
 private const val SYNC_SEPARATOR = "\u001f"
 
-private fun normalizeSyncPart(value: String): String =
+internal fun normalizeSyncPart(value: String): String =
   value.replace(SYNC_WHITESPACE, " ").trim().lowercase(Locale.ROOT)
 
-private fun syncKey(title: String, artist: String, album: String): String =
+internal fun syncKey(title: String, artist: String, album: String): String =
   listOf(title, artist, album).joinToString(SYNC_SEPARATOR, transform = ::normalizeSyncPart)
 
 private fun decodedDocumentPath(raw: String): String? = runCatching {
@@ -157,6 +157,14 @@ private data class PlaylistApplyResult(
   )
 }
 
+// Both a pending match and an in-flight desktop add can land after a scan repaired the favorite.
+private suspend fun UserDao.putSyncedFavorite(track: ActiveTrackView, addedAt: Long) {
+  val saved = getFavorite(track.path)
+  val row = track.asFavorite(saved?.addedAt ?: addedAt)
+  val latest = maxOf(addedAt, saved?.syncAddedAt ?: row.addedAt)
+  putFavorite(row.copy(ambiguousMove = saved?.ambiguousMove ?: false, syncAddedAt = latest.takeIf { it > row.addedAt }))
+}
+
 internal object NativeDesktopSync {
   suspend fun getState(
     userDatabase: AstraUserDatabase,
@@ -178,7 +186,7 @@ internal object NativeDesktopSync {
       }
       for (pending in userDao.getPendingFavorites()) {
         val match = matcher.match(pending.title, pending.artist, pending.album) ?: continue
-        userDao.putFavorite(FavoriteEntity(match.path, pending.addedAt))
+        userDao.putSyncedFavorite(match, pending.addedAt)
         userDao.deletePendingFavorites(listOf(pending.syncKey))
         mutated = true
       }
@@ -192,6 +200,7 @@ internal object NativeDesktopSync {
     for (favorite in favoriteRows) {
       val track = favoriteTracks[favorite.trackPath] ?: continue
       val key = syncKey(track.title, track.artist, track.album)
+      val addedAt = favorite.syncAddedAt ?: favorite.addedAt
       val existing = favorites[key]
       if (existing == null) {
         favorites[key] = mutableMapOf(
@@ -199,15 +208,15 @@ internal object NativeDesktopSync {
           "title" to track.title,
           "artist" to track.artist,
           "album" to track.album,
-          "addedAt" to favorite.addedAt.toDouble(),
+          "addedAt" to addedAt.toDouble(),
           "trackPaths" to mutableListOf(favorite.trackPath),
           "pending" to false,
         )
       } else {
         @Suppress("UNCHECKED_CAST")
         (existing["trackPaths"] as MutableList<String>).add(favorite.trackPath)
-        if (favorite.addedAt > existing["addedAt"].asLong()) {
-          existing["addedAt"] = favorite.addedAt.toDouble()
+        if (addedAt > existing["addedAt"].asLong()) {
+          existing["addedAt"] = addedAt.toDouble()
         }
       }
     }
@@ -316,7 +325,7 @@ internal object NativeDesktopSync {
         val addedAt = item["addedAt"].asLong()
         val match = matcher.match(title, artist, album, item["sourcePath"] as? String)
         if (match != null) {
-          userDao.putFavorite(FavoriteEntity(match.path, addedAt))
+          userDao.putSyncedFavorite(match, addedAt)
           userDao.deletePendingFavorites(listOf(key))
           userDao.deleteFavoriteTombstones(listOf(key))
           favoritesAdded += 1

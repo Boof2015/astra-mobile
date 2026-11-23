@@ -252,11 +252,12 @@ class AstraLibraryScannerModule : Module() {
       try {
         withContext(Dispatchers.IO) {
           val repository = AstraLibraryRepository.get(context)
+          var completeListing = true
           repository.withUserRecovery { scanLocalFolder(
             folderId = folderId.toLong(),
             full = mode == "full",
             discover = { treeUri ->
-              val listing = listAudioFiles(treeUri, extensions, cancelFlag)
+              val listing = listAudioFiles(treeUri, extensions, cancelFlag) { completeListing = false }
               @Suppress("UNCHECKED_CAST")
               val files = listing["files"] as? List<Map<String, Any?>> ?: emptyList()
               @Suppress("UNCHECKED_CAST")
@@ -290,6 +291,7 @@ class AstraLibraryScannerModule : Module() {
               )
             },
             isCancelled = cancelFlag::get,
+            completeListing = { completeListing },
           ).toMap() }
         }
       } finally {
@@ -649,6 +651,7 @@ class AstraLibraryScannerModule : Module() {
     treeUri: String,
     extensions: List<String>,
     cancelFlag: AtomicBoolean? = null,
+    onIncomplete: () -> Unit = {},
   ): Map<String, Any> {
     coverHashMemo.clear()
 
@@ -682,8 +685,12 @@ class AstraLibraryScannerModule : Module() {
       val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirDocId)
 
       val cursor = resolver.query(childrenUri, projection, null, null, null)
-        ?: continue // directory disappeared mid-walk; skip it
+      if (cursor == null) {
+        onIncomplete()
+        continue
+      }
       cursor.use {
+        if (it.extras.getBoolean(DocumentsContract.EXTRA_LOADING) || it.extras.containsKey(DocumentsContract.EXTRA_ERROR)) onIncomplete()
         while (it.moveToNext()) {
           if (cancelFlag?.get() == true) throw ScanCancelledException()
           val docId = it.getString(0) ?: continue

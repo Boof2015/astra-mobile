@@ -56,6 +56,16 @@ function harness(data = savedData(), status = 'ready') {
     getPlaylistEntries: async (_id: number, _offset: number, _limit: number): Promise<{
       items: PlaylistTrackEntry[]; totalCount: number; nextOffset: number | null;
     }> => ({ items: [], totalCount: 0, nextOffset: null }),
+    getFavoriteEntries: async (offset: number, limit: number) => ({
+      items: data.favoritePaths.slice(offset, offset + limit).map((path, index) => ({
+        id: offset + index, track_path: path, position: offset + index, added_at: 0,
+        missing: !data.favoriteTracks.some(track => track.path === path),
+        track: data.favoriteTracks.find(track => track.path === path) ?? null,
+        fallback_title: null, fallback_artist: null, fallback_album: null,
+      })),
+      totalCount: data.favoritePaths.length,
+      nextOffset: offset + limit < data.favoritePaths.length ? offset + limit : null,
+    }),
     setFavorite: async (_path: string, _favorite: boolean) => {},
     removePlaylistEntry: async (_id: number, _path: string) => {},
   };
@@ -281,4 +291,38 @@ test('pending and failed summary reads retain successful totals, then recover', 
   h.native.getFavoriteSummary = async () => ({ ...h.data.favoriteSummary });
   await h.playlists.getState().refresh();
   assertLoaded(h);
+});
+
+test('Favorites pages include unresolved rows beyond 500 and remove only the selected path', async () => {
+  const h = harness();
+  const paths = Array.from({ length: 503 }, (_, i) => `song:${i}`);
+  h.data.favoritePaths = [...paths];
+  h.data.favoriteTracks = [{ id: 1, path: paths[0], title: 'Same song at its new path' }];
+  await h.playlists.getState().openPlaylist('favorites');
+  while (h.playlists.getState().activeEntriesNextOffset != null) {
+    await Promise.all([h.playlists.getState().loadNextEntries(), h.playlists.getState().loadNextEntries()]);
+  }
+  assert.deepEqual(h.playlists.getState().activeEntries.map(entry => entry.track_path), paths);
+  assert.equal(h.playlists.getState().activeEntries.at(-1)?.missing, true);
+  h.native.setFavorite = async (path, liked) => {
+    assert.equal(liked, false);
+    h.data.favoritePaths = h.data.favoritePaths.filter(saved => saved !== path);
+  };
+  await h.playlists.getState().removeFavorite(paths[502]);
+  assert.equal(h.playlists.getState().activeEntries.length, 502);
+  assert.equal(h.playlists.getState().activeEntries[0].track?.path, paths[0]);
+});
+
+test('an in-flight Favorites page cannot replace the newly opened playlist', async () => {
+  const h = harness();
+  const read = h.native.getFavoriteEntries;
+  let resume!: () => void;
+  const wait = new Promise<void>(resolve => { resume = resolve; });
+  h.native.getFavoriteEntries = async (...args) => { await wait; return read(...args); };
+  const pending = h.playlists.getState().openPlaylist('favorites');
+  await h.playlists.getState().openPlaylist(1);
+  resume();
+  await pending;
+  assert.equal(h.playlists.getState().activePlaylistId, 1);
+  assert.deepEqual(h.playlists.getState().activeEntries, []);
 });

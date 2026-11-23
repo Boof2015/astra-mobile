@@ -412,6 +412,8 @@ class RoomLibraryRepositoryTest {
     val snapshots = UserSnapshotStore(context)
     val dao = user.userDao()
 
+    val saved = FavoriteEntity("old/path", 123, "Song", "Artist", "Album", 3000, 555, 1, true, syncAddedAt = 456)
+    dao.putFavorite(saved)
     dao.putSettings(listOf(SettingEntity("theme", "old")))
     snapshots.write(user)
     Thread.sleep(10)
@@ -426,11 +428,14 @@ class RoomLibraryRepositoryTest {
     assertTrue(valid != null)
     // A pre-feature v1 snapshot has no artistImages property.
     valid?.payload?.remove("artistImages")
+    requireNotNull(valid).payload.getJSONArray("favorites").put(
+      org.json.JSONObject().put("trackPath", "legacy/path").put("addedAt", 45))
     val replacement = Room.inMemoryDatabaseBuilder(context, AstraUserDatabase::class.java)
       .allowMainThreadQueries()
       .build()
     try {
       snapshots.restore(replacement, requireNotNull(valid))
+      assertEquals(listOf(saved, FavoriteEntity("legacy/path", 45)), replacement.userDao().getFavorites())
       assertEquals("old", replacement.userDao().getSettings(listOf("theme")).single().value)
     } finally {
       replacement.close()

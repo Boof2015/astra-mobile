@@ -199,6 +199,8 @@ interface UserDao {
   @Query("SELECT * FROM favorites ORDER BY added_at DESC")
   suspend fun getFavorites(): List<FavoriteEntity>
 
+  @Query("SELECT * FROM favorites WHERE track_path = :path")
+  suspend fun getFavorite(path: String): FavoriteEntity?
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun putFavorite(favorite: FavoriteEntity)
@@ -972,11 +974,20 @@ interface UserDao {
     SnapshotMetadataEntity::class,
     ArtistImageEntity::class,
   ],
-  version = 4,
+  version = 5,
   exportSchema = true,
 )
 abstract class AstraUserDatabase : RoomDatabase() {
   abstract fun userDao(): UserDao
+}
+
+internal val USER_MIGRATION_4_5 = object : Migration(4, 5) {
+  override fun migrate(database: SupportSQLiteDatabase) {
+    for (column in listOf("title TEXT", "artist TEXT", "album TEXT", "duration_ms INTEGER",
+      "file_size INTEGER", "folder_id INTEGER", "ambiguous_move INTEGER NOT NULL DEFAULT 0", "sync_added_at INTEGER")) {
+      database.execSQL("ALTER TABLE favorites ADD COLUMN $column")
+    }
+  }
 }
 
 internal val USER_MIGRATION_1_2 = object : Migration(1, 2) {

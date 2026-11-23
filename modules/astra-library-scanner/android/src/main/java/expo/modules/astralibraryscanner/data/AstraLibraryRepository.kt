@@ -10,6 +10,7 @@ import android.os.Trace
 import android.util.Log
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 import expo.modules.astralibraryscanner.queue.QueueReorder
 import java.io.File
 import java.nio.ByteBuffer
@@ -188,6 +189,7 @@ class AstraLibraryRepository private constructor(
    * public wrappers.
    */
   private val playbackQueueMutex = Mutex()
+  private val favoriteMutex = Mutex()
   private val listeners = CopyOnWriteArraySet<(LibraryStatusSnapshot) -> Unit>()
   private val catalogListeners = CopyOnWriteArraySet<(Long) -> Unit>()
   private val snapshots = UserSnapshotStore(applicationContext)
@@ -260,6 +262,7 @@ class AstraLibraryRepository private constructor(
         }
         dao.publishResolve(models, System.currentTimeMillis())
       }
+      backfillFavoriteMetadata(userOpen, dao)
       reconcileUserFacts()
 
       val revision = dao.getRevision()
@@ -341,6 +344,7 @@ class AstraLibraryRepository private constructor(
             forceOpen(replacement)
             snapshots.restore(replacement, snapshot)
             userDatabase = replacement
+            backfillFavoriteMetadata(replacement, requireCatalog().catalogDao())
             reconcileUserFacts()
             refreshReadyStatus()
           } catch (restoreError: Throwable) {
@@ -494,6 +498,7 @@ class AstraLibraryRepository private constructor(
     extract: suspend (LocalAudioFile) -> LocalAudioMetadata,
     onProgress: (phase: String, processed: Int, total: Int, folderName: String) -> Unit,
     isCancelled: () -> Boolean = { false },
+    completeListing: () -> Boolean = { true },
   ): NativeScanResult {
     val timing = LocalScanTiming(folderId)
     initialize()
@@ -537,6 +542,16 @@ class AstraLibraryRepository private constructor(
         val existing = dao.getActiveTrackEntitiesForSource(sourceKey)
         val existingByPath = existing.associateBy(TrackEntity::path)
         val seenPaths = files.mapTo(hashSetOf(), LocalAudioFile::uri)
+        suspend fun repairFavorites(catalogChanged: Boolean): Boolean = favoriteMutex.withLock repair@{
+          if (!completeListing()) return@repair false
+          val moved = repairScannedFavorites(
+            requireUser(), dao, folder, seenPaths, existing, catalogChanged,
+            fileMayExist = { favoriteFileMayExist(applicationContext, it) },
+            folderAvailable = { favoriteFolderAvailable(applicationContext, it) },
+          )
+          if (moved) reconcileUserFacts()
+          moved
+        }
         val removed = existing.count { it.path !in seenPaths }
         val canReuse = canReuseActiveLocalGeneration(
           full = full,
@@ -568,10 +583,11 @@ class AstraLibraryRepository private constructor(
             }
             resolveValidatedRevision = revision
           }
+          val favoritesMoved = repairFavorites(catalogChanged = false)
           userDao.updateFolderScanState(folderId, System.currentTimeMillis(), "ready", null)
           scheduleSnapshot()
           refreshReadyStatus()
-          if (regrouped) for (listener in catalogListeners) listener(revision)
+          if (favoritesMoved || regrouped) for (listener in catalogListeners) listener(revision)
           timing.outcome = if (regrouped) "regrouped" else "unchanged"
           return@withLock NativeScanResult(
             added = 0,
@@ -712,6 +728,7 @@ class AstraLibraryRepository private constructor(
           ftsRows = readModels.ftsRows,
           artistCreditVersion = CURRENT_ARTIST_CREDIT_VERSION,
         )
+        if (errors == 0) repairFavorites(catalogChanged = true)
         userDao.updateFolderScanState(folderId, System.currentTimeMillis(), "ready", null)
         scheduleSnapshot()
         refreshReadyStatus()
@@ -748,6 +765,8 @@ class AstraLibraryRepository private constructor(
           cancelled = true,
         )
       } catch (error: Throwable) {
+        // A follow-up user DB failure must never discard a published catalog.
+        if (dao.getSource(sourceKey)?.activeGenerationId == generationId) throw error
         timing.outcome = "failed"
         runCatching {
           dao.deleteGenerationTracks(generationId)
@@ -2069,6 +2088,31 @@ class AstraLibraryRepository private constructor(
     )
   }
 
+  suspend fun getFavoriteEntries(offset: Int, requestedLimit: Int): Map<String, Any?> {
+    initialize()
+    val user = requireUser()
+    return user.withTransaction {
+      val dao = user.userDao()
+      val start = offset.coerceAtLeast(0)
+      val rows = dao.getFavoritePage(start.toLong(), requestedLimit.coerceIn(1, MAX_PAGE_SIZE))
+      val tracks = requireCatalog().catalogDao().getActiveTracks(rows.map { it.trackPath }).associateBy { it.path }
+      val total = dao.countFavorites()
+      mapOf(
+        "items" to rows.mapIndexed { index, row ->
+          val track = tracks[row.trackPath]
+          mapOf(
+            "id" to (start + index).toDouble(), "track_path" to row.trackPath, "position" to start + index,
+            "added_at" to row.addedAt.toDouble(), "missing" to (track == null),
+            "fallback_title" to row.title, "fallback_artist" to row.artist, "fallback_album" to row.album,
+            "track" to track?.toBridgeMap(),
+          )
+        },
+        "nextOffset" to (start + rows.size).takeIf { it < total }?.toDouble(),
+        "totalCount" to total.toDouble(),
+      )
+    }
+  }
+
   suspend fun getFavoritePaths(): List<String> {
     initialize()
     return requireUser().userDao().getFavorites().map(FavoriteEntity::trackPath)
@@ -2102,39 +2146,47 @@ class AstraLibraryRepository private constructor(
 
   suspend fun setFavorite(path: String, favorite: Boolean) {
     initialize()
-    val userDao = requireUser().userDao()
-    if (favorite) userDao.putFavorite(FavoriteEntity(path, System.currentTimeMillis()))
-    else userDao.deleteFavorite(path)
-    val history = userDao.getPlaybackHistory(path)
-    requireCatalog().catalogDao().putTrackUserFacts(
-      listOf(
-        TrackUserFactEntity(
-          path = path,
-          isFavorite = favorite,
-          playCount = history?.playCount ?: 0,
-          lastPlayedAt = history?.lastPlayedAt,
+    favoriteMutex.withLock {
+      val userDao = requireUser().userDao()
+      if (favorite) {
+        val now = System.currentTimeMillis()
+        userDao.putFavorite(requireCatalog().catalogDao().favoriteAt(path, now))
+      } else userDao.deleteFavorite(path)
+      val history = userDao.getPlaybackHistory(path)
+      requireCatalog().catalogDao().putTrackUserFacts(
+        listOf(
+          TrackUserFactEntity(
+            path = path,
+            isFavorite = favorite,
+            playCount = history?.playCount ?: 0,
+            lastPlayedAt = history?.lastPlayedAt,
+          ),
         ),
-      ),
-    )
-    scheduleSnapshot()
+      )
+      scheduleSnapshot()
+    }
   }
 
   suspend fun getDesktopSyncState(): Map<String, Any?> {
     initialize()
-    val result = NativeDesktopSync.getState(requireUser(), requireCatalog())
-    if (result["mutated"] == true) {
-      reconcileUserFacts()
-      scheduleSnapshot()
+    return favoriteMutex.withLock {
+      val result = NativeDesktopSync.getState(requireUser(), requireCatalog())
+      if (result["mutated"] == true) {
+        reconcileUserFacts()
+        scheduleSnapshot()
+      }
+      result
     }
-    return result
   }
 
   suspend fun applyDesktopSyncPlan(plan: Map<String, Any?>): Map<String, Any?> {
     initialize()
-    val result = NativeDesktopSync.applyPlan(requireUser(), requireCatalog(), plan)
-    reconcileUserFacts()
-    scheduleSnapshot()
-    return result
+    return favoriteMutex.withLock {
+      val result = NativeDesktopSync.applyPlan(requireUser(), requireCatalog(), plan)
+      reconcileUserFacts()
+      scheduleSnapshot()
+      result
+    }
   }
 
   suspend fun resolveDesktopSyncConflict(
@@ -3674,7 +3726,7 @@ class AstraLibraryRepository private constructor(
   private fun buildUserDatabase(): AstraUserDatabase =
     Room.databaseBuilder(applicationContext, AstraUserDatabase::class.java, USER_DB_NAME)
       .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-      .addMigrations(USER_MIGRATION_1_2, USER_MIGRATION_2_3, USER_MIGRATION_3_4)
+      .addMigrations(USER_MIGRATION_1_2, USER_MIGRATION_2_3, USER_MIGRATION_3_4, USER_MIGRATION_4_5)
       .build()
 
   private fun buildCatalogDatabase(): AstraCatalogDatabase =
@@ -3741,9 +3793,12 @@ class AstraLibraryRepository private constructor(
         lastPlayedAt = history.lastPlayedAt,
       )
     }
-    val dao = requireCatalog().catalogDao()
-    dao.clearTrackUserFacts()
-    if (facts.isNotEmpty()) dao.putTrackUserFacts(facts.values.toList())
+    val catalog = requireCatalog()
+    catalog.withTransaction {
+      val dao = catalog.catalogDao()
+      dao.clearTrackUserFacts()
+      if (facts.isNotEmpty()) dao.putTrackUserFacts(facts.values.toList())
+    }
   }
 
   private fun scheduleSnapshot() {

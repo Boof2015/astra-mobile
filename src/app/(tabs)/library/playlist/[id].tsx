@@ -1,7 +1,6 @@
 import { ActionButton } from '@/components/ActionButton';
 import {
   useEffect,
-  useMemo,
   useState
 } from 'react';
 import {
@@ -35,7 +34,6 @@ import { artworkThumbUri, artworkUri } from '@/library/artwork';
 import { formatCollectionDuration } from '@/lib/format';
 import { playHaptic } from '@/lib/haptics';
 import { useLibraryDetailBack } from '@/navigation/useLibraryDetailBack';
-import type { DbTrack } from '@/types/library';
 import type { Playlist, PlaylistTrackEntry } from '@/types/playlist';
 import { useSceneBottomInset } from '@/navigation/useShellLayout';
 
@@ -50,8 +48,12 @@ function fileDisplayName(fileUri: string): string {
 }
 
 function basename(path: string): string {
-  const decoded = decodeURIComponent(path.split('/').pop() ?? path);
-  return decoded.split(/[/:]/).pop() || path;
+  const last = path.split('/').pop() || path;
+  try {
+    return decodeURIComponent(last).split(/[/:]/).pop() || last;
+  } catch {
+    return last;
+  }
 }
 
 function MissingRow({ entry, onLongPress }: { entry: PlaylistTrackEntry; onLongPress: () => void }) {
@@ -94,9 +96,9 @@ export default function PlaylistScreen() {
   const playlistId = isFavorites ? null : Number(id);
 
   const playlists = usePlaylistStore((s) => s.playlists);
-  const favoriteTracks = usePlaylistStore((s) => s.favoriteTracks);
+  const removeFavorite = usePlaylistStore((s) => s.removeFavorite);
   const favoriteSummary = usePlaylistStore((s) => s.favoriteSummary);
-  const activeEntries = usePlaylistStore((s) => s.activeEntries);
+  const entries = usePlaylistStore((s) => s.activeEntries);
   const openPlaylist = usePlaylistStore((s) => s.openPlaylist);
   const loadNextEntries = usePlaylistStore((s) => s.loadNextEntries);
   const closePlaylist = usePlaylistStore((s) => s.closePlaylist);
@@ -120,55 +122,24 @@ export default function PlaylistScreen() {
   const [prompt, setPrompt] = useState<Prompt>(null);
 
   useEffect(() => {
-    if (playlistId == null || Number.isNaN(playlistId)) return;
+    const collectionId = isFavorites ? 'favorites' : playlistId;
+    if (collectionId == null || Number.isNaN(collectionId)) return;
     let canceled = false;
-    void openPlaylist(playlistId).catch((error) => {
+    void openPlaylist(collectionId).catch((error) => {
       if (!canceled) showAppDialog({ title: 'Playlist unavailable', message: error instanceof Error ? error.message : 'Playlist could not be loaded.' });
     });
     return () => { canceled = true; closePlaylist(); };
-  }, [playlistId, openPlaylist, closePlaylist]);
+  }, [isFavorites, playlistId, openPlaylist, closePlaylist]);
 
   const playlist = isFavorites ? null : playlists.find((entry) => entry.id === playlistId);
   const name = isFavorites ? 'Favorites' : (playlist?.name ?? 'Playlist');
   const coverHash = playlist?.auto_cover_hash ?? null;
   const isDynamic = playlist?.kind === 'dynamic';
 
-  const entries: PlaylistTrackEntry[] = useMemo(
-    () =>
-      isFavorites
-        ? favoriteTracks.map((track, index) => ({
-            id: track.id,
-            track_path: track.path,
-            position: index,
-            added_at: track.added_at,
-            missing: false,
-            fallback_title: null,
-            fallback_artist: null,
-            fallback_album: null,
-            track,
-          }))
-        : activeEntries,
-    [isFavorites, favoriteTracks, activeEntries]
-  );
-
-  const playable = useMemo(
-    () => entries.filter((entry) => entry.track !== null).map((entry) => entry.track as DbTrack),
-    [entries]
-  );
-  const playableIndexByEntryId = useMemo(() => {
-    const map = new Map<number, number>();
-    let index = 0;
-    for (const entry of entries) {
-      if (entry.track) {
-        map.set(entry.id, index);
-        index += 1;
-      }
-    }
-    return map;
-  }, [entries]);
-
-  const startPlayback = (index: number) => {
-    if (playable.length === 0) return;
+  const firstPlayable = entries.find((entry) => entry.track)?.track_path;
+  const canPlay = firstPlayable != null || (isFavorites && (favoriteSummary?.track_count ?? 0) > 0);
+  const startPlayback = (anchorPath = firstPlayable) => {
+    if (!canPlay) return;
     const query = isFavorites
       ? { kind: 'favorites' as const }
       : {
@@ -176,14 +147,14 @@ export default function PlaylistScreen() {
           playlistId: playlistId!,
         };
     void playLibraryQuery(query, {
-      anchorPath: playable[index]?.path,
+      anchorPath,
       source: { kind: isFavorites ? 'favorites' : 'playlist', label: name },
     });
     if (playlistId != null && !Number.isNaN(playlistId)) void markPlayed(playlistId);
   };
 
   const startShuffle = () => {
-    if (playable.length === 0) return;
+    if (!canPlay) return;
     const query = isFavorites
       ? { kind: 'favorites' as const }
       : {
@@ -290,7 +261,7 @@ export default function PlaylistScreen() {
         onLoad={onListContentLayout}
         onCommitLayoutEffect={onListContentLayout}
         data={entries}
-        keyExtractor={(entry) => String(entry.id)}
+        keyExtractor={(entry) => isFavorites ? entry.track_path : String(entry.id)}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onLayout={onListLayout}
@@ -298,7 +269,7 @@ export default function PlaylistScreen() {
         onTouchEnd={onListTouchEnd}
         scrollEventThrottle={scrollEventThrottle}
         onEndReached={() => {
-          if (!isFavorites) void loadNextEntries();
+          void loadNextEntries();
         }}
         onEndReachedThreshold={2}
         contentContainerStyle={{
@@ -313,7 +284,7 @@ export default function PlaylistScreen() {
               track={item.track}
               showFormat={false}
               active={item.track.path === currentPath}
-              onPress={() => startPlayback(playableIndexByEntryId.get(item.id) ?? 0)}
+              onPress={() => startPlayback(item.track_path)}
               onLongPress={() => setActionEntry(item)}
               onOpenActions={() => setActionEntry(item)}
             />
@@ -358,11 +329,11 @@ export default function PlaylistScreen() {
             />
           ) : null
         }
-        disabled={playable.length === 0}
+        disabled={!canPlay}
         onBack={goBack}
         backLabel={backLabel}
         onMore={() => setOptionsOpen(true)}
-        onPlay={() => startPlayback(0)}
+        onPlay={() => startPlayback()}
         onShuffle={startShuffle}
         scrollY={scrollY}
         heroFaded={heroFaded}
@@ -379,16 +350,22 @@ export default function PlaylistScreen() {
       {missingEntry !== null ? (
         <AppSheet onClose={() => setMissingEntry(null)} scrollable>
           <AppSheetTitle
-            title={missingEntry.fallback_title ?? 'Missing track'}
-            subtitle={missingEntry.fallback_artist ?? 'Track not in library'}
+            title={missingEntry.fallback_title ?? (isFavorites ? basename(missingEntry.track_path) : 'Missing track')}
+            subtitle={isFavorites ? [missingEntry.fallback_artist, missingEntry.track_path].filter(Boolean).join('\n') : (missingEntry.fallback_artist ?? 'Track not in library')}
           />
-          {playlistId != null && !isDynamic ? (
+          {isFavorites || (playlistId != null && !isDynamic) ? (
             <AppSheetItem
-              label="Remove from playlist"
+              label={isFavorites ? 'Remove from Favorites' : 'Remove from playlist'}
               icon="remove-circle-outline"
               destructive
               onPress={() => {
-                void removeFromPlaylist(playlistId, missingEntry.track_path);
+                if (isFavorites) {
+                  void removeFavorite(missingEntry.track_path).catch((error) => {
+                    showAppDialog({ title: 'Could not update Favorites', message: errorMessage(error) });
+                  });
+                } else if (playlistId != null) {
+                  void removeFromPlaylist(playlistId, missingEntry.track_path);
+                }
                 setMissingEntry(null);
               }}
             />

@@ -31,18 +31,20 @@ export interface M3uImportSummary {
   ambiguous: number;
 }
 
+type CollectionId = number | 'favorites';
+
 interface PlaylistStore {
   playlists: Playlist[];
   favoritePaths: Set<string>;
   favoriteTracks: DbTrack[];
   favoriteSummary: PlaylistSummary | null;
-  activePlaylistId: number | null;
+  activePlaylistId: CollectionId | null;
   activeEntries: PlaylistTrackEntry[];
   activeEntriesTotal: number;
   activeEntriesNextOffset: number | null;
 
   refresh: () => Promise<void>;
-  openPlaylist: (id: number) => Promise<void>;
+  openPlaylist: (id: CollectionId) => Promise<void>;
   loadNextEntries: () => Promise<void>;
   closePlaylist: () => void;
   createPlaylist: (name: string) => Promise<Playlist>;
@@ -56,6 +58,7 @@ interface PlaylistStore {
   removeFromPlaylist: (id: number, trackPath: string) => Promise<void>;
   moveTrack: (id: number, trackPath: string, direction: -1 | 1) => Promise<void>;
   toggleFavorite: (track: { path: string }) => Promise<void>;
+  removeFavorite: (path: string) => Promise<void>;
   markPlayed: (id: number) => Promise<void>;
   importM3u: () => Promise<M3uImportSummary | null>;
   exportM3u: (target: number | 'favorites') => Promise<M3uExportResult | null>;
@@ -92,19 +95,31 @@ async function candidatesForImport(entry: M3uEntry): Promise<DbTrack[]> {
 }
 
 export const usePlaylistStore = create<PlaylistStore>((set, get) => {
+  let pageVersion = 0;
+  let loadingPage = false;
+  const readPage = (id: CollectionId, offset: number) => id === 'favorites'
+    ? AstraLibraryData.getFavoriteEntries<PlaylistTrackEntry>(offset, ENTRY_PAGE_SIZE)
+    : AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(id, offset, ENTRY_PAGE_SIZE);
+
   const reloadActive = async () => {
-    const id = get().activePlaylistId;
+    const { activePlaylistId: id, activeEntries } = get();
+    const version = ++pageVersion;
+    loadingPage = false;
     if (id == null) return;
-    const page = await AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(
-      id,
-      0,
-      ENTRY_PAGE_SIZE
-    );
-    set({
-      activeEntries: page.items,
-      activeEntriesTotal: page.totalCount,
-      activeEntriesNextOffset: page.nextOffset,
-    });
+    loadingPage = true;
+    try {
+      const keepCount = id === 'favorites' ? activeEntries.length : 0;
+      let page = await readPage(id, 0);
+      const entries = [...page.items];
+      while (version === pageVersion && entries.length < keepCount && page.nextOffset != null) {
+        page = await readPage(id, page.nextOffset);
+        entries.push(...page.items);
+      }
+      if (version !== pageVersion) return;
+      set({ activeEntries: entries, activeEntriesTotal: page.totalCount, activeEntriesNextOffset: page.nextOffset });
+    } finally {
+      if (version === pageVersion) loadingPage = false;
+    }
   };
 
   const refreshAll = async () => {
@@ -116,6 +131,27 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
     ]);
     set({ playlists, favoritePaths: new Set(favoritePaths), favoriteTracks, favoriteSummary });
     await reloadActive();
+  };
+
+  const setFavorite = async (path: string, favorite: boolean) => {
+    const optimistic = new Set(get().favoritePaths);
+    if (favorite) optimistic.add(path);
+    else optimistic.delete(path);
+    set({ favoritePaths: optimistic });
+    try {
+      await AstraLibraryData.setFavorite(path, favorite);
+    } catch (error) {
+      const saved = await AstraLibraryData.getFavoritePaths();
+      set({ favoritePaths: new Set(saved) });
+      throw error;
+    }
+    const [paths, tracks, favoriteSummary] = await Promise.all([
+      AstraLibraryData.getFavoritePaths(),
+      AstraLibraryData.getFavoriteTracks<DbTrack>(500),
+      AstraLibraryData.getFavoriteSummary<PlaylistSummary>(),
+    ]);
+    set({ favoritePaths: new Set(paths), favoriteTracks: tracks, favoriteSummary });
+    if (get().activePlaylistId === 'favorites') await reloadActive();
   };
 
   return {
@@ -131,33 +167,32 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
     refresh: refreshAll,
 
     openPlaylist: async (id) => {
-      set({ activePlaylistId: id, activeEntries: [], activeEntriesNextOffset: 0 });
+      set({ activePlaylistId: id, activeEntries: [], activeEntriesTotal: 0, activeEntriesNextOffset: null });
       await reloadActive();
     },
 
     loadNextEntries: async () => {
-      const id = get().activePlaylistId;
-      const offset = get().activeEntriesNextOffset;
-      if (id == null || offset == null) return;
-      const page = await AstraLibraryData.getPlaylistEntries<PlaylistTrackEntry>(
-        id,
-        offset,
-        ENTRY_PAGE_SIZE
-      );
-      set((state) => ({
-        activeEntries: [...state.activeEntries, ...page.items],
-        activeEntriesTotal: page.totalCount,
-        activeEntriesNextOffset: page.nextOffset,
-      }));
+      const { activePlaylistId: id, activeEntriesNextOffset: offset } = get();
+      if (id == null || offset == null || loadingPage) return;
+      const version = pageVersion;
+      loadingPage = true;
+      try {
+        const page = await readPage(id, offset);
+        if (version !== pageVersion || offset !== get().activeEntriesNextOffset) return;
+        set((state) => ({
+          activeEntries: [...state.activeEntries, ...page.items],
+          activeEntriesTotal: page.totalCount,
+          activeEntriesNextOffset: page.nextOffset,
+        }));
+      } finally {
+        if (version === pageVersion) loadingPage = false;
+      }
     },
 
-    closePlaylist: () =>
-      set({
-        activePlaylistId: null,
-        activeEntries: [],
-        activeEntriesTotal: 0,
-        activeEntriesNextOffset: null,
-      }),
+    closePlaylist: () => {
+      pageVersion++;
+      set({ activePlaylistId: null, activeEntries: [], activeEntriesTotal: 0, activeEntriesNextOffset: null });
+    },
 
     createPlaylist: async (name) => {
       const playlist = await AstraLibraryData.createPlaylist<Playlist>(name, 'normal', null);
@@ -227,20 +262,8 @@ export const usePlaylistStore = create<PlaylistStore>((set, get) => {
       await refreshAll();
     },
 
-    toggleFavorite: async (track) => {
-      const favorite = !get().favoritePaths.has(track.path);
-      const optimistic = new Set(get().favoritePaths);
-      if (favorite) optimistic.add(track.path);
-      else optimistic.delete(track.path);
-      set({ favoritePaths: optimistic });
-      await AstraLibraryData.setFavorite(track.path, favorite);
-      const [paths, tracks, favoriteSummary] = await Promise.all([
-        AstraLibraryData.getFavoritePaths(),
-        AstraLibraryData.getFavoriteTracks<DbTrack>(500),
-        AstraLibraryData.getFavoriteSummary<PlaylistSummary>(),
-      ]);
-      set({ favoritePaths: new Set(paths), favoriteTracks: tracks, favoriteSummary });
-    },
+    toggleFavorite: (track) => setFavorite(track.path, !get().favoritePaths.has(track.path)),
+    removeFavorite: (path) => setFavorite(path, false),
 
     markPlayed: async (id) => {
       await AstraLibraryData.markPlaylistPlayed(id);

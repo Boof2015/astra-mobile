@@ -240,10 +240,26 @@ private fun playlistTrackFromJson(json: JSONObject) = PlaylistTrackEntity(
 private fun FavoriteEntity.toJson() = JSONObject()
   .put("trackPath", trackPath)
   .put("addedAt", addedAt)
+  .putNullable("title", title)
+  .putNullable("artist", artist)
+  .putNullable("album", album)
+  .putNullable("durationMs", durationMs)
+  .putNullable("fileSize", fileSize)
+  .putNullable("folderId", folderId)
+  .put("ambiguousMove", ambiguousMove)
+  .putNullable("syncAddedAt", syncAddedAt)
 
 private fun favoriteFromJson(json: JSONObject) = FavoriteEntity(
   trackPath = json.getString("trackPath"),
   addedAt = json.getLong("addedAt"),
+  title = json.nullableString("title"),
+  artist = json.nullableString("artist"),
+  album = json.nullableString("album"),
+  durationMs = json.nullableLong("durationMs"),
+  fileSize = json.nullableLong("fileSize"),
+  folderId = json.nullableLong("folderId"),
+  ambiguousMove = json.optBoolean("ambiguousMove", false),
+  syncAddedAt = json.nullableLong("syncAddedAt"),
 )
 
 private fun PlaybackHistoryEntity.toJson() = JSONObject()

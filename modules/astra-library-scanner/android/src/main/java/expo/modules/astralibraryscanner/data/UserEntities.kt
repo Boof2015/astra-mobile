@@ -79,6 +79,15 @@ data class FavoriteEntity(
   @ColumnInfo(name = "track_path")
   val trackPath: String,
   @ColumnInfo(name = "added_at") val addedAt: Long,
+  val title: String? = null,
+  val artist: String? = null,
+  val album: String? = null,
+  @ColumnInfo(name = "duration_ms") val durationMs: Long? = null,
+  @ColumnInfo(name = "file_size") val fileSize: Long? = null,
+  @ColumnInfo(name = "folder_id") val folderId: Long? = null,
+  @ColumnInfo(name = "ambiguous_move", defaultValue = "0") val ambiguousMove: Boolean = false,
+  // A synced replacement can have a newer add event than the original displayed liked date.
+  @ColumnInfo(name = "sync_added_at") val syncAddedAt: Long? = null,
 )
 
 @Entity(

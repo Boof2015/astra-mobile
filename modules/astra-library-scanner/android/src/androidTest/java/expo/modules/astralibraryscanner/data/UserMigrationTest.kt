@@ -222,6 +222,17 @@ class UserMigrationTest {
     )
   }
 
+  @Test
+  fun favoriteMetadataMigrationKeepsPathOnlyLikes() {
+    helper.createDatabase(TEST_DATABASE, 4).apply {
+      execSQL("INSERT INTO favorites(track_path, added_at) VALUES ('old.flac', 73)")
+      close()
+    }
+    val database = helper.runMigrationsAndValidate(TEST_DATABASE, 5, true, USER_MIGRATION_4_5)
+    assertEquals(73, database.singleInt(
+      "SELECT added_at FROM favorites WHERE track_path = 'old.flac' AND title IS NULL AND ambiguous_move = 0"))
+  }
+
   private fun androidx.sqlite.db.SupportSQLiteDatabase.singleString(query: String): String =
     this.query(query).use { cursor ->
       assertTrue(cursor.moveToFirst())

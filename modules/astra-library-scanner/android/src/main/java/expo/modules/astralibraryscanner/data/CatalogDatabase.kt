@@ -262,8 +262,20 @@ interface CatalogDao {
   """)
   suspend fun getRecentTrackSummaries(paths: List<String>): List<RecentTrackSummary>
 
-  @Query("SELECT COUNT(*) AS trackCount, COALESCE(SUM(duration), 0.0) AS totalDuration FROM active_tracks WHERE path IN (:paths)")
+  @Query("""
+    SELECT COUNT(*) AS trackCount, COALESCE(SUM(duration), 0.0) AS totalDuration FROM (
+      SELECT path, MAX(duration) AS duration FROM active_tracks WHERE path IN (:paths) GROUP BY path
+    )
+  """)
   suspend fun getTrackTotals(paths: List<String>): TrackTotals
+
+  @Query("""
+    SELECT path AS track_path, 0 AS added_at, title, artist, album,
+      CAST(ROUND(duration * 1000) AS INTEGER) AS duration_ms, size AS file_size, folder_id, 0 AS ambiguous_move, NULL AS sync_added_at
+    FROM active_tracks WHERE source_type = 'local' AND size IN (:sizes)
+      AND (:durationMs IS NULL OR CAST(ROUND(duration * 1000) AS INTEGER) = :durationMs)
+  """)
+  suspend fun getFavoriteCandidates(sizes: List<Long>, durationMs: Long? = null): List<FavoriteEntity>
 
   @Query("SELECT * FROM active_tracks ORDER BY path")
   suspend fun getAllActiveTracksForNativeMatching(): List<ActiveTrackView>
