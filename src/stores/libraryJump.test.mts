@@ -242,6 +242,27 @@ test('a failed backward read never replaces the visible window with a false head
   assert.equal(h.library.getState().jumpAnchorIndex, 0);
 });
 
+test('Recently Added includes singles with either Albums preference', async () => {
+  const h = await harness();
+  h.library.setState({ viewMode: 'albums', albumSort: 'recently_added', albumSortDirection: 'desc' });
+  const single = { album: 'New single', track_count: 1, latest_added_at: 200 };
+  const album = { album: 'Older album', track_count: 3, latest_added_at: 100 };
+  h.native.getAlbumPage = async (sort: string, direction: string, includeSingles: boolean) => {
+    assert.equal(sort, 'recently_added');
+    assert.equal(direction, 'desc');
+    return { items: includeSingles ? [single, album] : [album] };
+  };
+
+  await h.library.getState().refresh();
+  assert.deepEqual(h.library.getState().homeAlbums, [single, album]);
+  assert.deepEqual(h.library.getState().albums, [album]);
+
+  h.settings({ includeSingles: true });
+  await h.library.getState().refresh();
+  assert.deepEqual(h.library.getState().homeAlbums, [single, album]);
+  assert.deepEqual(h.library.getState().albums, [single, album]);
+});
+
 // An image sweep reports every lookup. Each one used to refresh(), which re-read
 // page 1 and remounted any list grown past it — the jump-to-top at the same row.
 for (const viewMode of ['tracks', 'albums', 'artists'] as const) {

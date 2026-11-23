@@ -761,7 +761,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => {
         AstraLibraryData.getAlbumPage<Album>(
           'recently_added',
           'desc',
-          includeSingles,
+          true, // Home shows new singles regardless of the Albums preference.
           null,
           20
         ),
