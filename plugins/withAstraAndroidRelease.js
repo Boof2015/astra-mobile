@@ -14,7 +14,18 @@ const SETTINGS_MARKER = '// ASTRA VENDORED KOTLIN AUDIO';
 const PROJECT_BUILD_MARKER = '// ASTRA KOTLIN AUDIO SUBSTITUTION';
 const SIGNING_MARKER = '// ASTRA RELEASE SIGNING';
 const PREVIEW_MARKER = '// ASTRA SIDE-BY-SIDE PREVIEW';
-const CAMERA_FEATURE = 'android.hardware.camera';
+// Hardware Play would otherwise treat as required, filtering out devices without
+// it. Each one is either requested explicitly or implied by something else:
+// - camera: QR scanning (desktop pairing, EQ presets, Signal) is optional.
+// - wifi: implied by the Wi-Fi permissions astra-desktop-discovery declares for
+//   LAN discovery; Astra plays fine on Ethernet or without a network.
+// - screen.portrait: implied by ML Kit's portrait-locked, invisible
+//   GmsBarcodeScanningDelegateActivity; Astra itself runs in any orientation.
+const OPTIONAL_HARDWARE_FEATURES = [
+  'android.hardware.camera',
+  'android.hardware.wifi',
+  'android.hardware.screen.portrait',
+];
 const NOTIFICATION_ICON_FILE = 'astra_notification_icon.xml';
 const NOTIFICATION_OVERRIDE_FILE = 'astra_notification_icon_overrides.xml';
 const NOTIFICATION_KEEP_FILE = 'astra_notification_keep.xml';
@@ -244,7 +255,7 @@ function withGradleBuildSettings(config) {
 function withProfileableRelease(config) {
   return withAndroidManifest(config, (mod) => {
     AndroidConfig.Manifest.ensureToolsAvailable(mod.modResults);
-    ensureOptionalCameraFeature(mod.modResults);
+    ensureOptionalHardwareFeatures(mod.modResults);
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(mod.modResults);
     application.profileable = [
       {
@@ -258,22 +269,22 @@ function withProfileableRelease(config) {
   });
 }
 
-function ensureOptionalCameraFeature(androidManifest) {
+function ensureOptionalHardwareFeatures(androidManifest) {
   const manifest = androidManifest.manifest;
   const features = manifest['uses-feature'] ?? [];
-  const cameraFeature = features.find(
-    (feature) => feature.$?.['android:name'] === CAMERA_FEATURE
-  );
 
-  if (cameraFeature) {
-    cameraFeature.$['android:required'] = 'false';
-  } else {
-    features.push({
-      $: {
-        'android:name': CAMERA_FEATURE,
-        'android:required': 'false',
-      },
-    });
+  for (const name of OPTIONAL_HARDWARE_FEATURES) {
+    const existing = features.find((feature) => feature.$?.['android:name'] === name);
+    if (existing) {
+      existing.$['android:required'] = 'false';
+    } else {
+      features.push({
+        $: {
+          'android:name': name,
+          'android:required': 'false',
+        },
+      });
+    }
   }
   manifest['uses-feature'] = features;
 }
@@ -334,6 +345,6 @@ module.exports._internal = {
   enableReleaseOptimization,
   appendBlock,
   upsertGradleProperty,
-  ensureOptionalCameraFeature,
+  ensureOptionalHardwareFeatures,
   writeNotificationIconResources,
 };

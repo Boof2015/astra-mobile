@@ -172,20 +172,40 @@ test('Gradle JVM argument transform is idempotent and removes duplicate properti
   );
 });
 
-test('marks QR scanning camera hardware as optional without duplicating it', () => {
+const OPTIONAL_FEATURES = [
+  'android.hardware.camera',
+  'android.hardware.wifi',
+  'android.hardware.screen.portrait',
+].map((name) => ({ $: { 'android:name': name, 'android:required': 'false' } }));
+
+test('marks camera, Wi-Fi and portrait hardware as optional without duplicating them', () => {
   const manifest = { manifest: {} };
 
-  _internal.ensureOptionalCameraFeature(manifest);
-  _internal.ensureOptionalCameraFeature(manifest);
+  _internal.ensureOptionalHardwareFeatures(manifest);
+  _internal.ensureOptionalHardwareFeatures(manifest);
 
-  assert.deepEqual(manifest.manifest['uses-feature'], [
-    {
-      $: {
-        'android:name': 'android.hardware.camera',
-        'android:required': 'false',
-      },
+  assert.deepEqual(manifest.manifest['uses-feature'], OPTIONAL_FEATURES);
+});
+
+test('downgrades already-declared required hardware features and keeps unrelated ones', () => {
+  const leanback = { $: { 'android:name': 'android.software.leanback', 'android:required': 'false' } };
+  const manifest = {
+    manifest: {
+      'uses-feature': [
+        leanback,
+        { $: { 'android:name': 'android.hardware.wifi', 'android:required': 'true' } },
+      ],
     },
-  ]);
+  };
+
+  _internal.ensureOptionalHardwareFeatures(manifest);
+
+  const features = manifest.manifest['uses-feature'];
+  assert.equal(features[0], leanback);
+  assert.deepEqual(
+    features.filter((feature) => feature.$['android:name'] !== 'android.software.leanback'),
+    [OPTIONAL_FEATURES[1], OPTIONAL_FEATURES[0], OPTIONAL_FEATURES[2]]
+  );
 });
 
 test('writes deterministic Astra and RNTP notification icon resources', async (t) => {
