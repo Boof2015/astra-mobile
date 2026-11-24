@@ -1,11 +1,14 @@
-# Astra
+# Astra Mobile
 
 ![GitHub Release](https://img.shields.io/github/v/release/Boof2015/astra-mobile?include_prereleases)
 ![GitHub License](https://img.shields.io/github/license/Boof2015/astra-mobile)
+![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)
+![GitHub Downloads](https://img.shields.io/github/downloads/Boof2015/astra-mobile/total?label=GitHub%20downloads)
+
 
 [Google Play](https://play.google.com/store/apps/details?id=io.github.boof2015.astra) · [Releases](https://github.com/Boof2015/astra-mobile/releases) · [Astra for desktop](https://github.com/Boof2015/astra) · [Privacy](PRIVACY.md)
 
-Astra is a music player for Android. It plays your local files and your Subsonic or Jellyfin servers as one library, on phones, tablets, Android Auto and Android TV. It's the mobile counterpart to [Astra for desktop](https://github.com/Boof2015/astra), and the two can pair over your local network.
+Astra Mobile is a music player for Android. It plays your local files and your Subsonic or Jellyfin servers as one library, on phones, tablets, Android Auto and Android TV. It's the mobile counterpart to [Astra for desktop](https://github.com/Boof2015/astra), and the two can pair over your local network.
 
 <p align="center">
   <img src="docs/images/now-playing.jpg" width="24%" alt="The player with album artwork, a live audio scope, a lyric preview line, a waveform seek bar and playback controls.">
@@ -14,13 +17,19 @@ Astra is a music player for Android. It plays your local files and your Subsonic
   <img src="docs/images/equalizer.jpg" width="24%" alt="The parametric equalizer, with colored bands on a response curve over a live spectrum and frequency, Q and gain controls.">
 </p>
 <p align="center">
+  <em>Astra on Android phones</em>
+</p>
+<p align="center">
   <img src="docs/images/tv-now-playing.jpg" width="49%" alt="Astra's TV player with album artwork, playback controls, queue access and an artwork-colored background.">
   <img src="docs/images/tv-album.jpg" width="49%" alt="An album page on Android TV with artwork, track list, and remote-friendly Play, Shuffle and Add to queue controls.">
+</p>
+<p align="center">
+  <em>Astra on Android TV</em>
 </p>
 
 ## Highlights
 
-**Astra Resolve** works out who's actually on each track. It uses evidence from your whole library, so `Tyler, the Creator` stays one artist while `Ado, Eve` becomes two. Albums with incomplete Album Artist tags still come together. It's the same engine as the desktop app, and it never modifies your files.
+**Astra Resolve** makes sense of inconsistent artist and album tags. It uses evidence from across your library to distinguish collaborations from artist names that contain punctuation, so `Tyler, the Creator` stays one artist while `Ado, Eve` becomes two. It also keeps albums together when Album Artist tags are incomplete, without merging uncertain matches. It's the same engine as Astra for desktop, working entirely locally without external metadata lookups or changes to your files.
 
 **[XLRC](https://github.com/Boof2015/xlrc)** is an open lyrics format developed alongside Astra. It extends LRC with word-by-word timing, furigana, translations and singer labels, and Astra renders all of them. Its community database, [XLRCDB](https://astramusic.dev/xlrcdb/), is built in.
 
@@ -75,7 +84,7 @@ Astra is a music player for Android. It plays your local files and your Subsonic
 - Pausable listening history
 - Scrobbling to Last.fm, Last.fm-compatible servers such as Libre.fm, and ListenBrainz, with multiple destinations at once
 
-### Astra Desktop (experimental)
+### Desktop integration (experimental)
 
 - Pairing by QR code, LAN discovery or manual address
 - Choose whether music plays on your phone or on the desktop
